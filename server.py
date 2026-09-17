@@ -126,9 +126,52 @@ from db import (
     load_config
 )
 
+import auth
+
+
 class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
+
+    # ------------------------------------------------------------------------
+    # Authentication gate
+    #
+    # Every /api/* route other than the auth endpoints, and every portal page,
+    # now requires a signed-in session. API callers get 401 JSON; browsers
+    # asking for a page get redirected to the login screen. Stylesheets,
+    # scripts and images stay open so the login screen can render.
+    # ------------------------------------------------------------------------
+    def current_session(self):
+        token = auth.token_from_cookie_header(self.headers.get('Cookie'))
+        return auth.get_session(token)
+
+    def _reject_unauthenticated(self, path):
+        """Send the right kind of refusal. Returns True once handled."""
+        if path.startswith('/api/'):
+            self._set_json_headers(401)
+            self.wfile.write(json.dumps({
+                'error': 'Avtorizatsiya talab qilinadi',
+                'detail': 'Sessiya topilmadi yoki muddati tugagan. Iltimos, qaytadan kiring.',
+                'login_url': '/login.html'
+            }, ensure_ascii=False).encode('utf-8'))
+        else:
+            target = '/login.html'
+            if path and path not in ('/', ''):
+                target += '?next=' + urllib.parse.quote(path, safe='')
+            self.send_response(302)
+            self.send_header('Location', target)
+            self.end_headers()
+        return True
+
+    def enforce_auth(self, path):
+        """
+        True when the request has been refused and the caller should stop.
+        """
+        if not auth.requires_session(path):
+            return False
+        if self.current_session():
+            return False
+        return self._reject_unauthenticated(path)
 
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -156,6 +199,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
+        if self.enforce_auth(path):
+            return
+
+        # Answered before the database is touched, so a page can still learn
+        # whether it is signed in when MySQL is unreachable.
+        if path == '/api/auth/session':
+            sess = self.current_session()
+            self._set_json_headers(200)
+            self.wfile.write(json.dumps({
+                'authenticated': bool(sess),
+                'user': sess['user'] if sess else None
+            }, ensure_ascii=False).encode('utf-8'))
+            return
+
         if path in ('/', ''):
             self.send_response(302)
             self.send_header('Location', '/superpage.html')
@@ -170,6 +227,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if self.enforce_auth(path):
+            return
         if path.startswith('/api/'):
             content_len = int(self.headers.get('Content-Length', 0))
             body_raw = self.rfile.read(content_len).decode('utf-8') if content_len > 0 else '{}'
@@ -186,6 +245,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_PUT(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if self.enforce_auth(path):
+            return
         if path.startswith('/api/'):
             content_len = int(self.headers.get('Content-Length', 0))
             body_raw = self.rfile.read(content_len).decode('utf-8') if content_len > 0 else '{}'
@@ -202,6 +263,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if self.enforce_auth(path):
+            return
         if path.startswith('/api/'):
             with WRITE_LOCK:
                 self.handle_api_delete(path)
@@ -1001,12 +1064,23 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # 1d. POST /api/beds/<id>/status or /api/beds/<id>/clean (Sanitation Handover)
             elif path.startswith('/api/beds/') and (path.endswith('/status') or path.endswith('/clean')):
                 bed_id = path.split('/')[3]
-                new_status = 'available' if path.endswith('/clean') else body.get('status', 'available')
-                if new_status == 'operational':
-                    new_status = 'available'
-                valid_statuses = {'available', 'cleaning', 'maintenance', 'out_of_service', 'occupied', 'reserved'}
-                if new_status not in valid_statuses:
-                    new_status = 'available'
+                # The beds.status column accepts only the physical states in its
+                # CHECK constraint: operational, cleaning, maintenance,
+                # out_of_service. 'available', 'occupied' and 'reserved' are
+                # values the v_bed_live_status view DERIVES from admissions, not
+                # things that can be stored. This route used to map the other way
+                # round -- rewriting 'operational' to 'available' -- so every
+                # request violated beds_chk_3 and failed with a 500. Discharge and
+                # transfer both leave a bed 'cleaning', so the action that returns
+                # it to service never worked and beds accumulated as unusable.
+                PHYSICAL = {'operational', 'cleaning', 'maintenance', 'out_of_service'}
+                DERIVED_TO_PHYSICAL = {'available': 'operational',
+                                       'occupied': 'operational',
+                                       'reserved': 'operational'}
+                requested = 'operational' if path.endswith('/clean') else str(body.get('status', 'operational')).strip().lower()
+                new_status = DERIVED_TO_PHYSICAL.get(requested, requested)
+                if new_status not in PHYSICAL:
+                    new_status = 'operational'
 
                 cur.execute("UPDATE beds SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? OR bed_code = ?", (new_status, bed_id, bed_id))
                 conn.commit()
@@ -1645,26 +1719,49 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'message': "Narxlar muvaffaqiyatli saqlandi va barcha bo'limlarga tatbiq etildi", 'pricing': existing}, ensure_ascii=False).encode('utf-8'))
 
             # 13. POST /api/auth/login
+            #
+            # Verifies against a PBKDF2 hash (and still accepts a not-yet
+            # migrated plaintext record), then issues an HttpOnly session
+            # cookie. The password comparison is constant-time, and a failure
+            # says only that the pair was wrong — never which half.
             elif path == '/api/auth/login':
                 username = (body.get('username') or '').strip().lower()
-                password = (body.get('password') or '').strip()
-                users_file = os.path.join(BASE_DIR, 'data', 'users.json')
-                u_list = read_json_file(users_file, [])
-                
-                found = None
-                for u in u_list:
-                    if u.get('username', '').lower() == username and u.get('password') == password and u.get('is_active', True):
-                        found = u
-                        break
-                
-                if found:
-                    user_info = dict(found)
-                    user_info.pop('password', None)
-                    self._set_json_headers(200)
-                    self.wfile.write(json.dumps({'message': 'Muvaffaqiyatli tizimga kirildi', 'user': user_info}, ensure_ascii=False).encode('utf-8'))
+                password = body.get('password') or ''
+
+                found = auth.find_user(username)
+                ok = bool(found) and found.get('is_active', True) and \
+                    auth.verify_password(password, found.get('password'))
+
+                if ok:
+                    token = auth.create_session(found)
+                    user_info = auth.sanitize_user(found)
+                    is_https = self.headers.get('X-Forwarded-Proto') == 'https'
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_header('Set-Cookie', auth.build_session_cookie(
+                        token, secure=is_https, max_age=auth.SESSION_IDLE_SECONDS))
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'message': 'Muvaffaqiyatli tizimga kirildi',
+                        'user': user_info
+                    }, ensure_ascii=False).encode('utf-8'))
+                    print(f"[auth] login ok: {username} ({found.get('role')})")
                 else:
+                    print(f"[auth] login failed for {username!r}")
                     self._set_json_headers(401)
                     self.wfile.write(json.dumps({'error': "Login yoki parol noto'g'ri"}, ensure_ascii=False).encode('utf-8'))
+
+            # 13b. POST /api/auth/logout — discard the session server-side.
+            elif path == '/api/auth/logout':
+                token = auth.token_from_cookie_header(self.headers.get('Cookie'))
+                auth.destroy_session(token)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                # Expire the cookie in the browser too.
+                self.send_header('Set-Cookie',
+                                 f"{auth.SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
+                self.end_headers()
+                self.wfile.write(json.dumps({'message': 'Tizimdan chiqildi'}, ensure_ascii=False).encode('utf-8'))
 
             # 14. POST /api/users (Create / Register user)
             elif path == '/api/users':
@@ -1687,7 +1784,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 new_u = {
                     "id": uid,
                     "username": username,
-                    "password": body.get('password') or 'fayz2026',
+                    # Stored as a PBKDF2 hash, never as the typed value.
+                    "password": auth.hash_password(body.get('password') or 'fayz2026'),
                     "full_name": body.get('full_name') or username,
                     "role": body.get('role') or 'doctor',
                     "avatar": body.get('avatar') or ('👑' if body.get('role') == 'superadmin' else '👤'),
@@ -1888,12 +1986,23 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # PUT /api/beds/<id>/status or /clean
             elif path.startswith('/api/beds/') and (path.endswith('/status') or path.endswith('/clean')):
                 bed_id = path.split('/')[3]
-                new_status = 'available' if path.endswith('/clean') else body.get('status', 'available')
-                if new_status == 'operational':
-                    new_status = 'available'
-                valid_statuses = {'available', 'cleaning', 'maintenance', 'out_of_service', 'occupied', 'reserved'}
-                if new_status not in valid_statuses:
-                    new_status = 'available'
+                # The beds.status column accepts only the physical states in its
+                # CHECK constraint: operational, cleaning, maintenance,
+                # out_of_service. 'available', 'occupied' and 'reserved' are
+                # values the v_bed_live_status view DERIVES from admissions, not
+                # things that can be stored. This route used to map the other way
+                # round -- rewriting 'operational' to 'available' -- so every
+                # request violated beds_chk_3 and failed with a 500. Discharge and
+                # transfer both leave a bed 'cleaning', so the action that returns
+                # it to service never worked and beds accumulated as unusable.
+                PHYSICAL = {'operational', 'cleaning', 'maintenance', 'out_of_service'}
+                DERIVED_TO_PHYSICAL = {'available': 'operational',
+                                       'occupied': 'operational',
+                                       'reserved': 'operational'}
+                requested = 'operational' if path.endswith('/clean') else str(body.get('status', 'operational')).strip().lower()
+                new_status = DERIVED_TO_PHYSICAL.get(requested, requested)
+                if new_status not in PHYSICAL:
+                    new_status = 'operational'
 
                 cur.execute("UPDATE beds SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? OR bed_code = ?", (new_status, bed_id, bed_id))
                 conn.commit()
@@ -1946,7 +2055,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if found:
                         if 'full_name' in body: found['full_name'] = body['full_name']
                         if 'role' in body: found['role'] = body['role']
-                        if 'password' in body and body['password']: found['password'] = body['password']
+                        if 'password' in body and body['password']:
+                            found['password'] = auth.hash_password(body['password'])
                         if 'phone' in body: found['phone'] = body['phone']
                         if 'is_active' in body: found['is_active'] = bool(body['is_active'])
                         if 'permissions' in body: found['permissions'] = body['permissions']
@@ -2127,6 +2237,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 def run_server():
     cfg = load_config()
+
+    # Upgrade any plaintext password still sitting in data/users.json. Logins
+    # keep working across the change because verification accepts both forms.
+    auth.migrate_plaintext_passwords()
 
     # Listen on loopback only by default.
     #

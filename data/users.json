@@ -2,18 +2,20 @@
   {
     "id": "USR-SUPER-01",
     "username": "superadmin",
-    "password": "superadmin2026",
+    "password": "pbkdf2_sha256$240000$5d72575eb962fea49e201c973f189fd1$760eb1c2bf7f5ac262a2d68850891f411964a9b710cb8ef3862c46217a2bf017",
     "full_name": "Bosh Administrator (Superadmin)",
     "role": "superadmin",
     "avatar": "👑",
     "phone": "+998 90 372-03-03",
     "is_active": true,
-    "permissions": ["*"]
+    "permissions": [
+      "*"
+    ]
   },
   {
     "id": "USR-DOC-01",
     "username": "dr_bobur",
-    "password": "docbobur2026",
+    "password": "pbkdf2_sha256$240000$43884bb24eb1bd8aed99a953166d7edb$38b1ddedff95ab51d275b4bc61d38dc0f29641fb38282a6e6a74cbdd11a247f5",
     "full_name": "Dr. Bobur Mirzayev",
     "role": "doctor",
     "staff_id": "STF-DOC-01",
@@ -21,12 +23,16 @@
     "avatar": "👨‍⚕️",
     "phone": "+998 90 100-11-22",
     "is_active": true,
-    "permissions": ["doctors", "crm", "pharmacy"]
+    "permissions": [
+      "doctors",
+      "crm",
+      "pharmacy"
+    ]
   },
   {
     "id": "USR-DOC-02",
     "username": "dr_jasur",
-    "password": "docjasur2026",
+    "password": "pbkdf2_sha256$240000$e7f285f3d05946964c9fae4822a0f7de$84fbab00f614d0b8b2a6d7ef0bfc71a24d885dc4dc7640aab43af304639c7079",
     "full_name": "Dr. Jasur Aliyev",
     "role": "doctor",
     "staff_id": "STF-DOC-02",
@@ -34,12 +40,16 @@
     "avatar": "🩺",
     "phone": "+998 90 200-33-44",
     "is_active": true,
-    "permissions": ["doctors", "crm", "pharmacy"]
+    "permissions": [
+      "doctors",
+      "crm",
+      "pharmacy"
+    ]
   },
   {
     "id": "USR-DOC-03",
     "username": "dr_dilnoza",
-    "password": "docdilnoza2026",
+    "password": "pbkdf2_sha256$240000$9aa73c79205812387bfa7dec7a90fbef$266d1baa6a601521b487bed7dad2c463d9f13466441090b5b9f6cf1eee49b762",
     "full_name": "Dr. Dilnoza Rahimova",
     "role": "doctor",
     "staff_id": "STF-DOC-03",
@@ -47,12 +57,16 @@
     "avatar": "👩‍⚕️",
     "phone": "+998 90 300-55-66",
     "is_active": true,
-    "permissions": ["doctors", "crm", "pharmacy"]
+    "permissions": [
+      "doctors",
+      "crm",
+      "pharmacy"
+    ]
   },
   {
     "id": "USR-DOC-ALIAS",
     "username": "doctor",
-    "password": "doc2026",
+    "password": "pbkdf2_sha256$240000$a5cd2fe0d797d2b757454806cc6d5bbf$aa89ece32429d3dd6d3282ffa9a5f15cbb586366c5bf47a5b4e411c36e80cd00",
     "full_name": "Dr. Bobur Mirzayev",
     "role": "doctor",
     "staff_id": "STF-DOC-01",
@@ -60,39 +74,53 @@
     "avatar": "👨‍⚕️",
     "phone": "+998 90 100-11-22",
     "is_active": true,
-    "permissions": ["doctors", "crm", "pharmacy"]
+    "permissions": [
+      "doctors",
+      "crm",
+      "pharmacy"
+    ]
   },
   {
     "id": "USR-NURSE-01",
     "username": "nurse",
-    "password": "nurse2026",
+    "password": "pbkdf2_sha256$240000$b08770813a6c3ae570e9b7b6196e50ec$4b0f23a63f868e12e4c719bcc6c529b758d0024036e9daa82cc1b2791a07f1c0",
     "full_name": "Dildora Karimova",
     "role": "nurse",
     "avatar": "💉",
     "phone": "+998 90 200-33-44",
     "is_active": true,
-    "permissions": ["nursery", "kitchen", "facility"]
+    "permissions": [
+      "nursery",
+      "kitchen",
+      "facility"
+    ]
   },
   {
     "id": "USR-ACCT-01",
     "username": "accountant",
-    "password": "acct2026",
+    "password": "pbkdf2_sha256$240000$10373fd8159304a838f03adb0a6a17e0$2b7a75e8ddc9ff33aa70154c2c8c6d0a4b5d6821a8286595104bfc73d2ade373",
     "full_name": "Muxiddin Aliyev",
     "role": "accountant",
     "avatar": "💳",
     "phone": "+998 90 400-55-66",
     "is_active": true,
-    "permissions": ["accounting"]
+    "permissions": [
+      "accounting"
+    ]
   },
   {
     "id": "USR-REC-01",
     "username": "reception",
-    "password": "rec2026",
+    "password": "pbkdf2_sha256$240000$c2d9ac765d926c5b060026a547b55948$77265d543d64df0467909a1203a682285da6e358d8e3d8d9187f290f1212cedb",
     "full_name": "Rayhona Salimova",
     "role": "receptionist",
     "avatar": "📋",
     "phone": "+998 90 500-66-77",
     "is_active": true,
-    "permissions": ["reception", "crm", "facility"]
+    "permissions": [
+      "reception",
+      "crm",
+      "facility"
+    ]
   }
 ]

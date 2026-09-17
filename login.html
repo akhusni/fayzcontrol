@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tizimga Kirish | Fayz Medical House</title>
+  <meta name="robots" content="noindex, nofollow, noarchive">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+
+  <style>
+    /* Reuses the palette tokens defined in unified_header.css so the screen
+       matches the portals in both day and night mode. */
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+      background: var(--bg-main, #060e1f);
+      color: var(--text-primary, #f8fafc);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--bg-panel, #0a1b33);
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+      border-radius: 16px;
+      padding: 32px 28px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 26px;
+    }
+
+    .login-logo {
+      width: 46px;
+      height: 46px;
+      flex: 0 0 auto;
+      border-radius: 12px;
+      background: var(--primary-bg, rgba(2, 132, 199, 0.18));
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      color: var(--primary, #38bdf8);
+    }
+
+    .login-title {
+      font-size: 1rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+    }
+
+    .login-subtitle {
+      font-size: 0.74rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted, #94a3b8);
+      margin-top: 3px;
+    }
+
+    .field { margin-bottom: 16px; }
+
+    .field label {
+      display: block;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted, #94a3b8);
+      margin-bottom: 7px;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 11px 13px;
+      border-radius: 9px;
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+      background: var(--bg-input, #060e1f);
+      color: var(--text-primary, #f8fafc);
+      font-family: inherit;
+      font-size: 0.92rem;
+    }
+
+    .field input:focus {
+      border-color: var(--primary, #38bdf8);
+      box-shadow: 0 0 0 3px var(--primary-glow, rgba(56, 189, 248, 0.25));
+      outline: none;
+    }
+
+    .btn-login {
+      width: 100%;
+      margin-top: 6px;
+      padding: 12px 16px;
+      min-height: 44px;
+      border: none;
+      border-radius: 9px;
+      background: var(--primary-dark, #0284c7);
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.94rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      transition: background 0.15s ease;
+    }
+
+    .btn-login:hover:not(:disabled) { background: var(--primary, #38bdf8); }
+    .btn-login:disabled { opacity: 0.6; cursor: progress; }
+
+    /* Errors are announced, not just coloured. */
+    .login-error {
+      margin-top: 16px;
+      padding: 10px 13px;
+      border-radius: 9px;
+      background: rgba(225, 29, 72, 0.14);
+      border: 1px solid rgba(225, 29, 72, 0.4);
+      color: #fda4af;
+      font-size: 0.83rem;
+      font-weight: 600;
+      display: none;
+    }
+
+    .login-error.visible { display: block; }
+
+    .login-foot {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+      font-size: 0.72rem;
+      color: var(--text-dim, #64748b);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* Day mode: unified_header.css swaps the tokens, but --bg-main stays dark,
+       so the page ground is set explicitly here. */
+    body.day-mode, [data-theme="day"] body { background: #eef2f7; }
+    body.day-mode .login-card, [data-theme="day"] .login-card {
+      background: #ffffff;
+      border-color: #e2e8f0;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+    }
+    body.day-mode .field input, [data-theme="day"] .field input {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+    body.day-mode, body.day-mode .login-title { color: #0f172a; }
+
+    @media (max-width: 420px) {
+      .login-card { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="login-card">
+    <div class="login-brand">
+      <div class="login-logo"><i class="fas fa-hospital"></i></div>
+      <div>
+        <div class="login-title">FAYZ MEDICAL HOUSE</div>
+        <div class="login-subtitle">Hospital Management Suite</div>
+      </div>
+    </div>
+
+    <form id="login-form" autocomplete="on" novalidate>
+      <div class="field">
+        <label for="username">Foydalanuvchi</label>
+        <input type="text" id="username" name="username" autocomplete="username"
+               autocapitalize="none" spellcheck="false" required autofocus>
+      </div>
+
+      <div class="field">
+        <label for="password">Parol</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+
+      <button type="submit" class="btn-login" id="btn-login">
+        <i class="fas fa-right-to-bracket"></i>
+        <span>Tizimga Kirish</span>
+      </button>
+    </form>
+
+    <div class="login-error" id="login-error" role="alert" aria-live="assertive"></div>
+
+    <div class="login-foot">
+      Bu tizim faqat vakolatli klinika xodimlari uchun.<br>
+      Barcha kirishlar qayd etiladi.
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const form = document.getElementById('login-form');
+      const btn = document.getElementById('btn-login');
+      const errBox = document.getElementById('login-error');
+
+      // Only same-origin relative paths are honoured, so ?next= cannot be used
+      // to bounce a signed-in user to another site.
+      function safeNext() {
+        const raw = new URLSearchParams(location.search).get('next') || '/superpage.html';
+        try {
+          const decoded = decodeURIComponent(raw);
+          if (decoded.startsWith('/') && !decoded.startsWith('//')) return decoded;
+        } catch (e) {}
+        return '/superpage.html';
+      }
+
+      function showError(msg) {
+        errBox.textContent = msg;
+        errBox.classList.add('visible');
+      }
+
+      function clearError() {
+        errBox.textContent = '';
+        errBox.classList.remove('visible');
+      }
+
+      // Already signed in? Go straight through.
+      fetch('/api/auth/session')
+        .then(r => r.json())
+        .then(d => { if (d && d.authenticated) location.replace(safeNext()); })
+        .catch(() => {});
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError();
+
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!username || !password) {
+          showError('Foydalanuvchi nomi va parolni kiriting.');
+          return;
+        }
+
+        btn.disabled = true;
+        const labelEl = btn.querySelector('span');
+        const label = labelEl.textContent;
+        labelEl.textContent = 'Tekshirilmoqda...';
+
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const data = await res.json().catch(() => ({}));
+
+          if (res.ok) {
+            // Kept for the parts of the UI that read the active user locally.
+            try {
+              localStorage.setItem('fmh_active_user', JSON.stringify(data.user || {}));
+            } catch (e) {}
+            location.replace(safeNext());
+            return;
+          }
+          showError(data.error || "Login yoki parol noto'g'ri.");
+        } catch (err) {
+          showError('Serverga ulanib bo\'lmadi. Internet aloqasini tekshiring.');
+        } finally {
+          btn.disabled = false;
+          labelEl.textContent = label;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

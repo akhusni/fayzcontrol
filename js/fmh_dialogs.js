@@ -199,3 +199,51 @@
     return dismiss;
   };
 })();
+
+/* ==========================================================================
+   SESSION EXPIRY HANDLING
+   --------------------------------------------------------------------------
+   The API now requires a signed-in session. Rather than adding error handling
+   to the ~100 fetch() calls spread across the portal scripts, window.fetch is
+   wrapped once here: any 401 from our own /api/* means the session is gone, so
+   the browser is sent to the login screen with a note to come back to this
+   page. The response is still returned to the caller, so existing code paths
+   behave exactly as before while the redirect is in flight.
+
+   The session itself rides in an HttpOnly cookie, which same-origin fetch
+   sends automatically — no request in the app needed changing.
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  if (window.__fmhFetchWrapped) return;
+  window.__fmhFetchWrapped = true;
+
+  const nativeFetch = window.fetch.bind(window);
+  let redirecting = false;
+
+  function goToLogin() {
+    if (redirecting) return;
+    redirecting = true;
+    const here = location.pathname + location.search;
+    const target = '/login.html?next=' + encodeURIComponent(here);
+    if (window.FMH_Toast) {
+      window.FMH_Toast("Sessiya muddati tugadi — qaytadan kirish talab qilinadi", 'warning');
+    }
+    setTimeout(() => location.replace(target), 900);
+  }
+
+  window.fetch = async function (input, init) {
+    const res = await nativeFetch(input, init);
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const sameOrigin = url.startsWith('/') || url.startsWith(location.origin);
+      const isOwnApi = sameOrigin && url.indexOf('/api/') !== -1;
+      // The login endpoint answers 401 for a wrong password; that is not an
+      // expired session and must not trigger a redirect loop.
+      const isLogin = url.indexOf('/api/auth/login') !== -1;
+      if (res.status === 401 && isOwnApi && !isLogin) goToLogin();
+    } catch (e) { /* never let the wrapper break a request */ }
+    return res;
+  };
+})();

@@ -80,16 +80,61 @@ crm-suite/
 ## 🚀 Ishga Tushirish
 
 ```powershell
-# 1. Baza va tizim holatini tekshirish
+# 0. Talab qilinadigan kutubxonalar
+python -m pip install PyMySQL reportlab
+
+# 1. Baza sozlamalarini yaratish
+#    (db_config.example.json -> db_config.json, o'z parolingizni kiriting)
+copy db_config.example.json db_config.json
+
+# 2. Baza va tizim holatini tekshirish
 python install.py
 
-# 2. Serverni ishga tushirish
+# 3. Serverni ishga tushirish
 python server.py
 # yoki
 .\start_clinic.bat
 ```
 
-Brauzerda: `http://localhost:3000` (avtomatik ravishda `superpage.html` ochiladi).
+Brauzerda: `http://localhost:3000` → `login.html` ochiladi. Tizimga
+kirgandan so'ng `superpage.html` ga o'tadi.
+
+### 🔐 Avtorizatsiya
+
+Barcha `/api/*` so'rovlari va portal sahifalari **tizimga kirishni talab
+qiladi**. Sessiya `HttpOnly` cookie'da saqlanadi va standart holatda 12 soat
+faol turadi (`FMH_SESSION_IDLE_SECONDS` bilan o'zgartirish mumkin).
+
+Parollar `data/users.json` faylida **PBKDF2-SHA256** bilan xeshlanadi. Eski
+ochiq matnli parollar server birinchi ishga tushganda avtomatik xeshlanadi —
+xodimlar parollarini o'zgartirishi shart emas.
+
+> ⚠️ Birinchi o'rnatishdan keyin standart parollarni (`superadmin2026` va
+> boshqalar) albatta o'zgartiring.
+
+### 🌐 Tarmoq sozlamalari
+
+Server standart holatda **faqat `127.0.0.1`** manzilini tinglaydi, ya'ni
+`DEPLOYMENT_AND_DOMAINS.md` da tavsiflangan Nginx reverse-proxy sxemasiga
+mos keladi. Boshqa manzilda tinglash uchun:
+
+```bash
+BIND_HOST=0.0.0.0 python3 server.py 3000   # faqat proxy va TLS ortida!
+BIND_PORT_80=1    python3 server.py 3000   # 80-portni ham egallash
+```
+
+### 🧪 Testlar
+
+```bash
+# server ishlab turgan holatda, boshqa terminalda:
+python3 tests/test_clinic.py
+python3 tests/test_clinic.py -v
+python3 tests/test_clinic.py Overlap      # faqat mos keladigan testlar
+```
+
+Test to'plami avtorizatsiya chegarasi, karavot band qilish mantiqi, bir
+vaqtdagi so'rovlar, moliyaviy hisob-kitob va PDF eksportini tekshiradi.
+**Testlar haqiqiy yozuvlar yaratadi — ishlab chiqarish bazasida ishlatmang.**
 
 ---
 
