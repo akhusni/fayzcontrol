@@ -1,0 +1,23 @@
+# Fayz Control (fayzcontrol.uz) — Web Server Config (.htaccess)
+
+DirectoryIndex superpage.html index.php
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /
+
+# Route all API requests to api.php proxy
+RewriteRule ^api/(.*)$ api.php [QSA,L]
+RewriteRule ^api$ api.php [QSA,L]
+
+# Redirect root / to superpage.html if needed
+RewriteRule ^$ superpage.html [L]
+</IfModule>
+
+# Security: Prevent indexing of clinical data
+<IfModule mod_headers.c>
+Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>

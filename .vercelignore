@@ -1,0 +1,9 @@
+server.py
+pdf_generator.py
+install.py
+run_clinic_server.ps1
+start_clinic.bat
+__pycache__/
+*.py
+*.db
+*.sql

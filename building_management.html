@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bino & Palatalar Boshqaruvi | Fayz Medical House (14 O'rin)</title>
+  
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/building_management.css?v=3.1">
+  <link rel="stylesheet" href="css/unified_header.css?v=4.5">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.0"></script>
+</head>
+<body class="building-portal">
+
+  <!-- Unified Master Header (Locked 3-Zone Grid) -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building active" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <a href="medical_blank.html" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-print"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" id="new-booking-btn">
+          <i class="fas fa-plus-circle"></i> <span>Yangi Qabul</span>
+        </button>
+
+        <button id="building-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_Building.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="portal-container">
+
+    <!-- Floor Selector Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+      <div class="floor-nav-pills">
+        <button class="floor-btn active" data-floor="all" onclick="window.FMH_Building.switchFloor('all')"><i class="fas fa-hotel"></i> Barchasi (14)</button>
+        <button class="floor-btn" data-floor="1" onclick="window.FMH_Building.switchFloor('1')"><i class="fas fa-layer-group"></i> 1-Qavat (4 O'rin)</button>
+        <button class="floor-btn" data-floor="2" onclick="window.FMH_Building.switchFloor('2')"><i class="fas fa-building"></i> 2-Qavat (10 O'rin)</button>
+      </div>
+
+      <div style="font-size: 0.8rem; color: var(--cad-cyan); font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+        <span>Statsionar Bino Holati: 14/14 Karavot Nazoratda</span>
+      </div>
+    </div>
+
+    <!-- Minimal Stats Bar -->
+    <section class="stats-banner">
+      <div class="stat-card">
+        <div class="stat-icon" style="color: #38bdf8;"><i class="fas fa-procedures"></i></div>
+        <div>
+          <div class="stat-val" id="stat-total-beds" style="color: var(--text-primary);">—</div>
+          <div class="stat-label">Jami Karavotlar</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color: var(--status-available);"><i class="fas fa-check-circle"></i></div>
+        <div>
+          <div class="stat-val" id="stat-available-beds" style="color: var(--status-available);">—</div>
+          <div class="stat-label">Bo'sh O'rinlar</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color: var(--status-occupied);"><i class="fas fa-user-injured"></i></div>
+        <div>
+          <div class="stat-val" id="stat-occupied-beds" style="color: var(--status-occupied);">—</div>
+          <div class="stat-label">Band (Yotgan)</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color: var(--status-reserved);"><i class="fas fa-clock"></i></div>
+        <div>
+          <div class="stat-val" id="stat-reserved-beds" style="color: var(--status-reserved);">—</div>
+          <div class="stat-label">Bron Qilingan</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color: #f59e0b;"><i class="fas fa-broom"></i></div>
+        <div>
+          <div class="stat-val" id="stat-cleaning-beds" style="color: #f59e0b;">0</div>
+          <div class="stat-label">Tozalanmoqda</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color: var(--cad-cyan);"><i class="fas fa-chart-pie"></i></div>
+        <div>
+          <div class="stat-val" id="stat-occupancy-rate" style="color: var(--cad-cyan);">—</div>
+          <div class="stat-label">Bandlik Darajasi</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <section class="control-bar">
+      <!-- Secondary Floor Switcher Pills -->
+      <div class="floor-nav-pills">
+        <button class="floor-btn active" data-floor="all" onclick="window.FMH_Building.switchFloor('all')"><i class="fas fa-hotel"></i> Barchasi (14)</button>
+        <button class="floor-btn" data-floor="1" onclick="window.FMH_Building.switchFloor('1')"><i class="fas fa-layer-group"></i> 1-Qavat</button>
+        <button class="floor-btn" data-floor="2" onclick="window.FMH_Building.switchFloor('2')"><i class="fas fa-building"></i> 2-Qavat</button>
+      </div>
+
+      <div class="view-tabs">
+        <button class="view-tab-btn active" data-view-target="blueprint">
+          <i class="fas fa-cubes"></i> Smart Palatalar Hubi
+        </button>
+        <button class="view-tab-btn" data-view-target="calendar">
+          <i class="fas fa-calendar-alt"></i> Taqvim Grafigi (Gantt)
+        </button>
+        <button class="view-tab-btn" data-view-target="table">
+          <i class="fas fa-table"></i> Barcha Bronlar
+        </button>
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Building.exportBedsToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.78rem; padding: 5px 12px; margin-left: 6px;">
+          <i class="fas fa-file-excel"></i> Excelga Yuklash (.xlsx)
+        </button>
+      </div>
+
+      <div class="filter-pills">
+        <div class="smart-search-box" style="margin-right: 6px;">
+          <i class="fas fa-search search-icon"></i>
+          <input type="text" id="smart-search-input" placeholder="Qidiruv: Bemor, xona, karavot..." autocomplete="off">
+        </div>
+        <span style="font-size: 0.76rem; color: #94a3b8; margin-right: 4px;">Holat:</span>
+        <button class="filter-pill active" data-filter-status="all">Barchasi</button>
+        <button class="filter-pill" data-filter-status="available"><span class="status-dot dot-available"></span> Bo'sh</button>
+        <button class="filter-pill" data-filter-status="occupied"><span class="status-dot dot-occupied"></span> Band</button>
+        <button class="filter-pill" data-filter-status="reserved"><span class="status-dot dot-reserved"></span> Bron</button>
+        <button class="filter-pill" data-filter-status="cleaning"><span class="status-dot" style="background:#f59e0b; box-shadow: 0 0 6px #f59e0b;"></span> Tozalanmoqda</button>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         VIEW 1: Interactive Smart Palata Hub & Room Suites (Executive Visualizer)
+         ========================================================================= -->
+    <section id="view-blueprint-container" class="smart-hub-container">
+      
+      <!-- ==================== FLOOR 1: SMART PALATALAR & TIBBIY BLOK ==================== -->
+      <div class="smart-floor-section" id="card-smart-floor1">
+        <div class="smart-floor-header">
+          <div class="smart-floor-title">
+            <div class="floor-badge-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
+              <i class="fas fa-layer-group"></i>
+            </div>
+            <div>
+              <div class="floor-title-main">1-QAVAT &bull; STATSIONAR PALATALAR VA TIBBIY BLOK</div>
+              <div class="floor-subtitle-text">11-Xona (1A, 1B) &bull; 12-Xona (2A, 2B) &bull; 4 ta Statsionar Karavot &bull; Bosh Shifokor & Hamshiralar Posti</div>
+            </div>
+          </div>
+          <div class="smart-floor-quick-stats" id="f1-quick-stats"></div>
+        </div>
+
+        <!-- 1-Floor Interactive Grid -->
+        <div class="smart-rooms-grid" id="f1-smart-rooms-grid"></div>
+      </div>
+
+      <!-- ==================== FLOOR 2: STATSIONAR PALATALAR (2-QAVAT) ==================== -->
+      <div class="smart-floor-section" id="card-smart-floor2">
+        <div class="smart-floor-header">
+          <div class="smart-floor-title">
+            <div class="floor-badge-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
+              <i class="fas fa-building"></i>
+            </div>
+            <div>
+              <div class="floor-title-main">2-QAVAT &bull; 10 TA STATSIONAR KARAVOT (STANDART PALATALAR)</div>
+              <div class="floor-subtitle-text">21-Xona, 22-Xona, 23-Xona, 24-Xona, 25-Xona &bull; Klinik Parhez Oshxonasi</div>
+            </div>
+          </div>
+          <div class="smart-floor-quick-stats" id="f2-quick-stats"></div>
+        </div>
+
+        <!-- 2-Floor Interactive Grid -->
+        <div class="smart-rooms-grid" id="f2-smart-rooms-grid"></div>
+      </div>
+
+    </section>
+
+    <!-- =========================================================================
+         VIEW 2: Gantt Calendar & Timeline Scheduler
+         ========================================================================= -->
+    <section id="view-calendar-container" class="calendar-view-container" style="display: none;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <button class="btn-portal btn-outline-portal" id="cal-prev-btn"><i class="fas fa-chevron-left"></i></button>
+          <button class="btn-portal btn-outline-portal" id="cal-today-btn">Bugun</button>
+          <button class="btn-portal btn-outline-portal" id="cal-next-btn"><i class="fas fa-chevron-right"></i></button>
+          <strong id="calendar-month-title" style="margin-left: 0.5rem; font-size: 1.2rem; color: var(--text-primary);">Avgust 2026</strong>
+        </div>
+
+        <div class="calendar-legend-pills" style="display: flex; gap: 0.5rem; font-size: 0.78rem; flex-wrap: wrap;">
+          <span class="legend-chip chip-detox-int">Intensiv Detoks</span>
+          <span class="legend-chip chip-detox-std">Standart Detoks</span>
+          <span class="legend-chip chip-rehab-vip">Butun Xona (Solo)</span>
+          <span class="legend-chip chip-hepato">Gepatoprotektiv</span>
+        </div>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="gantt-table" id="gantt-table"></table>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         VIEW 3: Reservation List Table
+         ========================================================================= -->
+    <section id="view-table-container" class="table-view-container" style="display: none;">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>Qavat / Bemor ID</th>
+            <th>Bemor F.I.Sh. / Tel</th>
+            <th>Xona & Karavot</th>
+            <th>Muolaja Dasturi</th>
+            <th>Muddat (Check-In ➔ Check-Out)</th>
+            <th>Mas'ul Shifokor</th>
+            <th>Holati</th>
+            <th>Harakat</th>
+          </tr>
+        </thead>
+        <tbody id="bookings-table-body"></tbody>
+      </table>
+    </section>
+
+  </main>
+
+  <!-- Patient Intake & Bed Reservation Modal -->
+  <div class="modal-backdrop" id="booking-modal-backdrop">
+    <div class="reservation-modal">
+      <div class="modal-header">
+        <strong id="modal-title-text" style="font-size: 1.15rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+          <i class="fas fa-procedures" style="color: var(--cad-cyan);"></i> Bemor Qabuli & O'ringa Biriktirish
+        </strong>
+        <button class="modal-close-btn" id="modal-close-btn">&times;</button>
+      </div>
+
+      <form id="booking-form">
+        <input type="hidden" id="booking-id-input" value="">
+
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group-full">
+              <label class="form-label" for="booking-patient-name">Bemor F.I.Sh. (To'liq Ismi) *</label>
+              <input type="text" id="booking-patient-name" class="form-input" placeholder="Masalan: Karimov Jamshid Anvarovich" required>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-patient-phone">Telefon Raqami *</label>
+              <input type="tel" id="booking-patient-phone" class="form-input" placeholder="+998 90 123-45-67" required>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-patient-code">Klinik Bemor Kodi (Anonim ID)</label>
+              <input type="text" id="booking-patient-code" class="form-input" readonly>
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="booking-bed-select">Qavat, Palata va Karavotni Tanlang (14 ta O'rin) *</label>
+              <select id="booking-bed-select" class="form-select" required></select>
+            </div>
+
+            <!-- Quick Duration Presets (10 days standard) -->
+            <div class="form-group-full" style="background: var(--bg-panel-hover); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--cad-border); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span style="font-size: 0.75rem; color: var(--text-muted); margin-right: 4px;"><i class="fas fa-history" style="color: var(--cad-cyan); margin-right: 4px;"></i>Kurs Davomiyligi:</span>
+              <button type="button" class="filter-pill duration-preset-btn active" data-days="10" onclick="window.FMH_Building.applyDurationPreset(10)" style="border-color: var(--cad-cyan); color: var(--cad-cyan); font-weight: 700;">★ 10 kun (Standart Kurs)</button>
+              <button type="button" class="filter-pill duration-preset-btn" data-days="3" onclick="window.FMH_Building.applyDurationPreset(3)">3 kun</button>
+              <button type="button" class="filter-pill duration-preset-btn" data-days="5" onclick="window.FMH_Building.applyDurationPreset(5)">5 kun</button>
+              <button type="button" class="filter-pill duration-preset-btn" data-days="7" onclick="window.FMH_Building.applyDurationPreset(7)">7 kun</button>
+              <button type="button" class="filter-pill duration-preset-btn" data-days="14" onclick="window.FMH_Building.applyDurationPreset(14)">14 kun</button>
+              <button type="button" class="filter-pill duration-preset-btn" data-days="21" onclick="window.FMH_Building.applyDurationPreset(21)">21 kun</button>
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="booking-program-select">Xona / Karavot Band Qilish Turi & Narxi *</label>
+              <select id="booking-program-select" class="form-select">
+                <option value="Statsionar (1 karavot / 720 ming)" selected>🏥 Statsionar (1 karavot) — 720 000 so'm / kun</option>
+                <option value="Statsionar Butun Xona (1 kishi / Solo 1.1 mln)">🔒 Statsionar Butun Xona (1 kishi / Solo) — 1 100 000 so'm / kun (2-karavot qulflanadi)</option>
+                <option value="Kunlik Statsionar (Kunduzgi o'rin 630 ming)">☀️ Kunlik Statsionar (Faqat kunduzgi o'rin) — 630 000 so'm / kun</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-doctor-select">Mas'ul Shifokor *</label>
+              <select id="booking-doctor-select" class="form-select">
+                <option value="">— Shifokor biriktirilmagan —</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-start-date">Yotqizish Sanasi (Check-In) *</label>
+              <input type="date" id="booking-start-date" class="form-input" required>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-end-date">Chiqarish Sanasi (Check-Out) *</label>
+              <input type="date" id="booking-end-date" class="form-input" required>
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="booking-notes">Qo'shimcha Tibbiy Izohlar</label>
+              <textarea id="booking-notes" class="form-textarea" rows="2" placeholder="Maxsus parhez, alkogolli intoksikatsiyadan keyingi tiklanish..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal" id="modal-cancel-btn">Bekor Qilish</button>
+          
+          <button type="button" class="btn-portal" id="btn-delete-booking-action" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); display: none;" onclick="window.FMH_Building.deleteCurrentBooking()">
+            <i class="fas fa-trash-alt"></i> Bronni O'chirish
+          </button>
+
+          <button type="button" class="btn-portal" id="btn-discharge-action" style="background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); display: none;" onclick="window.FMH_Building.dischargeCurrentPatient()">
+            <i class="fas fa-sign-out-alt"></i> Bemor Chiqarish
+          </button>
+
+          <button type="submit" class="btn-portal btn-primary-portal" id="booking-submit-btn">
+            <i class="fas fa-save"></i> <span id="booking-submit-btn-text">Saqlash & O'ringa Biriktirish</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/xlsx.full.min.js"></script>
+  <script src="js/pharmacology_db.js"></script>
+  <script src="js/building_management.js?v=6.1"></script>
+</body>
+</html>

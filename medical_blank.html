@@ -1,0 +1,2198 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tibbiy Blanklar va Retseptlar (A4) | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House xususiy klinikasi uchun rasmiy A4 tibbiy blanklar: bemor ko'rigi, kasallik tarixi, retsept (Rx) va muolaja varaqasi.">
+
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="css/unified_header.css?v=5.5">
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.0"></script>
+  <script src="js/pharmacology_db.js"></script>
+  
+  <style>
+    /* ==========================================================================
+       1. GLOBAL RESET & BASE STYLES
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root, [data-theme="day"], body.day-mode {
+      --primary-color: #0b3b60;
+      --primary-dark: #07253d;
+      --accent-color: #0d9488;
+      --accent-light: #f0fdfa;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #cbd5e1;
+      --border-dark: #94a3b8;
+      --bg-screen: #e2e8f0;
+      --card-bg: #ffffff;
+      --danger-color: #e11d48;
+    }
+
+    [data-theme="night"], body.night-mode {
+      --primary-color: #38bdf8;
+      --primary-dark: #0284c7;
+      --accent-color: #2dd4bf;
+      --accent-light: rgba(45, 212, 191, 0.15);
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #cbd5e1;
+      --border-dark: #94a3b8;
+      --bg-screen: #060d1a;
+      --card-bg: #ffffff;
+      --danger-color: #f43f5e;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+      background-color: var(--bg-screen);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.35;
+      font-size: 11pt;
+    }
+
+    /* ==========================================================================
+       2. SCREEN TOP CONTROL BAR (HIDDEN IN PRINT)
+       ========================================================================== */
+    .screen-controls {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: linear-gradient(135deg, #0b2545 0%, #134074 100%);
+      color: #ffffff;
+      padding: 12px 24px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-section a.back-btn {
+      color: #94a3b8;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 6px 12px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .brand-section a.back-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .brand-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-title span {
+      background: #0d9488;
+      color: #fff;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    /* Template Switcher Buttons */
+    .template-selector {
+      display: flex;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 4px;
+      border-radius: 10px;
+      gap: 4px;
+    }
+
+    .tpl-btn {
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 7px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .tpl-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .tpl-btn.active {
+      background: #0d9488;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(13, 148, 136, 0.4);
+    }
+
+    /* Actions Bar */
+    .action-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mode-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #e2e8f0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .mode-switch input {
+      accent-color: #0d9488;
+      cursor: pointer;
+      width: 15px;
+      height: 15px;
+    }
+
+    .btn-action {
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-print {
+      background: #10b981;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-print:hover {
+      background: #059669;
+      transform: translateY(-1px);
+    }
+
+    /* ==========================================================================
+       3. A4 PAPER CONTAINER & LAYOUT (Screen & Print)
+       ========================================================================== */
+    .page-wrapper {
+      display: flex;
+      justify-content: center;
+      padding: 30px 15px 60px;
+    }
+
+    .a4-page {
+      width: 210mm;
+      min-height: 297mm;
+      background: #ffffff;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      padding: 12mm 14mm 12mm 14mm;
+      position: relative;
+      color: #1e293b;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* Subtle Watermark on background */
+    .a4-page::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 320px;
+      height: 320px;
+      background: url('assets/images/logo.png') no-repeat center center;
+      background-size: contain;
+      opacity: 0.035;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .content-layer {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* ==========================================================================
+       4. CLINIC MASTER HEADER (COMMON ACROSS ALL TEMPLATES)
+       ========================================================================== */
+    .clinic-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid var(--primary-color);
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+    }
+
+    .header-logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .clinic-logo {
+      width: 58px;
+      height: 58px;
+      object-fit: contain;
+    }
+
+    .clinic-name-block {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .clinic-name {
+      font-family: 'Outfit', sans-serif;
+      font-size: 15pt;
+      font-weight: 800;
+      color: var(--primary-color);
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+    }
+
+    .clinic-tagline {
+      font-size: 8.5pt;
+      font-weight: 600;
+      color: var(--accent-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 1px;
+    }
+
+    .clinic-license {
+      font-size: 7.5pt;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .header-contacts {
+      text-align: right;
+      font-size: 7.8pt;
+      color: var(--text-main);
+      line-height: 1.35;
+    }
+
+    .header-contacts .contact-item {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 5px;
+    }
+
+    .header-contacts i {
+      color: var(--accent-color);
+      font-size: 8pt;
+    }
+
+    .header-contacts .phone-highlight {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    /* Document Title Banner */
+    .doc-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-left: 4px solid var(--primary-color);
+      padding: 5px 10px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+    }
+
+    .doc-title-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 11pt;
+      font-weight: 800;
+      color: var(--primary-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .doc-meta {
+      display: flex;
+      gap: 14px;
+      font-size: 8pt;
+      color: var(--text-muted);
+    }
+
+    .doc-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .doc-meta b {
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ==========================================================================
+       5. PATIENT DEMOGRAPHICS & VITALS GRID
+       ========================================================================== */
+    .patient-card {
+      border: 1px solid var(--border-color);
+      border-radius: 5px;
+      padding: 8px 10px;
+      margin-bottom: 9px;
+      background: #fafafa;
+    }
+
+    .patient-grid {
+      display: grid;
+      grid-template-columns: 2.2fr 1fr 1fr 1.2fr;
+      gap: 8px 12px;
+      font-size: 8.5pt;
+    }
+
+    .field-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .field-label {
+      font-size: 7pt;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.3px;
+    }
+
+    .field-input, .field-val {
+      font-weight: 600;
+      color: var(--text-main);
+      border-bottom: 1px dashed var(--border-dark);
+      padding: 1px 0 2px 0;
+      min-height: 18px;
+    }
+
+    input.field-input, select.field-input {
+      border: none;
+      border-bottom: 1px solid var(--border-color);
+      background: transparent;
+      font-family: inherit;
+      font-size: 8.5pt;
+      font-weight: 600;
+      color: #0f172a;
+      outline: none;
+      width: 100%;
+    }
+
+    input.field-input:focus {
+      border-bottom: 1px solid var(--accent-color);
+      background: rgba(13, 148, 136, 0.05);
+    }
+
+    /* Vitals Strip */
+    .vitals-bar {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      margin-bottom: 10px;
+      background: #f1f5f9;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      text-align: center;
+    }
+
+    .vital-box {
+      border-right: 1px solid #cbd5e1;
+      padding: 0 4px;
+    }
+
+    .vital-box:last-child {
+      border-right: none;
+    }
+
+    .vital-lbl {
+      font-size: 6.8pt;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .vital-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9pt;
+      font-weight: 700;
+      color: var(--primary-color);
+      margin-top: 1px;
+    }
+
+    .vital-val input {
+      width: 100%;
+      text-align: center;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 8.5pt;
+      color: var(--primary-color);
+      outline: none;
+    }
+
+    /* ==========================================================================
+       6. MEDICAL FORM SECTIONS (HISTORY / PRESCRIPTION / PROCEDURE)
+       ========================================================================== */
+    .sec-block {
+      margin-bottom: 8px;
+    }
+
+    .sec-header {
+      font-size: 8pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--primary-color);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 3px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 2px;
+    }
+
+    .sec-header i {
+      color: var(--accent-color);
+      font-size: 8pt;
+    }
+
+    .fill-area {
+      font-size: 8.5pt;
+      color: #334155;
+      line-height: 1.5;
+      width: 100%;
+      min-height: 48px;
+      resize: vertical;
+      border: 1px solid transparent;
+      outline: none;
+      background: transparent;
+      font-family: inherit;
+      padding: 2px;
+      transition: border-color 0.2s;
+    }
+
+    .fill-area:hover, .fill-area:focus {
+      border: 1px solid var(--border-color);
+      background: #f8fafc;
+      border-radius: 4px;
+    }
+
+    /* Lined / Dot Guidelines for Handwriting Mode */
+    .handwriting-mode .fill-area-lines {
+      background-image: repeating-linear-gradient(transparent, transparent 20px, #e2e8f0 20px, #e2e8f0 21px);
+      line-height: 21px;
+      min-height: 63px;
+    }
+
+    .compact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* Diagnostic / Prescription Tables */
+    .med-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8pt;
+      margin: 4px 0 8px;
+    }
+
+    .med-table th, .med-table td {
+      border: 1px solid var(--border-color);
+      padding: 5px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .med-table th {
+      background-color: #f1f5f9;
+      color: var(--primary-color);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 7pt;
+      letter-spacing: 0.3px;
+    }
+
+    .med-table tr:nth-child(even) td {
+      background-color: #fafbfc;
+    }
+
+    .med-table input, .med-table textarea {
+      width: 100%;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 8pt;
+      color: var(--text-main);
+      outline: none;
+    }
+
+    /* Rx Prescription Distinct Styling */
+    .rx-symbol {
+      font-family: 'Outfit', serif;
+      font-size: 26pt;
+      font-weight: 900;
+      color: var(--primary-color);
+      line-height: 1;
+      display: inline-block;
+      margin-right: 8px;
+      float: left;
+    }
+
+    .rx-item {
+      padding: 6px 0;
+      border-bottom: 1px dashed #cbd5e1;
+      font-size: 8.5pt;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .rx-item:last-child {
+      border-bottom: none;
+    }
+
+    .rx-drug-title {
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .rx-drug-usage {
+      color: #475569;
+      font-style: italic;
+      font-size: 8pt;
+      padding-left: 12px;
+    }
+
+    /* ==========================================================================
+       7. SIGNATURE & STAMP FOOTER
+       ========================================================================== */
+    .doc-footer {
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1.5px solid var(--primary-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 8pt;
+    }
+
+    .footer-stamp-area {
+      display: flex;
+      gap: 20px;
+    }
+
+    .stamp-box {
+      width: 75px;
+      height: 75px;
+      border: 1px dashed var(--border-dark);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 6.5pt;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .signature-area {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: right;
+      min-width: 220px;
+    }
+
+    .doctor-name-line {
+      font-weight: 700;
+      color: var(--primary-color);
+      font-size: 9pt;
+      border-bottom: 1px solid var(--text-main);
+      padding-bottom: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .signature-sub {
+      font-size: 7pt;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .qr-verify {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 6.8pt;
+      color: var(--text-muted);
+    }
+
+    .qr-placeholder {
+      width: 38px;
+      height: 38px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+    }
+
+    /* Template Containers */
+    .template-card {
+      display: none;
+    }
+
+    .template-card.active {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+
+    /* Universal Letterhead Notes Grid */
+    .universal-grid-canvas {
+      flex-grow: 1;
+      min-height: 600px;
+      background-image: repeating-linear-gradient(transparent, transparent 23px, #e2e8f0 23px, #e2e8f0 24px);
+      line-height: 24px;
+      font-size: 9pt;
+      padding: 4px;
+      color: #1e293b;
+    }
+
+    /* Table Action Toolbar & Row Actions */
+    .table-tools {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .btn-tool-sm {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 7.5pt;
+      font-weight: 600;
+      color: #0b3b60;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .btn-tool-sm:hover {
+      background: #0d9488;
+      color: #fff;
+      border-color: #0d9488;
+    }
+    .btn-tool-sm.btn-tool-primary {
+      background: #0d9488;
+      color: #fff;
+      border-color: #0d9488;
+    }
+    .btn-tool-sm.btn-tool-primary:hover {
+      background: #0f766e;
+    }
+    .btn-tool-sm.btn-tool-danger {
+      color: #e11d48;
+    }
+    .btn-tool-sm.btn-tool-danger:hover {
+      background: #e11d48;
+      color: #fff;
+      border-color: #e11d48;
+    }
+    .btn-row-del {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 8pt;
+      transition: all 0.15s;
+    }
+    .btn-row-del:hover {
+      color: #e11d48;
+      background: #ffe4e6;
+    }
+
+    /* Modal Backdrop & Container */
+    .blank-modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(11, 27, 43, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .blank-modal-content {
+      background: #ffffff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 840px;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+      animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .blank-modal-header {
+      padding: 14px 20px;
+      background: #0b3b60;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .blank-modal-title {
+      font-size: 13pt;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .blank-modal-close {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      font-size: 16pt;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      transition: background 0.15s;
+    }
+    .blank-modal-close:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    .blank-modal-search-bar {
+      padding: 12px 20px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .blank-modal-search-input {
+      width: 100%;
+      padding: 8px 14px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 9.5pt;
+      outline: none;
+      font-family: inherit;
+    }
+    .blank-modal-search-input:focus {
+      border-color: #0d9488;
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+    }
+    .blank-modal-categories {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .blank-cat-pill {
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 7.5pt;
+      font-weight: 600;
+      background: #e2e8f0;
+      color: #475569;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .blank-cat-pill:hover, .blank-cat-pill.active {
+      background: #0d9488;
+      color: #ffffff;
+    }
+    .blank-modal-body {
+      padding: 12px 20px;
+      overflow-y: auto;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #f8fafc;
+    }
+    .blank-drug-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #ffffff;
+      transition: all 0.15s;
+      gap: 10px;
+    }
+    .blank-drug-item:hover {
+      border-color: #0d9488;
+      background: #f0fdfa;
+      transform: translateX(2px);
+    }
+    .blank-drug-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex-grow: 1;
+    }
+    .blank-drug-title {
+      font-weight: 700;
+      font-size: 9pt;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .blank-drug-num {
+      background: #0b3b60;
+      color: #fff;
+      font-size: 6.5pt;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .blank-drug-sub {
+      font-size: 7.5pt;
+      color: #64748b;
+    }
+    .blank-drug-latin {
+      font-size: 7.5pt;
+      color: #0d9488;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .blank-btn-select {
+      background: #0d9488;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 8pt;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .blank-btn-select:hover {
+      background: #0f766e;
+    }
+    .badge-psychotropic {
+      background: #fee2e2;
+      color: #dc2626;
+      border: 1px solid #fca5a5;
+      font-size: 6.5pt;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ==========================================================================
+       8. PRINT OPTIMIZATION (EXACT A4 1-PAGE PERFECTION)
+       ========================================================================== */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 8mm 10mm 8mm 10mm;
+      }
+
+      html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100%;
+        height: auto;
+        font-size: 9.5pt !important;
+      }
+
+      .screen-controls, .no-print, .blank-modal-backdrop, .table-tools {
+        display: none !important;
+      }
+
+      .page-wrapper {
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      .a4-page {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        width: 100% !important;
+        min-height: auto !important;
+        height: auto !important;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+
+      .fill-area:hover, .fill-area:focus {
+        border-color: transparent !important;
+        background: transparent !important;
+      }
+
+      input, textarea, select {
+        border-bottom: none !important;
+        color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .a4-page::before {
+        opacity: 0.04 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .doc-banner, .vitals-bar, .med-table th {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==========================================================================
+       TOP INTERACTIVE ACTION & TEMPLATE SWITCHER (HIDDEN ON PRINT)
+       ========================================================================== -->
+  <header class="screen-controls">
+    <div class="brand-section">
+      <a href="superpage.html" class="back-btn" title="Boshqaruv Markaziga Qaytish">
+        <i class="fas fa-crown"></i> Super-Portal
+      </a>
+      <a href="reception.html" class="back-btn" title="Qabulxona Portaliga Qaytish">
+        <i class="fas fa-concierge-bell"></i> Qabulxona
+      </a>
+      <div class="brand-title">
+        FAYZ MEDICAL HOUSE
+        <span>A4 Blank Suite</span>
+      </div>
+    </div>
+
+    <!-- Template Selector -->
+    <div class="template-selector">
+      <button class="tpl-btn active" onclick="switchTemplate('anamnez')">
+        <i class="fas fa-file-medical"></i> 1. Ko'rik & Anamnez
+      </button>
+      <button class="tpl-btn" onclick="switchTemplate('retsept')">
+        <i class="fas fa-prescription"></i> 2. Retsept (Rx)
+      </button>
+      <button class="tpl-btn" onclick="switchTemplate('muolaja')">
+        <i class="fas fa-syringe"></i> 3. Muolaja & Tomchilatgich
+      </button>
+      <button class="tpl-btn" onclick="switchTemplate('universal')">
+        <i class="fas fa-stamp"></i> 4. Toza Klinik Blank
+      </button>
+    </div>
+
+    <!-- Action Tools -->
+    <div class="action-tools">
+      <button id="blank-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_Theme.toggle()" title="Rejimni almashtirish (Day/Night)">
+        <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+      </button>
+
+      <label class="mode-switch" title="Qo'lda yozish uchun chiziqlar chiqarish yoki klaviaturada to'ldirish">
+
+        <input type="checkbox" id="toggleHandwriting" onchange="toggleHandwritingMode(this.checked)">
+        <span><i class="fas fa-pen-nib"></i> Qo'lda yozish rejimi</span>
+      </label>
+
+      <button class="btn-action btn-secondary" onclick="loadSampleData()" title="Namuna ma'lumotlar bilan to'ldirish">
+        <i class="fas fa-magic"></i> Namuna
+      </button>
+
+      <button class="btn-action btn-secondary" onclick="clearForm()" title="Barcha maydonlarni tozalash">
+        <i class="fas fa-eraser"></i> Tozalash
+      </button>
+
+      <button class="btn-action btn-print" onclick="window.print()" title="A4 Formatda chop etish yoki PDF saqlash">
+        <i class="fas fa-print"></i> Chop etish (Print A4)
+      </button>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN A4 PRINTABLE CANVAS
+       ========================================================================== -->
+  <main class="page-wrapper">
+    <div class="a4-page" id="printablePage">
+      <div class="content-layer">
+
+        <!-- COMMON CLINIC MASTER HEADER -->
+        <header class="clinic-header">
+          <div class="header-logo-area">
+            <img src="assets/images/logo.png" alt="Fayz Medical House Logo" class="clinic-logo" onerror="this.onerror=null;this.src='data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%2060%22%20role%3D%22img%22%20aria-label%3D%22FMH%22%3E%3Crect%20width%3D%2260%22%20height%3D%2260%22%20rx%3D%2212%22%20fill%3D%22%230284c7%22%2F%3E%3Ctext%20x%3D%2230%22%20y%3D%2237%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2217%22%20font-weight%3D%22bold%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%3EFMH%3C%2Ftext%3E%3C%2Fsvg%3E'">
+            <div class="clinic-name-block">
+              <h1 class="clinic-name">FAYZ MEDICAL HOUSE</h1>
+              <div class="clinic-tagline">Narkologiya, Psixiatriya va Reabilitatsiya Klinikasi</div>
+              <div class="clinic-license">Toshkent sh., Yunusobod t., Nurmakon ko'chasi 2A | Litsenziya №: KM-8842/2022</div>
+            </div>
+          </div>
+
+          <div class="header-contacts">
+            <div class="contact-item">
+              <i class="fas fa-phone-alt"></i> Call-markaz: <span class="phone-highlight">+998 (71) 209-99-10</span>
+            </div>
+            <div class="contact-item">
+              <i class="fas fa-ambulance"></i> 24/7 Tezkor: <span class="phone-highlight">+998 (90) 372-03-03</span>
+            </div>
+            <div class="contact-item">
+              <i class="fas fa-globe"></i> Veb-sayt: www.fayzmedical.uz
+            </div>
+          </div>
+        </header>
+
+        <!-- ==================================================================
+             TEMPLATE 1: BEMOR KO'RIGI VA ANAMNEZ (PATIENT EXAMINATION & HISTORY)
+             ================================================================== -->
+        <div class="template-card active" id="tpl-anamnez">
+          <!-- Document Banner -->
+          <div class="doc-banner">
+            <div class="doc-title-text">
+              <i class="fas fa-clipboard-list"></i> BEMOR KO'RIGI VA TIBBIY ANAMNEZ VARAQASI
+            </div>
+            <div class="doc-meta">
+              <span>Hujjat №: <b id="doc-num-1">FMH-2026/0481</b></span>
+              <span>Sana: <b id="doc-date-1">17.08.2026</b></span>
+              <span>Qabul: <b>Ambulator / Statsionar</b></span>
+            </div>
+          </div>
+
+          <!-- Patient Demographics Block -->
+          <div class="patient-card">
+            <div class="patient-grid">
+              <div class="field-item">
+                <span class="field-label">Bemorning F.I.SH (Patient Name):</span>
+                <input type="text" class="field-input" id="p1-name" placeholder="Masalan: Karimov Alisher Rustamovich">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Tug'ilgan sana / Yoshi:</span>
+                <input type="text" class="field-input" id="p1-dob" placeholder="14.05.1988 (38 yosh)">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Jinsi:</span>
+                <select class="field-input" id="p1-gender">
+                  <option value="Erkak">Erkak / M</option>
+                  <option value="Ayol">Ayol / F</option>
+                </select>
+              </div>
+              <div class="field-item">
+                <span class="field-label">Telefon / ID:</span>
+                <input type="text" class="field-input" id="p1-phone" placeholder="+998 (90) 123-45-67">
+              </div>
+              <div class="field-item" style="grid-column: span 3;">
+                <span class="field-label">Yashash manzili:</span>
+                <input type="text" class="field-input" id="p1-address" placeholder="Toshkent sh., Yunusobod tumani, 12-mavze, 4-uy">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Qon guruhi & Rh:</span>
+                <input type="text" class="field-input" id="p1-blood" placeholder="A(II) Rh+">
+              </div>
+            </div>
+          </div>
+
+          <!-- Vitals Bar -->
+          <div class="vitals-bar">
+            <div class="vital-box">
+              <div class="vital-lbl">Qon Bosimi (BP)</div>
+              <div class="vital-val"><input type="text" id="v-bp" placeholder="120/80 mm"></div>
+            </div>
+            <div class="vital-box">
+              <div class="vital-lbl">Puls (HR)</div>
+              <div class="vital-val"><input type="text" id="v-hr" placeholder="74 zarba/m"></div>
+            </div>
+            <div class="vital-box">
+              <div class="vital-lbl">SpO2 (Kislorod)</div>
+              <div class="vital-val"><input type="text" id="v-spo2" placeholder="98 %"></div>
+            </div>
+            <div class="vital-box">
+              <div class="vital-lbl">Harorat (Temp)</div>
+              <div class="vital-val"><input type="text" id="v-temp" placeholder="36.6 °C"></div>
+            </div>
+            <div class="vital-box">
+              <div class="vital-lbl">Bo'y / Vazn</div>
+              <div class="vital-val"><input type="text" id="v-weight" placeholder="178 sm / 76 kg"></div>
+            </div>
+            <div class="vital-box">
+              <div class="vital-lbl">Qondagi qand</div>
+              <div class="vital-val"><input type="text" id="v-sugar" placeholder="5.2 mmol/l"></div>
+            </div>
+          </div>
+
+          <!-- Shikoyatlar & Anamnez -->
+          <div class="sec-block">
+            <div class="sec-header"><i class="fas fa-comment-medical"></i> Asosiy Shikoyatlar (Chief Complaints)</div>
+            <textarea class="fill-area fill-area-lines" id="p1-complaints" rows="2" placeholder="Bemor shikoyatlari: bosh og'rig'i, uyqusizlik, xavotir, umumiy holsizlik, kayfiyat tushkunligi..."></textarea>
+          </div>
+
+          <div class="compact-grid">
+            <div class="sec-block">
+              <div class="sec-header"><i class="fas fa-history"></i> Kasallik Rivojlanishi (Anamnesis Morbi)</div>
+              <textarea class="fill-area fill-area-lines" id="p1-morbi" rows="2" placeholder="Kasallik qachon boshlangan, qanday kechgan, avval qabul qilgan dorilari..."></textarea>
+            </div>
+            <div class="sec-block">
+              <div class="sec-header"><i class="fas fa-shield-virus"></i> Allergiya & Hayot Anamnezi (Vitae)</div>
+              <textarea class="fill-area fill-area-lines" id="p1-vitae" rows="2" placeholder="Dori allergiyalari (yoki inkor etiladi), surunkali xastaliklar, zaharli odatlar..."></textarea>
+            </div>
+          </div>
+
+          <!-- Ob'yektiv Status -->
+          <div class="sec-block">
+            <div class="sec-header"><i class="fas fa-stethoscope"></i> Ob'yektiv Ko'rik (Status Praesens & Psixo-somatik holat)</div>
+            <textarea class="fill-area fill-area-lines" id="p1-status" rows="2" placeholder="Umumiy holati: qoniqarli / o'rta og'ir. Teri qoplamlari: toza, odatiy rangda. Nafas va yurak ritmi: ravon. Psixik status: hushida, oriyentatsiya saqlangan, emotsional labillik..."></textarea>
+          </div>
+
+          <!-- Dastlabki Tashxis -->
+          <div class="sec-block">
+            <div class="sec-header"><i class="fas fa-diagnoses"></i> Asosiy va Hamroh Tashxis (Diagnosis / ICD-10)</div>
+            <textarea class="fill-area" id="p1-diagnosis" rows="2" style="font-weight: 700; color: #0b3b60;" placeholder="Asosiy tashxis: F10.2 / Somatoform vegetativ disfunksiya.&#10;Hamroh tashxis: Gipertoniya kasalligi I-bosqich."></textarea>
+          </div>
+
+          <!-- Tavsiyalar va Tekshiruvlar -->
+          <div class="sec-block">
+            <div class="sec-header"><i class="fas fa-notes-medical"></i> Tavsiya Etilgan Tekshiruvlar va Muolajalar Rejasi</div>
+            <textarea class="fill-area fill-area-lines" id="p1-plan" rows="2" placeholder="1. Umumiy qon va siydik tahlili, biokimyo (ALT, AST, Kreatinin, Bilirubin).&#10;2. EKG, Nevropatolog/Psixiatr konsultatsiyasi.&#10;3. Infuzion detoksikatsiya terapiyasi va farmakoterapiya."></textarea>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             TEMPLATE 2: RETSEPT VA DAVOLASH REJASI (PRESCRIPTION BLANK - Rx)
+             ================================================================== -->
+        <div class="template-card" id="tpl-retsept">
+          <!-- Document Banner -->
+          <div class="doc-banner">
+            <div class="doc-title-text">
+              <i class="fas fa-prescription-bottle-alt"></i> RETSEPT VA DAVOLASH REJASI (PRESCRIPTION FORM)
+            </div>
+            <div class="doc-meta">
+              <span>Retsept №: <b id="doc-num-2">RX-89241</b></span>
+              <span>Sana: <b id="doc-date-2">17.08.2026</b></span>
+              <span>Amal qilish: <b>1 oy</b></span>
+            </div>
+          </div>
+
+          <!-- Patient Summary -->
+          <div class="patient-card">
+            <div class="patient-grid">
+              <div class="field-item" style="grid-column: span 2;">
+                <span class="field-label">Bemorning F.I.SH (Patient Full Name):</span>
+                <input type="text" class="field-input" id="p2-name" placeholder="Bemor to'liq ismi-sharifi">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Yoshi / Tug'ilgan yili:</span>
+                <input type="text" class="field-input" id="p2-age" placeholder="Masalan: 38 yosh">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Telefon:</span>
+                <input type="text" class="field-input" id="p2-phone" placeholder="+998 (__) ___-__-__">
+              </div>
+              <div class="field-item" style="grid-column: span 4;">
+                <span class="field-label">Tashxis / Qayd:</span>
+                <input type="text" class="field-input" id="p2-diag" placeholder="Tashxis kodi va qisqacha tavsifi">
+              </div>
+            </div>
+          </div>
+
+          <!-- Rx Prescription Table / Items Area -->
+          <div class="sec-block" style="flex-grow: 1;">
+            <div class="sec-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span><i class="fas fa-capsules"></i> Tayinlangan Dori Vositalari (Rp. / Prescriptions)</span>
+              <div class="table-tools no-print">
+                <button type="button" class="btn-tool-sm btn-tool-primary" onclick="openBlankClinicModal('rx')" title="88 rasmiy klinika dorilari ro'yxatidan tanlash">
+                  <i class="fas fa-clinic-medical"></i> 🏥 88 Klinika Dorilari
+                </button>
+                <button type="button" class="btn-tool-sm" onclick="addBlankRxRow()" title="Yangi dori qatorini qo'shish">
+                  <i class="fas fa-plus"></i> Qator qo'shish
+                </button>
+                <button type="button" class="btn-tool-sm btn-tool-danger" onclick="clearBlankRxTable()" title="Barcha dori qatorlarini tozalash">
+                  <i class="fas fa-trash-alt"></i> Tozalash
+                </button>
+              </div>
+            </div>
+
+            <table class="med-table">
+              <thead>
+                <tr>
+                  <th style="width: 30px; text-align: center;">№</th>
+                  <th style="width: 40%;">Dori vositasi nomi va dozasi (Rp:)</th>
+                  <th style="width: 42%;">Qabul qilish tartibi va tavsiya (D.S.)</th>
+                  <th style="width: 14%;">Muddati</th>
+                  <th style="width: 28px;" class="no-print"></th>
+                </tr>
+              </thead>
+              <tbody id="rx-table-body">
+                <tr>
+                  <td style="text-align:center; font-weight:700;">1</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Qabul qilish tartibi (D.S.)"></td>
+                  <td><input type="text" value="" placeholder="Muddati (kun)"></td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">2</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Qabul qilish tartibi (D.S.)"></td>
+                  <td><input type="text" value="" placeholder="Muddati (kun)"></td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">3</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Qabul qilish tartibi (D.S.)"></td>
+                  <td><input type="text" value="" placeholder="Muddati (kun)"></td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">4</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Qabul qilish tartibi (D.S.)"></td>
+                  <td><input type="text" value="" placeholder="Muddati (kun)"></td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">5</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Qabul qilish tartibi (D.S.)"></td>
+                  <td><input type="text" value="" placeholder="Muddati (kun)"></td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">6</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Qabul qilish tartibi (D.S.)"></td>
+                  <td><input type="text" value="" placeholder="Muddati (kun)"></td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Non-pharmacological Advice & Regimen -->
+          <div class="compact-grid" style="margin-top: 4px;">
+            <div class="sec-block">
+              <div class="sec-header"><i class="fas fa-apple-alt"></i> Parhez va Kun Tartibi Rejimi</div>
+              <textarea class="fill-area fill-area-lines" id="p2-regimen" rows="2" placeholder="Tuz va yog'li taomlarni cheklash, ko'p suyuqlik ichish (kamida 2.0 litr), to'liq 8 soatlik tungi uyqu, ruhiy zo'riqishdan saqlanish."></textarea>
+            </div>
+            <div class="sec-block">
+              <div class="sec-header"><i class="fas fa-calendar-check"></i> Maxsus Eslatma & Qayta Ko'rik</div>
+              <textarea class="fill-area fill-area-lines" id="p2-notes" rows="2" placeholder="Dori qabulida nojo'ya ta'sirlar kuzatilsa darhol shifokor bilan bog'laning.&#10;Qayta ko'rik sanasi: 10 kundan so'ng."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             TEMPLATE 3: MUOLAJA VA TOMCHILATGICH VARAQASI (INFUSION & PROCEDURE)
+             ================================================================== -->
+        <div class="template-card" id="tpl-muolaja">
+          <div class="doc-banner">
+            <div class="doc-title-text">
+              <i class="fas fa-syringe"></i> STATSIONAR / AMBULATOR MUOLAJA VA INFUZIYA VARAQASI
+            </div>
+            <div class="doc-meta">
+              <span>Varaqa №: <b id="doc-num-3">INF-5521</b></span>
+              <span>Xona/Palata: <b>VIP-3 / Karavot №1</b></span>
+              <span>Sana: <b id="doc-date-3">17.08.2026</b></span>
+            </div>
+          </div>
+
+          <div class="patient-card">
+            <div class="patient-grid">
+              <div class="field-item" style="grid-column: span 2;">
+                <span class="field-label">Bemor F.I.SH:</span>
+                <input type="text" class="field-input" id="p3-name" placeholder="Bemor to'liq ismi">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Yoshi:</span>
+                <input type="text" class="field-input" id="p3-age" placeholder="Masalan: 42 yosh">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Allergiya:</span>
+                <input type="text" class="field-input" id="p3-allergy" style="color: #e11d48; font-weight:700;" placeholder="Yo'q / Inkor etiladi">
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-block" style="flex-grow: 1;">
+            <div class="sec-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span><i class="fas fa-tint"></i> Tomchilatgich (V/I Infuziya) va Inyeksiya Tayinlovlari</span>
+              <div class="table-tools no-print">
+                <button type="button" class="btn-tool-sm btn-tool-primary" onclick="openBlankClinicModal('muolaja')" title="88 rasmiy klinika dorilari ro'yxatidan tanlash">
+                  <i class="fas fa-clinic-medical"></i> 🏥 88 Klinika Dorilari
+                </button>
+                <button type="button" class="btn-tool-sm" onclick="addBlankMuolajaRow()" title="Yangi muolaja qatorini qo'shish">
+                  <i class="fas fa-plus"></i> Qator qo'shish
+                </button>
+                <button type="button" class="btn-tool-sm btn-tool-danger" onclick="clearBlankMuolajaTable()" title="Barcha muolaja qatorlarini tozalash">
+                  <i class="fas fa-trash-alt"></i> Tozalash
+                </button>
+              </div>
+            </div>
+            <table class="med-table">
+              <thead>
+                <tr>
+                  <th style="width: 30px; text-align: center;">№</th>
+                  <th style="width: 40%;">Eritma va Dori Vositalari Tarkibi</th>
+                  <th style="width: 22%;">Yuborish yo'li / Tezligi</th>
+                  <th style="width: 12%;">Vaqti</th>
+                  <th style="width: 18%;">Hamshira imzosi</th>
+                  <th style="width: 28px;" class="no-print"></th>
+                </tr>
+              </thead>
+              <tbody id="muolaja-table-body">
+                <tr>
+                  <td style="text-align:center; font-weight:700;">1</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankMuolajaDrugInput(this)" onchange="onBlankMuolajaDrugSelect(this)" placeholder="Eritma nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Yuborish yo'li (V/I, V/M)"></td>
+                  <td><input type="text" value="" placeholder="Vaqti (09:00)"></td>
+                  <td>_______________</td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankMuolajaRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">2</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankMuolajaDrugInput(this)" onchange="onBlankMuolajaDrugSelect(this)" placeholder="Eritma nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Yuborish yo'li (V/I, V/M)"></td>
+                  <td><input type="text" value="" placeholder="Vaqti (11:00)"></td>
+                  <td>_______________</td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankMuolajaRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">3</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankMuolajaDrugInput(this)" onchange="onBlankMuolajaDrugSelect(this)" placeholder="Eritma nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Yuborish yo'li (V/I, V/M)"></td>
+                  <td><input type="text" value="" placeholder="Vaqti (14:00)"></td>
+                  <td>_______________</td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankMuolajaRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">4</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankMuolajaDrugInput(this)" onchange="onBlankMuolajaDrugSelect(this)" placeholder="Eritma nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="Yuborish yo'li (V/I, V/M)"></td>
+                  <td><input type="text" value="" placeholder="Vaqti (17:00)"></td>
+                  <td>_______________</td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankMuolajaRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+                <tr>
+                  <td style="text-align:center; font-weight:700;">5</td>
+                  <td><input type="text" value="" list="blank-rx-medications-datalist" oninput="onBlankMuolajaDrugInput(this)" onchange="onBlankMuolajaDrugSelect(this)" placeholder="Eritma nomi yoki [№] tanlang"></td>
+                  <td><input type="text" value="" placeholder="V/I yoki V/M"></td>
+                  <td><input type="text" value="" placeholder="18:00"></td>
+                  <td>_______________</td>
+                  <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankMuolajaRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="sec-block">
+            <div class="sec-header"><i class="fas fa-heartbeat"></i> Muolajadan Keyingi Holat Monitoringi</div>
+            <textarea class="fill-area fill-area-lines" rows="2" placeholder="Bemor infuziyani yaxshi o'tkazdi. Gemodinamika barqaror: AB 125/80 mm.sim.ust, PS 72 zarba/daq. Bosh aylanishi yoki ko'ngil aynishi yo'q."></textarea>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             TEMPLATE 4: UNIVERSAL TOZA KLINIK BLANK (LETTERHEAD WITH WATERMARK)
+             ================================================================== -->
+        <div class="template-card" id="tpl-universal">
+          <div class="doc-banner">
+            <div class="doc-title-text">
+              <i class="fas fa-file-alt"></i> TIBBIY MA'LUMOTNOMA VA XULOSA BLANKI (LETTERHEAD)
+            </div>
+            <div class="doc-meta">
+              <span>Blank №: <b id="doc-num-4">DOC-9910</b></span>
+              <span>Sana: <b id="doc-date-4">17.08.2026</b></span>
+            </div>
+          </div>
+
+          <div class="patient-card" style="margin-bottom: 6px;">
+            <div class="patient-grid">
+              <div class="field-item" style="grid-column: span 3;">
+                <span class="field-label">Bemor / Fuqaro F.I.SH:</span>
+                <input type="text" class="field-input" placeholder="Kimga berildi (F.I.SH)">
+              </div>
+              <div class="field-item">
+                <span class="field-label">Tug'ilgan yili:</span>
+                <input type="text" class="field-input" placeholder="Yili / Yoshi">
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-block" style="flex-grow: 1; display: flex; flex-direction: column;">
+            <div class="sec-header"><i class="fas fa-pen-alt"></i> Tibbiy Xulosa, Epikriz yoki Yo'llanma Matni</div>
+            <textarea class="fill-area universal-grid-canvas" rows="18" placeholder="Ushbu ma'lumotnoma berildiki, haqiqatdan ham bemor Fayz Medical House klinikasida ko'rikdan o'tdi / statsionar davolandi...&#10;&#10;Ko'rsatilgan tashxis va tavsiyalar:..."></textarea>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             COMMON OFFICIAL FOOTER: DOCTOR SIGNATURE, STAMP & QR
+             ================================================================== -->
+        <footer class="doc-footer">
+          <!-- QR Code Verification Simulation -->
+          <div class="qr-verify">
+            <div class="qr-placeholder">
+              <i class="fas fa-qrcode" style="font-size: 24px; color: #0b3b60;"></i>
+            </div>
+            <div>
+              <b>VERIFIED CLINIC RECORD</b><br>
+              fayzmedical.uz/verify<br>
+              Tekshiruv kodi: FMH-2026-OK
+            </div>
+          </div>
+
+          <!-- Stamp / Seal Round Box -->
+          <div class="footer-stamp-area">
+            <div class="stamp-box">
+              M.O'.<br>(Muhr o'rni / Stamp)
+            </div>
+          </div>
+
+          <!-- Doctor Signature Line -->
+          <div class="signature-area">
+            <div class="doctor-name-line">
+              <span>Shifokor:</span>
+              <input type="text" id="doc-signature-name" style="text-align: right; font-weight:700; font-family: inherit; font-size: 8.5pt; border:none; outline:none; background:transparent; width: 140px;" value="Dr. Xusnitdinov A.">
+            </div>
+            <div class="signature-sub">
+              <span>Imzo: ________________</span>
+              <span>Sana: <span class="current-date-inline">17.08.2026</span></span>
+            </div>
+          </div>
+        </footer>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- ==========================================================================
+       DATALIST FOR AUTOCOMPLETION (88 OFFICIAL CLINIC MEDICATIONS)
+       ========================================================================== -->
+  <datalist id="blank-rx-medications-datalist"></datalist>
+
+  <!-- ==========================================================================
+       88 CLINIC MEDICATIONS MODAL PICKER (FOR RX & MUOLAJA TEMPLATES)
+       ========================================================================== -->
+  <div id="blank-meds-modal" class="blank-modal-backdrop no-print" style="display: none;" onclick="if(event.target===this) closeBlankClinicModal()">
+    <div class="blank-modal-content">
+      <div class="blank-modal-header">
+        <div class="blank-modal-title">
+          <i class="fas fa-pills"></i>
+          <span>Fayz Medical House — 88 Rasmiy Klinika Dorilari</span>
+        </div>
+        <button type="button" class="blank-modal-close" onclick="closeBlankClinicModal()" title="Yopish">&times;</button>
+      </div>
+      <div class="blank-modal-search-bar">
+        <input type="text" id="blank-modal-search" class="blank-modal-search-input" placeholder="🔍 Dori nomi, raqami yoki ta'sir etuvchi moddasi bo'yicha qidiring (masalan: Magne, Mexidol, Diazepam, 1...)" oninput="filterBlankModalMeds()">
+        <div class="blank-modal-categories" id="blank-modal-categories">
+          <!-- Dynamically populated categories -->
+        </div>
+      </div>
+      <div class="blank-modal-body" id="blank-modal-drug-list">
+        <!-- 88 Drug items rendered dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       JAVASCRIPT LOGIC & TEMPLATE SWITCHING
+       ========================================================================== -->
+  <script>
+    // Format Current Date
+    const today = new Date();
+    const formattedDate = String(today.getDate()).padStart(2, '0') + '.' + 
+                          String(today.getMonth() + 1).padStart(2, '0') + '.' + 
+                          today.getFullYear();
+
+    document.querySelectorAll('[id^="doc-date-"]').forEach(el => el.innerText = formattedDate);
+    document.querySelectorAll('.current-date-inline').forEach(el => el.innerText = formattedDate);
+
+    // Switch active template tab
+    function switchTemplate(templateId) {
+      document.querySelectorAll('.template-card').forEach(card => card.classList.remove('active'));
+      document.querySelectorAll('.tpl-btn').forEach(btn => btn.classList.remove('active'));
+
+      const targetCard = document.getElementById('tpl-' + templateId);
+      if (targetCard) {
+        targetCard.classList.add('active');
+      }
+
+      // Set active button
+      event.currentTarget.classList.add('active');
+    }
+
+    // Toggle handwriting mode (shows background guide lines)
+    function toggleHandwritingMode(isChecked) {
+      const page = document.getElementById('printablePage');
+      if (isChecked) {
+        page.classList.add('handwriting-mode');
+        // Clear placeholder text to make it look like a clean printed form
+        document.querySelectorAll('input, textarea').forEach(input => {
+          input.dataset.originalValue = input.value;
+          input.value = '';
+        });
+      } else {
+        page.classList.remove('handwriting-mode');
+        document.querySelectorAll('input, textarea').forEach(input => {
+          if (input.dataset.originalValue !== undefined) {
+            input.value = input.dataset.originalValue;
+          }
+        });
+      }
+    }
+
+    // Load live patient clinical data from MySQL API
+    async function loadSampleData() {
+      try {
+        const res = await fetch('/api/patients');
+        if (res.ok) {
+          const patients = await res.json();
+          if (Array.isArray(patients) && patients.length > 0) {
+            const p = patients[0];
+            const pName = p.full_name || "Bemor A.X.";
+            const pPhone = p.phone || "+998 90 000 00 00";
+            const pAge = p.birth_year ? `${new Date().getFullYear() - p.birth_year} yosh` : "40 yosh";
+            
+            document.getElementById('p1-name').value = pName;
+            document.getElementById('p1-dob').value = `${p.birth_year || 1985} (${pAge})`;
+            document.getElementById('p1-gender').value = p.gender === 'male' ? 'Erkak' : 'Ayol';
+            document.getElementById('p1-phone').value = pPhone;
+            document.getElementById('p1-address').value = "Toshkent sh., Yunusobod tumani";
+            document.getElementById('p1-blood').value = "A(II) Rh+ (Musbat)";
+
+            const vit = p.latest_vitals;
+            document.getElementById('v-bp').value = vit ? `${vit.vital_bp_systolic || 120}/${vit.vital_bp_diastolic || 80}` : "120/80 mm.sim.ust";
+            document.getElementById('v-hr').value = vit ? `${vit.vital_pulse || 76} zarba/daq` : "76 zarba/daq";
+            document.getElementById('v-spo2').value = vit ? `${vit.vital_spo2 || 98} %` : "98 %";
+            document.getElementById('v-temp').value = vit ? `${vit.vital_temp || 36.6} °C` : "36.6 °C";
+            document.getElementById('v-weight').value = "175 sm / 78 kg";
+            document.getElementById('v-sugar').value = "5.2 mmol/l";
+
+            document.getElementById('p1-complaints').value = "Bemor umumiy intoksikatsiya, holsizlik, jismoniy charchoq va uyqu buzilishidan shikoyat qilmoqda.";
+            document.getElementById('p1-morbi').value = "Holat so'nggi kunlarda zo'raygan. Fayz Medical House statsionariga reabilitatsiya va detoksikatsiya kursi uchun murojaat qilgan.";
+            document.getElementById('p1-vitae').value = `Allergik status: ${p.medical_allergies || "Yo'q"}. Surunkali kasalliklar: ${p.chronic_conditions || "Yo'q"}.`;
+            document.getElementById('p1-status').value = "Umumiy ahvoli barqaror. Nafas olish ravon, o'pkada xirillashlar yo'q. Gemodinamik ko'rsatkichlar me'yorda.";
+            document.getElementById('p1-diagnosis').value = "Asosiy tashxis: F10.2 — Spirtli ichimliklarga qaramlik sindromi. O'tkir intoksikatsiyadan keyingi holat.\nHamroh tashxis: Somatoform vegetativ disfunksiya.";
+            document.getElementById('p1-plan').value = "1. To'liq laborator detoksikatsiya infuzion terapiyasi (Reamberin, Gepa-Merts).\n2. Gepatoprotektor va vitaminoterapiya (Vit B1, B6, C).\n3. Psixoterapevtik korreksiya va 24/7 shifokor nazorati.";
+
+            document.getElementById('p2-name').value = pName;
+            document.getElementById('p2-age').value = pAge;
+            document.getElementById('p2-phone').value = pPhone;
+            document.getElementById('p2-diag').value = "F10.2 — Detoksikatsiya va tiklanish kursi";
+
+            alert(`Bemor: ${pName} ma'lumotlari muvaffaqiyatli yuklandi!`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch patients from API', e);
+      }
+
+      // If no patients exist in the system (clean state)
+      alert("Bazada bemorlar mavjud emas (Baza toza).\nYangi bemor qabul qilingach, uning ma'lumotlari avtomatik yuklanadi.");
+    }
+
+    // Clear all fields
+    function clearForm() {
+      if (confirm("Haqiqatdan ham blankdagi barcha ma'lumotlarni tozalashni xohlaysizmi?")) {
+        document.querySelectorAll('input[type="text"], textarea').forEach(el => el.value = '');
+      }
+    }
+
+    // ==========================================================================
+    // 88 CLINIC MEDICATIONS & FORMULARY ENGINE
+    // ==========================================================================
+    const blankMedsState = {
+      medications: [],
+      activeTarget: 'rx', // 'rx' or 'muolaja'
+      activeCategory: 'all',
+      searchQuery: ''
+    };
+
+    async function initBlankMedsEngine() {
+      try {
+        const res = await fetch('./data/fayz_house_meds.json');
+        if (res.ok) {
+          const data = await res.json();
+          blankMedsState.medications = data.medications || [];
+          console.log(`[BlankMeds] Loaded ${blankMedsState.medications.length} official clinic formulary medications.`);
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (err) {
+        console.warn("[BlankMeds] Failed to fetch fayz_house_meds.json, checking PharmacologyDB / pharmacology_db.json", err);
+        if (window.PharmacologyDB && window.PharmacologyDB.isLoaded) {
+          blankMedsState.medications = window.PharmacologyDB.getClinicFormulary();
+        } else {
+          try {
+            const res2 = await fetch('./data/pharmacology_db.json');
+            const data2 = await res2.json();
+            const all = data2.medications || [];
+            blankMedsState.medications = all.filter(m => m.fayz_house_list === true);
+          } catch (err2) {
+            console.warn("[BlankMeds] Could not fetch pharmacology_db.json, using fallback", err2);
+          }
+        }
+      }
+
+      // Sort by clinic list number (1..88)
+      blankMedsState.medications.sort((a, b) => (a.fayz_house_num || 0) - (b.fayz_house_num || 0));
+
+      populateBlankDatalist();
+      renderBlankModalCategories();
+      renderBlankModalDrugs();
+    }
+
+    function populateBlankDatalist() {
+      const datalist = document.getElementById('blank-rx-medications-datalist');
+      if (!datalist) return;
+
+      const options = [];
+      blankMedsState.medications.forEach(m => {
+        const numTag = m.fayz_house_num ? `[№${m.fayz_house_num}] ` : '';
+        const badge = m.prescription_type === 'Rx_Strict_Psychotropic' ? ' ⚠️ (Psixotrop)' : '';
+        options.push(`<option value="${m.name}">${numTag}${m.inn ? m.inn + ' • ' : ''}${m.dosage_form || m.form || ''}${badge}</option>`);
+        if (m.paper_name && m.paper_name !== m.name) {
+          options.push(`<option value="${m.paper_name}">${numTag}${m.name}${badge}</option>`);
+        }
+        if (m.fayz_house_num) {
+          options.push(`<option value="№${m.fayz_house_num}. ${m.name}">${m.paper_name || m.name}</option>`);
+        }
+      });
+      datalist.innerHTML = options.join('');
+    }
+
+    function findClinicMed(query) {
+      if (!query) return null;
+      let clean = query.trim().toLowerCase();
+      // Remove Rp.: or № prefix
+      clean = clean.replace(/^rp\.:?\s*/i, '').replace(/^№\s*\d+[\.:\s]*/i, '').trim();
+
+      // Check number match like "№15" or "15"
+      const numMatch = query.match(/№?\s*(\d+)/);
+      if (numMatch) {
+        const num = parseInt(numMatch[1], 10);
+        const byNum = blankMedsState.medications.find(m => m.fayz_house_num === num);
+        if (byNum && (clean.length < 4 || query.includes('№'))) return byNum;
+      }
+
+      // Match exact or startsWith
+      return blankMedsState.medications.find(m => 
+        (m.name && m.name.toLowerCase() === clean) ||
+        (m.paper_name && m.paper_name.toLowerCase() === clean) ||
+        (m.trade_name && m.trade_name.toLowerCase() === clean) ||
+        (m.trade_name_uz && m.trade_name_uz.toLowerCase() === clean)
+      ) || blankMedsState.medications.find(m => 
+        (m.name && m.name.toLowerCase().includes(clean)) ||
+        (m.paper_name && m.paper_name.toLowerCase().includes(clean)) ||
+        (m.trade_name && m.trade_name.toLowerCase().includes(clean))
+      );
+    }
+
+    function onBlankRxDrugInput(input) {
+      // Allow live typing; onchange handles completion
+    }
+
+    function onBlankRxDrugSelect(input) {
+      const val = input.value;
+      if (!val) return;
+      const med = findClinicMed(val);
+      if (!med) return;
+
+      const tr = input.closest('tr');
+      if (!tr) return;
+
+      const inputs = tr.querySelectorAll('input');
+      // inputs[0]: Rp
+      // inputs[1]: D.S.
+      // inputs[2]: Duration
+      if (med.rp_latin) {
+        const lines = med.rp_latin.split('\n');
+        inputs[0].value = lines[0] || `Rp.: ${med.name}`;
+        if (inputs[1] && lines[1]) {
+          inputs[1].value = lines[1];
+        } else if (inputs[1]) {
+          inputs[1].value = `D.S.: ${med.instructions || med.default_dosage || ''}`;
+        }
+      } else {
+        inputs[0].value = `Rp.: ${med.dosage_form || 'Tab.'} ${med.name}`;
+        if (inputs[1]) inputs[1].value = `D.S.: ${med.instructions || med.default_dosage || ''}`;
+      }
+
+      if (inputs[2] && (!inputs[2].value || inputs[2].value === '')) {
+        inputs[2].value = med.default_duration ? `${med.default_duration} kun` : '10 kun';
+      }
+
+      if (med.prescription_type === 'Rx_Strict_Psychotropic') {
+        input.style.color = '#dc2626';
+        input.title = "⚠️ Qat'iy Psixotrop dori vositasi!";
+      } else {
+        input.style.color = '#0f172a';
+        input.title = '';
+      }
+    }
+
+    function onBlankMuolajaDrugInput(input) {
+      // Allow live typing
+    }
+
+    function onBlankMuolajaDrugSelect(input) {
+      const val = input.value;
+      if (!val) return;
+      const med = findClinicMed(val);
+      if (!med) return;
+
+      const tr = input.closest('tr');
+      if (!tr) return;
+
+      const inputs = tr.querySelectorAll('input');
+      // inputs[0]: Solution / Drug
+      // inputs[1]: Route
+      // inputs[2]: Time
+      if (med.rp_latin) {
+        const line1 = med.rp_latin.split('\n')[0].replace(/^Rp\.:?\s*/i, '');
+        inputs[0].value = line1;
+      } else {
+        inputs[0].value = `${med.dosage_form || 'Sol.'} ${med.name}`;
+      }
+
+      if (inputs[1]) {
+        inputs[1].value = med.default_route || 'V/I tomchilab (kapelnitsa)';
+      }
+      if (inputs[2] && (!inputs[2].value || inputs[2].value === '')) {
+        inputs[2].value = med.default_timing ? med.default_timing.replace(/[^\d:]/g, '') || '10:00' : '10:00';
+      }
+    }
+
+    // Row Operations: Retsept (Rx)
+    function addBlankRxRow(med = null) {
+      const tbody = document.getElementById('rx-table-body');
+      if (!tbody) return;
+
+      const rowCount = tbody.querySelectorAll('tr').length + 1;
+      const tr = document.createElement('tr');
+
+      let rpVal = '';
+      let dsVal = '';
+      let durVal = '';
+      let colorStyle = '';
+
+      if (med) {
+        if (med.rp_latin) {
+          const lines = med.rp_latin.split('\n');
+          rpVal = lines[0] || `Rp.: ${med.name}`;
+          dsVal = lines[1] || `D.S.: ${med.instructions || med.default_dosage || ''}`;
+        } else {
+          rpVal = `Rp.: ${med.name}`;
+          dsVal = `D.S.: ${med.instructions || med.default_dosage || ''}`;
+        }
+        durVal = med.default_duration ? `${med.default_duration} kun` : '10 kun';
+        if (med.prescription_type === 'Rx_Strict_Psychotropic') colorStyle = 'style="color: #dc2626;"';
+      }
+
+      tr.innerHTML = `
+        <td style="text-align:center; font-weight:700;">${rowCount}</td>
+        <td><input type="text" value="${rpVal}" ${colorStyle} list="blank-rx-medications-datalist" oninput="onBlankRxDrugInput(this)" onchange="onBlankRxDrugSelect(this)" placeholder="Rp: Dori nomi yoki [№] tanlang"></td>
+        <td><input type="text" value="${dsVal}" placeholder="Qabul qilish tartibi (D.S.)"></td>
+        <td><input type="text" value="${durVal}" placeholder="10 kun"></td>
+        <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankRxRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+      `;
+      tbody.appendChild(tr);
+      renumberRxRows();
+    }
+
+    function removeBlankRxRow(btn) {
+      const tr = btn.closest('tr');
+      const tbody = document.getElementById('rx-table-body');
+      if (tr && tbody) {
+        tr.remove();
+        if (tbody.querySelectorAll('tr').length === 0) {
+          addBlankRxRow();
+        } else {
+          renumberRxRows();
+        }
+      }
+    }
+
+    function renumberRxRows() {
+      const tbody = document.getElementById('rx-table-body');
+      if (!tbody) return;
+      tbody.querySelectorAll('tr').forEach((tr, idx) => {
+        const td = tr.cells[0];
+        if (td) td.innerText = idx + 1;
+      });
+    }
+
+    function clearBlankRxTable() {
+      if (confirm("Retsept jadvalini tozalashni tasdiqlaysizmi?")) {
+        const tbody = document.getElementById('rx-table-body');
+        if (tbody) {
+          tbody.innerHTML = '';
+          for (let i = 0; i < 4; i++) {
+            addBlankRxRow();
+          }
+        }
+      }
+    }
+
+    // Row Operations: Muolaja
+    function addBlankMuolajaRow(med = null) {
+      const tbody = document.getElementById('muolaja-table-body');
+      if (!tbody) return;
+
+      const rowCount = tbody.querySelectorAll('tr').length + 1;
+      const tr = document.createElement('tr');
+
+      let drugVal = '';
+      let routeVal = '';
+      let timeVal = '10:00';
+
+      if (med) {
+        if (med.rp_latin) {
+          drugVal = med.rp_latin.split('\n')[0].replace(/^Rp\.:?\s*/i, '');
+        } else {
+          drugVal = `${med.dosage_form || 'Sol.'} ${med.name}`;
+        }
+        routeVal = med.default_route || 'V/I tomchilab (kapelnitsa)';
+        if (med.default_timing) timeVal = med.default_timing.replace(/[^\d:]/g, '') || '10:00';
+      }
+
+      tr.innerHTML = `
+        <td style="text-align:center; font-weight:700;">${rowCount}</td>
+        <td><input type="text" value="${drugVal}" list="blank-rx-medications-datalist" oninput="onBlankMuolajaDrugInput(this)" onchange="onBlankMuolajaDrugSelect(this)" placeholder="Eritma nomi yoki [№] tanlang"></td>
+        <td><input type="text" value="${routeVal}" placeholder="Yuborish yo'li"></td>
+        <td><input type="text" value="${timeVal}" placeholder="10:00"></td>
+        <td>_______________</td>
+        <td class="no-print" style="text-align:center;"><button type="button" class="btn-row-del" onclick="removeBlankMuolajaRow(this)" title="O'chirish"><i class="fas fa-times"></i></button></td>
+      `;
+      tbody.appendChild(tr);
+      renumberMuolajaRows();
+    }
+
+    function removeBlankMuolajaRow(btn) {
+      const tr = btn.closest('tr');
+      const tbody = document.getElementById('muolaja-table-body');
+      if (tr && tbody) {
+        tr.remove();
+        if (tbody.querySelectorAll('tr').length === 0) {
+          addBlankMuolajaRow();
+        } else {
+          renumberMuolajaRows();
+        }
+      }
+    }
+
+    function renumberMuolajaRows() {
+      const tbody = document.getElementById('muolaja-table-body');
+      if (!tbody) return;
+      tbody.querySelectorAll('tr').forEach((tr, idx) => {
+        const td = tr.cells[0];
+        if (td) td.innerText = idx + 1;
+      });
+    }
+
+    function clearBlankMuolajaTable() {
+      if (confirm("Muolaja jadvalini tozalashni tasdiqlaysizmi?")) {
+        const tbody = document.getElementById('muolaja-table-body');
+        if (tbody) {
+          tbody.innerHTML = '';
+          for (let i = 0; i < 4; i++) {
+            addBlankMuolajaRow();
+          }
+        }
+      }
+    }
+
+    // Modal System
+    function openBlankClinicModal(targetType = 'rx') {
+      blankMedsState.activeTarget = targetType;
+      const modal = document.getElementById('blank-meds-modal');
+      if (!modal) return;
+      modal.style.display = 'flex';
+      const searchInput = document.getElementById('blank-modal-search');
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+      blankMedsState.searchQuery = '';
+      blankMedsState.activeCategory = 'all';
+      updateModalCategoryButtons();
+      renderBlankModalDrugs();
+    }
+
+    function closeBlankClinicModal() {
+      const modal = document.getElementById('blank-meds-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function renderBlankModalCategories() {
+      const container = document.getElementById('blank-modal-categories');
+      if (!container) return;
+
+      const categoriesMap = new Map();
+      categoriesMap.set('all', "Barchasi (88)");
+
+      blankMedsState.medications.forEach(m => {
+        const catKey = m.category || 'other';
+        const catName = m.category_name_uz || (m.category_label && m.category_label.uz) || catKey;
+        if (!categoriesMap.has(catKey)) {
+          categoriesMap.set(catKey, catName);
+        }
+      });
+
+      let html = '';
+      categoriesMap.forEach((label, key) => {
+        const activeClass = (key === blankMedsState.activeCategory) ? 'active' : '';
+        html += `<button type="button" class="blank-cat-pill ${activeClass}" onclick="setBlankModalCategory('${key}')">${label}</button>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function updateModalCategoryButtons() {
+      document.querySelectorAll('.blank-cat-pill').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      const targetBtn = Array.from(document.querySelectorAll('.blank-cat-pill')).find(b => 
+        b.getAttribute('onclick') && b.getAttribute('onclick').includes(`'${blankMedsState.activeCategory}'`)
+      );
+      if (targetBtn) targetBtn.classList.add('active');
+    }
+
+    function setBlankModalCategory(catKey) {
+      blankMedsState.activeCategory = catKey;
+      updateModalCategoryButtons();
+      renderBlankModalDrugs();
+    }
+
+    function filterBlankModalMeds() {
+      const searchInput = document.getElementById('blank-modal-search');
+      blankMedsState.searchQuery = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      renderBlankModalDrugs();
+    }
+
+    function renderBlankModalDrugs() {
+      const container = document.getElementById('blank-modal-drug-list');
+      if (!container) return;
+
+      const q = blankMedsState.searchQuery;
+      const cat = blankMedsState.activeCategory;
+
+      const filtered = blankMedsState.medications.filter(m => {
+        if (cat !== 'all' && m.category !== cat) return false;
+        if (!q) return true;
+
+        const numStr = String(m.fayz_house_num || '');
+        const matchNum = numStr === q || q === `№${numStr}`;
+        const matchName = (m.name && m.name.toLowerCase().includes(q));
+        const matchPaper = (m.paper_name && m.paper_name.toLowerCase().includes(q));
+        const matchTrade = (m.trade_name && m.trade_name.toLowerCase().includes(q));
+        const matchInn = (m.inn && m.inn.toLowerCase().includes(q));
+        const matchLatin = (m.rp_latin && m.rp_latin.toLowerCase().includes(q));
+
+        return matchNum || matchName || matchPaper || matchTrade || matchInn || matchLatin;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding: 30px 10px; color: #64748b; font-size: 9.5pt;">
+          <i class="fas fa-search" style="font-size: 24px; color: #cbd5e1; margin-bottom: 8px; display:block;"></i>
+          Ushbu qidiruv bo'yicha hech qanday dori vositasi topilmadi.
+        </div>`;
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(m => {
+        const numBadge = m.fayz_house_num ? `<span class="blank-drug-num">№${m.fayz_house_num}</span>` : '';
+        const psychotropicBadge = m.prescription_type === 'Rx_Strict_Psychotropic' ? '<span class="badge-psychotropic">⚠️ Psixotrop (Rx-Strict)</span>' : '';
+        const latinRpFirstLine = m.rp_latin ? m.rp_latin.split('\n')[0] : `Rp.: ${m.name}`;
+
+        html += `
+          <div class="blank-drug-item">
+            <div class="blank-drug-info">
+              <div class="blank-drug-title">
+                ${numBadge}
+                <span>${m.paper_name || m.name}</span>
+                ${psychotropicBadge}
+              </div>
+              <div class="blank-drug-latin">${latinRpFirstLine}</div>
+              <div class="blank-drug-sub">
+                <b>Shakli:</b> ${m.dosage_form || m.form || '—'} &bull;
+                <b>Standart:</b> ${m.default_dosage || '—'} &bull;
+                <b>Yo'li:</b> ${m.default_route || '—'}
+              </div>
+            </div>
+            <button type="button" class="blank-btn-select" onclick="selectMedForBlank('${m.id || m.fayz_house_num}')">
+              <i class="fas fa-plus"></i> Tanlash
+            </button>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function selectMedForBlank(medIdOrNum) {
+      const med = blankMedsState.medications.find(m => m.id === medIdOrNum || String(m.fayz_house_num) === String(medIdOrNum));
+      if (!med) return;
+
+      if (blankMedsState.activeTarget === 'rx') {
+        // Ensure Retsept template is visible
+        switchTemplateDirect('retsept');
+        const tbody = document.getElementById('rx-table-body');
+        let filled = false;
+        if (tbody) {
+          const rows = tbody.querySelectorAll('tr');
+          for (let r of rows) {
+            const firstInput = r.querySelector('input');
+            if (firstInput && (!firstInput.value || firstInput.value.trim() === '')) {
+              firstInput.value = med.name;
+              onBlankRxDrugSelect(firstInput);
+              filled = true;
+              break;
+            }
+          }
+        }
+        if (!filled) {
+          addBlankRxRow(med);
+        }
+      } else if (blankMedsState.activeTarget === 'muolaja') {
+        // Ensure Muolaja template is visible
+        switchTemplateDirect('muolaja');
+        const tbody = document.getElementById('muolaja-table-body');
+        let filled = false;
+        if (tbody) {
+          const rows = tbody.querySelectorAll('tr');
+          for (let r of rows) {
+            const firstInput = r.querySelector('input');
+            if (firstInput && (!firstInput.value || firstInput.value.trim() === '')) {
+              firstInput.value = med.name;
+              onBlankMuolajaDrugSelect(firstInput);
+              filled = true;
+              break;
+            }
+          }
+        }
+        if (!filled) {
+          addBlankMuolajaRow(med);
+        }
+      }
+
+      closeBlankClinicModal();
+    }
+
+    function switchTemplateDirect(templateId) {
+      document.querySelectorAll('.template-card').forEach(card => card.classList.remove('active'));
+      document.querySelectorAll('.tpl-btn').forEach(btn => btn.classList.remove('active'));
+
+      const targetCard = document.getElementById('tpl-' + templateId);
+      if (targetCard) targetCard.classList.add('active');
+
+      const targetBtn = Array.from(document.querySelectorAll('.tpl-btn')).find(b => 
+        b.getAttribute('onclick') && b.getAttribute('onclick').includes(`'${templateId}'`)
+      );
+      if (targetBtn) targetBtn.classList.add('active');
+    }
+
+    // Initialize engine on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      initBlankMedsEngine();
+    });
+    // Fallback immediate initialization
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      initBlankMedsEngine();
+    }
+  </script>
+</body>
+</html>

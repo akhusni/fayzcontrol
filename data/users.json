@@ -1,0 +1,98 @@
+[
+  {
+    "id": "USR-SUPER-01",
+    "username": "superadmin",
+    "password": "superadmin2026",
+    "full_name": "Bosh Administrator (Superadmin)",
+    "role": "superadmin",
+    "avatar": "👑",
+    "phone": "+998 90 372-03-03",
+    "is_active": true,
+    "permissions": ["*"]
+  },
+  {
+    "id": "USR-DOC-01",
+    "username": "dr_bobur",
+    "password": "docbobur2026",
+    "full_name": "Dr. Bobur Mirzayev",
+    "role": "doctor",
+    "staff_id": "STF-DOC-01",
+    "specialty": "Bosh Shifokor / Narkolog-Psixiatr",
+    "avatar": "👨‍⚕️",
+    "phone": "+998 90 100-11-22",
+    "is_active": true,
+    "permissions": ["doctors", "crm", "pharmacy"]
+  },
+  {
+    "id": "USR-DOC-02",
+    "username": "dr_jasur",
+    "password": "docjasur2026",
+    "full_name": "Dr. Jasur Aliyev",
+    "role": "doctor",
+    "staff_id": "STF-DOC-02",
+    "specialty": "Shifokor-Narkolog",
+    "avatar": "🩺",
+    "phone": "+998 90 200-33-44",
+    "is_active": true,
+    "permissions": ["doctors", "crm", "pharmacy"]
+  },
+  {
+    "id": "USR-DOC-03",
+    "username": "dr_dilnoza",
+    "password": "docdilnoza2026",
+    "full_name": "Dr. Dilnoza Rahimova",
+    "role": "doctor",
+    "staff_id": "STF-DOC-03",
+    "specialty": "Psixiatr / Psixoterapevt",
+    "avatar": "👩‍⚕️",
+    "phone": "+998 90 300-55-66",
+    "is_active": true,
+    "permissions": ["doctors", "crm", "pharmacy"]
+  },
+  {
+    "id": "USR-DOC-ALIAS",
+    "username": "doctor",
+    "password": "doc2026",
+    "full_name": "Dr. Bobur Mirzayev",
+    "role": "doctor",
+    "staff_id": "STF-DOC-01",
+    "specialty": "Bosh Shifokor / Narkolog-Psixiatr",
+    "avatar": "👨‍⚕️",
+    "phone": "+998 90 100-11-22",
+    "is_active": true,
+    "permissions": ["doctors", "crm", "pharmacy"]
+  },
+  {
+    "id": "USR-NURSE-01",
+    "username": "nurse",
+    "password": "nurse2026",
+    "full_name": "Dildora Karimova",
+    "role": "nurse",
+    "avatar": "💉",
+    "phone": "+998 90 200-33-44",
+    "is_active": true,
+    "permissions": ["nursery", "kitchen", "facility"]
+  },
+  {
+    "id": "USR-ACCT-01",
+    "username": "accountant",
+    "password": "acct2026",
+    "full_name": "Muxiddin Aliyev",
+    "role": "accountant",
+    "avatar": "💳",
+    "phone": "+998 90 400-55-66",
+    "is_active": true,
+    "permissions": ["accounting"]
+  },
+  {
+    "id": "USR-REC-01",
+    "username": "reception",
+    "password": "rec2026",
+    "full_name": "Rayhona Salimova",
+    "role": "receptionist",
+    "avatar": "📋",
+    "phone": "+998 90 500-66-77",
+    "is_active": true,
+    "permissions": ["reception", "crm", "facility"]
+  }
+]

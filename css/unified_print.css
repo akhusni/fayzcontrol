@@ -1,0 +1,461 @@
+/* ============================================================================
+   FAYZ MEDICAL HOUSE — UNIFIED ENTERPRISE A4 PRINT STYLESHEET
+   Supports: Admission Slips, Nurse Prescription Charts, Discharge Epicrises,
+             Payment Invoices, Cash Vouchers, and HR Salary Pay Slips.
+   ============================================================================ */
+
+.fmh-print-document {
+  font-family: 'Outfit', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #ffffff;
+  color: #0f172a;
+  width: 100%;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 10mm 12mm 10mm 12mm;
+  box-sizing: border-box;
+  line-height: 1.4;
+  font-size: 9.5pt;
+  position: relative;
+  border-radius: 4px;
+}
+
+.fmh-print-document::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.04) 0%, rgba(2, 132, 199, 0.02) 60%, transparent 80%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.fmh-print-content {
+  position: relative;
+  z-index: 1;
+}
+
+.fmh-doc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2.5px solid #0f766e;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.fmh-brand-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fmh-crest-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+  color: #ffffff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(15, 118, 110, 0.25);
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-brand-text h1 {
+  font-size: 15pt;
+  font-weight: 800;
+  color: #0f766e;
+  letter-spacing: 0.5px;
+  margin: 0;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.fmh-brand-text .fmh-tagline {
+  font-size: 7.5pt;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.3px;
+  margin-top: 1px;
+  text-transform: uppercase;
+}
+
+.fmh-brand-text .fmh-contacts {
+  font-size: 7.5pt;
+  color: #64748b;
+  margin-top: 2px;
+  line-height: 1.25;
+}
+
+.fmh-header-badge-box {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.fmh-doc-badge {
+  display: inline-block;
+  background: #0f766e;
+  color: #ffffff;
+  font-size: 8.5pt;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-doc-meta-sub {
+  font-size: 7.5pt;
+  color: #475569;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.fmh-doc-id-pill {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 7.5pt;
+  font-weight: 700;
+  margin-top: 2px;
+  display: inline-block;
+}
+
+.fmh-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-meta-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.fmh-meta-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.fmh-meta-item {
+  display: flex;
+  flex-direction: column;
+  font-size: 8.5pt;
+}
+
+.fmh-meta-item .lbl {
+  font-size: 7pt;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.fmh-meta-item .val {
+  font-weight: 600;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.fmh-meta-item .val.highlight {
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.fmh-section-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9pt;
+  font-weight: 700;
+  color: #0f766e;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-top: 8px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 2px;
+}
+
+.fmh-callout-box {
+  background: #f0fdf4;
+  border-left: 3px solid #10b981;
+  padding: 5px 8px;
+  margin: 6px 0;
+  font-size: 8pt;
+  color: #14532d;
+  border-radius: 0 4px 4px 0;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-callout-box.amber {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+  color: #78350f;
+}
+
+.fmh-callout-box.blue {
+  background: #f0f9ff;
+  border-left-color: #0284c7;
+  color: #0c4a6e;
+}
+
+.fmh-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 5px 0 8px 0;
+  font-size: 8pt;
+}
+
+.fmh-data-table th {
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 7pt;
+  letter-spacing: 0.3px;
+  padding: 4px 6px;
+  text-align: left;
+  border: 1px solid #0f766e;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-data-table td {
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  vertical-align: middle;
+}
+
+.fmh-data-table tr:nth-child(even) td {
+  background: #f8fafc;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-data-table .text-right { text-align: right; }
+.fmh-data-table .text-center { text-align: center; }
+.fmh-data-table .font-mono { font-family: 'JetBrains Mono', Consolas, monospace; }
+
+.fmh-data-table tfoot td {
+  font-weight: 700;
+  background: #e2e8f0;
+  border-top: 1.5px solid #0f766e;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-check-group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 8pt;
+  margin: 3px 0;
+}
+
+.fmh-check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fmh-box-sq {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.2px solid #475569;
+  border-radius: 2px;
+}
+
+.fmh-line-fill {
+  border-bottom: 1px dotted #64748b;
+  min-height: 16px;
+  display: inline-block;
+  width: 100%;
+}
+
+.fmh-auth-zone {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.fmh-sign-box {
+  width: 30%;
+  text-align: center;
+  font-size: 7pt;
+  color: #334155;
+}
+
+.fmh-sign-line {
+  border-bottom: 1.2px solid #0f172a;
+  height: 24px;
+  margin-bottom: 3px;
+}
+
+.fmh-sign-title {
+  font-weight: 700;
+  color: #0f172a;
+  text-transform: uppercase;
+}
+
+.fmh-sign-name {
+  color: #64748b;
+  margin-top: 1px;
+  font-style: italic;
+}
+
+.fmh-official-stamp {
+  width: 76px;
+  height: 76px;
+  border: 1.8px dashed #0f766e;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #0f766e;
+  font-size: 5pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 3px;
+  opacity: 0.85;
+  transform: rotate(-6deg);
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.fmh-official-stamp .stamp-star {
+  font-size: 7pt;
+  color: #0f766e;
+  margin: 1px 0;
+}
+
+.fmh-doc-footer {
+  margin-top: 10px;
+  padding-top: 5px;
+  border-top: 1px solid #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 6.8pt;
+  color: #64748b;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.fmh-legal-notice {
+  font-style: italic;
+  max-width: 72%;
+  line-height: 1.2;
+}
+
+.fmh-qr-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 6.5pt;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+/* Safe Non-Destructive Print Rules */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 6mm 8mm 6mm 8mm;
+  }
+
+  /* Do NOT hide the entire body with body > *:not(...) */
+  /* Instead, cleanly hide only screen navigation, toolbars, buttons, and headers */
+  .portal-header,
+  .screen-controls,
+  .no-print,
+  .kpi-grid,
+  .portal-tabs-bar,
+  .tab-buttons,
+  .floor-tabs,
+  .sidebar,
+  .btn-portal,
+  .btn-header-primary,
+  .btn-header-outline,
+  .modal-close,
+  .modal-footer,
+  .toast-container,
+  .doc-modal-topbar,
+  .crm-controls-panel,
+  .crm-stats-grid {
+    display: none !important;
+  }
+
+  /* Make sure printable sheets are visible, white, and crisp */
+  #print-area,
+  #global-print-container,
+  #printable-a4-document,
+  .a4-document-container,
+  .a4-page,
+  .receipt-paper,
+  #printable-receipt-area,
+  .payslip-sheet,
+  #printable-epicrisis-area,
+  .fmh-print-document {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .fmh-auth-zone,
+  .fmh-doc-footer,
+  .fmh-meta-grid,
+  .fmh-callout-box,
+  .fmh-data-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

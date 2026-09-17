@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fayz Medical House — Yagona Super-Boshqaruv Portali (10 Bo'lim)</title>
+  <meta name="description" content="Fayz Medical House Narkologiya va Reabilitatsiya Klinikasi — Yagona Integratsiyalashgan Boshqaruv Tizimi.">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+<!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/superpage.css?v=3.1">
+  <link rel="stylesheet" href="css/building_management.css?v=3.1">
+  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.0"></script>
+</head>
+<body class="super-portal-page">
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 3-ZONE GRID)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super active" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <!-- User Profile & Fast Role Switcher -->
+        <div class="user-role-widget">
+          <button type="button" class="btn-role-switcher" onclick="window.FMH_Super.openRoleSwitcherModal()" title="Foydalanuvchi va Rolni Tanlash (RBAC)">
+            <span class="user-avatar-badge" id="current-user-avatar">👑</span>
+            <span class="user-info-cluster">
+              <span class="user-display-name" id="current-user-name">Superadmin</span>
+              <span class="user-role-pill" id="current-user-role-pill">Superadmin</span>
+            </span>
+            <i class="fas fa-chevron-down" style="font-size: 0.65rem; margin-left: 2px; opacity: 0.7;"></i>
+          </button>
+        </div>
+
+        <!-- Superadmin Command Center Button -->
+        <button type="button" id="btn-superadmin-control" class="btn-superadmin-gold" onclick="window.FMH_Super.openSuperadminPanel()" title="Superadmin Boshqaruv Markazi (Narxlar, Kadrlar, Xonalar, Foydalanuvchilar)">
+          <i class="fas fa-crown"></i> <span>Superadmin</span>
+        </button>
+
+        <a href="medical_blank.html" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-print"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" onclick="window.FMH_Super.openBookingModal()">
+          <i class="fas fa-plus-circle"></i> <span>Yangi Qabul</span>
+        </button>
+
+        <button id="super-theme-toggle-btn" class="btn-unified-theme-toggle" onclick="window.FMH_Super.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <div class="super-app-layout">
+    
+    <!-- =========================================================================
+         SIDEBAR NAVIGATION: 10 DEPARTMENTS
+         ========================================================================= -->
+    <aside class="super-sidebar">
+      <ul class="super-nav-menu">
+        <li class="super-nav-section-title">ASOSIY BOSHQARUV</li>
+        
+        <li class="super-nav-item active" data-dept-target="executive" onclick="window.FMH_Super.switchDepartment('executive')">
+          <i class="fas fa-chart-line super-nav-icon"></i>
+          <span class="super-nav-text">1. Boshqaruv Markazi</span>
+          <span class="super-nav-badge badge-info">Live BI</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="facility" onclick="window.FMH_Super.switchDepartment('facility')">
+          <i class="fas fa-bed super-nav-icon"></i>
+          <span class="super-nav-text">2. Bino & 14 Karavot</span>
+          <span class="super-nav-badge badge-success">14 O'rin</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="accounting" onclick="window.FMH_Super.switchDepartment('accounting')">
+          <i class="fas fa-cash-register super-nav-icon"></i>
+          <span class="super-nav-text">3. Buxgalteriya & Kassa</span>
+          <span class="super-nav-badge badge-warning">POS</span>
+        </li>
+
+        <li class="super-nav-section-title">KLINIK BO'LIMLAR</li>
+
+        <li class="super-nav-item" data-dept-target="pharmacy" onclick="window.FMH_Super.switchDepartment('pharmacy')">
+          <i class="fas fa-pills super-nav-icon"></i>
+          <span class="super-nav-text">4. Farmakologiya</span>
+          <span class="super-nav-badge badge-purple">206 Dori</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="reception" onclick="window.FMH_Super.switchDepartment('reception')">
+          <i class="fas fa-user-plus super-nav-icon"></i>
+          <span class="super-nav-text">5. Qabulxona & Resepshn</span>
+          <span class="super-nav-badge badge-info">Triaj</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="doctors" onclick="window.FMH_Super.switchDepartment('doctors')">
+          <i class="fas fa-user-md super-nav-icon"></i>
+          <span class="super-nav-text">6. Shifokorlar & EMR</span>
+          <span class="super-nav-badge badge-success">Konsultatsiya</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="nursery" onclick="window.FMH_Super.switchDepartment('nursery')">
+          <i class="fas fa-syringe super-nav-icon"></i>
+          <span class="super-nav-text">7. Hamshiralar Posti</span>
+          <span class="super-nav-badge badge-danger">Muolajalar</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="kitchen" onclick="window.FMH_Super.switchDepartment('kitchen')">
+          <i class="fas fa-utensils super-nav-icon"></i>
+          <span class="super-nav-text">8. Parhez & Oshxona</span>
+          <span class="super-nav-badge badge-warning">Taomnoma</span>
+        </li>
+
+        <li class="super-nav-section-title">ADMINISTRATSIYA</li>
+
+        <li class="super-nav-item" data-dept-target="hr" onclick="window.FMH_Super.switchDepartment('hr')">
+          <i class="fas fa-user-clock super-nav-icon"></i>
+          <span class="super-nav-text">9. Kadrlar & Smenalar</span>
+          <span class="super-nav-badge badge-info">24/7</span>
+        </li>
+
+        <li class="super-nav-item" data-dept-target="crm" onclick="window.FMH_Super.switchDepartment('crm')">
+          <i class="fas fa-address-book super-nav-icon"></i>
+          <span class="super-nav-text">10. Bemorlar CRM</span>
+          <span class="super-nav-badge badge-purple">Arxiv</span>
+        </li>
+
+        <li class="super-nav-section-title" style="margin-top: 10px;">ALOHIDA TIZIMLARGA HAVOLALAR</li>
+        <li style="padding: 0 0.65rem; display: flex; flex-direction: column; gap: 6px;">
+          <a href="building_management.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
+            <i class="fas fa-bed" style="color: var(--primary);"></i> 🏨 Statsionar (14 Karavot)
+          </a>
+          <a href="accounting.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
+            <i class="fas fa-coins" style="color: var(--emerald);"></i> 💳 Buxgalteriya & Kassa
+          </a>
+          <a href="hr.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
+            <i class="fas fa-users-cog" style="color: var(--indigo);"></i> 👥 HR & Kadrlar Portali
+          </a>
+          <a href="reception.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
+            <i class="fas fa-concierge-bell" style="color: #2dd4bf;"></i> 📋 Qabulxona & Triaj
+          </a>
+          <a href="crm.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none; border-color: rgba(244, 63, 94, 0.4);">
+            <i class="fas fa-address-book" style="color: #f43f5e;"></i> 📂 Bemorlar CRM Portali
+          </a>
+          <a href="grand_total_report.html" target="_blank" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+            <i class="fas fa-file-invoice" style="color: #38bdf8;"></i> 📊 Grand Total DB Hisobot
+          </a>
+          <a href="Fayz_Database_Grand_Total_Report.pdf" target="_blank" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+            <i class="fas fa-file-pdf" style="color: #f43f5e;"></i> 📑 Grand Total PDF Hisobot
+          </a>
+          <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
+            <i class="fas fa-external-link-alt" style="color: var(--purple);"></i> 🌐 Rasmiy Veb-Sayt
+          </a>
+        </li>
+      </ul>
+
+      <div class="super-sidebar-footer">
+        <div class="super-user-pill">
+          <div class="super-avatar">FM</div>
+          <div class="super-user-info">
+            <div class="super-user-name">Bosh Administrator</div>
+            <div class="super-user-role">Super-Admin Ruxsati</div>
+          </div>
+          <a href="superpage.html" style="color: var(--text-dim); text-decoration: none;" title="Boshqaruv Markazi"><i class="fas fa-home"></i></a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- =========================================================================
+         MAIN CONTENT AREA
+         ========================================================================= -->
+    <main class="super-main-content">
+      
+      <!-- Department Subbar (Title, Live Clock, Search & Kassa shortcut) -->
+      <div class="super-subbar" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.75rem; border-bottom: 1px solid var(--border-color); background: var(--topbar-bg); backdrop-filter: blur(12px);">
+        <div class="super-topbar-left">
+          <h1 class="super-page-title" id="super-current-dept-title" style="margin: 0; font-size: 1.15rem; font-weight: 800; display: flex; align-items: center; gap: 0.65rem;">
+            <i class="fas fa-chart-line" style="color: var(--primary);"></i> 📊 Boshqaruv Markazi & BI Analitika
+          </h1>
+          <div class="super-live-time">
+            <span class="live-pulse-dot"></span>
+            <span id="super-clock">Yuklanmoqda...</span>
+          </div>
+        </div>
+
+        <div class="super-toolbar-actions" style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="super-search-box" style="position: relative; display: flex; align-items: center;">
+            <i class="fas fa-search super-search-icon" style="position: absolute; left: 10px; color: var(--text-muted); font-size: 0.8rem;"></i>
+            <input type="text" id="super-global-search" class="super-search-input" placeholder="Bemor, dori, xona, kod..." style="padding: 6px 10px 6px 28px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-panel); color: var(--text-primary); font-size: 0.8rem; width: 240px;">
+          </div>
+
+          <button class="btn-super btn-super-success" onclick="window.FMH_Super.openPaymentModal()" style="padding: 6px 12px; font-size: 0.78rem;">
+            <i class="fas fa-coins"></i> Kassa To'lovi
+          </button>
+        </div>
+      </div>
+
+      <!-- Department Views Container -->
+      <div class="super-view-container">
+
+        <!-- =====================================================================
+             1. EXECUTIVE BI DASHBOARD
+             ===================================================================== -->
+        <section id="dept-executive" class="super-dept-section active">
+          <!-- 4 Core KPIs -->
+          <div class="kpi-grid-4">
+            <div class="kpi-card">
+              <div class="kpi-card-top">
+                <span class="kpi-label">Statsionar Bandligi</span>
+                <div class="kpi-icon-box" style="background: var(--primary-bg); color: var(--primary);"><i class="fas fa-bed"></i></div>
+              </div>
+              <div class="kpi-val" id="exec-occupied-beds">—</div>
+              <div class="kpi-subtext"><span style="color: var(--success);"><i class="fas fa-arrow-up"></i> Bandlik:</span> <strong id="exec-occupancy-rate" style="color: var(--heading-color);">—</strong></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-top">
+                <span class="kpi-label">Jami Tushum (Kirim)</span>
+                <div class="kpi-icon-box" style="background: var(--success-bg); color: var(--success);"><i class="fas fa-coins"></i></div>
+              </div>
+              <div class="kpi-val" id="exec-gross-revenue" style="color: var(--success); font-size: 1.4rem;">—</div>
+              <div class="kpi-subtext"><span style="color: var(--primary);">Kassa & Billing POS</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-top">
+                <span class="kpi-label">Sof Foyda (Rentabellik)</span>
+                <div class="kpi-icon-box" style="background: var(--purple-bg); color: var(--purple);"><i class="fas fa-wallet"></i></div>
+              </div>
+              <div class="kpi-val" id="exec-net-profit" style="color: var(--purple); font-size: 1.4rem;">—</div>
+              <div class="kpi-subtext"><span style="color: var(--success);">Rentabellik darajasi: 0%</span></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-top">
+                <span class="kpi-label">Dori Vositalari Bazasi</span>
+                <div class="kpi-icon-box" style="background: var(--warning-bg); color: var(--warning);"><i class="fas fa-pills"></i></div>
+              </div>
+              <div class="kpi-val">294 Dori</div>
+              <div class="kpi-subtext"><span style="color: var(--primary);">88 Klinika formulari / 15 guruh</span></div>
+            </div>
+          </div>
+
+          <!-- 9 Department Quick Jump Cards -->
+          <div class="dept-hub-grid">
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('facility')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">🏨 2. Bino & 14 Karavot</div>
+                  <div class="dept-hub-desc">1 va 2-qavat palatalari, 10 kunlik standart kurs, Gantt jadvali</div>
+                </div>
+                <i class="fas fa-bed" style="color: var(--primary); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">14 ta To'shak</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <a href="building_management.html" style="color: var(--text-muted); font-size: 0.72rem; text-decoration: underline;" onclick="event.stopPropagation()">[Alohida CAD &rarr;]</a>
+                  <span style="color: var(--primary); font-size: 0.78rem; font-weight: 700;">O'tish &rarr;</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('accounting')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">💳 3. Buxgalteriya & Kassa</div>
+                  <div class="dept-hub-desc">Statsionar hisob-kitob, kirim/chiqim, shifokorlar gonorari, kvitansiya</div>
+                </div>
+                <i class="fas fa-cash-register" style="color: var(--success); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">POS Terminal</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <a href="accounting.html" style="color: var(--text-muted); font-size: 0.72rem; text-decoration: underline;" onclick="event.stopPropagation()">[Alohida Kassa &rarr;]</a>
+                  <span style="color: var(--success); font-size: 0.78rem; font-weight: 700;">O'tish &rarr;</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('pharmacy')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">💊 4. Farmakologiya</div>
+                  <div class="dept-hub-desc">294 ta dori (88 rasmiy klinika formulari), dozalar, retsept biriktirish</div>
+                </div>
+                <i class="fas fa-pills" style="color: var(--purple); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">294 Dori (88 Klinika)</span>
+                <span style="color: var(--purple); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('reception')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">📋 5. Qabulxona & Resepshn</div>
+                  <div class="dept-hub-desc">Bemorlarni qabul qilish, FMH kodlari berish, navbatlar triaji</div>
+                </div>
+                <i class="fas fa-user-plus" style="color: var(--primary); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">Triaj & Qabul</span>
+                <span style="color: var(--primary); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('doctors')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">🩺 6. Shifokorlar & EMR</div>
+                  <div class="dept-hub-desc">Bosh narkolog, psixiatr, toksikolog va reabilitolog konsultatsiyalari</div>
+                </div>
+                <i class="fas fa-user-md" style="color: var(--success); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">4 ta Shifokor</span>
+                <span style="color: var(--success); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('nursery')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">💉 7. Hamshiralar Posti</div>
+                  <div class="dept-hub-desc">Kapelnitsalar, inyeksiyalar, qon bosimi, puls va harorat monitoringi</div>
+                </div>
+                <i class="fas fa-syringe" style="color: var(--danger); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">Vitals Nazorati</span>
+                <span style="color: var(--danger); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('kitchen')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">🍲 8. Parhez & Oshxona</div>
+                  <div class="dept-hub-desc">Detoksikatsiya parhez taomnomasi va 14 karavotga 3 mahal ovqat</div>
+                </div>
+                <i class="fas fa-utensils" style="color: var(--warning); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">Stol №5 Parhez</span>
+                <span style="color: var(--warning); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('hr')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">👥 9. Kadrlar & Smenalar</div>
+                  <div class="dept-hub-desc">24/7 shifokorlar va navbatchi hamshiralar ish grafigi</div>
+                </div>
+                <i class="fas fa-user-clock" style="color: var(--primary); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">24/7 Navbatchilik</span>
+                <span style="color: var(--primary); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+
+            <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('crm')">
+              <div class="dept-hub-top">
+                <div>
+                  <div class="dept-hub-title">📂 10. Bemorlar CRM</div>
+                  <div class="dept-hub-desc">To'liq kasallik tarixi, davolanish kurslari va anonim qaydnomalar</div>
+                </div>
+                <i class="fas fa-address-book" style="color: var(--purple); font-size: 1.4rem;"></i>
+              </div>
+              <div class="dept-hub-bottom">
+                <span class="dept-hub-stat">EMR Arxiv</span>
+                <span style="color: var(--purple); font-size: 0.78rem;">O'tish &rarr;</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Activity Feed -->
+          <div class="live-feed-card">
+            <div class="feed-title">
+              <span><i class="fas fa-bolt" style="color: var(--warning); margin-right: 6px;"></i> Jonli Operatsion Oqim (Real-Time Clinical Feed)</span>
+              <span style="font-size: 0.75rem; color: var(--success);"><i class="fas fa-circle" style="font-size: 0.55rem;"></i> Tizim Faol</span>
+            </div>
+            <div class="feed-list" id="super-live-feed">
+              <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.88rem;">
+                <i class="fas fa-inbox" style="font-size: 1.6rem; margin-bottom: 8px; opacity: 0.4; display: block;"></i>
+                Hozircha operatsion oqimda faol harakatlar mavjud emas (Baza toza).
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             2. BUILDING & 14 INPATIENT BEDS
+             ===================================================================== -->
+        <section id="dept-facility" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-bed" style="color: #38bdf8;"></i> 14 ta Statsionar Karavotlar Holati</div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn-super btn-super-primary" onclick="window.FMH_Super.openBookingModal()"><i class="fas fa-plus"></i> Yangi Qabul</button>
+                <button class="btn-super btn-super-outline" onclick="window.FMH_Super.exportBedsToExcel()"><i class="fas fa-file-excel"></i> Excelga Yuklash</button>
+                <a href="building_management.html" class="btn-super btn-super-primary" style="background: linear-gradient(135deg, #0284c7, #0ea5e9);"><i class="fas fa-drafting-compass"></i> Alohida Bino CAD Portaliga O'tish &rarr;</a>
+              </div>
+            </div>
+            <!-- Floor Filter Bar -->
+            <div class="super-filter-bar" id="facility-floor-filters">
+              <button class="super-filter-btn active" onclick="window.FMH_Super.switchFacilityFloor('all', this)"><i class="fas fa-hotel"></i> Barchasi (14 O'rin)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('1', this)"><i class="fas fa-layer-group"></i> 1-Qavat (4 O'rin)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('2', this)"><i class="fas fa-building"></i> 2-Qavat (10 O'rin)</button>
+            </div>
+
+            <div class="charming-beds-grid" id="facility-beds-grid">
+              <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             3. ACCOUNTING, BILLING & POS CASHIER
+             ===================================================================== -->
+        <section id="dept-accounting" class="super-dept-section">
+          <div class="kpi-grid-4">
+            <div class="kpi-card">
+              <div class="kpi-card-top"><span class="kpi-label">Jami Kirim</span><i class="fas fa-arrow-down" style="color: var(--success);"></i></div>
+              <div class="kpi-val" id="acct-kpi-kirim" style="color: var(--success); font-size: 1.4rem;">0 so'm</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-card-top"><span class="kpi-label">Jami Chiqim</span><i class="fas fa-arrow-up" style="color: var(--danger);"></i></div>
+              <div class="kpi-val" id="acct-kpi-chiqim" style="color: var(--danger); font-size: 1.4rem;">0 so'm</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-card-top"><span class="kpi-label">Kassa Qoldig'i</span><i class="fas fa-vault" style="color: var(--primary);"></i></div>
+              <div class="kpi-val" id="acct-kpi-balance" style="color: var(--primary); font-size: 1.4rem;">0 so'm</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-card-top"><span class="kpi-label">Kutilayotgan Qoldiq</span><i class="fas fa-clock" style="color: var(--warning);"></i></div>
+              <div class="kpi-val" id="acct-kpi-pending" style="color: var(--warning); font-size: 1.4rem;">0 so'm</div>
+            </div>
+          </div>
+
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-cash-register" style="color: var(--success);"></i> Kassa & Tranzaksiyalar Jurnali</div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn-super btn-super-success" onclick="window.FMH_Super.openPaymentModal()"><i class="fas fa-plus"></i> Yangi To'lov Qabul Qilish</button>
+                <a href="accounting.html" class="btn-super btn-super-primary" style="background: linear-gradient(135deg, #059669, #10b981);"><i class="fas fa-wallet"></i> Alohida Buxgalteriya Portaliga O'tish &rarr;</a>
+              </div>
+            </div>
+
+            <!-- Filter tabs -->
+            <div class="super-filter-bar" id="accounting-type-filters">
+              <button class="super-filter-btn active" onclick="window.FMH_Super.filterTransactions('all', this)">Barchasi</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterTransactions('kirim', this)">Kirim (+)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterTransactions('chiqim', this)">Chiqim (-)</button>
+            </div>
+
+            <div class="super-table-wrapper">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Tranzaksiya ID</th>
+                    <th>Sana & Vaqt</th>
+                    <th>Turi</th>
+                    <th>Kategoriya</th>
+                    <th>Bemor / Kontragent</th>
+                    <th>Summa</th>
+                    <th>To'lov Usuli</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="accounting-transactions-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Inpatient Billing Calculator Table -->
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-calculator" style="color: var(--primary);"></i> Statsionar Bemorlar Billing Hisob-Kitobi (Avtomat Kalkulyator)</div>
+              <span class="pill-status pill-available">14 Karavot Jonli Balansi</span>
+            </div>
+            <div class="super-table-wrapper">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Palata / Karavot</th>
+                    <th>Bemor F.I.Sh.</th>
+                    <th>Klinik Kod</th>
+                    <th>Tarif / Dastur</th>
+                    <th>Kunlik Narx</th>
+                    <th>Muddat</th>
+                    <th>Jami Hisob</th>
+                    <th>To'langan</th>
+                    <th>Qoldiq Qarz</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="accounting-inpatient-billing-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             4. PHARMACOLOGY & 206 DRUGS
+             ===================================================================== -->
+        <section id="dept-pharmacy" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-pills" style="color: var(--purple);"></i> Farmakologik Dorilar Katalogi (294 Dori / 88 Klinika Formulari)</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">15 ta Klinik Toifa • Retsept Dvigateli</div>
+            </div>
+
+            <!-- Category Filter Bar -->
+            <div class="super-filter-bar" id="pharmacy-category-filters">
+              <button class="super-filter-btn active" onclick="window.FMH_Super.filterPharmacyCategory('all', this)">Barchasi (294)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Narkologik & Detoks', this)">Narkologiya & Detoks</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Gepatoprotektorlar', this)">Gepatoprotektorlar</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Sedativ & Nooproplar', this)">Sedativ & Nooproplar</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Infuzion eritmalar', this)">Infuzion Eritmalar</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Vitaminlar & Minerallar', this)">Vitaminlar</button>
+            </div>
+
+            <div id="pharmacy-drugs-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             5. RECEPTION & INTAKE
+             ===================================================================== -->
+        <section id="dept-reception" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-user-plus" style="color: var(--primary);"></i> Bemorlarni Ro'yxatga Olish & Navbat</div>
+              <button class="btn-super btn-super-primary" onclick="window.FMH_Super.openBookingModal()"><i class="fas fa-plus"></i> Yangi Bemor Qabuli</button>
+            </div>
+            <div class="super-table-wrapper">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Klinik Kod</th>
+                    <th>Bemor F.I.Sh. / Tel</th>
+                    <th>Biriktirilgan Karavot</th>
+                    <th>Davolash Dasturi</th>
+                    <th>Mas'ul Shifokor</th>
+                    <th>Muddat</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="reception-queue-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             6. DOCTORS & EMR
+             ===================================================================== -->
+        <section id="dept-doctors" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-user-md" style="color: var(--doctor-cyan-light, #22d3ee);"></i> Shifokorlar Nazoratidagi Bemorlar (EMR)</div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <a href="doctor.html?action=new_consultation" class="btn-super btn-super-success" style="background: linear-gradient(135deg, #10b981, #059669); text-decoration: none;">
+                  <i class="fas fa-file-medical"></i> + Yangi Konsultatsiya & Varaqa
+                </a>
+                <a href="doctor.html" class="btn-super btn-super-primary" style="background: linear-gradient(135deg, #0284c7, #06b6d4); text-decoration: none;">
+                  <i class="fas fa-stethoscope"></i> Shifokor Posti &rarr;
+                </a>
+              </div>
+            </div>
+            <div id="doctors-patient-cards" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem;">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             7. NURSERY & VITALS POST
+             ===================================================================== -->
+        <section id="dept-nursery" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-syringe" style="color: var(--danger);"></i> Hamshiralar Posti - Hayotiy Ko'rsatkichlar (Vital Signs)</div>
+              <button class="btn-super btn-super-danger" onclick="window.FMH_Super.openVitalsModal()"><i class="fas fa-heartbeat"></i> Ko'rsatkich Qayd Etish</button>
+            </div>
+            <div class="super-table-wrapper">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Palata / Karavot</th>
+                    <th>Bemor F.I.Sh.</th>
+                    <th>Qon Bosimi (BP)</th>
+                    <th>Puls</th>
+                    <th>Harorat</th>
+                    <th>SpO2</th>
+                    <th>Holati</th>
+                    <th>So'nggi O'lchov</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="nursery-vitals-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             8. DIETARY & KITCHEN
+             ===================================================================== -->
+        <section id="dept-kitchen" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-utensils" style="color: var(--warning);"></i> Klinik Parhez va Bemorlar Taomnomasi</div>
+              <span class="pill-status pill-occupied">Bugun: 3 Mahal Issiq Ovqat</span>
+            </div>
+            <div class="super-table-wrapper">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Palata / Karavot</th>
+                    <th>Bemor F.I.Sh.</th>
+                    <th>Parhez Turi</th>
+                    <th>Ertalabki Nonushta (08:30)</th>
+                    <th>Tushlik (13:00)</th>
+                    <th>Kechki Ovqat (18:30)</th>
+                    <th>Holati</th>
+                  </tr>
+                </thead>
+                <tbody id="kitchen-dietary-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             9. HR, SHIFTS & ROSTER
+             ===================================================================== -->
+        <section id="dept-hr" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-user-clock" style="color: var(--primary);"></i> 24/7 Shifokorlar va Hamshiralar Navbatchilik Jadvali</div>
+              <a href="hr.html" class="btn-super btn-super-primary"><i class="fas fa-users-cog"></i> HR Portali & Maoshlar &rarr;</a>
+            </div>
+            <div id="hr-staff-cards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- =====================================================================
+             10. PATIENT CRM & CLINICAL ARCHIVE
+             ===================================================================== -->
+        <section id="dept-crm" class="super-dept-section">
+          <div class="super-card">
+            <div class="super-card-header">
+              <div class="super-card-title"><i class="fas fa-address-book" style="color: var(--purple);"></i> Bemorlar CRM & Kasallik Tarixi Arxivi</div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="crm-search-input" class="super-input" placeholder="Bemor ismi, kodi yoki telefoni..." style="max-width: 260px;" oninput="window.FMH_Super.searchCRM(this.value)">
+                <a href="crm.html" class="btn-super btn-super-primary" style="background: linear-gradient(135deg, #be123c, #f43f5e); text-decoration: none;">
+                  <i class="fas fa-external-link-alt"></i> CRM Portaliga O'tish &rarr;
+                </a>
+              </div>
+            </div>
+            <div class="super-table-wrapper">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Klinik Kod</th>
+                    <th>Bemor F.I.Sh.</th>
+                    <th>Telefon</th>
+                    <th>Tashxis / Xizmat</th>
+                    <th>Shifokor</th>
+                    <th>So'nggi Tashrif</th>
+                    <th>Holati</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="crm-patients-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 1: UNIVERSAL PATIENT INTAKE & BED BOOKING MODAL
+       ========================================================================= -->
+  <div class="super-modal-backdrop" id="super-booking-modal">
+    <div class="super-modal-box">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title" id="modal-booking-title"><i class="fas fa-user-plus" style="color: var(--primary);"></i> Yangi Bemor Qabuli & Bron (Standart 10 kun)</h3>
+        <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
+      </div>
+      <form id="super-booking-form" onsubmit="window.FMH_Super.handleBookingSubmit(event)">
+        <div class="super-modal-body">
+          <input type="hidden" id="modal-booking-id">
+          
+          <div class="super-form-grid">
+            <div>
+              <label class="super-form-label">Bemor F.I.Sh. *</label>
+              <input type="text" id="modal-patient-name" class="super-input" placeholder="Familiya Ism Sharif" required>
+            </div>
+            <div>
+              <label class="super-form-label">Telefon Raqami *</label>
+              <input type="tel" id="modal-patient-phone" class="super-input" placeholder="+998 90 123-45-67" required>
+            </div>
+
+            <div>
+              <label class="super-form-label">Biriktiriladigan Karavot *</label>
+              <select id="modal-bed-select" class="super-select" required></select>
+            </div>
+
+            <div>
+              <label class="super-form-label">Klinik Kod</label>
+              <input type="text" id="modal-patient-code" class="super-input" readonly style="font-family: var(--font-mono); color: var(--primary); font-weight: 700;">
+            </div>
+
+            <div class="super-form-full" style="background: var(--bg-hover); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <span style="font-size: 0.74rem; color: var(--text-muted); margin-right: 8px;">Kurs Davomiyligi:</span>
+              <button type="button" class="super-preset-pill active" onclick="window.FMH_Super.applyDurationPreset(10)">★ 10 kun (Standart)</button>
+              <button type="button" class="super-preset-pill" onclick="window.FMH_Super.applyDurationPreset(3)">3 kun</button>
+              <button type="button" class="super-preset-pill" onclick="window.FMH_Super.applyDurationPreset(5)">5 kun</button>
+              <button type="button" class="super-preset-pill" onclick="window.FMH_Super.applyDurationPreset(7)">7 kun</button>
+              <button type="button" class="super-preset-pill" onclick="window.FMH_Super.applyDurationPreset(14)">14 kun</button>
+              <button type="button" class="super-preset-pill" onclick="window.FMH_Super.applyDurationPreset(21)">21 kun</button>
+            </div>
+
+            <div class="super-form-full">
+              <label class="super-form-label">Xona / Karavot Band Qilish Turi & Narxi *</label>
+              <select id="modal-program-select" class="super-select">
+                <option value="Statsionar (1 karavot / 720 ming)" selected>🏥 Statsionar (1 karavot) — 720 000 so'm / kun</option>
+                <option value="Statsionar Butun Xona (1 kishi / VIP Solo 1.1 mln)">👑 Statsionar Butun Xona (1 kishi / VIP Solo) — 1 100 000 so'm / kun (2-karavot qulflanadi)</option>
+                <option value="Kunlik Statsionar (Kunduzgi o'rin 630 ming)">☀️ Kunlik Statsionar (Faqat kunduzgi o'rin) — 630 000 so'm / kun</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="super-form-label">Mas'ul Shifokor *</label>
+              <select id="modal-doctor-select" class="super-select">
+                <option value="">— Shifokor biriktirilmagan —</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="super-form-label">Kirish Sanasi *</label>
+              <input type="date" id="modal-start-date" class="super-input" required>
+            </div>
+
+            <div>
+              <label class="super-form-label">Chiqish Sanasi *</label>
+              <input type="date" id="modal-end-date" class="super-input" required>
+            </div>
+
+            <div class="super-form-full">
+              <label class="super-form-label">Qo'shimcha Tibbiy Izohlar</label>
+              <textarea id="modal-booking-notes" class="super-textarea" rows="2" placeholder="Detoks rejasi, dori allergiyalari..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="super-modal-footer">
+          <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Bekor Qilish</button>
+          <button type="button" class="btn-super" id="btn-modal-delete-booking" style="background: var(--danger-bg); color: var(--danger-text); display: none;" onclick="window.FMH_Super.deleteCurrentBooking()"><i class="fas fa-trash"></i> O'chirish</button>
+          <button type="submit" class="btn-super btn-super-primary"><i class="fas fa-save"></i> <span id="btn-modal-submit-text">Saqlash & Biriktirish</span></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 2: CASHIER & PAYMENT INTAKE MODAL
+       ========================================================================= -->
+  <div class="super-modal-backdrop" id="super-payment-modal">
+    <div class="super-modal-box">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title"><i class="fas fa-cash-register" style="color: var(--success);"></i> Kassa To'lovini Qabul Qilish</h3>
+        <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
+      </div>
+      <form id="super-payment-form" onsubmit="window.FMH_Super.handlePaymentSubmit(event)">
+        <div class="super-modal-body">
+          <div class="super-form-grid">
+            <div>
+              <label class="super-form-label">Operatsiya Turi *</label>
+              <select id="payment-type" class="super-select">
+                <option value="kirim" selected>🟢 Kirim (Klinikaga tushum)</option>
+                <option value="chiqim">🔴 Chiqim (Xarajat / Chiqarish)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="super-form-label">To'lov Kategoriyasi *</label>
+              <select id="payment-category" class="super-select">
+                <option value="Statsionar To'lov" selected>Statsionar To'lov (Palata & Muolaja)</option>
+                <option value="VIP Solo Xona">VIP Solo Xona To'lovi</option>
+                <option value="Dorixona Xaridi">Dorixona & Farmatsevtika</option>
+                <option value="Shifokor Konsultatsiyasi">Shifokor Konsultatsiyasi</option>
+                <option value="Oshxona & Parhez">Oshxona Xarajatlari</option>
+                <option value="Oylik Maoshlar">Xodimlar Maoshi</option>
+              </select>
+            </div>
+
+            <div class="super-form-full">
+              <label class="super-form-label">Bemor yoki Kontragent Nomi *</label>
+              <input type="text" id="payment-patient-name" class="super-input" placeholder="Bemor F.I.Sh. yoki Kompaniya nomi" required>
+            </div>
+
+            <div>
+              <label class="super-form-label">Summa (so'mda) *</label>
+              <input type="number" id="payment-amount" class="super-input" placeholder="7200000" required style="font-family: var(--font-mono); font-size: 1.1rem; color: var(--success); font-weight: 700;">
+            </div>
+
+            <div>
+              <label class="super-form-label">To'lov Usuli *</label>
+              <select id="payment-method" class="super-select">
+                <option value="UzCard / Humo" selected>UzCard / Humo (Terminal)</option>
+                <option value="Naqd Pul">Naqd Pul (Kassa)</option>
+                <option value="Click / Payme">Click / Payme (QR)</option>
+                <option value="Visa / MasterCard">Visa / MasterCard</option>
+                <option value="Bank O'tkazmasi">Bank O'tkazmasi (Hisob raqam)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="super-modal-footer">
+          <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Bekor Qilish</button>
+          <button type="submit" class="btn-super btn-super-success"><i class="fas fa-check-circle"></i> To'lovni Qabul Qilish & Kvitansiya</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 3: OFFICIAL PRINTABLE RECEIPT / INVOICE MODAL
+       ========================================================================= -->
+  <div class="super-modal-backdrop" id="super-receipt-modal">
+    <div class="super-modal-box" style="max-width: 620px;">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title"><i class="fas fa-receipt" style="color: var(--primary);"></i> Rasmiy Klinik Kvitansiya (Invoice)</h3> fa-receipt" style="color: #38bdf8;"></i> Rasmiy Klinik Kvitansiya (Invoice)</h3>
+        <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
+      </div>
+      <div class="super-modal-body" style="background: #f1f5f9; padding: 1.5rem;">
+        <div class="receipt-paper" id="printable-receipt-area">
+          <div class="receipt-header">
+            <div class="receipt-clinic-name">FAYZ MEDICAL HOUSE</div>
+            <div class="receipt-clinic-sub">Ixtisoslashtirilgan Narkologiya va Reabilitatsiya Klinikasi</div>
+            <div style="font-size: 0.72rem; color: #64748b;">Toshkent sh., Yunusobod tumani, Nurmakon ko'chasi, 2A • Tel: +998 90 372-03-03</div>
+          </div>
+
+          <div class="receipt-row">
+            <span><strong>Kvitansiya №:</strong> <span id="rc-id">TX-000</span></span>
+            <span><strong>Sana:</strong> <span id="rc-date">—</span></span>
+          </div>
+          <div class="receipt-row">
+            <span><strong>Bemor:</strong> <span id="rc-patient">—</span></span>
+            <span><strong>Kassa:</strong> Bosh Kassa №1</span>
+          </div>
+
+          <div class="receipt-divider"></div>
+
+          <div class="receipt-row">
+            <span>Statsionar Xizmat (10 kunlik standart kurs)</span>
+            <span style="font-weight: 700;" id="rc-service-sum">0 so'm</span>
+          </div>
+          <div class="receipt-row" style="color: #64748b; font-size: 0.76rem;">
+            <span>Parhez ovqatlanish, dori vositalari, 24/7 tibbiy nazorat</span>
+            <span>Kiritilgan</span>
+          </div>
+
+          <div class="receipt-divider"></div>
+
+          <div class="receipt-total-box">
+            <div>
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Jami To'landi</div>
+              <div style="font-size: 0.78rem; color: #0284c7;" id="rc-method">—</div>
+            </div>
+            <div style="font-size: 1.35rem; font-weight: 900; color: #059669;" id="rc-amount">0 so'm</div>
+          </div>
+
+          <div style="margin-top: 1.25rem; display: flex; justify-content: space-between; align-items: flex-end; font-size: 0.72rem; color: #64748b;">
+            <div>
+              <div>Kassir: Buxgalteriya</div>
+              <div>Holati: <strong>TO'LANDI (Muvaffaqiyatli)</strong></div>
+            </div>
+            <div style="text-align: right;">
+              <div style="border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.65rem;">QR-VERIFY: OK</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="super-modal-footer">
+        <button class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Yopish</button>
+        <button class="btn-super btn-super-primary" onclick="window.print()"><i class="fas fa-print"></i> Kvitansiyani Chop Etish (Print)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 4: NURSERY VITALS LOG MODAL
+       ========================================================================= -->
+  <div class="super-modal-backdrop" id="super-vitals-modal">
+    <div class="super-modal-box">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title"><i class="fas fa-heartbeat" style="color: #fb7185;"></i> Hayotiy Ko'rsatkichlarni Qayd Qilish</h3>
+        <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
+      </div>
+      <form id="super-vitals-form" onsubmit="window.FMH_Super.handleVitalsSubmit(event)">
+        <div class="super-modal-body">
+          <div class="super-form-grid">
+            <div class="super-form-full">
+              <label class="super-form-label">Palata & Bemor *</label>
+              <select id="vitals-bed-select" class="super-select" required></select>
+            </div>
+
+            <div>
+              <label class="super-form-label">Qon Bosimi (mm Hg) *</label>
+              <input type="text" id="vitals-bp" class="super-input" placeholder="120/80" required>
+            </div>
+
+            <div>
+              <label class="super-form-label">Puls (ur/min) *</label>
+              <input type="number" id="vitals-pulse" class="super-input" placeholder="75" required>
+            </div>
+
+            <div>
+              <label class="super-form-label">Tana Harorati (°C) *</label>
+              <input type="text" id="vitals-temp" class="super-input" placeholder="36.6" required>
+            </div>
+
+            <div>
+              <label class="super-form-label">Kislorod Saturatsiyasi (SpO2 %) *</label>
+              <input type="text" id="vitals-spo2" class="super-input" placeholder="98%" required>
+            </div>
+          </div>
+        </div>
+        <div class="super-modal-footer">
+          <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Bekor Qilish</button>
+          <button type="submit" class="btn-super btn-super-primary"><i class="fas fa-save"></i> Saqlash</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 5: ROLE SWITCHER (RBAC DEMO & MULTI-USER SIMULATION)
+       ========================================================================= -->
+  <div class="super-modal-backdrop" id="super-role-switcher-modal">
+    <div class="super-modal-box" style="max-width: 540px;">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title"><i class="fas fa-users-cog" style="color: var(--primary);"></i> Tizimga Kirish / Rolni Tanlash (RBAC)</h3>
+        <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
+      </div>
+      <div class="super-modal-body">
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Platforma to'liq ko'p foydalanuvchili arxitekturada ishlaydi. Quyidagi rollardan birini tanlang:
+        </p>
+
+        <div id="role-switcher-cards-list">
+          <div class="role-switcher-card" onclick="window.FMH_Super.switchRole('superadmin')">
+            <div class="role-switcher-icon">👑</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; color: #fbbf24; font-size: 0.95rem;">Superadmin (Bosh Boshqaruvchi)</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Barcha 10 ta bo'lim, narxlarni o'zgartirish, xodimlar olish/bo'shatish, xonalar ulash/uzish</div>
+            </div>
+            <span class="pill-status pill-available">Mutlaq Huquq</span>
+          </div>
+
+          <div class="role-switcher-card" onclick="window.FMH_Super.switchRole('doctor')">
+            <div class="role-switcher-icon">🩺</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; color: var(--success); font-size: 0.95rem;">Shifokor (Doctor EMR)</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Shifokorlar xonasi, EMR, Bemorlar CRM, Retseptlar, Farmakologiya</div>
+            </div>
+            <span class="pill-status pill-occupied">Klinik</span>
+          </div>
+
+          <div class="role-switcher-card" onclick="window.FMH_Super.switchRole('nurse')">
+            <div class="role-switcher-icon">💉</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; color: var(--danger); font-size: 0.95rem;">Hamshira (Nurse Station)</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Hamshiralar posti, Hayotiy ko'rsatkichlar (vitals), Muolajalar, Oshxona</div>
+            </div>
+            <span class="pill-status pill-occupied">Post</span>
+          </div>
+
+          <div class="role-switcher-card" onclick="window.FMH_Super.switchRole('accountant')">
+            <div class="role-switcher-icon">💳</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; color: var(--primary); font-size: 0.95rem;">Buxgalter / Kassir (POS)</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Buxgalteriya, Kassa jurnali, To'lovlar, Kvitansiyalar (Narxlarni ko'rish)</div>
+            </div>
+            <span class="pill-status pill-available">Moliya</span>
+          </div>
+
+          <div class="role-switcher-card" onclick="window.FMH_Super.switchRole('reception')">
+            <div class="role-switcher-icon">📋</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; color: var(--purple); font-size: 0.95rem;">Qabulxona (Receptionist)</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Qabulxona, Bemorlarni ro'yxatga olish, Qo'ng'iroqlar, Karavot band qilish</div>
+            </div>
+            <span class="pill-status pill-purple">Qabul</span>
+          </div>
+        </div>
+      </div>
+      <div class="super-modal-footer">
+        <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 6: SUPERADMIN ELASTIC CONTROL CENTER (COMMAND HUB)
+       ========================================================================= -->
+  <div class="super-modal-backdrop" id="super-admin-modal">
+    <div class="super-modal-box superadmin-modal-box">
+      <div class="super-modal-header" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(6, 19, 37, 0.9));">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="font-size: 1.5rem;">👑</div>
+          <div>
+            <h3 class="super-modal-title" style="color: #fbbf24;">Superadmin Boshqaruv Markazi (Elastic Command Center)</h3>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Kodga kirmasdan narxlar, xonalar, karavotlar, xodimlar va foydalanuvchilarni elastik boshqarish</div>
+          </div>
+        </div>
+        <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="superadmin-tabs-nav">
+        <button type="button" class="superadmin-tab-btn active" data-admin-tab="pricing" onclick="window.FMH_Super.switchAdminTab('pricing', this)">
+          <i class="fas fa-tags"></i> <span>1. Narxlar & Tariflar</span>
+        </button>
+        <button type="button" class="superadmin-tab-btn" data-admin-tab="rooms" onclick="window.FMH_Super.switchAdminTab('rooms', this)">
+          <i class="fas fa-hotel"></i> <span>2. Xonalar & Karavotlar</span>
+        </button>
+        <button type="button" class="superadmin-tab-btn" data-admin-tab="staff" onclick="window.FMH_Super.switchAdminTab('staff', this)">
+          <i class="fas fa-user-plus"></i> <span>3. Kadrlar: Olish & Bo'shatish</span>
+        </button>
+        <button type="button" class="superadmin-tab-btn" data-admin-tab="users" onclick="window.FMH_Super.switchAdminTab('users', this)">
+          <i class="fas fa-key"></i> <span>4. Foydalanuvchilar & RBAC</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: ELASTIC PRICING -->
+      <div class="superadmin-tab-content active" id="admin-tab-pricing">
+        <div class="elastic-grid-2">
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-bed" style="color: #fbbf24;"></i> Statsionar va Qabul Tariflari (Kunlik / so'm)</div>
+            <form id="admin-pricing-form" onsubmit="window.FMH_Super.savePricingSettings(event)">
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div>
+                  <label class="super-form-label">Statsionar Standart (2 kishilik xonada 1 karavot) *</label>
+                  <input type="number" id="price-standard-shared" class="super-input" required>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 720 000 so'm / kun (10 kunlik kurs: 7 200 000)</small>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Statsionar Butun Xona (VIP Solo / 1 kishi) *</label>
+                  <input type="number" id="price-vip-solo" class="super-input" required>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 1 100 000 so'm / kun (2-karavot to'liq yopiladi)</small>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Kunlik Statsionar (Kunduzgi o'rin) *</label>
+                  <input type="number" id="price-daycare" class="super-input" required>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 630 000 so'm / kun</small>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Ambulator (Kuniga 1 mahal muolaja) *</label>
+                  <input type="number" id="price-ambulator-1" class="super-input" required>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 310 000 so'm / kun</small>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Ambulator (Kuniga 2 mahal muolaja) *</label>
+                  <input type="number" id="price-ambulator-2" class="super-input" required>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 500 000 so'm / kun</small>
+                </div>
+
+                <button type="submit" class="btn-super btn-super-success" style="margin-top: 8px;">
+                  <i class="fas fa-save"></i> Yangi Narxlarni Barcha Bo'limlarga Saqlash
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="elastic-box">
+            <div class="elastic-box-title" style="display: flex; justify-content: space-between;">
+              <span><i class="fas fa-plus-circle" style="color: var(--primary);"></i> Qo'shimcha Muolajalar Katalogi</span>
+              <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="window.FMH_Super.promptAddService()">+ Yangi Xizmat</button>
+            </div>
+            <div class="super-table-wrapper" style="max-height: 380px;">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Xizmat Nomi</th>
+                    <th>Toifasi</th>
+                    <th>Narxi</th>
+                    <th>Amal</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-services-table-body">
+                  <!-- Populated dynamically via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ROOMS & BEDS INFRASTRUCTURE -->
+      <div class="superadmin-tab-content" id="admin-tab-rooms">
+        <div class="elastic-grid-2">
+          <!-- Create Room & Attach Bed -->
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-plus-circle" style="color: var(--success);"></i> Yangi Xona / Karavot Qo'shish</div>
+            
+            <h5 style="margin: 6px 0; color: var(--primary);">A. Yangi Xona Yaratish</h5>
+            <form id="admin-add-room-form" onsubmit="window.FMH_Super.handleAddRoom(event)" style="margin-bottom: 1.25rem;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label class="super-form-label">Qavat *</label>
+                  <select id="new-room-floor" class="super-select">
+                    <option value="1">1-Qavat</option>
+                    <option value="2">2-Qavat</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="super-form-label">Xona Raqami *</label>
+                  <input type="text" id="new-room-number" class="super-input" placeholder="13, 26, VIP..." required>
+                </div>
+              </div>
+              <div style="margin-top: 6px;">
+                <label class="super-form-label">Xona Turi *</label>
+                <select id="new-room-type" class="super-select">
+                  <option value="stationary">Statsionar Palata</option>
+                  <option value="vip">VIP Solo Palata</option>
+                  <option value="consultation">Shifokor Konsultatsiyasi</option>
+                </select>
+              </div>
+              <button type="submit" class="btn-super btn-super-primary" style="margin-top: 8px; width: 100%;">
+                <i class="fas fa-plus"></i> Xonani Tizimga Qo'shish
+              </button>
+            </form>
+
+            <h5 style="margin: 6px 0; color: #fbbf24; border-top: 1px solid var(--border-color); padding-top: 8px;">B. Xonaga Karavot Biriktirish (Attach Bed)</h5>
+            <form id="admin-attach-bed-form" onsubmit="window.FMH_Super.handleAttachBed(event)">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label class="super-form-label">Xona *</label>
+                  <select id="attach-bed-room-select" class="super-select" required></select>
+                </div>
+                <div>
+                  <label class="super-form-label">Karavot Kodi *</label>
+                  <input type="text" id="attach-bed-code" class="super-input" placeholder="BED-13A..." required>
+                </div>
+              </div>
+              <div style="margin-top: 6px;">
+                <label class="super-form-label">Kunlik Narxi (so'm)</label>
+                <input type="number" id="attach-bed-rate" class="super-input" value="720000">
+              </div>
+              <button type="submit" class="btn-super btn-super-success" style="margin-top: 8px; width: 100%;">
+                <i class="fas fa-link"></i> Karavotni Biriktirish (Attach Bed)
+              </button>
+            </form>
+          </div>
+
+          <!-- Existing Rooms and Beds list -->
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-list" style="color: var(--primary);"></i> Mavjud Xonalar va O'rinlar Ro'yxati</div>
+            <div class="super-table-wrapper" style="max-height: 480px;">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Qavat</th>
+                    <th>Xona</th>
+                    <th>Karavotlar</th>
+                    <th>Amal</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-rooms-table-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: STAFF MANAGEMENT (HIRE / FIRE) -->
+      <div class="superadmin-tab-content" id="admin-tab-staff">
+        <div class="elastic-grid-2">
+          <!-- Hire Staff Form -->
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-user-plus" style="color: var(--success);"></i> Yangi Xodimni Ishga Qabul Qilish (Hire)</div>
+            <form id="admin-hire-staff-form" onsubmit="window.FMH_Super.handleHireStaff(event)">
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div>
+                  <label class="super-form-label">F.I.Sh (To'liq ismi) *</label>
+                  <input type="text" id="hire-staff-name" class="super-input" placeholder="Dr. Rahim Karimov..." required>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div>
+                    <label class="super-form-label">Lavozimi *</label>
+                    <select id="hire-staff-role" class="super-select">
+                      <option value="doctor">Shifokor-Narkolog</option>
+                      <option value="chief_doctor">Bosh Shifokor</option>
+                      <option value="nurse">Navbatchi Hamshira</option>
+                      <option value="accountant">Buxgalter / Kassir</option>
+                      <option value="receptionist">Qabulxona Ma'muri</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="super-form-label">Mutaxassisligi *</label>
+                    <input type="text" id="hire-staff-specialty" class="super-input" placeholder="Narkolog-Psixiatr..." required>
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div>
+                    <label class="super-form-label">Telefon Raqami *</label>
+                    <input type="text" id="hire-staff-phone" class="super-input" placeholder="+998 90 ..." required>
+                  </div>
+                  <div>
+                    <label class="super-form-label">Oylik Maoshi (so'm)</label>
+                    <input type="number" id="hire-staff-salary" class="super-input" value="10000000">
+                  </div>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Smena Turi *</label>
+                  <select id="hire-staff-shift" class="super-select">
+                    <option value="day">Kunduzgi (08:00 - 17:00)</option>
+                    <option value="night">Tungi (20:00 - 08:00)</option>
+                    <option value="24h">24/7 Sutkalik</option>
+                    <option value="rotating">Navbatma-navbat</option>
+                  </select>
+                </div>
+
+                <button type="submit" class="btn-super btn-super-success" style="margin-top: 8px;">
+                  <i class="fas fa-check-circle"></i> Xodimni Ishga Qabul Qilish (Rasmiylashtirish)
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Active Staff Roster with Fire Button -->
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-users" style="color: var(--primary);"></i> Faol Xodimlar va Shifokorlar Ro'yxati</div>
+            <div class="super-table-wrapper" style="max-height: 480px;">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>F.I.Sh</th>
+                    <th>Lavozim</th>
+                    <th>Mutaxassislik</th>
+                    <th>Oylik</th>
+                    <th>Amal</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-staff-table-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: USER ACCOUNTS & RBAC PERMISSIONS -->
+      <div class="superadmin-tab-content" id="admin-tab-users">
+        <div class="elastic-grid-2">
+          <!-- Register User Form -->
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-user-shield" style="color: #fbbf24;"></i> Yangi Foydalanuvchi Ro'yxatdan O'tkazish</div>
+            <form id="admin-create-user-form" onsubmit="window.FMH_Super.handleCreateUser(event)">
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div>
+                  <label class="super-form-label">Login (Username) *</label>
+                  <input type="text" id="reg-username" class="super-input" placeholder="sanjar_doc..." required>
+                </div>
+
+                <div>
+                  <label class="super-form-label">F.I.Sh (To'liq ismi) *</label>
+                  <input type="text" id="reg-fullname" class="super-input" placeholder="Sanjar Karimov..." required>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div>
+                    <label class="super-form-label">Parol *</label>
+                    <input type="password" id="reg-password" class="super-input" placeholder="••••••••" required>
+                  </div>
+                  <div>
+                    <label class="super-form-label">Tizimdagi Roli *</label>
+                    <select id="reg-role" class="super-select">
+                      <option value="doctor">Shifokor (Doctor)</option>
+                      <option value="nurse">Hamshira (Nurse)</option>
+                      <option value="accountant">Buxgalter (Accountant)</option>
+                      <option value="receptionist">Qabulxona (Reception)</option>
+                      <option value="superadmin">Superadmin (Mutlaq huquq)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Telefon Raqami</label>
+                  <input type="text" id="reg-phone" class="super-input" placeholder="+998 90 ...">
+                </div>
+
+                <button type="submit" class="btn-super btn-super-primary" style="margin-top: 8px;">
+                  <i class="fas fa-user-plus"></i> Foydalanuvchini Saqlash
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Registered Users List -->
+          <div class="elastic-box">
+            <div class="elastic-box-title"><i class="fas fa-id-badge" style="color: var(--primary);"></i> Ro'yxatdan O'tgan Foydalanuvchilar</div>
+            <div class="super-table-wrapper" style="max-height: 480px;">
+              <table class="super-table">
+                <thead>
+                  <tr>
+                    <th>Login</th>
+                    <th>Ism</th>
+                    <th>Rol</th>
+                    <th>Amal</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-table-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="super-modal-footer">
+        <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/xlsx.full.min.js"></script>
+    <script src="js/unified_print_engine.js?v=5.0"></script>
+<script src="js/superpage.js?v=7.1"></script>
+  <div id="print-area"></div>
+</body>
+</html>

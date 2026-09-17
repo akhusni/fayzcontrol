@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qabulxona & Bemorlarni Ro'yxatga Olish | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House qabulxona portali — bemor qabuli, shifokorlar jadvali, qo'ng'iroqlar CRM va bemorlar ro'yxati.">
+
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="css/reception.css?v=9.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.0"></script>
+</head>
+<body class="reception-portal">
+
+  <!-- Print Area (hidden, only visible during print) -->
+  <div id="print-area"></div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 3-ZONE GRID)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception active" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <a href="medical_blank.html" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-print"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" onclick="window.FMH_Reception.switchTab('intake')">
+          <i class="fas fa-plus-circle"></i> <span>Yangi Qabul</span>
+        </button>
+
+        <button id="reception-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_Reception.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CONTAINER
+       ========================================================================== -->
+  <main class="portal-container">
+
+    <!-- Quick Stats Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+      <div class="portal-center-chips" style="display: flex; gap: 0.5rem;">
+        <div class="header-stat-chip" title="Ayni vaqtdagi real bo'sh karavotlar (kelajakdagi bronlar hisoblanmaydi)">
+          <i class="fas fa-bed" style="color: var(--emerald);"></i>
+          <span>Real Bo'sh:</span>
+          <span class="val" id="chip-beds-available">—</span>
+        </div>
+        <div class="header-stat-chip" title="Bugungi yozilganlar">
+          <i class="fas fa-calendar-check" style="color: var(--primary);"></i>
+          <span>Bugun:</span>
+          <span class="val" id="chip-today-apts">—</span>
+        </div>
+        <div class="header-stat-chip" title="Yangi qo'ng'iroqlar">
+          <i class="fas fa-phone-alt" style="color: var(--warning);"></i>
+          <span>Yangi lid:</span>
+          <span class="val" id="chip-new-calls">—</span>
+        </div>
+      </div>
+
+      <div style="font-size: 0.8rem; color: #2dd4bf; font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2dd4bf;"></span>
+        <span>Qabulxona & Birlamchi Triaj: 24/7 Navbatchilikda</span>
+      </div>
+    </div>
+
+    <!-- KPI SUMMARY ROW -->
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-emerald">
+        <div class="kpi-icon"><i class="fas fa-bed"></i></div>
+        <div>
+          <div class="kpi-label">Ayni Vaqtda Bo'sh</div>
+          <div class="kpi-value" id="kpi-beds-available">—</div>
+          <div class="kpi-sub">Hozir 14 tadan (Real-vaqt)</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-rose">
+        <div class="kpi-icon"><i class="fas fa-user-injured"></i></div>
+        <div>
+          <div class="kpi-label">Hozirgi Band O'rinlar</div>
+          <div class="kpi-value" id="kpi-beds-occupied">—</div>
+          <div class="kpi-sub">Statsionarda yotganlar</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-teal">
+        <div class="kpi-icon"><i class="fas fa-calendar-check"></i></div>
+        <div>
+          <div class="kpi-label">Bugun Yozilganlar</div>
+          <div class="kpi-value" id="kpi-today-apts">—</div>
+          <div class="kpi-sub">Shifokor kabineti</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-amber">
+        <div class="kpi-icon"><i class="fas fa-phone-alt"></i></div>
+        <div>
+          <div class="kpi-label">Yangi Lidlar</div>
+          <div class="kpi-value" id="kpi-new-calls">—</div>
+          <div class="kpi-sub">Qayta aloqa kerak</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-indigo">
+        <div class="kpi-icon"><i class="fas fa-user-plus"></i></div>
+        <div>
+          <div class="kpi-label">Bugun Qabullar</div>
+          <div class="kpi-value" id="kpi-today-walkins">—</div>
+          <div class="kpi-sub">Statsionar + Uyga</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-icon"><i class="fas fa-users"></i></div>
+        <div>
+          <div class="kpi-label">Jami Bemorlar</div>
+          <div class="kpi-value" id="kpi-total-patients">—</div>
+          <div class="kpi-sub">Barcha vaqt</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="intake">
+        <i class="fas fa-user-plus"></i> Bemor Qabuli
+      </button>
+      <button class="tab-btn" data-tab="appointments">
+        <i class="fas fa-calendar-alt"></i> Shifokor Jadvali
+        <span class="tab-count" id="tab-count-apts">0</span>
+      </button>
+      <button class="tab-btn" data-tab="calls">
+        <i class="fas fa-headset"></i> 24/7 Call Center
+        <span class="tab-count" id="tab-count-calls">0</span>
+      </button>
+      <button class="tab-btn" data-tab="directory">
+        <i class="fas fa-folder-open"></i> Bemorlar Reestri
+        <span class="tab-count" id="directory-count">0</span>
+      </button>
+    </div>
+
+    <!-- ================================================================
+         TAB 1: PATIENT INTAKE
+         ================================================================ -->
+    <div class="tab-panel active" id="tab-intake">
+      <div style="display: grid; grid-template-columns: 1fr 380px; gap: 1.4rem; align-items: start;">
+
+        <!-- LEFT: Main Intake Form -->
+        <div>
+          <!-- Service Type Selector -->
+          <div class="rec-card">
+            <div class="rec-card-header">
+              <div class="rec-card-title"><i class="fas fa-clipboard-list" style="color:var(--primary-light);"></i> Qabul Turi</div>
+            </div>
+            <div class="rec-card-body" style="padding-bottom: 1rem;">
+              <div class="service-type-grid">
+                <div class="service-type-card" data-service="inpatient">
+                  <div class="service-type-icon" style="background: rgba(56,189,248,0.12); color: #38bdf8;">
+                    <i class="fas fa-bed"></i>
+                  </div>
+                  <div class="service-type-label">Statsionar</div>
+                  <div class="service-type-sub">Karavotga yotqizish</div>
+                </div>
+                <div class="service-type-card" data-service="outpatient">
+                  <div class="service-type-icon" style="background: rgba(16,185,129,0.12); color: #10b981;">
+                    <i class="fas fa-stethoscope"></i>
+                  </div>
+                  <div class="service-type-label">Ambulator</div>
+                  <div class="service-type-sub">Shifokor ko'rigi</div>
+                </div>
+                <div class="service-type-card" data-service="home_visit">
+                  <div class="service-type-icon" style="background: rgba(245,158,11,0.12); color: #f59e0b;">
+                    <i class="fas fa-house-medical"></i>
+                  </div>
+                  <div class="service-type-label">Uyga Chaqiruv</div>
+                  <div class="service-type-sub">Narkolog uyga boradi</div>
+                </div>
+                <div class="service-type-card" data-service="anonymous">
+                  <div class="service-type-icon" style="background: rgba(168,85,247,0.12); color: #a855f7;">
+                    <i class="fas fa-user-secret"></i>
+                  </div>
+                  <div class="service-type-label">Anonim Qabul</div>
+                  <div class="service-type-sub">100% maxfiy, ro'yxatsiz</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Main Intake Form -->
+          <div class="rec-card">
+            <div class="rec-card-header">
+              <div class="rec-card-title"><i class="fas fa-id-card" style="color:var(--primary-light);"></i> Bemor Ma'lumotlari</div>
+              <div class="form-checkbox-row">
+                <input type="checkbox" id="intake-anon-check">
+                <span><i class="fas fa-user-secret" style="color:#a855f7;"></i> Anonim rejim</span>
+              </div>
+            </div>
+            <div class="rec-card-body">
+              <div id="intake-anon-banner" class="anon-banner" style="display:none;">
+                <i class="fas fa-shield-alt"></i>
+                <span><strong>Anonim Qabul Faol:</strong> Bemor nomi, telefoni va hech qanday shaxsiy ma'lumoti saqlanmaydi. Faqat klinik kod beriladi.</span>
+              </div>
+
+              <form id="intake-form" onsubmit="window.FMH_Reception.submitIntakeForm(event)">
+                <div class="form-grid-2" style="margin-bottom:1rem;">
+                  <div class="form-group">
+                    <label class="form-label">F.I.Sh. <span class="req">*</span></label>
+                    <input type="text" id="intake-patient-name" class="form-input" placeholder="Familiya Ism Sharif">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Telefon Raqami <span class="req">*</span></label>
+                    <input type="tel" id="intake-patient-phone" class="form-input" placeholder="+998 90 123 45 67">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Davolanish Dasturi</label>
+                    <select id="intake-program-select" class="form-select"></select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Mas'ul Shifokor</label>
+                    <select id="intake-doctor-select" class="form-select"></select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Davolanish Boshlanish Sanasi <span class="req">*</span></label>
+                    <input type="date" id="intake-start-date" class="form-input">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Qanday Topdi?</label>
+                    <select id="intake-referral-select" class="form-select"></select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">To'lov Usuli</label>
+                    <select id="intake-pay-method" class="form-select">
+                      <option value="cash">Naqd pul</option>
+                      <option value="card">Karta / Terminal</option>
+                      <option value="online">Online (Click/Payme)</option>
+                      <option value="mixed">Aralash</option>
+                    </select>
+                  </div>
+                  <div class="form-group full-width">
+                    <label class="form-label">Eslatma va Tashxis (Ixtiyoriy)</label>
+                    <textarea id="intake-notes" class="form-textarea" placeholder="Dastlabki kuzatishlar, murojaat sababi, qarindoshdan ma'lumot..."></textarea>
+                  </div>
+                </div>
+
+                <!-- STATSIONAR SECTION: Bed Picker -->
+                <div id="intake-bed-section">
+                  <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
+                  <div class="modal-section-title" style="justify-content: space-between;">
+                    <span><i class="fas fa-bed"></i> Karavot Tanlash (14 O'rin)</span>
+                    <button type="button" onclick="window.FMH_Reception.refreshBedsFromBuildingManagement()"
+                      style="background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.3);color:#38bdf8;border-radius:6px;padding:3px 10px;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;"
+                      title="Building Management bo'limidan karavot holatlarini yangilash">
+                      <i class="fas fa-sync-alt"></i> BM bilan sinxronlash
+                    </button>
+                  </div>
+
+                                    <!-- Dynamic Date Navigator for Beds -->
+                  <div class="bed-date-navigator-card">
+                    <div class="bed-date-info">
+                      <i class="fas fa-calendar-alt" style="color:var(--primary-light);font-size:1.15rem;"></i>
+                      <div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Tanlangan Sanalar Bo'yicha Holat:</div>
+                        <div id="bed-dynamic-date-display" style="font-size:0.86rem;font-weight:800;color:var(--primary-light);">
+                          Bugungi sana bo'yicha
+                        </div>
+                      </div>
+                    </div>
+                    <div class="bed-date-quick-buttons">
+                      <button type="button" class="btn-bed-date-preset active" data-offset="0" onclick="window.FMH_Reception.setBedDatePreset(0)">Bugun</button>
+                      <button type="button" class="btn-bed-date-preset" data-offset="1" onclick="window.FMH_Reception.setBedDatePreset(1)">Ertaga</button>
+                      <button type="button" class="btn-bed-date-preset" data-offset="3" onclick="window.FMH_Reception.setBedDatePreset(3)">+3 kun</button>
+                      <button type="button" class="btn-bed-date-preset" data-offset="7" onclick="window.FMH_Reception.setBedDatePreset(7)">+1 hafta</button>
+                    </div>
+                  </div>
+
+                  <div class="floor-tabs">
+                    <button type="button" class="floor-tab active" data-floor="all" onclick="window.FMH_Reception.switchBedFloor('all'); this.closest('.floor-tabs').querySelectorAll('.floor-tab').forEach(t=>t.classList.remove('active')); this.classList.add('active')">Barchasi (14)</button>
+                    <button type="button" class="floor-tab" data-floor="1" onclick="window.FMH_Reception.switchBedFloor('1'); this.closest('.floor-tabs').querySelectorAll('.floor-tab').forEach(t=>t.classList.remove('active')); this.classList.add('active')"><i class="fas fa-layer-group"></i> 1-Qavat (4)</button>
+                    <button type="button" class="floor-tab" data-floor="2" onclick="window.FMH_Reception.switchBedFloor('2'); this.closest('.floor-tabs').querySelectorAll('.floor-tab').forEach(t=>t.classList.remove('active')); this.classList.add('active')"><i class="fas fa-building"></i> 2-Qavat (10)</button>
+                  </div>
+                  <div id="bed-picker-grid" class="bed-picker-grid"></div>
+                  <div id="intake-bed-type-label" style="font-size:0.75rem;color:var(--text-muted);margin-top:0.6rem;text-align:center;"></div>
+
+                  <div class="form-grid-3" style="margin-top:1.2rem;">
+                    <div class="form-group">
+                      <label class="form-label">Kunlik Narx (so'm)</label>
+                      <input type="number" id="intake-daily-rate" class="form-input" value="720000" min="0" step="1000">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Davomiylik (kun)</label>
+                      <input type="number" id="intake-days" class="form-input" value="7" min="1" max="365">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Chegirma (%)</label>
+                      <input type="number" id="intake-discount" class="form-input" value="0" min="0" max="100">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Avans To'lov (so'm)</label>
+                      <input type="number" id="intake-advance" class="form-input" value="0" min="0">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- HOME VISIT SECTION -->
+                <div id="intake-home-section" style="display:none;">
+                  <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
+                  <div class="modal-section-title"><i class="fas fa-map-marker-alt"></i> Uyga Chaqiruv Ma'lumotlari</div>
+                  <div class="form-grid-2">
+                    <div class="form-group full-width">
+                      <label class="form-label">To'liq Manzil <span class="req">*</span></label>
+                      <input type="text" id="intake-home-address" class="form-input" placeholder="Tuman, ko'cha, uy raqami">
+                    </div>
+                    <div class="form-group full-width">
+                      <label class="form-label">Mo'ljal (landmark)</label>
+                      <input type="text" id="intake-home-landmark" class="form-input" placeholder="Yaqin joylashgan bino, mahalla...">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Xizmat Narxi</label>
+                      <input type="number" id="intake-home-fee" class="form-input" value="800000" min="0">
+                      <div class="form-hint">Narkologik blokada xizmati: 800 000 so'm</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Ketish Vaqti</label>
+                      <input type="time" id="intake-home-time" class="form-input" value="09:00">
+                    </div>
+                  </div>
+                  <div class="home-visit-map-placeholder">
+                    <i class="fas fa-map-marked-alt"></i>
+                    <span>Manzilni belgilash uchun kartani oching (ixtiyoriy)</span>
+                  </div>
+                </div>
+
+                <!-- OUTPATIENT: quick note only -->
+                <div id="intake-apt-section" style="display:none;">
+                  <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
+                  <div class="modal-section-title"><i class="fas fa-stethoscope"></i> Ambulator Ko'rik</div>
+                  <p style="font-size:0.82rem;color:var(--text-secondary);">Shifokor jadvali uchun <strong style="color:var(--primary-light);">"Shifokor Jadvali"</strong> tabini oching. Bu yerda faqat to'langan ambulator konsultatsiya qayd etiladi.</p>
+                  <div class="form-group" style="margin-top:1rem;">
+                    <label class="form-label">Konsultatsiya To'lovi</label>
+                      <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                  </div>
+                </div>
+
+                <!-- Cost Preview -->
+                <div class="cost-preview" id="intake-cost-preview-section">
+                  <div class="cost-preview-title"><i class="fas fa-calculator"></i> Narx va Sana Hisob-Kitobi</div>
+                  <div class="cost-line"><span>Boshlanish Sanasi</span><span class="amount" id="preview-start-date" style="color:var(--primary-light);">—</span></div>
+                  <div class="cost-line"><span>Chiqish Sanasi (Tugash)</span><span class="amount" id="preview-end-date" style="color:#10b981;">—</span></div>
+                  <div class="cost-line"><span>Davomiylik</span><span class="amount" id="preview-days">10 kun</span></div>
+                  <div class="cost-line"><span>Kunlik Tarif</span><span class="amount" id="preview-rate">720 000 so'm/kun</span></div>
+                  <div class="cost-line"><span>Jami (brutto)</span><span class="amount" id="preview-gross">7 200 000 so'm</span></div>
+                  <div class="cost-line"><span>Chegirma</span><span class="amount" id="preview-discount">0 so'm</span></div>
+                  <div class="cost-line total"><span>Net Jami</span><span class="amount" id="preview-net">7 200 000 so'm</span></div>
+                  <div class="cost-line"><span>Avans To'lov</span><span class="amount" id="preview-advance">0 so'm</span></div>
+                  <div class="cost-line"><span>Qoldiq</span><span class="amount" id="preview-balance" style="color:var(--amber);">7 200 000 so'm</span></div>
+                </div>
+
+                <div style="display:flex;gap:0.7rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">
+                  <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.printBlankIntakeForm()">
+                    <i class="fas fa-print"></i> Blank Chop Etish
+                  </button>
+                  <button type="submit" id="btn-submit-intake" class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.submitIntakeForm(event)">
+                    <i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Recent walk-ins sidebar -->
+        <div>
+          <div class="rec-card" style="position:sticky;top:80px;">
+            <div class="rec-card-header">
+              <div class="rec-card-title"><i class="fas fa-history" style="color:var(--amber);"></i> So'nggi Qabullar</div>
+              <button class="btn-portal btn-outline-portal" style="padding:4px 10px;font-size:0.72rem;" onclick="window.FMH_Reception.switchTab('directory')">
+                Barchasi <i class="fas fa-arrow-right"></i>
+              </button>
+            </div>
+            <div class="rec-card-body" style="padding:1rem;">
+              <div id="recent-walkins"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================
+         TAB 2: APPOINTMENTS / DOCTOR SCHEDULE
+         ================================================================ -->
+    <div class="tab-panel" id="tab-appointments">
+      <div class="appointments-layout">
+
+        <!-- Doctor Cards -->
+        <div>
+          <div class="rec-card">
+            <div class="rec-card-header">
+              <div class="rec-card-title"><i class="fas fa-user-md" style="color:var(--primary-light);"></i> Shifokorlar</div>
+            </div>
+            <div class="rec-card-body">
+              <div class="doctor-card-list" id="doctor-card-list"></div>
+            </div>
+          </div>
+
+          <!-- Today's Appointments List -->
+          <div class="rec-card" style="margin-top:0;">
+            <div class="rec-card-header">
+              <div class="rec-card-title"><i class="fas fa-list-check" style="color:var(--amber);"></i> Bugun Yozilganlar</div>
+              <button class="btn-portal btn-primary-portal" style="padding:5px 10px;font-size:0.75rem;" onclick="window.FMH_Reception.openBookingModal()">
+                <i class="fas fa-plus"></i> Yozish
+              </button>
+            </div>
+            <div class="rec-card-body" style="padding:1rem;">
+              <div id="today-appointments-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Slot Picker Area -->
+        <div class="rec-card">
+          <div class="rec-card-header">
+            <div class="rec-card-title"><i class="fas fa-clock" style="color:var(--primary-light);"></i> Vaqt Slotlari</div>
+            <div class="slot-date-nav">
+              <button onclick="window.FMH_Reception.changeSlotDate(-1)"><i class="fas fa-chevron-left"></i></button>
+              <span class="slot-date-display" id="slot-date-label">—</span>
+              <button onclick="window.FMH_Reception.changeSlotDate(1)"><i class="fas fa-chevron-right"></i></button>
+            </div>
+          </div>
+          <div class="rec-card-body">
+            <!-- Legend -->
+            <div style="display:flex;gap:1rem;margin-bottom:1.2rem;font-size:0.73rem;flex-wrap:wrap;">
+              <span style="color:var(--emerald);"><i class="fas fa-circle" style="font-size:0.5rem;"></i> Bo'sh</span>
+              <span style="color:var(--text-muted);"><i class="fas fa-circle" style="font-size:0.5rem;"></i> Band</span>
+              <span style="color:var(--amber);"><i class="fas fa-circle" style="font-size:0.5rem;"></i> Tushlik</span>
+            </div>
+            <div id="slot-grid-container"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================
+         TAB 3: CALL CENTER / CRM
+         ================================================================ -->
+    <div class="tab-panel" id="tab-calls">
+      <div class="rec-card">
+        <div class="rec-card-header">
+          <div class="rec-card-title"><i class="fas fa-headset" style="color:var(--indigo-light);"></i> 24/7 Qo'ng'iroqlar Jurnali (CRM)</div>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <button class="btn-portal btn-indigo-portal" style="font-size:0.78rem;" onclick="window.FMH_Reception.openNewCallModal()">
+              <i class="fas fa-plus"></i> Yangi Qo'ng'iroq Qayd Et
+            </button>
+          </div>
+        </div>
+        <div class="rec-card-body">
+          <div class="call-status-filters">
+            <button class="call-filter-btn active" data-filter="all" onclick="window.FMH_Reception.filterCalls('all'); this.closest('.call-status-filters').querySelectorAll('.call-filter-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">
+              Barchasi
+            </button>
+            <button class="call-filter-btn" data-filter="new" onclick="window.FMH_Reception.filterCalls('new'); this.closest('.call-status-filters').querySelectorAll('.call-filter-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">
+              <i class="fas fa-circle" style="font-size:0.5rem;color:#38bdf8;"></i> Yangi
+            </button>
+            <button class="call-filter-btn" data-filter="callback_needed" onclick="window.FMH_Reception.filterCalls('callback_needed'); this.closest('.call-status-filters').querySelectorAll('.call-filter-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">
+              <i class="fas fa-circle" style="font-size:0.5rem;color:var(--amber);"></i> Qayta Qo'ng'iroq
+            </button>
+            <button class="call-filter-btn" data-filter="booked" onclick="window.FMH_Reception.filterCalls('booked'); this.closest('.call-status-filters').querySelectorAll('.call-filter-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">
+              <i class="fas fa-circle" style="font-size:0.5rem;color:var(--emerald);"></i> Yozildi
+            </button>
+            <button class="call-filter-btn" data-filter="converted" onclick="window.FMH_Reception.filterCalls('converted'); this.closest('.call-status-filters').querySelectorAll('.call-filter-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">
+              <i class="fas fa-circle" style="font-size:0.5rem;color:var(--indigo-light);"></i> Qabul Qilindi
+            </button>
+          </div>
+          <div class="call-log-list" id="call-log-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         TAB 4: PATIENT DIRECTORY
+         ================================================================ -->
+    <div class="tab-panel" id="tab-directory">
+      <div class="rec-card">
+        <div class="rec-card-header">
+          <div class="rec-card-title"><i class="fas fa-folder-open" style="color:var(--primary-light);"></i> Bemorlar Reestri va Shaxsiy Kartalar</div>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <span style="font-size:0.75rem;color:var(--text-muted);">Jami: <strong id="directory-count" style="color:var(--primary-light);">0</strong> bemor</span>
+          </div>
+        </div>
+        <div class="rec-card-body" style="padding-top:0;">
+          <div class="directory-toolbar">
+            <div class="directory-search">
+              <i class="fas fa-search"></i>
+              <input type="text" id="directory-search-input" placeholder="Ism, klinik kod yoki telefon bo'yicha qidiruv..."
+                oninput="window.FMH_Reception.searchDirectory(this.value)">
+            </div>
+            <button class="btn-portal btn-primary-portal" style="font-size:0.78rem;" onclick="window.FMH_Reception.exportToExcel()">
+              <i class="fas fa-file-excel"></i> Excel Eksport
+            </button>
+          </div>
+
+          <div class="rec-table-wrapper">
+            <table class="rec-table">
+              <thead>
+                <tr>
+                  <th>Klinik Kod</th>
+                  <th>F.I.Sh.</th>
+                  <th>Telefon</th>
+                  <th>Birinchi Murojaat</th>
+                  <th>Karavot</th>
+                  <th>Dastur</th>
+                  <th>Holat</th>
+                  <th>Amallar</th>
+                </tr>
+              </thead>
+              <tbody id="patient-directory-body">
+                <tr><td colspan="8"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Yuklanmoqda...</p></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================================================================
+       MODAL: ADMISSION CONFIRMATION
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-admission-confirm">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-check-circle" style="color:var(--primary-light);"></i> Qabul Tasdiqlash</div>
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-admission-confirm')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section-title"><i class="fas fa-user"></i> Bemor</div>
+        <div class="apt-summary-row"><span class="label">Ismi</span><span class="value" id="confirm-patient-name">—</span></div>
+        <div class="apt-summary-row"><span class="label">Karavot</span><span class="value" id="confirm-bed-id">—</span></div>
+        <div class="modal-section-title" style="margin-top:1rem;"><i class="fas fa-stethoscope"></i> Davolanish Rejasi</div>
+        <div class="apt-summary-row"><span class="label">Davolanish Boshlanish Sanasi</span><span class="value" id="confirm-start-date" style="color:var(--primary-light);">—</span></div>
+        <div class="apt-summary-row"><span class="label">Dastur</span><span class="value" id="confirm-program">—</span></div>
+        <div class="apt-summary-row"><span class="label">Davomiylik</span><span class="value" id="confirm-days">—</span></div>
+        <div class="apt-summary-row"><span class="label">Kunlik Tarif</span><span class="value" id="confirm-rate">—</span></div>
+        <div class="modal-section-title" style="margin-top:1rem;"><i class="fas fa-money-bill-wave"></i> To'lov</div>
+        <div class="apt-summary-row"><span class="label">Jami Net</span><span class="value" style="color:var(--primary-light);" id="confirm-net">—</span></div>
+        <div class="apt-summary-row"><span class="label">Avans</span><span class="value" id="confirm-advance">—</span></div>
+        <div class="apt-summary-row"><span class="label">Qoldiq</span><span class="value" style="color:var(--amber);" id="confirm-balance">—</span></div>
+        <div class="apt-summary-row"><span class="label">To'lov Usuli</span><span class="value" id="confirm-pay-method">—</span></div>
+        <div style="background:rgba(20,184,166,0.08);border:1px solid rgba(20,184,166,0.25);border-radius:var(--radius-md);padding:0.8rem 1rem;margin-top:1rem;font-size:0.78rem;color:var(--text-secondary);">
+          <i class="fas fa-info-circle" style="color:var(--primary-light);"></i>
+          Qabul tasdiqlangandan so'ng karavot "band" holatiga o'tadi, hisob-faktura avtomatik yaratiladi va qabul varaqasi chop etiladi.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-admission-confirm')">Bekor</button>
+        <button class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.confirmAdmission()">
+          <i class="fas fa-check"></i> Tasdiqlash va Qabul Qilish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       MODAL: APPOINTMENT BOOKING (from slot click)
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-apt-booking">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-calendar-plus" style="color:var(--primary-light);"></i> Shifokorga Yozish</div>
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-apt-booking')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="apt-summary-row" style="background:rgba(20,184,166,0.08);border-radius:var(--radius-md);margin-bottom:1rem;">
+          <span style="color:var(--primary-light);font-weight:700;" id="apt-modal-doctor">—</span>
+          <span style="font-family:var(--font-mono);font-weight:700;font-size:0.9rem;">
+            <span id="apt-modal-time">—</span>
+          </span>
+        </div>
+        <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:1.2rem;">
+          <i class="fas fa-calendar"></i> <span id="apt-modal-date">—</span>
+        </div>
+        <form id="apt-booking-form" onsubmit="event.preventDefault(); window.FMH_Reception.submitAppointment();">
+          <div style="display:flex;flex-direction:column;gap:0.9rem;">
+            <div class="form-group">
+              <label class="form-label">Bemor F.I.Sh.</label>
+              <input type="text" id="apt-patient-name" class="form-input" placeholder="Familiya Ism Sharif">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Telefon</label>
+              <input type="tel" id="apt-patient-phone" class="form-input" placeholder="+998 90 123 45 67">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Ko'rik Turi</label>
+              <select id="apt-service-type" class="form-select">
+                <option value="outpatient">Ambulator Konsultatsiya</option>
+                <option value="inpatient">Statsionarga kirish baholash</option>
+                <option value="home_visit">Uyga chaqiruv maslahat</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Dastur / Muammo</label>
+              <select id="apt-program" class="form-select">
+                <option value="statsionar_shared">Statsionar (1 karavot / 2 kishilik) — 720 000 so'm/kun</option>
+                <option value="statsionar_full_room">Statsionar Butun Xona — VIP Solo — 1 100 000 so'm/kun</option>
+                <option value="kunlik_statsionar">Kunlik Statsionar (Kunduzgi) — 630 000 so'm/kun</option>
+                <option value="ambulator_1">Ambulator 1 mahal — 310 000 so'm/kun</option>
+                <option value="ambulator_2">Ambulator 2 mahal — 500 000 so'm/kun</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Eslatma</label>
+              <textarea id="apt-notes" class="form-textarea" placeholder="Qo'shimcha ma'lumot..." style="min-height:60px;"></textarea>
+            </div>
+            <div class="form-checkbox-row">
+              <input type="checkbox" id="apt-anon-check">
+              <span><i class="fas fa-user-secret" style="color:#a855f7;"></i> Anonim yozish</span>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-apt-booking')">Bekor</button>
+        <button class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.submitAppointment()">
+          <i class="fas fa-calendar-check"></i> Yozishni Tasdiqlash
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       MODAL: NEW / EDIT CALL LOG
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-call-log">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-phone-alt" style="color:var(--indigo-light);"></i> <span id="call-modal-title">Yangi Qo'ng'iroq Qayd Etish</span></div>
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-call-log')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="call-log-form" onsubmit="event.preventDefault(); window.FMH_Reception.submitCallLog();">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Zang urgan shaxs</label>
+              <input type="text" id="call-caller-name" class="form-input" placeholder="Ism yoki taxallus">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Telefon <span class="req">*</span></label>
+              <input type="tel" id="call-caller-phone" class="form-input" placeholder="+998 90 ...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Qo'ng'iroq vaqti</label>
+              <input type="datetime-local" id="call-datetime" class="form-input">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Davomiyligi (soniya)</label>
+              <input type="number" id="call-duration" class="form-input" placeholder="180" min="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Xizmat qiziqishi</label>
+              <select id="call-service-interest" class="form-select">
+                <option value="inpatient">Statsionar Yotqizish</option>
+                <option value="outpatient">Ambulator Konsultatsiya</option>
+                <option value="home_visit">Uyga Narkologik Yordam</option>
+                <option value="anonymous">Anonim Qabul</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Dastur qiziqishi</label>
+              <select id="call-program-interest" class="form-select">
+                <option value="">— Tanlang —</option>
+                <option value="detox">Detoksikatsiya</option>
+                <option value="alcohol_rehab">Alkogolizm</option>
+                <option value="drug_rehab">Giyohvandlik</option>
+                <option value="depression_psychiatry">Depressiya & Psixiatriya</option>
+                <option value="vip_full_course">VIP Reabilitatsiya</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <select id="call-status" class="form-select">
+                <option value="new">Yangi lid</option>
+                <option value="callback_needed">Qayta qo'ng'iroq</option>
+                <option value="booked">Yozildi</option>
+                <option value="converted">Qabul qilindi</option>
+                <option value="lost">Yo'qoldi</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Qayta qo'ng'iroq sanasi</label>
+              <input type="date" id="call-follow-up" class="form-input">
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Eslatma / Qisqacha ma'lumot</label>
+              <textarea id="call-notes" class="form-textarea" placeholder="Suhbat qisqachasi, murojaat sababi, dolzarb ma'lumotlar..."></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-call-log')">Bekor</button>
+        <button class="btn-portal btn-indigo-portal" onclick="window.FMH_Reception.submitCallLog()">
+          <i class="fas fa-save"></i> Saqlash
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       MODAL: PATIENT DOSSIER
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-patient-dossier">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-folder-open" style="color:var(--primary-light);"></i> Bemor Shaxsiy Kartasi</div>
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-patient-dossier')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section-title"><i class="fas fa-id-card"></i> Asosiy Ma'lumotlar</div>
+        <div class="apt-summary-row"><span class="label">Klinik Kod</span><span class="value" id="dossier-code">—</span></div>
+        <div class="apt-summary-row"><span class="label">F.I.Sh.</span><span class="value" id="dossier-name">—</span></div>
+        <div class="apt-summary-row"><span class="label">Telefon</span><span class="value" id="dossier-phone">—</span></div>
+        <div class="apt-summary-row"><span class="label">Birinchi Murojaat</span><span class="value" id="dossier-created">—</span></div>
+        <div class="apt-summary-row"><span class="label">Jami Tashriflar</span><span class="value" id="dossier-visits">—</span></div>
+        <div class="modal-section-title" style="margin-top:1.2rem;"><i class="fas fa-history"></i> Tashrif Tarixi</div>
+        <div id="dossier-admissions"></div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+        <button class="btn-portal btn-danger-portal" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);" onclick="window.FMH_Reception.deletePatient(document.getElementById('modal-patient-dossier')._patientId)">
+          <i class="fas fa-trash-alt"></i> Bemorni Bazadan O'chirish
+        </button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-patient-dossier')">Yopish</button>
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.printPatientReceipt(document.getElementById('modal-patient-dossier')._patientId)">
+            <i class="fas fa-print"></i> Kvitansiya Chop Et
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/xlsx.full.min.js"></script>
+    <script src="js/unified_print_engine.js?v=5.0"></script>
+<script src="js/reception.js?v=13.1"></script>
+</body>
+</html>

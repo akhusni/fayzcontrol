@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.class
+*.db-shm
+*.db-wal
+.DS_Store
+Thumbs.db
+deploy_ftp.py
+
+# --- Runtime logs (server_log.txt shipped at ~694KB of request history) ---
+server_log.txt
+*.log
+
+# --- Local database credentials. -------------------------------------------
+# db_config.json holds a database password in plaintext, so it must never be
+# committed. Copy db_config.example.json to db_config.json on each machine and
+# fill in that machine's own values.
+db_config.json
+
+# --- Broken vendored copy of pymysql -------------------------------------
+# The zip export shipped pymysql/ with an empty constants/ package, so it
+# shadowed the real installed module and broke every import. Kept aside
+# while debugging; install PyMySQL from pip instead (see README).
+pymysql.broken.vendored/
+
+# --- Generated PDFs / exports ---
+*.pdf
+!assets/**/*.pdf

@@ -1,0 +1,135 @@
+{
+  "facility_info": {
+    "name": "Fayz Medical House",
+    "department": "Qabulxona va Bemorlarni Ro'yxatga Olish Bo'limi",
+    "address": "Toshkent sh., Yunusobod t., Nurmakon ko'chasi, 2A",
+    "phone_reception": "+998 71 209 99 10",
+    "phone_emergency": "+998 90 372 03 03",
+    "phone_consult": "+998 95 508 01 10",
+    "working_hours": "24/7 Tunu-kun",
+    "receptionist": "Qabulxona Administratori"
+  },
+  "service_types": [
+    {
+      "id": "inpatient",
+      "name_uz": "Statsionar Yotqizish",
+      "name_ru": "Стационарное лечение",
+      "icon": "fa-bed",
+      "color": "#38bdf8"
+    },
+    {
+      "id": "outpatient",
+      "name_uz": "Ambulator Konsultatsiya",
+      "name_ru": "Амбулаторная консультация",
+      "icon": "fa-stethoscope",
+      "color": "#34d399"
+    },
+    {
+      "id": "home_visit",
+      "name_uz": "Uyga Narkologik Yordam",
+      "name_ru": "Нарколог на дом",
+      "icon": "fa-house-medical",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "anonymous",
+      "name_uz": "100% Anonim Qabul",
+      "name_ru": "Анонимное лечение",
+      "icon": "fa-user-secret",
+      "color": "#a855f7"
+    }
+  ],
+  "program_types": [
+    {
+      "id": "statsionar_shared",
+      "name_uz": "Statsionar (1 karavot / 2 kishilik xona)",
+      "description": "24 soatlik to'liq statsionar nazorat, 4 mahal parhez taomnoma",
+      "default_days": 10,
+      "default_rate": 720000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "statsionar_full_room",
+      "name_uz": "Statsionar Butun Xona — VIP Solo (1 kishi)",
+      "description": "Bemor xonada yolg'iz, 100% maxfiy va yopiq",
+      "default_days": 10,
+      "default_rate": 1100000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "kunlik_statsionar",
+      "name_uz": "Kunlik Statsionar (Kunduzgi o'rin)",
+      "description": "Karavot faqat kunduzgi vaqtda, kechasi qolmaydi",
+      "default_days": 10,
+      "default_rate": 630000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "ambulator_1",
+      "name_uz": "Ambulator — Kuniga 1 mahal muolaja",
+      "description": "Klinikaga kuniga 1 mahal kelib kapelnitsa va inyeksiya",
+      "default_days": 10,
+      "default_rate": 310000,
+      "package_type": "outpatient"
+    },
+    {
+      "id": "ambulator_2",
+      "name_uz": "Ambulator — Kuniga 2 mahal muolaja",
+      "description": "Ertalab va kechqurun, intensiv muolaja",
+      "default_days": 10,
+      "default_rate": 500000,
+      "package_type": "outpatient"
+    }
+  ],
+  "doctors": [
+    {
+      "id": "STF-DOC-01",
+      "full_name": "Maxkamova Nodira Sanjarovna",
+      "specialty": "Psixologiya, Psixiatriya",
+      "phone": "+998946386764",
+      "room": "Xona 1-02",
+      "color": "#0284c7"
+    }
+  ],
+  "appointments": [],
+  "call_logs": [],
+  "walk_ins": [],
+  "home_visits": [],
+  "referral_sources": [
+    {
+      "id": "hotline",
+      "name_uz": "Telefon / Hotline",
+      "icon": "fa-phone"
+    },
+    {
+      "id": "telegram",
+      "name_uz": "Telegram (@fayzmedicaluz)",
+      "icon": "fa-telegram"
+    },
+    {
+      "id": "instagram",
+      "name_uz": "Instagram",
+      "icon": "fa-instagram"
+    },
+    {
+      "id": "website",
+      "name_uz": "Rasmiy Sayt",
+      "icon": "fa-globe"
+    },
+    {
+      "id": "word_of_mouth",
+      "name_uz": "Tanish-bilish Tavsiyasi",
+      "icon": "fa-users"
+    },
+    {
+      "id": "repeat",
+      "name_uz": "Qayta Murojaat (Doimiy Bemor)",
+      "icon": "fa-redo"
+    },
+    {
+      "id": "doctor_referral",
+      "name_uz": "Shifokor Yo'llanmasi",
+      "icon": "fa-stethoscope"
+    }
+  ]
+}
