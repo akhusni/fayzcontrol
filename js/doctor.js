@@ -2127,7 +2127,11 @@
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.ok && data.user) {
+        // Success is the status code plus a user object. This used to test
+        // data.ok, a field the endpoint never returns, so verification
+        // failed even for a correct password and fell through to the
+        // local check below.
+        if (data.user) {
           verified = true;
           const clinicMatch = CLINIC_DOCTORS.find(d => d.username === data.user.username);
           doctorData = clinicMatch || {
@@ -2144,16 +2148,13 @@
       console.warn("Backend auth call failed, checking local credentials", netErr);
     }
 
-    if (!verified) {
-      const localMatch = CLINIC_DOCTORS.find(d => d.username === username && d.password === password);
-      if (localMatch) {
-        verified = true;
-        doctorData = localMatch;
-      } else if ((username === 'doctor' && password === 'doc2026') || (username === 'superadmin' && password === 'admin2026')) {
-        verified = true;
-        doctorData = CLINIC_DOCTORS[0];
-      }
-    }
+    // There is deliberately no local fallback here.
+    //
+    // This block used to accept a hardcoded username/password pair
+    // whenever the server call did not
+    // verify -- which, because of the data.ok bug above, was every time.
+    // The pair was also visible in this file, so the cabinet gate was an
+    // open door into the clinical record. Only the server decides now.
 
     if (!verified) {
       if (errEl) {
