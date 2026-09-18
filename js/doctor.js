@@ -10,11 +10,15 @@
   // Default Patient Dataset (Clean empty state)
   const DEFAULT_PATIENTS = [];
 
-  // Clinic Doctor Profiles (Synced with data/users.json and MySQL staff table)
+  // Clinic Doctor Profiles (display only).
+  //
+  // These carried each doctor's plaintext password, which meant anyone who
+  // could load this page could read the real login credentials for every
+  // doctor in the clinic. The list now holds only what the picker needs to
+  // show; the password is typed and verified server-side against its hash.
   const CLINIC_DOCTORS = [
     {
       username: 'dr_bobur',
-      password: 'docbobur2026',
       staff_id: 'STF-DOC-01',
       name: 'Dr. Bobur Mirzayev',
       role: 'Bosh Shifokor / Narkolog-Psixiatr',
@@ -23,7 +27,6 @@
     },
     {
       username: 'dr_jasur',
-      password: 'docjasur2026',
       staff_id: 'STF-DOC-02',
       name: 'Dr. Jasur Aliyev',
       role: 'Shifokor Narkolog',
@@ -32,7 +35,6 @@
     },
     {
       username: 'dr_dilnoza',
-      password: 'docdilnoza2026',
       staff_id: 'STF-DOC-03',
       name: 'Dr. Dilnoza Rahimova',
       role: 'Psixiatr-Psixoterapevt',
@@ -2080,12 +2082,15 @@
     }
   }
 
-  function selectAuthPreset(username, password) {
+  function selectAuthPreset(username) {
+    // Fills the username only. It used to receive the password as an argument
+    // and prefill it, which made the sign-in box decorative: the credential
+    // was already in the page.
     const uInput = document.getElementById('auth-doctor-username');
     const pInput = document.getElementById('auth-doctor-password');
     if (uInput) uInput.value = username;
     if (pInput) {
-      pInput.value = password;
+      pInput.value = '';
       pInput.focus();
     }
 

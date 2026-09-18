@@ -109,8 +109,10 @@ Parollar `data/users.json` faylida **PBKDF2-SHA256** bilan xeshlanadi. Eski
 ochiq matnli parollar server birinchi ishga tushganda avtomatik xeshlanadi —
 xodimlar parollarini o'zgartirishi shart emas.
 
-> ⚠️ Birinchi o'rnatishdan keyin standart parollarni (`superadmin2026` va
-> boshqalar) albatta o'zgartiring.
+> ⚠️ Har bir hisob birinchi kirishda parolni almashtirishni talab qiladi
+> (`must_change_password`). Boshlang'ich parollar tarqatilgan arxivda
+> bo'lgani uchun ularni albatta almashtiring — hujjatlarda ular
+> ataylab keltirilmagan.
 
 ### 👤 Rollar va Ruxsatlar
 
