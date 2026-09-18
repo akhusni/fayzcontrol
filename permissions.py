@@ -170,6 +170,8 @@ API_RULES = [
     ('/api/doctor/notes',             'doctors',    None),
     ('/api/doctor/prescriptions',     'doctors',    None),
     # Nurses record administration and vitals against a stay.
+    ('/api/nursery/round',            'nursery',    'read'),
+    ('/api/nursery/administer',       'nursery',    'write'),
     ('/api/daily-logs/',              'nursery',    None),
 
     # --- ward / facility --------------------------------------------------

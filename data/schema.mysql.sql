@@ -409,6 +409,42 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
+-- 6.1 Medication Administration Record (Nurse Station)
+-- -----------------------------------------------------------------------------
+-- prescriptions holds the doctor's order and daily_logs holds one row of
+-- vitals per admission per day, but nothing recorded that a particular dose
+-- was actually administered, by whom and when. The daily round is derived
+-- from the standing prescriptions (see nursery.py) and these rows are the
+-- recorded outcome overlaid on it.
+
+CREATE TABLE IF NOT EXISTS medication_administrations (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    prescription_id VARCHAR(64) NOT NULL,
+    admission_id VARCHAR(64),
+    patient_id VARCHAR(64) NOT NULL,
+    scheduled_date DATE NOT NULL,
+    -- 0-based position within the day for a planned dose. As-needed and
+    -- additional doses start at 100 so they cannot collide with a planned slot.
+    slot_index INT NOT NULL,
+    slot_label VARCHAR(32),
+    status VARCHAR(16) NOT NULL DEFAULT 'given'
+        CHECK(status IN ('given', 'missed', 'refused', 'held')),
+    administered_at DATETIME,
+    administered_by_staff_id VARCHAR(64),
+    notes TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    -- One record per prescription per slot per day: recording the same dose
+    -- twice is a data-entry slip, not a second dose.
+    UNIQUE KEY uq_dose (prescription_id, scheduled_date, slot_index),
+    KEY idx_ma_date (scheduled_date),
+    KEY idx_ma_admission (admission_id, scheduled_date),
+    FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (administered_by_staff_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
 -- 7. High-Performance Indexing
 -- -----------------------------------------------------------------------------
 

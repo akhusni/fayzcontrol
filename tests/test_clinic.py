@@ -17,6 +17,7 @@ The suite signs in, works against the live API, and cleans up the rows it
 creates. Point it at a scratch database — it writes real records.
 """
 
+import datetime as _dt
 import json
 import os
 import sys
@@ -142,7 +143,69 @@ class ApiTest(unittest.TestCase):
             self.api.delete('/api/admissions/' + adm)
         for pid in self._patients:
             self.api.delete('/api/patients/' + pid)
+        # The API cannot delete a payment, and an invoice with one blocks the
+        # admission delete above, so those rows used to survive the run and
+        # accumulate across runs — which produced an intermittent failure in
+        # the billing assertions. Anything the API could not remove is cleaned
+        # up directly; the suite owns the data it creates.
+        self._force_cleanup()
         self.release_beds()
+
+    def _force_cleanup(self):
+        """
+        Remove anything the API could not.
+
+        The deletes collect ids first and then use plain IN lists rather than
+        multi-table joins. A trigger on payments updates invoices, and MySQL
+        refuses (error 1442) to let a trigger write to a table the invoking
+        statement already names — so a `DELETE p FROM payments p JOIN invoices
+        i ...` fails outright and the rows survive.
+        """
+        if not (self._patients or self._admissions):
+            return
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from db import get_db
+            conn = get_db()
+            try:
+                cur = conn.cursor()
+                for pid in self._patients:
+                    cur.execute("SELECT id FROM admissions WHERE patient_id = ?", (pid,))
+                    adm_ids = [r['id'] for r in cur.fetchall()]
+                    inv_ids = []
+                    if adm_ids:
+                        marks = ','.join(['?'] * len(adm_ids))
+                        cur.execute(f"SELECT id FROM invoices WHERE admission_id IN ({marks})",
+                                    tuple(adm_ids))
+                        inv_ids = [r['id'] for r in cur.fetchall()]
+
+                    if inv_ids:
+                        marks = ','.join(['?'] * len(inv_ids))
+                        cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({marks})",
+                                    tuple(inv_ids))
+                        cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({marks})",
+                                    tuple(inv_ids))
+                        cur.execute(f"DELETE FROM invoices WHERE id IN ({marks})",
+                                    tuple(inv_ids))
+                    if adm_ids:
+                        marks = ','.join(['?'] * len(adm_ids))
+                        cur.execute(f"DELETE FROM medication_administrations "
+                                    f"WHERE admission_id IN ({marks})", tuple(adm_ids))
+                        cur.execute(f"DELETE FROM prescriptions WHERE admission_id IN ({marks})",
+                                    tuple(adm_ids))
+                        cur.execute(f"DELETE FROM daily_logs WHERE admission_id IN ({marks})",
+                                    tuple(adm_ids))
+                        cur.execute(f"DELETE FROM bed_transfers WHERE admission_id IN ({marks})",
+                                    tuple(adm_ids))
+                        cur.execute(f"DELETE FROM admissions WHERE id IN ({marks})",
+                                    tuple(adm_ids))
+                    cur.execute("DELETE FROM prescriptions WHERE patient_id = ?", (pid,))
+                    cur.execute("DELETE FROM patients WHERE id = ?", (pid,))
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"  [suite] could not fully clean up: {e}")
 
     def release_beds(self):
         for bed in self.BEDS_USED:
@@ -163,6 +226,22 @@ class ApiTest(unittest.TestCase):
             if r.get('id') == patient_id:
                 return r
         self.fail(f"patient {patient_id} not found in /api/crm/patients")
+
+    def invoice_for(self, admission_id):
+        """The invoice row for one admission, read straight from the database."""
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("""SELECT total_billed, net_amount, total_paid, balance_due,
+                                  payment_status
+                           FROM invoices WHERE admission_id = ?""", (admission_id,))
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row, f"no invoice for admission {admission_id}")
+        return row
 
     def make_patient(self, name='Test Bemor', **extra):
         payload = {'full_name': name}
@@ -315,8 +394,11 @@ class RoleAuthorization(ApiTest):
     def test_receptionist_registers_and_admits_but_does_not_discharge(self):
         desk = self._account('receptionist')
         self.assertEqual(desk.get('/api/beds')[0], 200, 'needs free/occupied beds')
-        status, _ = desk.post('/api/crm/patients', {'full_name': 'Desk Probe'})
+        status, created = desk.post('/api/crm/patients', {'full_name': 'Desk Probe'})
         self.assertEqual(status, 201, 'reception registers patients')
+        # Created through the desk client, so register it for cleanup too.
+        if created.get('id'):
+            self._patients.append(created['id'])
         # Allowed through to validation (400), not refused by role (403).
         self.assertNotEqual(desk.post('/api/admissions', {})[0], 403,
                             'reception must be able to admit a stationary patient')
@@ -367,6 +449,190 @@ class RoleAuthorization(ApiTest):
             allowed, reason = permissions.authorize_api({'role': role}, 'GET', '/api/nope')
             self.assertFalse(allowed, f"{role} reached an unmapped route")
             self.assertIn('no permission rule', reason)
+
+
+class NurseStation(ApiTest):
+    """
+    The clinic could prescribe but had no way to record giving a dose:
+    prescriptions held the order, daily_logs held vitals, and nothing recorded
+    that a dose was administered, by whom, when. The round is derived from the
+    standing orders so a future date is answerable, and the recorded
+    administrations are overlaid on it.
+    """
+
+    def _order(self, patient_id, admission_id, **kw):
+        payload = {
+            'patient_id': patient_id, 'admission_id': admission_id,
+            'medication_name': kw.get('name', 'Diazepam'),
+            'dosage': kw.get('dosage', '10mg'),
+            'route': kw.get('route', 'IM'),
+            'frequency': kw.get('frequency', 'Kuniga 2 mahal'),
+            'duration_days': kw.get('duration_days', 5),
+        }
+        if kw.get('timing'):
+            payload['timing'] = kw['timing']
+        status, body = self.api.post('/api/doctor/prescriptions', payload)
+        self.assertIn(status, (200, 201), f"prescription failed: {body}")
+        return body.get('id')
+
+    def _admitted_patient(self, name, bed, days_back=0, days_forward=6):
+        pid = self.make_patient(name)
+        start = _dt.date.today() - _dt.timedelta(days=days_back)
+        end = _dt.date.today() + _dt.timedelta(days=days_forward)
+        _, adm = self.admit(pid, bed, start.isoformat(), end.isoformat())
+        return pid, adm['admission_id']
+
+    def _round(self, day=None):
+        path = '/api/nursery/round'
+        if day:
+            path += '?date=' + day.isoformat()
+        status, body = self.api.get(path)
+        self.assertEqual(status, 200, f"round failed: {body}")
+        return body
+
+    def _find(self, round_data, patient_id):
+        for p in round_data['patients']:
+            if p['patient_id'] == patient_id:
+                return p
+        return None
+
+    def test_frequency_decides_how_many_doses_are_planned(self):
+        pid, adm = self._admitted_patient('Round Freq', BED_A)
+        self._order(pid, adm, name='Twice', frequency='Kuniga 2 mahal')
+        self._order(pid, adm, name='Thrice', frequency='har 8 soatda')
+        entry = self._find(self._round(), pid)
+        self.assertIsNotNone(entry, 'the admitted patient is missing from the round')
+        by_med = {}
+        for d in entry['doses']:
+            by_med.setdefault(d['medication_name'], []).append(d)
+        self.assertEqual(len(by_med['Twice']), 2, 'twice daily should plan two doses')
+        # "every 8 hours" is three doses a day, not eight.
+        self.assertEqual(len(by_med['Thrice']), 3, 'every 8h should plan three doses')
+
+    def test_as_needed_orders_are_not_scheduled(self):
+        """
+        Planning an as-needed order would report a missed dose every day it was
+        simply not required.
+        """
+        pid, adm = self._admitted_patient('Round PRN', BED_B)
+        self._order(pid, adm, name='Metoklopramid', frequency="Zarurat tug'ilganda")
+        entry = self._find(self._round(), pid)
+        self.assertEqual(entry['doses'], [], 'an as-needed order was put on the clock')
+        self.assertEqual(len(entry['as_needed']), 1, 'the order should still be listed')
+
+    def test_a_range_order_plans_its_lower_bound(self):
+        """
+        "Kuniga 1-2 mahal" leaves the second dose to discretion, so planning
+        two would mark a correctly-treated patient as having missed one.
+        """
+        pid, adm = self._admitted_patient('Round Range', BED_C)
+        self._order(pid, adm, name='Fenazepam', frequency='Kuniga 1-2 mahal')
+        entry = self._find(self._round(), pid)
+        self.assertEqual(len(entry['doses']), 1)
+        self.assertEqual(entry['doses'][0]['max_per_day'], 2,
+                         'the permitted maximum should be carried for the nurse')
+
+    def test_recording_a_dose_shows_up_on_the_round(self):
+        pid, adm = self._admitted_patient('Round Record', BED_A)
+        rx = self._order(pid, adm, frequency='Kuniga 2 mahal')
+        status, body = self.api.post('/api/nursery/administer', {
+            'prescription_id': rx, 'slot_index': 0, 'status': 'given'})
+        self.assertEqual(status, 201, f"recording failed: {body}")
+
+        entry = self._find(self._round(), pid)
+        first = [d for d in entry['doses'] if d['slot_index'] == 0][0]
+        self.assertEqual(first['state'], 'given')
+        self.assertIsNotNone(first['administered_at'], 'no time was stamped')
+
+    def test_re_recording_amends_rather_than_duplicating(self):
+        pid, adm = self._admitted_patient('Round Amend', BED_B)
+        rx = self._order(pid, adm, frequency='Kuniga 1 mahal')
+        self.api.post('/api/nursery/administer',
+                      {'prescription_id': rx, 'slot_index': 0, 'status': 'refused'})
+        self.api.post('/api/nursery/administer',
+                      {'prescription_id': rx, 'slot_index': 0, 'status': 'given'})
+        entry = self._find(self._round(), pid)
+        doses = [d for d in entry['doses'] if d['slot_index'] == 0]
+        self.assertEqual(len(doses), 1, 'the same dose appeared twice')
+        self.assertEqual(doses[0]['state'], 'given')
+
+    def test_future_and_past_days_are_distinguished(self):
+        pid, adm = self._admitted_patient('Round Dates', BED_C)
+        self._order(pid, adm, frequency='Kuniga 1 mahal', duration_days=10)
+
+        future = self._round(_dt.date.today() + _dt.timedelta(days=3))
+        self.assertTrue(future['is_future'])
+        entry = self._find(future, pid)
+        self.assertTrue(entry['doses'], 'a future day should still show what is due')
+        self.assertEqual(entry['doses'][0]['state'], 'scheduled')
+
+        today = self._round()
+        self.assertTrue(today['is_today'])
+        self.assertEqual(self._find(today, pid)['doses'][0]['state'], 'pending')
+
+    def test_a_future_dose_cannot_be_marked_given(self):
+        pid, adm = self._admitted_patient('Round Future', BED_A)
+        rx = self._order(pid, adm, frequency='Kuniga 1 mahal', duration_days=10)
+        later = (_dt.date.today() + _dt.timedelta(days=2)).isoformat()
+        status, body = self.api.post('/api/nursery/administer', {
+            'prescription_id': rx, 'slot_index': 0, 'status': 'given', 'date': later})
+        self.assertEqual(status, 400, 'a dose was recorded before it was due')
+        self.assertIn('error', body)
+
+    def test_an_as_needed_dose_records_without_a_slot(self):
+        pid, adm = self._admitted_patient('Round PRN Give', BED_B)
+        rx = self._order(pid, adm, name='Metoklopramid', frequency="Zarurat tug'ilganda")
+        status, body = self.api.post('/api/nursery/administer', {
+            'prescription_id': rx, 'status': 'given', 'notes': 'suite'})
+        self.assertEqual(status, 201, f"as-needed dose failed: {body}")
+        # Extras start at 100 so they cannot collide with a planned slot.
+        self.assertGreaterEqual(body['slot_index'], 100)
+        entry = self._find(self._round(), pid)
+        self.assertEqual(len(entry['as_needed'][0]['given_today']), 1)
+
+    def test_validation_messages_are_readable(self):
+        """
+        Input mistakes used to surface as the database constraint that caught
+        them. These must be plain messages, not schema errors.
+        """
+        pid, adm = self._admitted_patient('Round Validate', BED_C)
+        rx = self._order(pid, adm)
+        for payload, expect_field in (
+            ({'prescription_id': rx, 'slot_index': 0, 'status': 'teleported'}, 'status'),
+            ({'prescription_id': rx, 'slot_index': 0, 'date': '18-09-2026'}, 'date'),
+            ({'slot_index': 0, 'status': 'given'}, 'prescription_id'),
+        ):
+            status, body = self.api.post('/api/nursery/administer', payload)
+            self.assertEqual(status, 400, f"{payload} was accepted")
+            self.assertIn('error', body)
+            msg = body['error']
+            for leak in ('Check constraint', 'chk_', 'Traceback', '1062', '3819'):
+                self.assertNotIn(leak, msg, f"the message leaks internals: {msg}")
+
+    def test_only_the_nurse_station_may_record_doses(self):
+        pid, adm = self._admitted_patient('Round Perms', BED_A)
+        rx = self._order(pid, adm)
+        username = f'suite_kitchen_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, body = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite Kitchen', 'role': 'kitchen_staff'})
+        self.assertEqual(st, 201, f"could not create the probe account: {body}")
+        try:
+            c = Client()
+            c.login(username, 'Suite-Probe-2026')
+            c.post('/api/auth/change-password', {
+                'current_password': 'Suite-Probe-2026',
+                'new_password': 'Suite-Probe-2026-Rotated',
+                'confirm_password': 'Suite-Probe-2026-Rotated'})
+            self.assertEqual(c.get('/api/nursery/round')[0], 403,
+                             'kitchen staff could read the medication round')
+            self.assertEqual(
+                c.post('/api/nursery/administer',
+                       {'prescription_id': rx, 'slot_index': 0, 'status': 'given'})[0],
+                403, 'kitchen staff could record a dose')
+        finally:
+            self.api.delete('/api/users/' + (body.get('id') or username))
 
 
 class LoginThrottle(unittest.TestCase):
@@ -535,6 +801,67 @@ class OverlapGuard(ApiTest):
 # Concurrency
 # ---------------------------------------------------------------------------
 
+class DeleteLeavesNothingBehind(ApiTest):
+    """
+    Deleting an admission left its invoice_items behind. The foreign key is
+    ON DELETE CASCADE, but the handler disables FOREIGN_KEY_CHECKS first (a
+    PRAGMA carried over from the SQLite era) and MySQL does not run cascades
+    while checks are off.
+
+    That mattered because an invoice id is derived from its admission id. A
+    later admission created in the same second reuses the id after a delete,
+    so the orphaned lines reattached and the new patient was billed for the
+    previous patient's stay — which is how this was found: an intermittent
+    failure showing 17 days charged on a 10-day admission.
+    """
+
+    def test_deleting_an_admission_removes_its_billing_lines(self):
+        pid = self.make_patient('Delete Billing')
+        start = _dt.date.today() + _dt.timedelta(days=200)
+        _, adm = self.admit(pid, BED_A, start.isoformat(),
+                            (start + _dt.timedelta(days=10)).isoformat())
+        adm_id = adm['admission_id']
+        self.assertGreater(self._item_count('INV-' + adm_id), 0,
+                           'the stay should have been billed')
+
+        status, _ = self.api.delete('/api/admissions/' + adm_id)
+        self.assertEqual(status, 200)
+        self._admissions = [a for a in self._admissions if a != adm_id]
+
+        self.assertEqual(self._item_count('INV-' + adm_id), 0,
+                         'billing lines survived the delete and would reattach '
+                         'to the next admission that reused this id')
+
+    def test_a_reused_admission_id_starts_with_a_clean_invoice(self):
+        """
+        Reproduces the mechanism directly: bill a stay, delete it, then create
+        another admission carrying the same invoice id and confirm it is billed
+        only for its own nights.
+        """
+        first = self.make_patient('Reuse A')
+        start = _dt.date.today() + _dt.timedelta(days=300)
+        _, adm = self.admit(first, BED_B, start.isoformat(),
+                            (start + _dt.timedelta(days=7)).isoformat())
+        adm_id = adm['admission_id']
+        self.api.delete('/api/admissions/' + adm_id)
+        self._admissions = [a for a in self._admissions if a != adm_id]
+
+        # Any leftover line would be picked up by an invoice with this id.
+        self.assertEqual(self._item_count('INV-' + adm_id), 0)
+
+    def _item_count(self, invoice_id):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?",
+                        (invoice_id,))
+            return int(cur.fetchone()['n'])
+        finally:
+            conn.close()
+
+
 class GeneratedIdCollisions(ApiTest):
     """
     Admission ids were second-resolution timestamps, so two admissions created
@@ -646,8 +973,16 @@ class ClinicalWorkflow(ApiTest):
         _, adm = self.admit(pid, BED_A, '2027-09-01', '2027-09-11')
         self.assertEqual(adm['days'], 10)
 
+        # Assert on THIS admission's invoice, not the patient's lifetime total.
+        # total_billed on the patient row sums every admission they have ever
+        # had, which is correct behaviour but makes the assertion depend on the
+        # patient having exactly one stay.
         rec = self.patient_record(pid)
-        self.assertAlmostEqual(rec['total_billed'], 10 * RATE, delta=1,
+        self.assertEqual(rec['total_admissions_count'], 1,
+                         'the patient under test should have exactly one stay')
+
+        inv = self.invoice_for(adm['admission_id'])
+        self.assertAlmostEqual(float(inv['net_amount']), 10 * RATE, delta=1,
                                msg='ten nights at the daily rate should be billed')
 
         status, pay = self.api.post('/api/payments', {
@@ -655,9 +990,9 @@ class ClinicalWorkflow(ApiTest):
             'payment_method': 'cash'})
         self.assertEqual(status, 201, f"payment failed: {pay}")
 
-        rec = self.patient_record(pid)
-        self.assertAlmostEqual(rec['total_paid'], 2_000_000, delta=1)
-        self.assertAlmostEqual(rec['balance_due'], 10 * RATE - 2_000_000, delta=1,
+        inv = self.invoice_for(adm['admission_id'])
+        self.assertAlmostEqual(float(inv['total_paid']), 2_000_000, delta=1)
+        self.assertAlmostEqual(float(inv['balance_due']), 10 * RATE - 2_000_000, delta=1,
                                msg='balance did not reflect the payment')
 
     def test_transfer_splits_the_stay_without_changing_its_length(self):

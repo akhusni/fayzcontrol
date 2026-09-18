@@ -117,6 +117,81 @@ def write_json_atomic(path, data):
         raise
 
 
+# ----------------------------------------------------------------------------
+# Input validation
+#
+# Requests used to reach the database unchecked, so a mistake came back as the
+# constraint that caught it — a receptionist who typed the discharge date into
+# the admission date saw
+#   Check constraint 'chk_admissions_planned_dates' is violated
+# which says nothing about what to fix and leaks the schema. Values that a
+# person can get wrong are checked here first and refused in plain Uzbek.
+# ----------------------------------------------------------------------------
+
+def parse_date_param(raw, default_today=True, field='sana'):
+    """
+    Read a YYYY-MM-DD value. Returns (date, None) or (None, message).
+    An absent value means today, which is what every dashboard wants.
+    """
+    if raw is None or raw == '':
+        if default_today:
+            return _dt.date.today(), None
+        return None, f"{field.capitalize()} ko'rsatilishi shart."
+    try:
+        return _dt.date.fromisoformat(str(raw)[:10]), None
+    except Exception:
+        return None, f"{field.capitalize()} noto'g'ri formatda. Kutilgan format: YYYY-MM-DD."
+
+
+def validate_date_range(start_raw, end_raw, start_field='Boshlanish sanasi',
+                        end_field='Tugash sanasi'):
+    """
+    Check a start/end pair before it reaches a CHECK constraint.
+    Returns (start, end, None) or (None, None, message).
+    """
+    start, err = parse_date_param(start_raw, default_today=False, field=start_field)
+    if err:
+        return None, None, err
+    end, err = parse_date_param(end_raw, default_today=False, field=end_field)
+    if err:
+        return None, None, err
+    if end < start:
+        return None, None, (f"{end_field} {start_field.lower()}dan oldin bo'lishi mumkin emas "
+                            f"({end.isoformat()} < {start.isoformat()}).")
+    if (end - start).days > 365:
+        return None, None, f"Muddat 365 kundan oshmasligi kerak."
+    return start, end, None
+
+
+def validate_birth_year(raw):
+    """A birth year that is in the future or implausibly old is a typo."""
+    if raw in (None, ''):
+        return None, None
+    try:
+        year = int(raw)
+    except Exception:
+        return None, "Tug'ilgan yil raqam bo'lishi kerak."
+    this_year = _dt.date.today().year
+    if year > this_year:
+        return None, f"Tug'ilgan yil kelajakda bo'lishi mumkin emas ({year})."
+    if year < this_year - 130:
+        return None, f"Tug'ilgan yil haqiqiy emas ({year})."
+    return year, None
+
+
+def validate_amount(raw, field="Summa", allow_negative=False, maximum=10_000_000_000):
+    """Money must be a number, and within a sane bound."""
+    try:
+        value = float(raw)
+    except Exception:
+        return None, f"{field} raqam bo'lishi kerak."
+    if not allow_negative and value < 0:
+        return None, f"{field} manfiy bo'lishi mumkin emas."
+    if abs(value) > maximum:
+        return None, f"{field} juda katta."
+    return value, None
+
+
 from db import (
     get_db,
     get_active_engine,
@@ -129,6 +204,7 @@ from db import (
 import auth
 import audit
 import permissions
+import nursery
 
 
 class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -242,6 +318,17 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.close()
         except Exception as e:
             print(f"[!] Could not audit {self.command} {path}: {e}")
+
+    def _send_validation_error(self, message, field=None):
+        """
+        Refuse a request because of its input, in words the person who typed it
+        can act on. 400, and never the raw database error.
+        """
+        payload = {'error': message}
+        if field:
+            payload['field'] = field
+        self._set_json_headers(400)
+        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
     def client_ip(self):
         """
@@ -699,6 +786,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
             # 6. /api/daily-logs/<admission_id>
+            # 6b. GET /api/nursery/round?date=YYYY-MM-DD
+            #
+            # The medication round for one day, derived from the standing
+            # prescriptions and overlaid with what was actually recorded. A
+            # future date answers "what will this patient receive"; a past one
+            # answers "what did they receive".
+            elif path == '/api/nursery/round':
+                day, err = parse_date_param(query.get('date', [None])[0])
+                if err:
+                    self._send_validation_error(err)
+                    return
+                data = nursery.build_round(conn, day)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+
             elif path.startswith('/api/daily-logs/'):
                 admission_id = path.replace('/api/daily-logs/', '')
                 cur.execute("""
@@ -1165,11 +1267,29 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 bed_id = body.get('bed_id')
                 start_date = (body.get('start_date') or datetime.date.today().isoformat())[:10]
                 end_date = (body.get('planned_end_date') or body.get('end_date') or datetime.date.today().isoformat())[:10]
-                daily_price = float(body.get('daily_price', 720000.0))
                 doc_id = body.get('attending_doctor_id') or body.get('doctor_id')
 
+                # Validate before anything is written. The placeholder patient
+                # below used to be created and committed first, so an admission
+                # that then failed left an orphan record named 'Yangi Bemor'
+                # behind with no stay attached to it.
+                if not bed_id:
+                    self._send_validation_error('Karavot tanlanmadi.', 'bed_id')
+                    return
+                _s, _e, _err = validate_date_range(
+                    start_date, end_date,
+                    start_field='Kelish sanasi', end_field='Ketish sanasi')
+                if _err:
+                    self._send_validation_error(_err, 'planned_end_date')
+                    return
+                daily_price, _err = validate_amount(
+                    body.get('daily_price', 720000.0), field='Kunlik narx')
+                if _err:
+                    self._send_validation_error(_err, 'daily_price')
+                    return
+
                 if not patient_id:
-                    # Auto-create patient
+                    # No patient given: register one from the details supplied.
                     patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
                     pcode = f"FMH-2026-{patient_id[-4:]}"
                     cur.execute("""
@@ -1902,6 +2022,67 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': "Narxlar muvaffaqiyatli saqlandi va barcha bo'limlarga tatbiq etildi", 'pricing': existing}, ensure_ascii=False).encode('utf-8'))
 
+            # 12b. POST /api/nursery/administer
+            #
+            # Record one dose of the round: given, missed, refused or held.
+            # Upserts on (prescription, date, slot), so correcting a mistaken
+            # entry amends it instead of implying a second dose was given.
+            elif path == '/api/nursery/administer':
+                day, err = parse_date_param(body.get('date'))
+                if err:
+                    self._send_validation_error(err, 'date')
+                    return
+
+                rx_id = (body.get('prescription_id') or '').strip()
+                if not rx_id:
+                    self._send_validation_error('Retsept tanlanmadi.', 'prescription_id')
+                    return
+
+                status = (body.get('status') or 'given').strip().lower()
+                if status not in nursery.STATUSES:
+                    self._send_validation_error(
+                        "Holat noto'g'ri. Ruxsat etilgan: " + ', '.join(nursery.STATUSES), 'status')
+                    return
+
+                # A dose cannot be recorded as given before it is due.
+                if day > datetime.date.today() and status == 'given':
+                    self._send_validation_error(
+                        "Kelajakdagi doza berilgan deb belgilanmaydi.", 'date')
+                    return
+
+                sess = self.current_session()
+                staff_id = (sess['user'].get('staff_id') if sess else None) or None
+
+                slot_raw = body.get('slot_index')
+                try:
+                    if slot_raw is None or str(slot_raw).strip() == '':
+                        # No slot named: an as-needed or additional dose.
+                        slot_index = nursery.next_extra_slot(conn, rx_id, day)
+                    else:
+                        slot_index = int(slot_raw)
+                except Exception:
+                    self._send_validation_error("Doza raqami noto'g'ri.", 'slot_index')
+                    return
+
+                try:
+                    nursery.record_dose(
+                        conn, rx_id, day, slot_index, status,
+                        staff_id=staff_id,
+                        notes=(body.get('notes') or None),
+                        slot_label=(body.get('slot_label') or None))
+                except LookupError as e:
+                    self._send_validation_error(str(e), 'prescription_id')
+                    return
+
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'message': 'Doza qayd etildi',
+                    'prescription_id': rx_id,
+                    'date': day.isoformat(),
+                    'slot_index': slot_index,
+                    'status': status,
+                }, ensure_ascii=False).encode('utf-8'))
+
             # 13. POST /api/auth/login
             #
             # Verifies against a PBKDF2 hash (and still accepts a not-yet
@@ -2421,8 +2602,17 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 target_ids = [r[0] for r in p_rows] if p_rows else [pid]
 
                 for tid in target_ids:
-                    cur.execute("DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?))", (tid,))
-                    cur.execute("DELETE FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?)", (tid,))
+                    # Same two traps as the admission delete: cascades do not
+                    # fire while FOREIGN_KEY_CHECKS is off, and a subquery on
+                    # `invoices` collides with the triggers that write to it.
+                    cur.execute("SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?)", (tid,))
+                    _inv_ids = [r['id'] for r in cur.fetchall()]
+                    if _inv_ids:
+                        _marks = ','.join(['?'] * len(_inv_ids))
+                        cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
+                        cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
+                        cur.execute(f"DELETE FROM invoices WHERE id IN ({_marks})", tuple(_inv_ids))
+                    cur.execute("DELETE FROM medication_administrations WHERE patient_id = ?", (tid,))
                     # 'operational', not 'available': the latter is a value the
                     # v_bed_live_status view derives, and beds.status rejects it.
                     cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE patient_id = ?)", (tid,))
@@ -2444,8 +2634,30 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("PRAGMA foreign_keys = OFF;")
                 # 'operational', not 'available' -- see above.
                 cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE id = ?)", (adm_id,))
-                cur.execute("DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE admission_id = ?)", (adm_id,))
-                cur.execute("DELETE FROM invoices WHERE admission_id = ?", (adm_id,))
+                # Children of the invoice are removed explicitly, and by literal
+                # id rather than through a subquery on `invoices`.
+                #
+                # Two traps sit here. Their foreign keys are ON DELETE CASCADE,
+                # but FOREIGN_KEY_CHECKS is disabled just above (a PRAGMA carried
+                # over from the SQLite era) and MySQL skips cascades while checks
+                # are off, so the rows were orphaned. And because an invoice id is
+                # derived from its admission id, a later admission that reused the
+                # id inherited those lines and billed a new patient for the
+                # previous one's stay.
+                #
+                # The id list also cannot come from a subquery: triggers on
+                # payments and invoice_items update `invoices`, and MySQL refuses
+                # (error 1442) to let a trigger write to a table the invoking
+                # statement already names.
+                cur.execute("SELECT id FROM invoices WHERE admission_id = ?", (adm_id,))
+                _inv_ids = [r['id'] for r in cur.fetchall()]
+                if _inv_ids:
+                    _marks = ','.join(['?'] * len(_inv_ids))
+                    cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
+                    cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
+                    cur.execute(f"DELETE FROM invoices WHERE id IN ({_marks})", tuple(_inv_ids))
+                cur.execute("DELETE FROM medication_administrations WHERE admission_id = ?", (adm_id,))
+                cur.execute("DELETE FROM prescriptions WHERE admission_id = ?", (adm_id,))
                 cur.execute("DELETE FROM daily_logs WHERE admission_id = ?", (adm_id,))
                 cur.execute("DELETE FROM bed_transfers WHERE admission_id = ?", (adm_id,))
                 cur.execute("DELETE FROM admissions WHERE id = ?", (adm_id,))
