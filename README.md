@@ -112,6 +112,63 @@ xodimlar parollarini o'zgartirishi shart emas.
 > ⚠️ Birinchi o'rnatishdan keyin standart parollarni (`superadmin2026` va
 > boshqalar) albatta o'zgartiring.
 
+### 👤 Rollar va Ruxsatlar
+
+Har bir xodim faqat o'z ishiga tegishli bo'limlarni ko'radi. Rollar va ularning
+ruxsatlari `permissions.py` faylida bir joyda belgilangan — rolni
+o'zgartirsangiz, o'sha roldagi barcha xodimlarga darhol qo'llaniladi.
+
+| Rol | Lavozim | Asosiy sahifa |
+| :-- | :------ | :------------ |
+| `superadmin` | Bosh administrator | Super-Portal |
+| `admin` | Administrator | Super-Portal |
+| `chief_doctor` | Bosh shifokor | Shifokor posti |
+| `doctor` | Shifokor | Shifokor posti |
+| `nurse` | Hamshira | Bemorlar (hamshira posti tayyorlanmoqda) |
+| `receptionist` | Qabulxona xodimi | Qabulxona |
+| `accountant` | Buxgalter / Kassir | Buxgalteriya |
+| `hr_manager` | Kadrlar bo'limi | HR |
+| `pharmacist` | Farmatsevt | Super-Portal |
+| `ward_manager` | Statsionar menejeri | Statsionar |
+| `kitchen_staff` | Oshxona xodimi | Statsionar |
+
+Muhim ajratmalar:
+
+- **Qabulxona** bemorni ro'yxatga oladi va statsionarga joylashtiradi, lekin
+  **chiqarish va ko'chirish** — klinik qaror, shuning uchun statsionar va
+  shifokorlarga tegishli.
+- **Xonalarni sozlash** (qo'shish/o'chirish) faqat statsionar menejeri va
+  administratorda.
+- **Hamshira** retseptlarni o'qiydi, lekin yozmaydi; shifokor kabinetini
+  ko'rmaydi.
+- **Farmatsevt** retseptlarni ko'radi, lekin tayinlay olmaydi.
+- **Kadrlar bo'limi** bemorlar ma'lumotlariga umuman kirmaydi.
+
+Yangi ruxsat qoidasi yozilmagan endpoint **hamma uchun taqiqlanadi** (hatto
+superadmin uchun ham) — bu yangi endpoint tasodifan ochiq qolishining oldini
+oladi.
+
+### 📝 Audit Jurnali
+
+Har bir o'zgartirish, kirish va rad etilgan urinish `audit_logs` jadvaliga
+yoziladi: kim, nima, qachon, qaysi IP dan. Sozlash shart emas.
+
+```sql
+SELECT entity_name, entity_id, action_type,
+       JSON_UNQUOTE(JSON_EXTRACT(new_data_json,'$._actor')) AS actor,
+       ip_address, timestamp
+FROM audit_logs ORDER BY id DESC LIMIT 50;
+```
+
+### 🔒 Kirishni Cheklash
+
+Noto'g'ri parol bilan urinishlar hisoblanadi: bitta hisob uchun 8 marta
+(`FMH_LOGIN_MAX_FAILURES`), bitta IP uchun 50 marta
+(`FMH_LOGIN_MAX_IP_FAILURES`) — IP chegarasi ataylab yuqori, chunki Nginx
+ortida butun klinika bitta manzil sifatida ko'rinadi va bir xodimning xatosi
+hammani bloklab qo'ymasligi kerak. Bloklash muddati 15 daqiqa
+(`FMH_LOGIN_LOCKOUT_SECONDS`).
+
 ### 🌐 Tarmoq sozlamalari
 
 Server standart holatda **faqat `127.0.0.1`** manzilini tinglaydi, ya'ni

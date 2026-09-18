@@ -50,6 +50,13 @@ PUBLIC_API_PATHS = {
     '/api/auth/session',
 }
 
+# Reachable by any signed-in user regardless of role: these are about the
+# caller's own account, not about clinic data, so the permission tables in
+# permissions.py do not apply to them.
+SELF_SERVICE_API_PATHS = {
+    '/api/auth/change-password',
+}
+
 # Pages reachable without a session (the login screen itself and its assets).
 PUBLIC_PAGE_PATHS = {
     '/login.html',
@@ -216,6 +223,134 @@ def destroy_session(token):
 def active_session_count():
     with _SESSION_LOCK:
         return len(_SESSIONS)
+
+
+def sessions_for_user(username):
+    """Tokens currently held by one account, so they can all be revoked."""
+    uname = (username or '').lower()
+    with _SESSION_LOCK:
+        return [t for t, s in _SESSIONS.items()
+                if (s['user'].get('username') or '').lower() == uname]
+
+
+def destroy_sessions_for_user(username):
+    """Sign an account out everywhere — used after a password change."""
+    for token in sessions_for_user(username):
+        destroy_session(token)
+
+
+# ---------------------------------------------------------------------------
+# Login throttling
+#
+# The login endpoint previously answered an unlimited number of guesses at full
+# speed, which on an internet-exposed deployment is an open invitation to a
+# dictionary attack — and the default passwords were guessable words.
+#
+# Failures are counted per username and per client address. Once the threshold
+# is reached that key is refused for a cooling-off period, regardless of
+# whether the password offered is correct, so an attacker gains no signal. A
+# successful sign-in clears the counter for that key.
+# ---------------------------------------------------------------------------
+# Per-account threshold: strict, because guesses against one account are what
+# a dictionary attack looks like.
+MAX_FAILURES = int(os.environ.get('FMH_LOGIN_MAX_FAILURES', 8))
+
+# Per-address threshold: deliberately far higher. Behind the documented Nginx
+# proxy the whole clinic can share one apparent address, so a threshold as
+# strict as the per-account one would let a single member of staff fumbling
+# their password lock every colleague out of the system mid-shift. This still
+# blunts distributed guessing across many accounts from one source, without
+# turning one person's bad morning into an outage.
+MAX_IP_FAILURES = int(os.environ.get('FMH_LOGIN_MAX_IP_FAILURES', 50))
+
+LOCKOUT_SECONDS = int(os.environ.get('FMH_LOGIN_LOCKOUT_SECONDS', 15 * 60))
+# Failures older than this stop counting, so an honest typo in the morning does
+# not combine with one in the afternoon to lock someone out.
+FAILURE_WINDOW_SECONDS = int(os.environ.get('FMH_LOGIN_FAILURE_WINDOW', 15 * 60))
+
+_FAILURES = {}          # key -> list of datetimes
+_FAILURE_LOCK = threading.RLock()
+
+
+def _prune(key, now):
+    stamps = [t for t in _FAILURES.get(key, [])
+              if (now - t).total_seconds() < FAILURE_WINDOW_SECONDS]
+    if stamps:
+        _FAILURES[key] = stamps
+    else:
+        _FAILURES.pop(key, None)
+    return stamps
+
+
+def lockout_remaining(username, ip):
+    """
+    Seconds until this username/address may try again, or 0 when not locked.
+
+    The account and the address are counted against their own thresholds — see
+    MAX_IP_FAILURES for why the address is allowed far more latitude.
+    """
+    now = _now()
+    worst = 0
+    with _FAILURE_LOCK:
+        for key, limit in ((f'user:{(username or "").lower()}', MAX_FAILURES),
+                           (f'ip:{ip or "-"}', MAX_IP_FAILURES)):
+            stamps = _prune(key, now)
+            if len(stamps) >= limit:
+                elapsed = (now - max(stamps)).total_seconds()
+                remaining = int(LOCKOUT_SECONDS - elapsed)
+                if remaining > worst:
+                    worst = remaining
+    return max(0, worst)
+
+
+def note_login_failure(username, ip):
+    """Record a failed attempt and report how many remain before lockout."""
+    now = _now()
+    with _FAILURE_LOCK:
+        for key in (f'user:{(username or "").lower()}', f'ip:{ip or "-"}'):
+            stamps = _prune(key, now)
+            stamps.append(now)
+            _FAILURES[key] = stamps
+        used = len(_FAILURES.get(f'user:{(username or "").lower()}', []))
+    return max(0, MAX_FAILURES - used)
+
+
+def note_login_success(username, ip):
+    with _FAILURE_LOCK:
+        _FAILURES.pop(f'user:{(username or "").lower()}', None)
+        _FAILURES.pop(f'ip:{ip or "-"}', None)
+
+
+# ---------------------------------------------------------------------------
+# Forced password rotation
+# ---------------------------------------------------------------------------
+
+def must_change_password(user):
+    """
+    True when this account is still on a password it was handed rather than one
+    its owner chose. The seeded demo passwords shipped inside the distributed
+    zip, so those accounts are flagged until they are changed.
+    """
+    return bool((user or {}).get('must_change_password'))
+
+
+def set_password(username, new_password):
+    """
+    Replace one account's password with a fresh hash and clear the
+    must_change_password flag. Returns True when the account was found.
+    """
+    users = load_users()
+    target = None
+    for u in users:
+        if (u.get('username') or '').lower() == (username or '').lower():
+            target = u
+            break
+    if not target:
+        return False
+    target['password'] = hash_password(new_password)
+    target.pop('must_change_password', None)
+    _write_users_atomic(users)
+    return True
 
 
 # ---------------------------------------------------------------------------

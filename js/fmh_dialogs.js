@@ -247,3 +247,117 @@
     return res;
   };
 })();
+
+/* ==========================================================================
+   ROLE-AWARE NAVIGATION
+   --------------------------------------------------------------------------
+   Each member of staff should see the portals their job needs and not the
+   other nine. The server already refuses pages outside a role's permissions,
+   but a link that leads to a redirect is still clutter, so the header is
+   trimmed to what this user may actually open.
+
+   The permission list comes from /api/auth/session, which is the same source
+   the server authorizes against — there is no second copy of the rules here,
+   so hiding a link can never disagree with what the server allows.
+
+   This only tidies the menu. It is not a security boundary: the server
+   decides, and it decides again on every request.
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  if (window.__fmhNavScoped) return;
+  window.__fmhNavScoped = true;
+
+  // Links the header may contain, and the page each points at.
+  function hrefPath(a) {
+    const raw = a.getAttribute('href') || '';
+    if (!raw || raw.startsWith('http') || raw.startsWith('#')) return null;
+    return '/' + raw.replace(/^\.?\//, '').split('?')[0];
+  }
+
+  function applyScope(session) {
+    const allowed = new Set(session.pages || []);
+    if (!allowed.size) return;
+
+    // Trim the portal navigation and any action links pointing at a page the
+    // role cannot open.
+    document.querySelectorAll(
+      '.portal-nav-pill, .portal-master-nav a[href], .portal-actions-cluster a[href]'
+    ).forEach(a => {
+      const p = hrefPath(a);
+      if (!p || !p.endsWith('.html')) return;
+      if (!allowed.has(p)) a.remove();
+    });
+
+    // The Super-Portal's module cards lead to the same pages.
+    document.querySelectorAll('a[href$=".html"]').forEach(a => {
+      const p = hrefPath(a);
+      if (!p) return;
+      if (p === '/login.html' || p === '/change-password.html') return;
+      if (!allowed.has(p)) {
+        const card = a.closest('.super-module-card, .module-card, .super-grid-item');
+        (card || a).remove();
+      }
+    });
+
+    // Show who is signed in, with their job title, and offer a way out.
+    const cluster = document.querySelector('.portal-actions-cluster');
+    if (cluster && !document.getElementById('fmh-session-chip')) {
+      const chip = document.createElement('div');
+      chip.id = 'fmh-session-chip';
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:8px;' +
+        'padding:5px 10px;border-radius:999px;font-size:0.74rem;font-weight:700;' +
+        'background:var(--bg-panel,#0a1b33);border:1px solid var(--border-subtle,rgba(255,255,255,0.08));' +
+        'color:var(--text-secondary,#cbd5e1);white-space:nowrap;min-height:32px;';
+      const u = session.user || {};
+      chip.innerHTML =
+        '<span>' + (u.avatar || '👤') + '</span>' +
+        '<span title="' + (session.role_label || u.role || '') + '">' +
+          (u.full_name || u.username || '') +
+        '</span>';
+
+      const out = document.createElement('button');
+      out.type = 'button';
+      out.setAttribute('aria-label', 'Tizimdan chiqish');
+      out.title = 'Tizimdan chiqish';
+      out.innerHTML = '<i class="fas fa-right-from-bracket"></i>';
+      out.style.cssText = 'background:transparent;border:none;color:inherit;cursor:pointer;' +
+        'padding:0 2px;font-size:0.8rem;';
+      out.addEventListener('click', async () => {
+        const ok = window.fmhConfirm
+          ? await window.fmhConfirm({
+              title: 'Tizimdan Chiqish',
+              message: 'Hisobingizdan chiqmoqchimisiz?',
+              confirmText: 'Chiqish', cancelText: 'Bekor Qilish', type: 'warning' })
+          : true;
+        if (!ok) return;
+        try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+        location.replace('/login.html');
+      });
+      chip.appendChild(out);
+      cluster.insertBefore(chip, cluster.firstChild);
+    }
+  }
+
+  function start() {
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then(s => {
+        if (!s || !s.authenticated) return;    // the 401 wrapper handles this
+        if (s.must_change_password &&
+            location.pathname !== '/change-password.html') {
+          location.replace('/change-password.html');
+          return;
+        }
+        applyScope(s);
+      })
+      .catch(() => {});
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();

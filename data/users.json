@@ -2,15 +2,12 @@
   {
     "id": "USR-SUPER-01",
     "username": "superadmin",
-    "password": "pbkdf2_sha256$240000$5d72575eb962fea49e201c973f189fd1$760eb1c2bf7f5ac262a2d68850891f411964a9b710cb8ef3862c46217a2bf017",
+    "password": "pbkdf2_sha256$240000$5df079031504a78d5cc0b2a17d07aa5b$81a9babbcf0861d4a9dfa551f93471e294534bee365f2fe171316cb8a87ec34c",
     "full_name": "Bosh Administrator (Superadmin)",
     "role": "superadmin",
     "avatar": "👑",
     "phone": "+998 90 372-03-03",
-    "is_active": true,
-    "permissions": [
-      "*"
-    ]
+    "is_active": true
   },
   {
     "id": "USR-DOC-01",
@@ -23,11 +20,7 @@
     "avatar": "👨‍⚕️",
     "phone": "+998 90 100-11-22",
     "is_active": true,
-    "permissions": [
-      "doctors",
-      "crm",
-      "pharmacy"
-    ]
+    "must_change_password": true
   },
   {
     "id": "USR-DOC-02",
@@ -40,11 +33,7 @@
     "avatar": "🩺",
     "phone": "+998 90 200-33-44",
     "is_active": true,
-    "permissions": [
-      "doctors",
-      "crm",
-      "pharmacy"
-    ]
+    "must_change_password": true
   },
   {
     "id": "USR-DOC-03",
@@ -57,11 +46,7 @@
     "avatar": "👩‍⚕️",
     "phone": "+998 90 300-55-66",
     "is_active": true,
-    "permissions": [
-      "doctors",
-      "crm",
-      "pharmacy"
-    ]
+    "must_change_password": true
   },
   {
     "id": "USR-DOC-ALIAS",
@@ -74,11 +59,7 @@
     "avatar": "👨‍⚕️",
     "phone": "+998 90 100-11-22",
     "is_active": true,
-    "permissions": [
-      "doctors",
-      "crm",
-      "pharmacy"
-    ]
+    "must_change_password": true
   },
   {
     "id": "USR-NURSE-01",
@@ -89,11 +70,7 @@
     "avatar": "💉",
     "phone": "+998 90 200-33-44",
     "is_active": true,
-    "permissions": [
-      "nursery",
-      "kitchen",
-      "facility"
-    ]
+    "must_change_password": true
   },
   {
     "id": "USR-ACCT-01",
@@ -104,9 +81,7 @@
     "avatar": "💳",
     "phone": "+998 90 400-55-66",
     "is_active": true,
-    "permissions": [
-      "accounting"
-    ]
+    "must_change_password": true
   },
   {
     "id": "USR-REC-01",
@@ -117,10 +92,87 @@
     "avatar": "📋",
     "phone": "+998 90 500-66-77",
     "is_active": true,
-    "permissions": [
-      "reception",
-      "crm",
-      "facility"
-    ]
+    "must_change_password": true
+  },
+  {
+    "id": "USR-ADM-01",
+    "username": "admin_klinika",
+    "password": "pbkdf2_sha256$240000$4f8c35142cd647e173b63faf940f9f07$23f54f4506fa1b89c06f7804f493bfc042688c536267a0ea349a88309872afe8",
+    "full_name": "Klinika Administratori",
+    "role": "admin",
+    "avatar": "🛡️",
+    "phone": "",
+    "is_active": true,
+    "must_change_password": true
+  },
+  {
+    "id": "USR-CHI-01",
+    "username": "bosh_shifokor",
+    "password": "pbkdf2_sha256$240000$c1c83feff031131757b9bb181a29bcc6$85994221e400ed17c3100d21e6e7f0b3d1e40b2417a9db838ee70ad653843867",
+    "full_name": "Bosh Shifokor",
+    "role": "chief_doctor",
+    "avatar": "🩺",
+    "phone": "",
+    "is_active": true
+  },
+  {
+    "id": "USR-NUR-02",
+    "username": "hamshira_2",
+    "password": "pbkdf2_sha256$240000$396d8339882d265b80a754ff53f4be31$b192b2d27ae9eadcbf1ab8674d557f959a4876e8bcc6a86c4536a9a68c1ecbc4",
+    "full_name": "Navbatchi Hamshira (2-post)",
+    "role": "nurse",
+    "avatar": "💉",
+    "phone": "",
+    "is_active": true
+  },
+  {
+    "id": "USR-REC-02",
+    "username": "qabul_2",
+    "password": "pbkdf2_sha256$240000$e1af290fcb640e32a4bef06ea603c5f8$5a9640d233c82db970b94aad7a7578d8f5dd90331de20811fd8b645d9c2d1aed",
+    "full_name": "Qabulxona Xodimi (2-smena)",
+    "role": "receptionist",
+    "avatar": "📋",
+    "phone": "",
+    "is_active": true
+  },
+  {
+    "id": "USR-PHA-01",
+    "username": "farmatsevt",
+    "password": "pbkdf2_sha256$240000$ebedd4965a466632d4c72c21a527db0d$f8d962e83d2da2c4eecd1eba02f1d28f38770b93ddc2141bd00c4d945051f871",
+    "full_name": "Farmatsevt",
+    "role": "pharmacist",
+    "avatar": "💊",
+    "phone": "",
+    "is_active": true
+  },
+  {
+    "id": "USR-WAR-01",
+    "username": "statsionar",
+    "password": "pbkdf2_sha256$240000$5ca537c9b2ecae3611e2b4f0168125e0$350e17e3219b366b0ece238552aafc8e97dd6de45953478eb19cf8ddedf73e29",
+    "full_name": "Statsionar Menejeri",
+    "role": "ward_manager",
+    "avatar": "🏨",
+    "phone": "",
+    "is_active": true
+  },
+  {
+    "id": "USR-HR_-01",
+    "username": "kadrlar",
+    "password": "pbkdf2_sha256$240000$127e65c17943cb9bf7d1e64d1f70869a$b79bd99a4c01075e740e9e33c791eae8a653b1d47c0571ae68e1bac0540f502a",
+    "full_name": "Kadrlar Bo'limi Boshlig'i",
+    "role": "hr_manager",
+    "avatar": "👥",
+    "phone": "",
+    "is_active": true
+  },
+  {
+    "id": "USR-KIT-01",
+    "username": "oshxona",
+    "password": "pbkdf2_sha256$240000$d4aa5790fdcf5eb0bbfe61240804a60e$160af68a71f0e68a889eebb7a6b6d383907ef900b95bde0a88ac6b4909fabad7",
+    "full_name": "Oshxona Xodimi",
+    "role": "kitchen_staff",
+    "avatar": "🍲",
+    "phone": "",
+    "is_active": true
   }
 ]

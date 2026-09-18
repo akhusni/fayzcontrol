@@ -127,6 +127,8 @@ from db import (
 )
 
 import auth
+import audit
+import permissions
 
 
 class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -163,15 +165,169 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
         return True
 
+    # ------------------------------------------------------------------------
+    # Audit capture
+    #
+    # The route handlers write their JSON straight to the socket, so to record
+    # what actually happened the response is teed as it goes out: the status
+    # line is noted, and the first few KB of body are kept so a created row's
+    # generated id can be pulled out of it. Auditing then happens once, at the
+    # dispatch point, instead of being threaded through thirty write branches.
+    # ------------------------------------------------------------------------
+    class _Tee:
+        """Forwards writes to the real stream while keeping a capped copy."""
+
+        LIMIT = 4096
+
+        def __init__(self, inner):
+            self._inner = inner
+            self.captured = bytearray()
+
+        def write(self, data):
+            if len(self.captured) < self.LIMIT:
+                try:
+                    self.captured.extend(data[: self.LIMIT - len(self.captured)])
+                except Exception:
+                    pass
+            return self._inner.write(data)
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    def send_response(self, code, message=None):
+        self._audit_status = code
+        return super().send_response(code, message)
+
+    def _audit_mutation(self, path, body, captured):
+        """Record one completed write. Only 2xx outcomes are logged as changes."""
+        status = getattr(self, '_audit_status', None)
+        if status is None or not (200 <= status < 300):
+            return
+        if path.startswith('/api/auth/'):
+            return          # handled explicitly by the auth routes themselves
+        sess = self.current_session()
+        user = sess['user'] if sess else None
+        response_body = None
+        if captured:
+            try:
+                # end_headers() writes the status line and headers to the same
+                # stream, so the capture holds those before the JSON. Drop
+                # everything up to the blank line that separates them —
+                # otherwise the parse fails and the trail records the URL tail
+                # instead of the generated id.
+                raw = bytes(captured)
+                sep = raw.find(b'\r\n\r\n')
+                if sep == -1:
+                    sep = raw.find(b'\n\n')
+                    body_bytes = raw[sep + 2:] if sep != -1 else raw
+                else:
+                    body_bytes = raw[sep + 4:]
+                response_body = json.loads(body_bytes.decode('utf-8', 'replace'))
+            except Exception:
+                response_body = None
+        try:
+            conn = get_db()
+            try:
+                audit.ensure_schema(conn)
+                audit.record(
+                    conn,
+                    audit.entity_for_path(path),
+                    audit.entity_id_from(path, body, response_body),
+                    audit.action_for(self.command, path),
+                    user=user,
+                    new_data=body if isinstance(body, dict) else None,
+                    ip_address=self.client_ip(),
+                )
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"[!] Could not audit {self.command} {path}: {e}")
+
+    def client_ip(self):
+        """
+        The caller's address, honouring the proxy header the documented Nginx
+        vhost sets. Used for throttling and for the audit trail.
+        """
+        fwd = self.headers.get('X-Real-IP') or self.headers.get('X-Forwarded-For')
+        if fwd:
+            return fwd.split(',')[0].strip()
+        try:
+            return self.client_address[0]
+        except Exception:
+            return '-'
+
+    def _reject_unauthorized(self, path, reason, user):
+        """
+        Refuse an authenticated caller who lacks the permission. 403, not 401:
+        signing in again will not help, and the difference matters to the
+        client-side handler, which must not bounce them to the login screen.
+        """
+        print(f"[authz] denied {self.command} {path} for "
+              f"{(user or {}).get('username')} ({reason})")
+        try:
+            conn = get_db()
+            try:
+                audit.record(conn, 'auth', path, 'ACCESS_DENIED', user=user,
+                             new_data={'method': self.command, 'required': reason},
+                             ip_address=self.client_ip())
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+        if path.startswith('/api/'):
+            self._set_json_headers(403)
+            self.wfile.write(json.dumps({
+                'error': 'Ruxsat etilmagan',
+                'detail': "Bu amal uchun sizning lavozimingizda ruxsat yo'q.",
+                'required': reason,
+            }, ensure_ascii=False).encode('utf-8'))
+        else:
+            # Send them somewhere they are allowed to be rather than showing an
+            # empty shell they cannot populate.
+            self.send_response(302)
+            self.send_header('Location', permissions.home_for(user))
+            self.end_headers()
+        return True
+
     def enforce_auth(self, path):
         """
-        True when the request has been refused and the caller should stop.
+        Authenticate, then authorize. True when the request has been refused
+        and the caller should stop processing.
         """
         if not auth.requires_session(path):
             return False
-        if self.current_session():
-            return False
-        return self._reject_unauthenticated(path)
+
+        sess = self.current_session()
+        if not sess:
+            return self._reject_unauthenticated(path)
+
+        user = sess['user']
+
+        # An account still on the password it was issued may only reach the
+        # change-password screen and the endpoints that serve it.
+        if auth.must_change_password(user) and path not in (
+                '/change-password.html', '/api/auth/change-password', '/api/auth/session'):
+            if path.startswith('/api/'):
+                self._set_json_headers(403)
+                self.wfile.write(json.dumps({
+                    'error': "Parolni o'zgartirish talab qilinadi",
+                    'detail': "Davom etishdan oldin standart parolni o'zgartiring.",
+                    'change_password_url': '/change-password.html',
+                }, ensure_ascii=False).encode('utf-8'))
+            else:
+                self.send_response(302)
+                self.send_header('Location', '/change-password.html')
+                self.end_headers()
+            return True
+
+        if path.startswith('/api/'):
+            allowed, reason = permissions.authorize_api(user, self.command, path)
+        else:
+            allowed, reason = permissions.authorize_page(user, path)
+        if not allowed:
+            return self._reject_unauthorized(path, reason, user)
+        return False
 
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -206,11 +362,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         # whether it is signed in when MySQL is unreachable.
         if path == '/api/auth/session':
             sess = self.current_session()
+            user = sess['user'] if sess else None
+            payload = {'authenticated': bool(sess), 'user': user}
+            if user:
+                # The frontend uses these to build the navigation, so each
+                # member of staff is shown only the portals their job needs.
+                payload.update({
+                    'permissions': permissions.permissions_for(user),
+                    'modules': permissions.visible_modules(user),
+                    'pages': permissions.visible_pages(user),
+                    'home': permissions.home_for(user),
+                    'role_label': (permissions.ROLES.get(user.get('role')) or {}).get('label'),
+                    'must_change_password': auth.must_change_password(user),
+                })
             self._set_json_headers(200)
-            self.wfile.write(json.dumps({
-                'authenticated': bool(sess),
-                'user': sess['user'] if sess else None
-            }, ensure_ascii=False).encode('utf-8'))
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
             return
 
         if path in ('/', ''):
@@ -236,8 +402,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 body = json.loads(body_raw)
             except Exception:
                 body = {}
-            with WRITE_LOCK:
-                self.handle_api_post(path, body)
+            tee = self._Tee(self.wfile)
+            self.wfile = tee
+            try:
+                with WRITE_LOCK:
+                    self.handle_api_post(path, body)
+            finally:
+                self.wfile = tee._inner
+                self._audit_mutation(path, body, tee.captured)
         else:
             self._set_json_headers(404)
             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
@@ -254,8 +426,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 body = json.loads(body_raw)
             except Exception:
                 body = {}
-            with WRITE_LOCK:
-                self.handle_api_put(path, body)
+            tee = self._Tee(self.wfile)
+            self.wfile = tee
+            try:
+                with WRITE_LOCK:
+                    self.handle_api_put(path, body)
+            finally:
+                self.wfile = tee._inner
+                self._audit_mutation(path, body, tee.captured)
         else:
             self._set_json_headers(404)
             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
@@ -266,8 +444,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         if self.enforce_auth(path):
             return
         if path.startswith('/api/'):
-            with WRITE_LOCK:
-                self.handle_api_delete(path)
+            tee = self._Tee(self.wfile)
+            self.wfile = tee
+            try:
+                with WRITE_LOCK:
+                    self.handle_api_delete(path)
+            finally:
+                self.wfile = tee._inner
+                self._audit_mutation(path, {}, tee.captured)
         else:
             self._set_json_headers(404)
             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
@@ -1728,14 +1912,38 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 username = (body.get('username') or '').strip().lower()
                 password = body.get('password') or ''
 
+                ip = self.client_ip()
+
+                # Refuse while locked out, before the password is even checked,
+                # so a throttled attacker learns nothing from the response.
+                locked = auth.lockout_remaining(username, ip)
+                if locked:
+                    minutes = max(1, locked // 60)
+                    audit.record(conn, 'auth', username or '-', 'LOGIN_FAILED',
+                                 new_data={'reason': 'locked_out', 'seconds_remaining': locked},
+                                 ip_address=ip)
+                    self._set_json_headers(429)
+                    self.wfile.write(json.dumps({
+                        'error': "Juda ko'p urinish",
+                        'detail': f"Xavfsizlik uchun kirish vaqtincha bloklandi. "
+                                  f"{minutes} daqiqadan so'ng qayta urinib ko'ring.",
+                        'retry_after_seconds': locked,
+                    }, ensure_ascii=False).encode('utf-8'))
+                    return
+
                 found = auth.find_user(username)
                 ok = bool(found) and found.get('is_active', True) and \
                     auth.verify_password(password, found.get('password'))
 
                 if ok:
+                    auth.note_login_success(username, ip)
                     token = auth.create_session(found)
                     user_info = auth.sanitize_user(found)
+                    needs_change = auth.must_change_password(found)
                     is_https = self.headers.get('X-Forwarded-Proto') == 'https'
+                    audit.ensure_schema(conn)
+                    audit.record(conn, 'auth', username, 'LOGIN', user=found,
+                                 new_data={'role': found.get('role')}, ip_address=ip)
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json; charset=utf-8')
                     self.send_header('Set-Cookie', auth.build_session_cookie(
@@ -1743,17 +1951,38 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(json.dumps({
                         'message': 'Muvaffaqiyatli tizimga kirildi',
-                        'user': user_info
+                        'user': user_info,
+                        'permissions': permissions.permissions_for(found),
+                        'pages': permissions.visible_pages(found),
+                        'home': '/change-password.html' if needs_change else permissions.home_for(found),
+                        'must_change_password': needs_change,
                     }, ensure_ascii=False).encode('utf-8'))
                     print(f"[auth] login ok: {username} ({found.get('role')})")
                 else:
-                    print(f"[auth] login failed for {username!r}")
+                    remaining = auth.note_login_failure(username, ip)
+                    print(f"[auth] login failed for {username!r} from {ip} "
+                          f"({remaining} attempt(s) before lockout)")
+                    audit.ensure_schema(conn)
+                    audit.record(conn, 'auth', username or '-', 'LOGIN_FAILED',
+                                 new_data={'attempts_remaining': remaining}, ip_address=ip)
                     self._set_json_headers(401)
-                    self.wfile.write(json.dumps({'error': "Login yoki parol noto'g'ri"}, ensure_ascii=False).encode('utf-8'))
+                    # The message never distinguishes a wrong username from a
+                    # wrong password, so the endpoint cannot be used to find
+                    # out which accounts exist.
+                    payload = {'error': "Login yoki parol noto'g'ri"}
+                    if remaining <= 3:
+                        payload['detail'] = (f"Yana {remaining} ta urinish qoldi, "
+                                             f"so'ngra kirish vaqtincha bloklanadi.")
+                    self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
             # 13b. POST /api/auth/logout — discard the session server-side.
             elif path == '/api/auth/logout':
                 token = auth.token_from_cookie_header(self.headers.get('Cookie'))
+                sess = auth.get_session(token)
+                if sess:
+                    audit.ensure_schema(conn)
+                    audit.record(conn, 'auth', sess['user'].get('username', '-'),
+                                 'LOGOUT', user=sess['user'], ip_address=self.client_ip())
                 auth.destroy_session(token)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -1762,6 +1991,75 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                                  f"{auth.SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
                 self.end_headers()
                 self.wfile.write(json.dumps({'message': 'Tizimdan chiqildi'}, ensure_ascii=False).encode('utf-8'))
+
+            # 13c. POST /api/auth/change-password
+            #
+            # Reachable by any signed-in user for their own account, including
+            # one still locked to the change-password screen. Changing the
+            # password revokes that account's other sessions, so a password
+            # handed out and then changed cannot still be in use elsewhere.
+            elif path == '/api/auth/change-password':
+                sess = self.current_session()
+                if not sess:
+                    self._set_json_headers(401)
+                    self.wfile.write(json.dumps({'error': 'Avtorizatsiya talab qilinadi'},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+
+                username = sess['user'].get('username')
+                current = body.get('current_password') or ''
+                new = body.get('new_password') or ''
+                confirm = body.get('confirm_password')
+
+                record = auth.find_user(username)
+                if not record or not auth.verify_password(current, record.get('password')):
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps(
+                        {'error': "Hozirgi parol noto'g'ri"}, ensure_ascii=False).encode('utf-8'))
+                    return
+                if confirm is not None and new != confirm:
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps(
+                        {'error': 'Yangi parollar mos kelmadi'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                if len(new) < 8:
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps(
+                        {'error': "Yangi parol kamida 8 belgidan iborat bo'lishi kerak"},
+                        ensure_ascii=False).encode('utf-8'))
+                    return
+                if auth.verify_password(new, record.get('password')):
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps(
+                        {'error': "Yangi parol avvalgisidan farq qilishi kerak"},
+                        ensure_ascii=False).encode('utf-8'))
+                    return
+
+                if not auth.set_password(username, new):
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps(
+                        {'error': "Parolni saqlab bo'lmadi"}, ensure_ascii=False).encode('utf-8'))
+                    return
+
+                audit.ensure_schema(conn)
+                audit.record(conn, 'users', username, 'PASSWORD_CHANGED',
+                             user=sess['user'], ip_address=self.client_ip())
+
+                # Revoke every session for this account, then issue a fresh one
+                # so the person who just changed it stays signed in here.
+                auth.destroy_sessions_for_user(username)
+                refreshed = auth.find_user(username)
+                token = auth.create_session(refreshed)
+                is_https = self.headers.get('X-Forwarded-Proto') == 'https'
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Set-Cookie', auth.build_session_cookie(
+                    token, secure=is_https, max_age=auth.SESSION_IDLE_SECONDS))
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'message': "Parol muvaffaqiyatli o'zgartirildi",
+                    'home': permissions.home_for(refreshed),
+                }, ensure_ascii=False).encode('utf-8'))
 
             # 14. POST /api/users (Create / Register user)
             elif path == '/api/users':
@@ -1791,8 +2089,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "avatar": body.get('avatar') or ('👑' if body.get('role') == 'superadmin' else '👤'),
                     "phone": body.get('phone', ''),
                     "is_active": True,
-                    "permissions": body.get('permissions') or (['*'] if body.get('role') == 'superadmin' else [body.get('role', 'doctor')])
+                    # A new account issued with a password someone else chose
+                    # must set its own before it can be used.
+                    "must_change_password": True,
                 }
+                # Only store an explicit permission list when one was actually
+                # supplied. This used to default to [role] — the role's *name*
+                # as a permission string, which matches no module in
+                # permissions.py, so a new receptionist or pharmacist was
+                # created with effectively no access at all. With the key
+                # absent the role's own defaults apply, which also means
+                # changing a role updates everyone holding it.
+                explicit = body.get('permissions')
+                if isinstance(explicit, list) and explicit:
+                    new_u['permissions'] = explicit
                 u_list.append(new_u)
                 write_json_atomic(users_file, u_list)
 
@@ -2113,7 +2423,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 for tid in target_ids:
                     cur.execute("DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?))", (tid,))
                     cur.execute("DELETE FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?)", (tid,))
-                    cur.execute("UPDATE beds SET status = 'available' WHERE id IN (SELECT bed_id FROM admissions WHERE patient_id = ?)", (tid,))
+                    # 'operational', not 'available': the latter is a value the
+                    # v_bed_live_status view derives, and beds.status rejects it.
+                    cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE patient_id = ?)", (tid,))
                     cur.execute("DELETE FROM admissions WHERE patient_id = ?", (tid,))
                     cur.execute("DELETE FROM medical_histories WHERE patient_id = ?", (tid,))
                     cur.execute("DELETE FROM prescriptions WHERE patient_id = ?", (tid,))
@@ -2130,7 +2442,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path.startswith('/api/admissions/'):
                 adm_id = urllib.parse.unquote(path.replace('/api/admissions/', ''))
                 cur.execute("PRAGMA foreign_keys = OFF;")
-                cur.execute("UPDATE beds SET status = 'available' WHERE id IN (SELECT bed_id FROM admissions WHERE id = ?)", (adm_id,))
+                # 'operational', not 'available' -- see above.
+                cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE id = ?)", (adm_id,))
                 cur.execute("DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE admission_id = ?)", (adm_id,))
                 cur.execute("DELETE FROM invoices WHERE admission_id = ?", (adm_id,))
                 cur.execute("DELETE FROM daily_logs WHERE admission_id = ?", (adm_id,))
@@ -2241,6 +2554,16 @@ def run_server():
     # Upgrade any plaintext password still sitting in data/users.json. Logins
     # keep working across the change because verification accepts both forms.
     auth.migrate_plaintext_passwords()
+
+    # Widen audit_logs.action_type so sign-ins and refusals can be recorded.
+    try:
+        _c = get_db()
+        try:
+            audit.ensure_schema(_c)
+        finally:
+            _c.close()
+    except Exception as _e:
+        print(f'[!] Could not prepare the audit trail: {_e}')
 
     # Listen on loopback only by default.
     #

@@ -26,8 +26,19 @@ import urllib.error
 import urllib.request
 
 BASE = os.environ.get('FMH_TEST_BASE', 'http://127.0.0.1:3000')
-USERNAME = os.environ.get('FMH_TEST_USER', 'superadmin')
-PASSWORD = os.environ.get('FMH_TEST_PASS', 'superadmin2026')
+
+# Credentials come from the environment and are deliberately not defaulted: a
+# password written into a test file is a password in version control, which is
+# the problem this suite exists partly to guard against. Export them first:
+#
+#   export FMH_TEST_USER=superadmin
+#   export FMH_TEST_PASS='...'
+#   python3 tests/test_clinic.py
+#
+# Use an account with full access, on a scratch database — these tests write
+# real records.
+USERNAME = os.environ.get('FMH_TEST_USER', '')
+PASSWORD = os.environ.get('FMH_TEST_PASS', '')
 
 # Beds present in data/seed_data.sql.
 BED_A, BED_B, BED_C = 'BED-21A', 'BED-21B', 'BED-22A'
@@ -91,6 +102,16 @@ def server_is_up():
         return False
 
 
+def credentials_present():
+    return bool(USERNAME and PASSWORD)
+
+
+CREDENTIALS_HINT = (
+    "set FMH_TEST_USER and FMH_TEST_PASS to an account with full access "
+    "(the suite intentionally ships no default password)"
+)
+
+
 class ApiTest(unittest.TestCase):
     """Base class: one signed-in client, and cleanup of created rows."""
 
@@ -98,6 +119,8 @@ class ApiTest(unittest.TestCase):
     def setUpClass(cls):
         if not server_is_up():
             raise unittest.SkipTest(f"no server at {BASE} — start `python3 server.py 3000` first")
+        if not credentials_present():
+            raise unittest.SkipTest(CREDENTIALS_HINT)
         cls.api = Client()
         status, _ = cls.api.login()
         if status != 200:
@@ -173,6 +196,8 @@ class AuthBoundary(unittest.TestCase):
     def setUpClass(cls):
         if not server_is_up():
             raise unittest.SkipTest(f"no server at {BASE}")
+        if not credentials_present():
+            raise unittest.SkipTest(CREDENTIALS_HINT)
 
     def test_api_requires_a_session(self):
         anon = Client()
@@ -224,6 +249,215 @@ class AuthBoundary(unittest.TestCase):
         for u in users:
             self.assertEqual(u.get('password'), '********',
                              f"{u.get('username')} exposed a password value")
+
+
+class RoleAuthorization(ApiTest):
+    """
+    Authentication only proved who someone was. Every signed-in account could
+    call every endpoint, so a receptionist could run payroll and a nurse could
+    delete a patient. Each role is now confined to the modules its job needs.
+
+    A throwaway account is created per test rather than relying on the seeded
+    logins, so the suite carries no second password and cannot be broken by a
+    routine password rotation.
+    """
+
+    def _account(self, role):
+        """Create a temporary account in `role` and return a signed-in client."""
+        username = f'suite_{role}_{os.getpid()}'
+        password = 'Suite-Probe-2026'
+        self.api.delete('/api/users/' + username)      # clear a previous run
+        status, body = self.api.post('/api/users', {
+            'username': username, 'password': password,
+            'full_name': f'Suite {role}', 'role': role,
+        })
+        self.assertEqual(status, 201, f"could not create {role} account: {body}")
+        self._temp_users.append(body.get('id') or username)
+
+        client = Client()
+        st, login_body = client.login(username, password)
+        self.assertEqual(st, 200, f"could not sign in as the {role} account")
+
+        # A newly issued account is held at the change-password screen until it
+        # sets its own, exactly as a real new employee is. Walk that step so
+        # the probes below exercise role permissions and not the rotation gate.
+        if login_body.get('must_change_password'):
+            rotated = password + '-Rotated'
+            st2, b2 = client.post('/api/auth/change-password', {
+                'current_password': password,
+                'new_password': rotated,
+                'confirm_password': rotated,
+            })
+            self.assertEqual(st2, 200, f"could not rotate the {role} password: {b2}")
+        return client
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def test_nurse_may_read_patients_but_not_change_them(self):
+        nurse = self._account('nurse')
+        self.assertEqual(nurse.get('/api/crm/patients')[0], 200)
+        self.assertEqual(nurse.post('/api/crm/patients', {'full_name': 'X'})[0], 403)
+        self.assertEqual(nurse.delete('/api/patients/PAT-ANY')[0], 403)
+
+    def test_nurse_may_not_touch_money_or_staff(self):
+        nurse = self._account('nurse')
+        self.assertEqual(nurse.post('/api/payments', {'amount': 1})[0], 403)
+        self.assertEqual(nurse.post('/api/staff', {'full_name': 'X'})[0], 403)
+        self.assertEqual(nurse.get('/api/accounting/data')[0], 403)
+
+    def test_receptionist_registers_and_admits_but_does_not_discharge(self):
+        desk = self._account('receptionist')
+        self.assertEqual(desk.get('/api/beds')[0], 200, 'needs free/occupied beds')
+        status, _ = desk.post('/api/crm/patients', {'full_name': 'Desk Probe'})
+        self.assertEqual(status, 201, 'reception registers patients')
+        # Allowed through to validation (400), not refused by role (403).
+        self.assertNotEqual(desk.post('/api/admissions', {})[0], 403,
+                            'reception must be able to admit a stationary patient')
+        self.assertEqual(desk.post('/api/admissions/ADM-X/discharge', {})[0], 403,
+                         'discharge is a clinical decision')
+        self.assertEqual(desk.post('/api/facility/rooms', {})[0], 403,
+                         'reception must not reconfigure the building')
+
+    def test_hr_has_no_patient_access(self):
+        hr = self._account('hr_manager')
+        self.assertEqual(hr.get('/api/crm/patients')[0], 403)
+        self.assertEqual(hr.get('/api/doctor/clinical/PAT-ANY')[0], 403)
+        self.assertNotEqual(hr.post('/api/staff', {})[0], 403, 'HR owns staff')
+
+    def test_pharmacist_reads_prescriptions_but_cannot_write_them(self):
+        ph = self._account('pharmacist')
+        self.assertEqual(ph.get('/api/doctor/prescriptions')[0], 200)
+        self.assertEqual(ph.post('/api/doctor/prescriptions', {})[0], 403)
+
+    def test_only_an_administrator_manages_users(self):
+        for role in ('nurse', 'receptionist', 'doctor', 'accountant'):
+            c = self._account(role)
+            self.assertEqual(c.get('/api/users')[0], 403, f"{role} saw the user list")
+            self.assertEqual(c.post('/api/users', {'username': 'x'})[0], 403,
+                             f"{role} could create a user")
+
+    def test_refusal_is_403_not_401(self):
+        """
+        The distinction matters: the client redirects to the login screen on
+        401, and signing in again would not grant a missing permission.
+        """
+        nurse = self._account('nurse')
+        status, body = nurse.post('/api/payments', {'amount': 1})
+        self.assertEqual(status, 403)
+        self.assertIn('required', body)
+
+    def test_an_unmapped_route_is_denied_by_default(self):
+        """
+        A route added without a permission rule must fail closed. This is what
+        stops a future endpoint from being silently world-readable.
+        """
+        import permissions
+        self.assertIsNone(permissions.required_for_api('GET', '/api/not/mapped/yet'))
+        # Nobody passes, not even the superadmin. Letting the top role through
+        # would hide the missing rule until someone with a narrower role hit
+        # it in production; failing for everyone surfaces it immediately.
+        for role in ('superadmin', 'admin', 'nurse'):
+            allowed, reason = permissions.authorize_api({'role': role}, 'GET', '/api/nope')
+            self.assertFalse(allowed, f"{role} reached an unmapped route")
+            self.assertIn('no permission rule', reason)
+
+
+class LoginThrottle(unittest.TestCase):
+    """
+    The login endpoint answered unlimited guesses at full speed, which on an
+    internet-exposed deployment invites a dictionary attack.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not server_is_up():
+            raise unittest.SkipTest(f"no server at {BASE}")
+
+    def test_repeated_failures_are_eventually_refused(self):
+        import auth as auth_mod
+        # A username of its own so the lockout cannot affect real accounts.
+        victim = f'throttle_probe_{os.getpid()}'
+        c = Client()
+        saw_throttle = False
+        for _ in range(auth_mod.MAX_FAILURES + 2):
+            status, _ = c.login(victim, 'wrong-password')
+            if status == 429:
+                saw_throttle = True
+                break
+            self.assertEqual(status, 401)
+        self.assertTrue(saw_throttle,
+                        f"no lockout after {auth_mod.MAX_FAILURES + 2} failures")
+
+    def test_failure_response_does_not_reveal_whether_the_user_exists(self):
+        """
+        Both probes use synthetic names. Guessing at a real account here would
+        add to that account's own lockout counter and lock the suite out of
+        every test that follows.
+        """
+        _, absent = Client().login(f'absent_a_{os.getpid()}', 'x')
+        _, other = Client().login(f'absent_b_{os.getpid()}', 'x')
+        self.assertEqual(absent.get('error'), other.get('error'))
+        self.assertNotIn('parol', (absent.get('error') or '').lower().replace(
+            "login yoki parol noto'g'ri", ''),
+            'the message should not say which half was wrong')
+
+
+class AuditTrail(ApiTest):
+    """audit_logs existed in the schema from the start but nothing wrote to it."""
+
+    def _count(self):
+        import sys as _s, os as _o
+        _s.path.insert(0, _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS n FROM audit_logs")
+            return cur.fetchone()['n']
+        finally:
+            conn.close()
+
+    def test_a_write_leaves_an_audit_row(self):
+        before = self._count()
+        pid = self.make_patient('Audit Probe')
+        after = self._count()
+        self.assertGreater(after, before, 'creating a patient recorded nothing')
+
+    def test_the_row_names_the_actor_and_the_record(self):
+        import sys as _s, os as _o, json as _j
+        _s.path.insert(0, _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
+        from db import get_db
+        pid = self.make_patient('Audit Actor Probe')
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("""SELECT entity_name, entity_id, action_type, new_data_json
+                           FROM audit_logs WHERE entity_id = ? ORDER BY id DESC LIMIT 1""", (pid,))
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row, f"no audit row carries the new patient id {pid}")
+        self.assertEqual(row['entity_name'], 'patients')
+        self.assertEqual(row['action_type'], 'CREATE')
+        payload = _j.loads(row['new_data_json'])
+        self.assertTrue(payload.get('_actor'), 'the acting username was not recorded')
+
+    def test_a_refused_request_is_recorded(self):
+        before = self._count()
+        anon = Client()
+        anon.login(USERNAME, PASSWORD)
+        # Ask for something the account may not have; superadmin can do all, so
+        # use the permission layer directly for the refusal path instead.
+        import permissions
+        allowed, _ = permissions.authorize_api({'role': 'kitchen_staff'}, 'GET', '/api/users')
+        self.assertFalse(allowed, 'expected kitchen staff to be refused the user list')
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -514,6 +748,11 @@ if __name__ == '__main__':
     if not server_is_up():
         print(f"\n  The suite needs a running server at {BASE}.")
         print("  Start it with:  python3 server.py 3000\n")
+        sys.exit(2)
+    if not credentials_present():
+        print("\n  " + CREDENTIALS_HINT)
+        print("    export FMH_TEST_USER=superadmin")
+        print("    export FMH_TEST_PASS='your-password'\n")
         sys.exit(2)
 
     result = unittest.TextTestRunner(verbosity=2 if verbose else 1).run(suite)

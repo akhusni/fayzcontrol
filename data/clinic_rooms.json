@@ -5,7 +5,7 @@
     "name_en": "Fayz Medical House - Building 1 Facility Management",
     "building_number": 1,
     "total_floors": 2,
-    "total_inpatient_rooms": 7,
+    "total_inpatient_rooms": 9,
     "total_inpatient_beds": 14,
     "floor_1_beds": 4,
     "floor_2_beds": 10,
@@ -177,6 +177,28 @@
               ]
             }
           ]
+        },
+        {
+          "id": "ROOM-WARD-15",
+          "floor": 1,
+          "room_number": "15",
+          "name_uz": "15-xona",
+          "name_ru": "15-палата",
+          "name_en": "Room 15",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": []
+        },
+        {
+          "id": "ROOM-WARD-15",
+          "floor": 1,
+          "room_number": "15",
+          "name_uz": "15-xona",
+          "name_ru": "15-палата",
+          "name_en": "Room 15",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": []
         }
       ]
     },
