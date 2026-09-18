@@ -2400,7 +2400,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "id": uid,
                     "username": username,
                     # Stored as a PBKDF2 hash, never as the typed value.
-                    "password": auth.hash_password(body.get('password') or 'fayz2026'),
+                    # An account created without a password used to fall back to a
+                    # single fixed value, which meant every such account shared
+                    # one guessable password. A random one is generated instead and
+                    # returned once below, for the administrator to hand over.
+                    "password": auth.hash_password(_issued_password := (
+                        body.get('password') or auth.generate_temp_password())),
                     "full_name": body.get('full_name') or username,
                     "role": body.get('role') or 'doctor',
                     "avatar": body.get('avatar') or ('👑' if body.get('role') == 'superadmin' else '👤'),
@@ -2426,7 +2431,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 sanitized = dict(new_u)
                 sanitized.pop('password', None)
                 self._set_json_headers(201)
-                self.wfile.write(json.dumps({'message': 'Foydalanuvchi muvaffaqiyatli ro\'yxatdan o\'tkazildi', 'user': sanitized}, ensure_ascii=False).encode('utf-8'))
+                payload = {'message': "Foydalanuvchi muvaffaqiyatli ro'yxatdan o'tkazildi",
+                           'user': sanitized}
+                # Shown once. The account cannot be used until its owner sets
+                # their own password, so this is only for handing over.
+                if not body.get('password'):
+                    payload['temporary_password'] = _issued_password
+                    payload['note'] = ("Bu parol faqat bir marta ko'rsatiladi. "
+                                       "Xodim birinchi kirishda uni almashtirishi shart.")
+                self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
             # 15. POST /api/facility/rooms (Create Room)
             elif path == '/api/facility/rooms':

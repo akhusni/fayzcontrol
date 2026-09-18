@@ -325,6 +325,18 @@ def note_login_success(username, ip):
 # Forced password rotation
 # ---------------------------------------------------------------------------
 
+def generate_temp_password():
+    """
+    A one-off password for a newly issued account.
+
+    Readable enough to dictate over the phone once -- no ambiguous characters
+    -- but not guessable, unlike the fixed fallback this replaces.
+    """
+    import string
+    alphabet = string.ascii_lowercase.replace('l', '').replace('o', '') + '23456789'
+    return 'Fmh-' + ''.join(secrets.choice(alphabet) for _ in range(10))
+
+
 def must_change_password(user):
     """
     True when this account is still on a password it was handed rather than one
