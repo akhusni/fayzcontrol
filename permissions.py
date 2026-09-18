@@ -187,6 +187,9 @@ API_RULES = [
     ('/api/admissions/*/transfer',    'facility',   'write'),
     ('/api/admissions',               'admissions', None),
     ('/api/beds',                     'facility',   None),
+    # Read-only: who may see the occupancy board is a wider set than who may
+    # rearrange the building. Reception needs it to place a patient at all.
+    ('/api/facility/availability',    'facility',   'read'),
     ('/api/facility/rooms',           'facility',   None),
     ('/api/facility/beds',            'facility',   None),
 

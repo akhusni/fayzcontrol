@@ -198,6 +198,7 @@ from db import (
     admit_patient,
     transfer_patient_bed,
     discharge_patient,
+    list_room_availability,
     load_config
 )
 
@@ -1286,6 +1287,29 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     sanitized.append(u_copy)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(sanitized, ensure_ascii=False).encode('utf-8'))
+
+            # /api/facility/availability?start=&end=
+            # The occupancy board for a range of dates, room by room.
+            # v_bed_live_status behind /api/beds is pinned to CURDATE() and
+            # can only ever answer for today, so the reception desk worked
+            # availability out in the browser instead - from a static room
+            # file plus bookings held in localStorage, which no other machine
+            # could see and which the booking guard never knew about.
+            elif path == '/api/facility/availability':
+                today = datetime.date.today()
+                start_raw = query.get('start', [None])[0] or today.isoformat()
+                end_raw = (query.get('end', [None])[0]
+                           or (today + datetime.timedelta(days=7)).isoformat())
+                _s, _e, _err = validate_date_range(
+                    start_raw, end_raw,
+                    start_field='Kelish sanasi', end_field='Ketish sanasi')
+                if _err:
+                    self._send_validation_error(_err, 'start')
+                    return
+                board = list_room_availability(conn, _s.isoformat(), _e.isoformat())
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(board, ensure_ascii=False,
+                                            default=str).encode('utf-8'))
 
             # 18. /api/facility/rooms -> Rooms & Bed layout
             elif path == '/api/facility/rooms':

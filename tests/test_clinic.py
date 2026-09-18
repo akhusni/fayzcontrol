@@ -255,11 +255,12 @@ class ApiTest(unittest.TestCase):
         self._patients.append(body['id'])
         return body['id']
 
-    def admit(self, patient_id, bed, start, end, expect=201):
+    def admit(self, patient_id, bed, start, end, expect=201,
+              program='standard_10', rate=RATE):
         status, body = self.api.post('/api/admissions', {
-            'patient_id': patient_id, 'bed_id': bed, 'program_type': 'standard_10',
+            'patient_id': patient_id, 'bed_id': bed, 'program_type': program,
             'start_date': start, 'planned_end_date': end,
-            'attending_doctor_id': DOCTOR, 'daily_rate': RATE,
+            'attending_doctor_id': DOCTOR, 'daily_rate': rate,
         })
         if expect is not None:
             self.assertEqual(status, expect, f"admit returned {status}: {body}")
@@ -410,6 +411,14 @@ class RoleAuthorization(ApiTest):
                          'discharge is a clinical decision')
         self.assertEqual(desk.post('/api/facility/rooms', {})[0], 403,
                          'reception must not reconfigure the building')
+        self.assertEqual(desk.get('/api/facility/availability')[0], 200,
+                         'reception cannot place a patient without the board')
+
+    def test_the_occupancy_board_is_not_open_to_every_role(self):
+        """It names patients and the ward they are in, so it follows the same
+        rule as the rest of the facility module rather than being public."""
+        hr = self._account('hr_manager')
+        self.assertEqual(hr.get('/api/facility/availability')[0], 403)
 
     def test_hr_has_no_patient_access(self):
         hr = self._account('hr_manager')
@@ -799,6 +808,258 @@ class OverlapGuard(ApiTest):
         self.admit(a, BED_A, '2027-06-01', '2027-06-10')
         status, _ = self.admit(b, BED_A, '2027-07-01', '2027-07-10', expect=None)
         self.assertEqual(status, 201, 'a later, non-overlapping stay was refused')
+
+    def test_a_stay_may_begin_the_day_another_ends(self):
+        """
+        The last date of a stay is the day the patient leaves, not a night in
+        the bed: total_days is DATEDIFF(end, start), so a stay 01->08 is billed
+        for seven nights and the bed is free on the 8th. The guard used to
+        compare the interval closed at both ends and refused that turnover,
+        while the booking board (which compares half-open) showed the bed as
+        free — the desk was told to book a bed the server then rejected.
+        """
+        a = self.make_patient('Turnover Out')
+        b = self.make_patient('Turnover In')
+        self.admit(a, BED_B, '2027-08-01', '2027-08-08')
+        status, body = self.admit(b, BED_B, '2027-08-08', '2027-08-15', expect=None)
+        self.assertEqual(status, 201, f"same-day turnover was refused: {body}")
+
+    def test_a_stay_may_not_begin_the_day_before_another_ends(self):
+        """One day the other way round is a real overlap and must still fail."""
+        a = self.make_patient('Turnover Out 2')
+        b = self.make_patient('Turnover In 2')
+        self.admit(a, BED_B, '2027-09-01', '2027-09-08')
+        status, body = self.admit(b, BED_B, '2027-09-07', '2027-09-15', expect=None)
+        self.assertEqual(status, 400, f"bed double-booked by one night: {body}")
+
+    def test_a_same_day_stay_still_holds_the_bed(self):
+        """
+        A stay whose start and end are the same date bills one day, so it must
+        occupy one night. Comparing the interval half-open makes it empty, and
+        an empty interval overlaps nothing — the bed would look free to
+        everyone including the next booking.
+        """
+        a = self.make_patient('Single Day')
+        b = self.make_patient('Single Day Rival')
+        self.admit(a, BED_C, '2027-10-20', '2027-10-20')
+        status, body = self.admit(b, BED_C, '2027-10-20', '2027-10-25', expect=None)
+        self.assertEqual(status, 400, f"a one-day stay did not hold its bed: {body}")
+
+
+# ---------------------------------------------------------------------------
+# Whole-room bookings
+# ---------------------------------------------------------------------------
+
+class WholeRoomBooking(ApiTest):
+    """
+    'Statsionar Butun Xona' sells a two-bed room to one patient at 1.1M a day
+    against 720k for a shared bed. The premium buys the second bed staying
+    empty, so the partner bed has to be held even though nobody is in it.
+
+    That rule existed only in the browser: reception.js kept a hand-written
+    map of which bed partners which and greyed the partner out. The server
+    knew nothing about it, so the same room could be sold whole and then
+    filled by anything that posted to the API directly — including the very
+    same page on another machine, whose bed map came from its own localStorage.
+    """
+
+    SOLO = 'statsionar_full_room'
+    # Beds 22A and 22B are the two halves of room 22.
+    ROOM_22_A, ROOM_22_B = 'BED-22A', 'BED-22B'
+
+    def test_a_room_sold_whole_refuses_a_second_patient(self):
+        solo = self.make_patient('Solo Buyer')
+        other = self.make_patient('Unwanted Roommate')
+        self.admit(solo, self.ROOM_22_A, '2028-01-05', '2028-01-15',
+                   program=self.SOLO, rate=1100000)
+        status, body = self.admit(other, self.ROOM_22_B, '2028-01-06', '2028-01-12',
+                                  expect=None)
+        self.assertEqual(status, 400,
+                         f"a room billed as private took a second patient: {body}")
+
+    def test_a_room_cannot_be_sold_whole_while_its_partner_bed_is_taken(self):
+        """The rule has to hold in both directions, not just the one the page
+        happened to exercise."""
+        sitting = self.make_patient('Already In Room')
+        solo = self.make_patient('Late Solo Buyer')
+        self.admit(sitting, self.ROOM_22_B, '2028-02-05', '2028-02-15')
+        status, body = self.admit(solo, self.ROOM_22_A, '2028-02-06', '2028-02-12',
+                                  program=self.SOLO, rate=1100000, expect=None)
+        self.assertEqual(status, 400,
+                         f"a room was sold whole while occupied: {body}")
+
+    def test_two_shared_stays_may_still_share_a_room(self):
+        """The room is only held whole when somebody has paid for that."""
+        a = self.make_patient('Sharer A')
+        b = self.make_patient('Sharer B')
+        self.admit(a, self.ROOM_22_A, '2028-03-05', '2028-03-15')
+        status, body = self.admit(b, self.ROOM_22_B, '2028-03-06', '2028-03-12',
+                                  expect=None)
+        self.assertEqual(status, 201,
+                         f"an ordinary two-bed room was refused a second patient: {body}")
+
+    def test_a_whole_room_booking_leaves_other_rooms_alone(self):
+        solo = self.make_patient('Solo In 22')
+        elsewhere = self.make_patient('Patient In 21')
+        self.admit(solo, self.ROOM_22_A, '2028-04-05', '2028-04-15',
+                   program=self.SOLO, rate=1100000)
+        status, body = self.admit(elsewhere, BED_A, '2028-04-06', '2028-04-12',
+                                  expect=None)
+        self.assertEqual(status, 201, f"a different room was blocked too: {body}")
+
+    def test_the_room_reopens_once_the_whole_room_dates_pass(self):
+        solo = self.make_patient('Solo Until May')
+        later = self.make_patient('June Arrival')
+        self.admit(solo, self.ROOM_22_A, '2028-05-01', '2028-05-10',
+                   program=self.SOLO, rate=1100000)
+        status, body = self.admit(later, self.ROOM_22_B, '2028-06-01', '2028-06-10',
+                                  expect=None)
+        self.assertEqual(status, 201,
+                         f"the room stayed locked after the stay ended: {body}")
+
+    def test_a_transfer_cannot_break_into_a_room_sold_whole(self):
+        """
+        Admission is not the only way into a bed. The transfer path had its own
+        copy of the occupancy check, so a patient could be moved into a room
+        that admission would have refused.
+        """
+        solo = self.make_patient('Solo Transfer Target')
+        mover = self.make_patient('Moving Patient')
+        self.admit(solo, self.ROOM_22_A, '2028-07-01', '2028-07-20',
+                   program=self.SOLO, rate=1100000)
+        _, adm = self.admit(mover, BED_A, '2028-07-05', '2028-07-18')
+        status, body = self.api.post(
+            f"/api/admissions/{adm['admission_id']}/transfer",
+            {'new_bed_id': self.ROOM_22_B, 'transfer_date': '2028-07-06'})
+        self.assertEqual(status, 400,
+                         f"a transfer walked into a room billed as private: {body}")
+
+
+# ---------------------------------------------------------------------------
+# The occupancy board
+# ---------------------------------------------------------------------------
+
+class OccupancyBoard(ApiTest):
+    """
+    /api/facility/availability — what reception needs before it can place
+    anyone: which beds are free between two given dates.
+
+    /api/beds could not answer this. It reads v_bed_live_status, which is
+    pinned to CURDATE(), so it only ever describes today; a desk booking a
+    stay that starts next week got today's picture. The page made up the
+    difference in the browser, merging a static room file with bookings held
+    in localStorage — per-machine fiction that blocked real beds on one
+    computer and left them green on the next.
+    """
+
+    SOLO = 'statsionar_full_room'
+    ROOM_22_A, ROOM_22_B = 'BED-22A', 'BED-22B'
+
+    def board(self, start, end, client=None):
+        status, body = (client or self.api).get(
+            f'/api/facility/availability?start={start}&end={end}')
+        self.assertEqual(status, 200, f"board unavailable: {body}")
+        return body
+
+    def bed(self, board, bed_id):
+        for room in board['rooms']:
+            for b in room['beds']:
+                if b['bed_id'] == bed_id:
+                    return b
+        self.fail(f"{bed_id} missing from the board")
+
+    def test_the_board_covers_the_whole_ward(self):
+        board = self.board('2029-01-01', '2029-01-08')
+        self.assertEqual(board['summary']['total_beds'], 14)
+        self.assertEqual(board['summary']['total_rooms'], 7)
+        # Consultation rooms, the nurse stations and reception have no beds and
+        # have no business on a bed board.
+        self.assertTrue(all(r['beds'] for r in board['rooms']))
+
+    def test_an_occupied_bed_is_named_with_who_holds_it(self):
+        pid = self.make_patient('Board Occupant')
+        self.admit(pid, BED_A, '2029-02-01', '2029-02-10')
+        entry = self.bed(self.board('2029-02-01', '2029-02-08'), BED_A)
+        self.assertEqual(entry['status'], 'occupied')
+        self.assertEqual(entry['occupant']['patient_name'], 'Board Occupant')
+
+    def test_a_bed_free_now_but_booked_later_is_not_simply_free(self):
+        """
+        A bed that is free today and taken on the fourth day of the requested
+        stay must not be offered as free for that stay, or the desk books it
+        and the server refuses at the last step.
+        """
+        pid = self.make_patient('Board Late Arrival')
+        self.admit(pid, BED_B, '2029-03-05', '2029-03-20')
+        entry = self.bed(self.board('2029-03-01', '2029-03-10'), BED_B)
+        self.assertEqual(entry['status'], 'partial_conflict')
+        self.assertEqual(entry['conflict']['start_date'], '2029-03-05')
+
+    def test_the_partner_of_a_room_sold_whole_reads_as_locked(self):
+        pid = self.make_patient('Board Solo Buyer')
+        self.admit(pid, self.ROOM_22_A, '2029-04-01', '2029-04-10',
+                   program=self.SOLO, rate=1100000)
+        board = self.board('2029-04-01', '2029-04-08')
+        self.assertEqual(self.bed(board, self.ROOM_22_B)['status'], 'room_locked')
+        room = next(r for r in board['rooms']
+                    if any(b['bed_id'] == self.ROOM_22_A for b in r['beds']))
+        self.assertTrue(room['locked_whole_room'])
+        self.assertEqual(room['free_beds'], 0)
+
+    def test_the_board_answers_for_the_dates_asked_not_for_today(self):
+        """The whole point of the endpoint: a stay outside the window is not
+        the window's problem."""
+        pid = self.make_patient('Board Far Future')
+        self.admit(pid, BED_C, '2029-06-01', '2029-06-10')
+        self.assertEqual(self.bed(self.board('2029-05-01', '2029-05-10'), BED_C)['status'],
+                         'available')
+        self.assertEqual(self.bed(self.board('2029-06-02', '2029-06-08'), BED_C)['status'],
+                         'occupied')
+
+    def test_a_free_bed_advertises_when_it_is_next_taken(self):
+        pid = self.make_patient('Board Next Booking')
+        self.admit(pid, BED_C, '2029-07-20', '2029-07-28')
+        entry = self.bed(self.board('2029-07-01', '2029-07-10'), BED_C)
+        self.assertEqual(entry['status'], 'available')
+        self.assertEqual(entry['next_booking'], '2029-07-20')
+
+    def test_a_backwards_range_is_refused_in_plain_language(self):
+        status, body = self.api.get(
+            '/api/facility/availability?start=2029-08-10&end=2029-08-01')
+        self.assertEqual(status, 400)
+        self.assertIn('sana', str(body.get('error', '')).lower())
+
+    def test_every_bed_the_board_calls_free_can_actually_be_booked(self):
+        """
+        The invariant that makes the board worth having. The board and the
+        booking guard are two readings of the same question, and they were
+        written in two languages with two different interval rules; this walks
+        the board's own verdict back through the door it is advising on.
+        """
+        start, end = '2029-09-01', '2029-09-08'
+        blocker = self.make_patient('Invariant Blocker')
+        solo = self.make_patient('Invariant Solo')
+        self.admit(blocker, BED_A, start, end)
+        self.admit(solo, self.ROOM_22_A, start, end, program=self.SOLO, rate=1100000)
+
+        board = self.board(start, end)
+        free = [b['bed_id'] for r in board['rooms'] for b in r['beds']
+                if b['status'] == 'available']
+        self.assertTrue(free, 'the board claimed the whole ward was full')
+
+        for bed_id in free:
+            p = self.make_patient(f'Invariant {bed_id}')
+            status, body = self.admit(p, bed_id, start, end, expect=None)
+            self.assertEqual(status, 201,
+                             f"board offered {bed_id} but the guard refused it: {body}")
+
+        taken = [b['bed_id'] for r in board['rooms'] for b in r['beds']
+                 if b['status'] in ('occupied', 'room_locked', 'partial_conflict')]
+        for bed_id in taken:
+            p = self.make_patient(f'Invariant Refused {bed_id}')
+            status, body = self.admit(p, bed_id, start, end, expect=None)
+            self.assertEqual(status, 400,
+                             f"board marked {bed_id} taken but the guard allowed it: {body}")
 
 
 # ---------------------------------------------------------------------------

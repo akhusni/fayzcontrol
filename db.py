@@ -286,7 +286,106 @@ def test_mysql_connection(host, port, user, password, database):
 # TRANSACTIONAL CLINICAL & FINANCIAL WORKFLOW SERVICES (SEPARATION OF CONCERNS)
 # =============================================================================
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+
+# Programmes sold as exclusive use of the whole room. The tariff (1.1M/day
+# against 720k for a shared bed) is the price of the second bed staying empty,
+# so the partner bed must be held even though nobody is lying in it.
+FULL_ROOM_PROGRAMS = ('statsionar_full_room',)
+
+
+def _row_get(row, key, index):
+    """Read one column whether the cursor yields dicts or tuples."""
+    if isinstance(row, dict) or hasattr(row, 'keys'):
+        return row[key]
+    return row[index]
+
+
+def is_full_room_program(program_type):
+    return str(program_type or '').strip().lower() in FULL_ROOM_PROGRAMS
+
+
+def find_booking_conflict(cur, bed_id, start_date, end_date, program_type=None,
+                          exclude_admission_id=None):
+    """
+    Decide whether [start_date, end_date) may be booked on bed_id.
+
+    Returns None when the dates are free, or a ready-to-show Uzbek message
+    naming the bed and the dates that clash.
+
+    Two rules, kept together because they are one question ("can this patient
+    have this bed on these dates?") and were previously answered in two places
+    that had already drifted apart:
+
+    1. The bed itself must be free. The interval is half-open, matching how
+       the stay is billed: total_days is DATEDIFF(end, start), so the last
+       date is the day the patient leaves and is not a night in the bed. A
+       stay ending on the 8th and one starting on the 8th do not overlap, and
+       refusing that turnover made the booking board disagree with the server.
+       A stay is never shorter than one night, mirroring the GREATEST(1, ...)
+       in the total_days column, so a same-day admission still holds the bed.
+
+    2. A room sold whole is held whole. Either the incoming stay claims the
+       room, or a stay already in it does; in both cases no second patient may
+       take any bed of that room. Without this the clinic could bill a patient
+       1.1M/day for a private room and then put a stranger in the other bed.
+    """
+    cur.execute("SELECT room_id, bed_code FROM beds WHERE id = ?", (bed_id,))
+    bed_row = cur.fetchone()
+    if not bed_row:
+        return f"O'rin ({bed_id}) topilmadi."
+    room_id = _row_get(bed_row, 'room_id', 0)
+    bed_code = _row_get(bed_row, 'bed_code', 1)
+
+    # One query for the whole room: the bed's own clashes and its room-mates'
+    # arrive together, and the caller cannot forget the second half.
+    sql = """
+        SELECT a.id, a.bed_id, a.program_type, a.start_date,
+               COALESCE(a.actual_end_date, a.planned_end_date) AS end_date,
+               b.bed_code, p.full_name AS patient_name
+        FROM admissions a
+        JOIN beds b ON a.bed_id = b.id
+        JOIN patients p ON a.patient_id = p.id
+        WHERE b.room_id = ?
+          AND a.status = 'active'
+          AND ? < GREATEST(COALESCE(a.actual_end_date, a.planned_end_date),
+                           DATE_ADD(a.start_date, INTERVAL 1 DAY))
+          AND ? > a.start_date
+    """
+    params = [room_id, str(start_date), str(end_date)]
+    if exclude_admission_id:
+        sql += " AND a.id != ?"
+        params.append(exclude_admission_id)
+
+    cur.execute(sql, tuple(params))
+    clashes = cur.fetchall()
+    if not clashes:
+        return None
+
+    incoming_is_full_room = is_full_room_program(program_type)
+
+    for row in clashes:
+        other_bed = _row_get(row, 'bed_id', 1)
+        if str(other_bed) == str(bed_id):
+            return (f"Tanlangan o'rinda ({bed_code}) ko'rsatilgan sanalarda "
+                    f"faol bemor mavjud!")
+
+    # Nothing on this bed, so any remaining clash is a room-mate. It only
+    # matters when one side of it has bought the room outright.
+    for row in clashes:
+        other_full_room = is_full_room_program(_row_get(row, 'program_type', 2))
+        if not (incoming_is_full_room or other_full_room):
+            continue
+        other_code = _row_get(row, 'bed_code', 5)
+        other_name = _row_get(row, 'patient_name', 6)
+        if incoming_is_full_room:
+            return (f"Butun xona buyurtmasi: shu xonadagi {other_code} o'rnida "
+                    f"ko'rsatilgan sanalarda faol bemor bor ({other_name}).")
+        return (f"Bu xona ko'rsatilgan sanalarda butun xona sifatida band "
+                f"({other_code}, {other_name}) — ikkinchi o'rin berilmaydi.")
+
+    return None
+
 
 def admit_patient(conn, patient_id, bed_id, attending_doctor_id, program_type,
                   start_date, planned_end_date, daily_price, admission_notes=None):
@@ -318,19 +417,13 @@ def admit_patient(conn, patient_id, bed_id, attending_doctor_id, program_type,
         if b_status in ('cleaning', 'maintenance', 'out_of_service'):
             return False, f"O'rin ({bed_code}) hozirda band yoki tozalash/ta'mirlash holatida ({b_status})!"
 
-        # 0.1 Concurrent Double-Booking Race Condition Guard
-        # Standard interval overlap test: new_start <= existing_end AND new_end >= existing_start.
-        # The two date parameters must be bound in that order, otherwise the predicate
-        # degrades into a "new stay fully contained in existing stay" check and lets
-        # every partially overlapping stay through (two patients in one bed).
-        cur.execute("""
-            SELECT id FROM admissions
-            WHERE bed_id = ?
-              AND status = 'active'
-              AND (? <= COALESCE(actual_end_date, planned_end_date) AND ? >= start_date)
-        """, (bed_id, start_date, planned_end_date))
-        if cur.fetchone():
-            return False, f"Tanlangan o'rinda ({bed_code}) ko'rsatilgan sanalarda faol bemor mavjud!"
+        # 0.1 Concurrent Double-Booking Race Condition Guard.
+        # The bed's own dates and the whole-room rule are one question, so they
+        # are asked in one place — see find_booking_conflict.
+        conflict = find_booking_conflict(cur, bed_id, start_date, planned_end_date,
+                                         program_type=program_type)
+        if conflict:
+            return False, conflict
 
         # 1. Insert Admission (retrying only the id on a same-second collision)
         for attempt in range(100):
@@ -400,10 +493,11 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
         t_date = datetime.strptime(str(transfer_date), '%Y-%m-%d').date()
 
         # 1. Fetch admission & old bed info
-        cur.execute("SELECT patient_id, bed_id, start_date, planned_end_date, actual_end_date FROM admissions WHERE id = ?", (admission_id,))
+        cur.execute("SELECT patient_id, bed_id, start_date, planned_end_date, actual_end_date, program_type FROM admissions WHERE id = ?", (admission_id,))
         adm = cur.fetchone()
         if not adm:
             return False, f"Admission {admission_id} not found."
+        adm_program = _row_get(adm, 'program_type', 5)
         
         old_bed_id = adm['bed_id'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[1]
         raw_end = adm['actual_end_date'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[4]
@@ -423,18 +517,15 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
         if new_status in ('cleaning', 'maintenance', 'out_of_service'):
             return False, f"Ko'chirilayotgan o'rin ({new_code}) hozirda band yoki tozalash/ta'mirlash holatida ({new_status})!"
 
-        # 2.1 Concurrent Overlap Check on Target Bed
-        # Same interval overlap test as admit_patient: the stay being moved runs from
-        # transfer_date to raw_end, so bind start first, then end.
-        cur.execute("""
-            SELECT id FROM admissions
-            WHERE bed_id = ?
-              AND id != ?
-              AND status = 'active'
-              AND (? <= COALESCE(actual_end_date, planned_end_date) AND ? >= start_date)
-        """, (new_bed_id, admission_id, transfer_date, str(raw_end)))
-        if cur.fetchone():
-            return False, f"Ko'chirilayotgan o'rinda ({new_code}) ko'rsatilgan sanalarda boshqa faol bemor mavjud!"
+        # 2.1 Concurrent Overlap Check on Target Bed.
+        # The same rule as admission, asked through the same helper: the stay
+        # being moved runs from transfer_date to raw_end, and it carries its
+        # programme with it, so a whole-room booking stays whole after a move.
+        conflict = find_booking_conflict(cur, new_bed_id, transfer_date, str(raw_end),
+                                         program_type=adm_program,
+                                         exclude_admission_id=admission_id)
+        if conflict:
+            return False, conflict
 
         inv_id = f"INV-{admission_id}"
 
@@ -513,6 +604,184 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
     except Exception as e:
         conn.rollback()
         return False, str(e)
+
+
+def list_room_availability(conn, start_date, end_date):
+    """
+    The occupancy board for one date range, room by room.
+
+    The reception desk needs to answer "what is free between these two dates?",
+    which v_bed_live_status cannot do: that view is fixed on CURDATE() and only
+    ever describes today. This walks the same admissions with the same overlap
+    rule as find_booking_conflict, so a bed the board paints green is a bed the
+    booking guard will actually accept — they used to be two separate pieces of
+    arithmetic in two languages, and the browser's copy also mixed in bookings
+    held in localStorage that no other machine could see.
+
+    Per bed the verdict is one of:
+      out_of_service / maintenance / cleaning   the bed is physically unusable
+      occupied           a stay already covers the first day of the range
+      room_locked        a room-mate holds the whole room for these dates
+      partial_conflict   free on the first day, but a stay lands later in range
+      available          free for the whole range
+    """
+    cur = conn.cursor()
+    ws = str(start_date)[:10]
+    we = str(end_date)[:10]
+    # A stay is never shorter than one night, so a window that starts and ends
+    # on the same day still asks about that night rather than about nothing.
+    if we <= ws:
+        we = (datetime.strptime(ws, '%Y-%m-%d').date() + timedelta(days=1)).isoformat()
+
+    cur.execute("""
+        SELECT r.id AS room_id, r.floor_number, r.room_number, r.room_name_uz,
+               r.room_type, r.total_capacity,
+               b.id AS bed_id, b.bed_code, b.bed_type, b.default_daily_rate,
+               b.status AS physical_status
+        FROM rooms r
+        JOIN beds b ON b.room_id = r.id
+        WHERE r.is_active = 1
+        ORDER BY r.floor_number, r.room_number, b.bed_code
+    """)
+    bed_rows = [dict(r) for r in cur.fetchall()]
+
+    # Every active stay touching the window, plus the next one after it so the
+    # desk can see how long a free bed stays free before the next arrival.
+    cur.execute("""
+        SELECT a.id, a.bed_id, a.patient_id, a.program_type, a.start_date,
+               COALESCE(a.actual_end_date, a.planned_end_date) AS end_date,
+               p.full_name AS patient_name, p.patient_code,
+               s.full_name AS doctor_name
+        FROM admissions a
+        JOIN patients p ON a.patient_id = p.id
+        LEFT JOIN staff s ON a.attending_doctor_id = s.id
+        WHERE a.status = 'active'
+          AND ? > a.start_date
+          AND ? < GREATEST(COALESCE(a.actual_end_date, a.planned_end_date),
+                           DATE_ADD(a.start_date, INTERVAL 1 DAY))
+    """, (we, ws))
+    overlapping = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT a.bed_id, MIN(a.start_date) AS next_start
+        FROM admissions a
+        WHERE a.status = 'active' AND a.start_date >= ?
+        GROUP BY a.bed_id
+    """, (we,))
+    next_by_bed = {str(r['bed_id'] if isinstance(r, dict) or hasattr(r, 'keys') else r[0]):
+                   str((r['next_start'] if isinstance(r, dict) or hasattr(r, 'keys') else r[1]))[:10]
+                   for r in cur.fetchall()}
+
+    by_bed = {}
+    for stay in overlapping:
+        by_bed.setdefault(str(stay['bed_id']), []).append(stay)
+
+    rooms = {}
+    for row in bed_rows:
+        room_id = str(row['room_id'])
+        room = rooms.get(room_id)
+        if room is None:
+            room = rooms[room_id] = {
+                'room_id': room_id,
+                'floor_number': row['floor_number'],
+                'room_number': row['room_number'],
+                'room_name_uz': row['room_name_uz'],
+                'room_type': row['room_type'],
+                'total_capacity': row['total_capacity'],
+                'beds': [],
+            }
+        room['beds'].append(row)
+
+    result = []
+    for room in rooms.values():
+        room_bed_ids = [str(b['bed_id']) for b in room['beds']]
+        # A whole-room booking on any bed of this room holds all of them.
+        room_lock = None
+        for bid in room_bed_ids:
+            for stay in by_bed.get(bid, []):
+                if is_full_room_program(stay['program_type']):
+                    room_lock = stay
+                    break
+            if room_lock:
+                break
+
+        beds_out = []
+        for bed in room['beds']:
+            bid = str(bed['bed_id'])
+            stays = sorted(by_bed.get(bid, []), key=lambda s: str(s['start_date']))
+            covering = [s for s in stays if str(s['start_date'])[:10] <= ws]
+            later = [s for s in stays if str(s['start_date'])[:10] > ws]
+            physical = str(bed['physical_status'])
+
+            entry = {
+                'bed_id': bid,
+                'bed_code': bed['bed_code'],
+                'bed_type': bed['bed_type'],
+                'default_daily_rate': float(bed['default_daily_rate'] or 0),
+                'physical_status': physical,
+                'room_id': room['room_id'],
+                'room_number': room['room_number'],
+                'room_name_uz': room['room_name_uz'],
+                'floor_number': room['floor_number'],
+                'occupant': None,
+                'conflict': None,
+                'next_booking': next_by_bed.get(bid),
+            }
+
+            if physical in ('maintenance', 'out_of_service', 'cleaning'):
+                entry['status'] = physical
+            elif covering:
+                s = covering[0]
+                entry['status'] = 'occupied'
+                entry['occupant'] = _stay_brief(s)
+            elif room_lock and str(room_lock['bed_id']) != bid:
+                entry['status'] = 'room_locked'
+                entry['occupant'] = _stay_brief(room_lock)
+            elif later:
+                entry['status'] = 'partial_conflict'
+                entry['conflict'] = _stay_brief(later[0])
+            else:
+                entry['status'] = 'available'
+            beds_out.append(entry)
+
+        free = [b for b in beds_out if b['status'] == 'available']
+        room_out = dict(room)
+        room_out['beds'] = beds_out
+        room_out['free_beds'] = len(free)
+        room_out['status'] = ('free' if len(free) == len(beds_out)
+                              else 'full' if not free else 'partial')
+        room_out['locked_whole_room'] = bool(room_lock)
+        result.append(room_out)
+
+    all_beds = [b for r in result for b in r['beds']]
+    summary = {
+        'total_beds': len(all_beds),
+        'available': sum(1 for b in all_beds if b['status'] == 'available'),
+        'occupied': sum(1 for b in all_beds if b['status'] == 'occupied'),
+        'room_locked': sum(1 for b in all_beds if b['status'] == 'room_locked'),
+        'partial_conflict': sum(1 for b in all_beds if b['status'] == 'partial_conflict'),
+        'cleaning': sum(1 for b in all_beds if b['status'] == 'cleaning'),
+        'unusable': sum(1 for b in all_beds
+                        if b['status'] in ('maintenance', 'out_of_service')),
+        'free_rooms': sum(1 for r in result if r['status'] == 'free'),
+        'total_rooms': len(result),
+    }
+    return {'start': ws, 'end': we, 'summary': summary, 'rooms': result}
+
+
+def _stay_brief(stay):
+    """The few fields the reception board shows about whoever holds a bed."""
+    return {
+        'admission_id': stay['id'],
+        'patient_id': stay['patient_id'],
+        'patient_name': stay['patient_name'],
+        'patient_code': stay['patient_code'],
+        'doctor_name': stay['doctor_name'],
+        'program_type': stay['program_type'],
+        'start_date': str(stay['start_date'])[:10],
+        'end_date': str(stay['end_date'])[:10],
+        'is_full_room': is_full_room_program(stay['program_type']),
+    }
 
 
 def discharge_patient(conn, admission_id, actual_end_date, discharge_summary=None):
