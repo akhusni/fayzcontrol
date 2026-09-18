@@ -761,10 +761,10 @@ flowchart LR
 
       <p>To back up the MySQL database on the production server (<code>31.184.242.14</code>):</p>
       <pre><code># 1. Complete Compressed Backup (Including Triggers, Routines & Views)
-mysqldump -u fayzhouse -pFayzHouse --routines --triggers --single-transaction fayzhouse | gzip > /var/backups/fayzhouse_backup_$(date +%Y%m%d_%H%M%S).sql.gz
+mysqldump -u fayzhouse -p --routines --triggers --single-transaction fayzhouse | gzip > /var/backups/fayzhouse_backup_$(date +%Y%m%d_%H%M%S).sql.gz
 
 # 2. Instant Disaster Recovery (Restore from Backup)
-gunzip < /var/backups/fayzhouse_backup_YYYYMMDD.sql.gz | mysql -u fayzhouse -pFayzHouse fayzhouse</code></pre>
+gunzip < /var/backups/fayzhouse_backup_YYYYMMDD.sql.gz | mysql -u fayzhouse -p fayzhouse</code></pre>
     </div>
 
     <footer style="text-align: center; color: var(--gray-600); font-size: 0.85rem; margin-top: 40px; padding: 20px 0; border-top: 1px solid var(--gray-200);">
