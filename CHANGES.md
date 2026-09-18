@@ -1,0 +1,160 @@
+# Fayz Control — O'zgarishlar Hisoboti
+
+**Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
+**Holat:** 60 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Sana:** 2026-yil sentabr
+
+---
+
+## 1. Tuzatilgan xatolar (backend)
+
+Har biri qayta ishlab chiqarilgan (reproduced), tuzatilgan va test bilan
+qoplangan.
+
+| Xato | Oqibati |
+| :--- | :------ |
+| Karavot band qilishda sana tekshiruvi teskari bog'langan edi | **Bitta karavotga ikki bemor** joylashtirilishi mumkin edi. Qisman ustma-ust tushgan har qanday yotish qabul qilinardi. |
+| Bir sekundda yaratilgan ikki qabul bir xil ID olardi | Ikkinchi qabul **sezilmasdan yo'qolardi** (`Duplicate entry`). |
+| JSON fayllarga parallel yozish himoyalanmagan edi | Test paytida **8 foydalanuvchidan 2 tasi qoldi** — `superadmin` ham o'chib ketdi. |
+| Xodim ID si `COUNT(*)` asosida yaratilardi | Parallel qo'shishda **mavjud xodim ustiga yozilardi**, tizim esa "saqlandi" deb javob berardi. 3 hamshiradan 1 tasi qolgan. |
+| `pdf_generator.py` da sintaksis xatosi | **Barcha PDF eksport ishlamas holatda edi** — xato `except` bloki tomonidan yashiringan. |
+| PDF chaqiruvi bayt massivini fayl yo'li deb qabul qilardi | PDF endpoint doim 404 qaytarardi. |
+| Bemor/to'lov ID lari 9000 qiymatdan tasodifiy tanlanardi | ~112 bemordan keyin ID to'qnashuvi ehtimoli 50% — ro'yxatga olish xatolik bilan tugardi. |
+| Qabulni o'chirishda hisob-kitob satrlari qolib ketardi | **Bemor boshqa bemorning yotishi uchun hisoblanardi.** 10 kunlik yotishga 17 kun yozilgan. |
+| `beds.status` ga `'available'` yozilardi (4 joyda) | Karavotni xizmatga qaytarish **umuman ishlamasdi** — karavotlar `cleaning` holatida qolib, palata bo'shab qolardi. |
+| Muvaffaqiyatsiz qabul bemor yozuvini qoldirardi | Har bir rad etilgan qabul "Yangi Bemor" nomli keraksiz yozuv qoldirardi. |
+| `building_management.js` da cheksiz rekursiya | Haqiqiy bronlar mavjud bo'lganda sahifa stack overflow bilan ishlamay qolardi. |
+
+---
+
+## 2. Interfeys va foydalanish qulayligi
+
+| Muammo | Yechim |
+| :--- | :--- |
+| Shifokor sahifasida retseptni o'chirish **hech narsa so'ramasdi** | Umumiy tasdiqlash oynasi barcha 8 sahifaga chiqarildi. |
+| 14 ta brauzer `confirm()` va 11 ta `alert()` | Yagona uslubdagi dialog va bildirishnomalarga o'tkazildi (allergiya ogohlantirishlari ham). |
+| Klaviatura fokusi ko'rinmasdi | `:focus-visible` qo'shildi — sichqoncha bilan ishlashda ko'rinish o'zgarmaydi. |
+| Bildirishnomalar 1.8 soniyada yo'qolardi, o'qilmagani ustiga yozilardi | Muddat xatolik darajasiga qarab 3.2–9 soniya, yopish tugmasi, `aria-live`. |
+| Sarlavhadagi tugmalar bir-birining ustiga chiqardi | **1081–1640px oralig'ida** (ya'ni ko'pchilik ekranlarda) tuzatildi. 8 sahifa × 8 o'lcham = 64 holat tekshirildi. |
+| Statistika chiplari bir-biriga qo'shilib ketgandi | Har biri alohida ajratildi. |
+| Bosma blankdagi logo tashqi (o'chgan) xizmatdan yuklanardi | Ichki SVG bilan almashtirildi. |
+
+---
+
+## 3. Xavfsizlik
+
+Avval `/api/*` ning **barcha** endpointlari va portal sahifalari
+avtorizatsiyasiz ochiq edi. Loyihaning o'z Nginx sxemasi bo'yicha bu
+`fayzcontrol.uz` orqali **internetga ochiq** degani edi.
+
+- **Avtorizatsiya:** server tomonida sessiyalar, `HttpOnly` + `SameSite=Strict`
+  cookie, kirish sahifasi. Frontenddagi ~100 ta so'rovni o'zgartirish
+  talab qilinmadi.
+- **Parollar xeshlangan:** PBKDF2-SHA256, 240 000 iteratsiya. Eski ochiq
+  matnli parollar server ishga tushganda avtomatik xeshlandi — xodimlar
+  parolini almashtirishi shart bo'lmadi.
+- **Rollar va ruxsatlar:** 11 ta rol, 53 endpoint va 12 sahifa
+  ruxsatlar jadvaliga bog'landi. Ruxsat qoidasi yozilmagan endpoint
+  **hamma uchun** taqiqlanadi (superadmin uchun ham).
+- **Audit jurnali:** har bir o'zgartirish, kirish va rad etilgan urinish
+  `audit_logs` ga yoziladi — kim, nima, qachon, qaysi IP.
+- **Kirishni cheklash:** bir hisob uchun 8, bir IP uchun 50 urinish.
+  IP chegarasi ataylab yuqori: Nginx ortida butun klinika bitta manzil
+  sifatida ko'rinadi va bir xodimning xatosi hammani bloklab
+  qo'ymasligi kerak.
+- **Tarmoq:** server faqat `127.0.0.1` ni tinglaydi — loyihaning o'z
+  Nginx konfiguratsiyasiga mos.
+- **Ma'lumotlar bazasi paroli** `db.py` dan olib tashlandi (avval
+  konfiguratsiya yo'qolsa ishlab chiqarish bazasiga ulanardi) va
+  `database_report.html` dagi ochiq parol ham.
+
+---
+
+## 4. Yangi imkoniyatlar
+
+### Hamshiralar posti (`nurse.html`)
+
+Avval tizim retsept yozishni bilardi, lekin **dori berilganini qayd
+qilish imkoniyati yo'q edi**.
+
+- Kunlik dori berish jadvali retseptlardan **avtomatik hosil qilinadi** —
+  shu sababli kelajakdagi kunni ham ko'rish mumkin.
+- Kalendar: o'tgan kunlar (kim nima qabul qilgan) va kelajak (kim nima
+  qabul qiladi).
+- `Kuniga 1-2 mahal` — shifokor tanloviga qoldirilgan oraliq: pastki
+  chegara rejalashtiriladi, ruxsat etilgan maksimum ko'rsatiladi.
+- `Zarurat tug'ilganda` — jadvalga **qo'yilmaydi**, aks holda har kuni
+  "o'tkazib yuborilgan" deb hisoblanardi.
+- `har 8 soatda` — kuniga 3 marta (8 marta emas).
+- A4 bosma varaqa: klinika blankasi, imzo ustuni, holat rangsiz
+  printerda ham o'qiladi.
+
+### Shifokor konsultatsiyasi (`consultation.html`)
+
+Narkologiya/psixiatriya uchun **6 bo'limli, 41 maydonli** anketa.
+
+- Bemor ma'lumotlari, davolash asosi (o'z xohishi / oila / sud qarori),
+  asosiy muammo, moddalar tarixi, psixiatrik va tibbiy anamnez, oila va
+  ijtimoiy muhit, klinik baholash va xavf darajasi.
+- **Davolash rejasi alohida saqlanadi va alohida chop etiladi.** Anketa —
+  bir suhbatdagi holatning o'zgarmas qaydi; reja esa qayta ko'rib
+  chiqiladigan ko'rsatma. Yangi faol reja avvalgisini almashtiradi.
+- Sud qarori raqamisiz sud qarori bilan davolash saqlanmaydi;
+  protokolsiz detoks rejasi saqlanmaydi.
+- Qabulxonadan yo'naltirilgan bemorlar navbati — resepshn olgan
+  ma'lumotlar avtomatik to'ldiriladi.
+
+---
+
+## 5. Sinov va infratuzilma
+
+- **60 avtomatlashtirilgan test**, faqat standart kutubxona.
+  `python3 tests/test_clinic.py`
+- Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
+- MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
+  avtomatik yaratiladi.
+
+---
+
+## 6. Hal qilinishi kerak bo'lgan masalalar
+
+**Darhol (PO/administrator qaroriga muhtoj):**
+
+1. **Standart parollarni almashtirish.** `superadmin` va boshqa hisoblar
+   dastlabki parollarda — ular tarqatilgan arxivda bo'lgan. Tizim
+   birinchi kirishda parolni almashtirishni talab qiladi, lekin
+   parollar almashtirilishi kerak.
+
+**Keyingi ish (tavsiya etilgan tartibda):**
+
+2. **Qabulxona (Registration)** — bo'sh/band xonalar paneli va ikki
+   yo'nalish (konsultatsiya / statsionar). Konsultatsiya yo'nalishi
+   ishlayapti; statsionar qismi texnik topshiriqda tugallanmagan.
+3. **Statsionar kunlik ko'rik** — shifokorning kunlik ko'rik moduli.
+4. **Farmatsevt va oshxona sahifalari.**
+5. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
+   xodimlar qaytadan kirishi kerak.
+6. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
+   emas, yillar o'tib sekinlashadi.
+7. Uch xil sxema fayli mavjud (`data_mysql_dump.sql` ichida INSERT
+   yo'q). `data/schema.mysql.sql` asosiy deb tanlandi — tasdiqlash
+   kerak.
+8. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+   ko'rish uchun SQL kerak).
+
+---
+
+## 7. Ishga tushirish
+
+```bash
+python3 -m pip install PyMySQL reportlab
+cp db_config.example.json db_config.json   # o'z parolingizni kiriting
+python3 server.py 3000
+```
+
+Brauzer: `http://localhost:3000` → kirish sahifasi.
+
+Batafsil: `README.md`.
+
+> **Diqqat:** `db_config.json` bu arxivga **qo'shilmagan** — u parol
+> saqlaydi. `db_config.example.json` dan nusxa oling.
