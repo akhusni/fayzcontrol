@@ -52,8 +52,11 @@ CREATE TABLE IF NOT EXISTS beds (
 CREATE TABLE IF NOT EXISTS staff (
     id VARCHAR(64) PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
+    -- Every position that holds a login needs a staff row behind it, because a
+    -- clinical record names its author through this table.
     role VARCHAR(64) NOT NULL CHECK(role IN (
-        'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant'
+        'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant',
+        'pharmacist', 'ward_manager', 'hr_manager', 'kitchen_staff'
     )),
     specialty VARCHAR(255),
     phone VARCHAR(64),

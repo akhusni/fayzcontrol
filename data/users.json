@@ -70,7 +70,8 @@
     "avatar": "💉",
     "phone": "+998 90 200-33-44",
     "is_active": true,
-    "must_change_password": true
+    "must_change_password": true,
+    "staff_id": "STF-NRS-01"
   },
   {
     "id": "USR-ACCT-01",
@@ -81,7 +82,8 @@
     "avatar": "💳",
     "phone": "+998 90 400-55-66",
     "is_active": true,
-    "must_change_password": true
+    "must_change_password": true,
+    "staff_id": "STF-ACC-01"
   },
   {
     "id": "USR-REC-01",
@@ -92,7 +94,8 @@
     "avatar": "📋",
     "phone": "+998 90 500-66-77",
     "is_active": true,
-    "must_change_password": true
+    "must_change_password": true,
+    "staff_id": "STF-REC-01"
   },
   {
     "id": "USR-ADM-01",
@@ -103,7 +106,8 @@
     "avatar": "🛡️",
     "phone": "",
     "is_active": true,
-    "must_change_password": true
+    "must_change_password": true,
+    "staff_id": "STF-ADM-01"
   },
   {
     "id": "USR-CHI-01",
@@ -113,7 +117,8 @@
     "role": "chief_doctor",
     "avatar": "🩺",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-DOC-01"
   },
   {
     "id": "USR-NUR-02",
@@ -123,7 +128,8 @@
     "role": "nurse",
     "avatar": "💉",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-NRS-03"
   },
   {
     "id": "USR-REC-02",
@@ -133,7 +139,8 @@
     "role": "receptionist",
     "avatar": "📋",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-REC-02"
   },
   {
     "id": "USR-PHA-01",
@@ -143,7 +150,8 @@
     "role": "pharmacist",
     "avatar": "💊",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-PHR-01"
   },
   {
     "id": "USR-WAR-01",
@@ -153,7 +161,8 @@
     "role": "ward_manager",
     "avatar": "🏨",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-WRD-01"
   },
   {
     "id": "USR-HR_-01",
@@ -163,7 +172,8 @@
     "role": "hr_manager",
     "avatar": "👥",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-HRM-01"
   },
   {
     "id": "USR-KIT-01",
@@ -173,6 +183,7 @@
     "role": "kitchen_staff",
     "avatar": "🍲",
     "phone": "",
-    "is_active": true
+    "is_active": true,
+    "staff_id": "STF-KIT-01"
   }
 ]

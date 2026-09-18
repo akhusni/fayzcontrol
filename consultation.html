@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Konsultatsiya & Davolash Rejasi | Fayz Medical House</title>
+  <meta name="description" content="Narkologiya va psixiatriya konsultatsiyasi: 6 bo'limli anketa va alohida davolash rejasi.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/consultation.css?v=1.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=3.9">
+
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.2"></script>
+</head>
+<body class="consultation-portal">
+
+  <header class="portal-master-header no-print">
+    <div class="portal-nav-wrapper">
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo"><i class="fas fa-hospital-alt"></i></div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="consultation.html" class="portal-nav-pill pill-doctor active" title="Konsultatsiya">
+            <i class="fas fa-user-doctor"></i> <span>Konsultatsiya</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Ko'rik & EMR">
+            <i class="fas fa-stethoscope"></i> <span>Ko'rik</span>
+          </a>
+          <a href="nurse.html" class="portal-nav-pill pill-nurse" title="Hamshiralar Posti">
+            <i class="fas fa-syringe"></i> <span>Hamshira</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM">
+            <i class="fas fa-folder-open"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="portal-actions-cluster">
+        <button type="button" class="btn-header-outline" id="btn-print-intake" title="Konsultatsiya bayonnomasini chop etish">
+          <i class="fas fa-file-lines"></i> <span>Bayonnoma</span>
+        </button>
+        <button type="button" class="btn-header-primary" id="btn-print-plan" title="Davolash rejasini alohida chop etish">
+          <i class="fas fa-file-prescription"></i> <span>Reja</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================
+       TWO MAIN MENUS: Consultation and Check-up
+       =================================================================== -->
+  <div class="doc-modeswitch no-print">
+    <a href="consultation.html" class="doc-mode active">
+      <i class="fas fa-user-doctor"></i>
+      <div>
+        <div class="doc-mode-title">Konsultatsiya</div>
+        <div class="doc-mode-sub">Birlamchi qabul, 6 bo'limli anketa</div>
+      </div>
+    </a>
+    <a href="doctor.html" class="doc-mode">
+      <i class="fas fa-stethoscope"></i>
+      <div>
+        <div class="doc-mode-title">Ko'rik</div>
+        <div class="doc-mode-sub">Statsionar bemorlarni kunlik ko'rikdan o'tkazish</div>
+      </div>
+    </a>
+  </div>
+
+  <main class="cons-main">
+
+    <!-- ===============================================================
+         LEFT: queue forwarded from registration
+         =============================================================== -->
+    <aside class="cons-side no-print">
+      <div class="cons-side-head">
+        <div class="cons-side-title">
+          <i class="fas fa-inbox"></i> Qabulxonadan yo'naltirilgan
+        </div>
+        <label class="cons-mine">
+          <input type="checkbox" id="only-mine"> Faqat menga
+        </label>
+      </div>
+      <div id="queue-list" class="queue-list"></div>
+      <div id="queue-empty" class="queue-empty" style="display:none;">
+        Navbatda kutayotgan bemor yo'q.
+      </div>
+
+      <div class="cons-side-head" style="margin-top:20px;">
+        <div class="cons-side-title"><i class="fas fa-magnifying-glass"></i> Bemorni qidirish</div>
+      </div>
+      <input type="text" id="patient-search" class="cons-input" placeholder="F.I.SH. yoki FMH kodi...">
+      <div id="search-results" class="queue-list"></div>
+    </aside>
+
+    <!-- ===============================================================
+         RIGHT: the intake and the plan
+         =============================================================== -->
+    <section class="cons-work">
+
+      <div id="no-patient" class="cons-empty">
+        <i class="fas fa-user-doctor"></i>
+        <div class="cons-empty-title">Bemor tanlanmagan</div>
+        <div class="cons-empty-text">
+          Chapdagi navbatdan bemorni tanlang yoki qidiruv orqali toping.
+        </div>
+      </div>
+
+      <div id="work-area" style="display:none;">
+
+        <!-- Selected patient -->
+        <div class="cons-patient-bar">
+          <div class="cons-patient-ident">
+            <div class="cons-patient-name" id="sel-name">—</div>
+            <div class="cons-patient-meta" id="sel-meta">&nbsp;</div>
+          </div>
+          <div class="cons-patient-flags" id="sel-flags"></div>
+        </div>
+
+        <!-- Tabs: intake / plan / history -->
+        <div class="cons-tabs no-print">
+          <button type="button" class="cons-tab active" data-pane="intake">
+            <i class="fas fa-clipboard-list"></i> Konsultatsiya anketasi
+          </button>
+          <button type="button" class="cons-tab" data-pane="plan">
+            <i class="fas fa-file-prescription"></i> Davolash rejasi
+          </button>
+          <button type="button" class="cons-tab" data-pane="history">
+            <i class="fas fa-clock-rotate-left"></i> Tarix
+          </button>
+        </div>
+
+        <!-- ---------- INTAKE ---------- -->
+        <div class="cons-pane active" id="pane-intake">
+          <div class="cons-hint no-print">
+            <i class="fas fa-circle-info"></i>
+            Anketa saqlangandan keyin o'zgartirilmaydi — u suhbat paytidagi
+            holatning yozma qaydi. Davolash rejasi alohida saqlanadi va
+            keyinchalik qayta ko'rib chiqilishi mumkin.
+          </div>
+          <form id="intake-form" autocomplete="off"></form>
+          <div class="cons-actions no-print">
+            <button type="button" class="btn-cons btn-cons-ghost" id="btn-clear-intake">Tozalash</button>
+            <button type="button" class="btn-cons btn-cons-primary" id="btn-save-intake">
+              <i class="fas fa-floppy-disk"></i> Konsultatsiyani Saqlash
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- PLAN ---------- -->
+        <div class="cons-pane" id="pane-plan">
+          <div class="cons-hint no-print">
+            <i class="fas fa-circle-info"></i>
+            Reja anketadan alohida saqlanadi va alohida chop etiladi. Yangi
+            faol reja avvalgisini almashtiradi, shunda bo'limda faqat bitta
+            amaldagi ko'rsatma bo'ladi.
+          </div>
+          <form id="plan-form" autocomplete="off"></form>
+          <div class="cons-actions no-print">
+            <button type="button" class="btn-cons btn-cons-ghost" id="btn-clear-plan">Tozalash</button>
+            <button type="button" class="btn-cons btn-cons-primary" id="btn-save-plan">
+              <i class="fas fa-floppy-disk"></i> Rejani Saqlash
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- HISTORY ---------- -->
+        <div class="cons-pane" id="pane-history">
+          <div id="history-body"></div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Printed output is built into this container by consultation.js -->
+  <div id="print-root" class="print-only"></div>
+
+  <script src="js/consultation.js?v=1.0"></script>
+</body>
+</html>

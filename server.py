@@ -205,6 +205,7 @@ import auth
 import audit
 import permissions
 import nursery
+import consultation
 
 
 class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -786,6 +787,69 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
             # 6. /api/daily-logs/<admission_id>
+            # 6a. Consultation intake & treatment plans
+            #
+            # The queue is the hand-off from registration: reception takes a
+            # patient's details, routes them to a named doctor, and this is
+            # what that doctor sees waiting.
+            elif path == '/api/consultations/queue':
+                sess = self.current_session()
+                mine = query.get('mine', ['0'])[0] in ('1', 'true', 'yes')
+                doctor_id = None
+                if mine and sess:
+                    doctor_id = sess['user'].get('staff_id')
+                rows = consultation.waiting_queue(conn, doctor_id)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
+
+            elif path == '/api/consultations/sections':
+                # The field definition, so the form is built from the same
+                # source the server validates against.
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'sections': [{'key': k, 'label': l,
+                                  'fields': [{'name': x[0], 'type': x[1],
+                                              'label': x[2], 'hint': x[3]}
+                                             for x in f]}
+                                 for k, l, f in consultation.SECTIONS],
+                    'treatment_basis': list(consultation.TREATMENT_BASIS),
+                    'risk_levels': list(consultation.RISK_LEVELS),
+                    'plan_types': list(consultation.PLAN_TYPES),
+                }, ensure_ascii=False).encode('utf-8'))
+
+            elif path.startswith('/api/consultations/patient/'):
+                pid = urllib.parse.unquote(path.replace('/api/consultations/patient/', ''))
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'consultations': consultation.list_for_patient(conn, pid),
+                    'plans': consultation.plans_for_patient(conn, pid),
+                }, ensure_ascii=False).encode('utf-8'))
+
+            elif path.startswith('/api/consultations/'):
+                cid = urllib.parse.unquote(path.replace('/api/consultations/', ''))
+                record = consultation.get_intake(conn, cid)
+                if not record:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Konsultatsiya topilmadi'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(record, ensure_ascii=False).encode('utf-8'))
+
+            elif path.startswith('/api/treatment-plans/patient/'):
+                pid = urllib.parse.unquote(path.replace('/api/treatment-plans/patient/', ''))
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(consultation.plans_for_patient(conn, pid), ensure_ascii=False).encode('utf-8'))
+
+            elif path.startswith('/api/treatment-plans/'):
+                plan_id = urllib.parse.unquote(path.replace('/api/treatment-plans/', ''))
+                plan = consultation.get_plan(conn, plan_id)
+                if not plan:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Davolash rejasi topilmadi'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(plan, ensure_ascii=False).encode('utf-8'))
+
             # 6b. GET /api/nursery/round?date=YYYY-MM-DD
             #
             # The medication round for one day, derived from the standing
@@ -2021,6 +2085,78 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': "Narxlar muvaffaqiyatli saqlandi va barcha bo'limlarga tatbiq etildi", 'pricing': existing}, ensure_ascii=False).encode('utf-8'))
+
+            # 12a. POST /api/consultations -- the six-section intake
+            #
+            # The plan is NOT part of this payload. The intake records what the
+            # patient reported and the doctor observed at one moment and should
+            # not change afterwards; the plan is a live instruction that gets
+            # revised. They are saved and printed separately.
+            elif path == '/api/consultations':
+                patient_id = (body.get('patient_id') or '').strip()
+                if not patient_id:
+                    self._send_validation_error('Bemor tanlanmadi.', 'patient_id')
+                    return
+                cur.execute('SELECT id FROM patients WHERE id = ?', (patient_id,))
+                if not cur.fetchone():
+                    self._send_validation_error('Bemor topilmadi.', 'patient_id')
+                    return
+
+                values, err = consultation.clean_intake(body)
+                if err:
+                    self._send_validation_error(err)
+                    return
+
+                sess = self.current_session()
+                doctor_id = (body.get('doctor_id')
+                             or (sess['user'].get('staff_id') if sess else None) or None)
+                status = 'draft' if body.get('status') == 'draft' else 'final'
+                cid = consultation.save_intake(
+                    conn, patient_id, doctor_id, values,
+                    appointment_id=(body.get('appointment_id') or None),
+                    status=status)
+
+                # Close the booking this consultation answers, so the queue
+                # does not keep offering a patient who has been seen.
+                if body.get('appointment_id'):
+                    cur.execute("UPDATE appointments SET status = 'completed' WHERE id = ?",
+                                (body.get('appointment_id'),))
+                    conn.commit()
+
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'message': 'Konsultatsiya saqlandi',
+                    'id': cid, 'consultation_id': cid, 'patient_id': patient_id,
+                }, ensure_ascii=False).encode('utf-8'))
+
+            # 12a2. POST /api/treatment-plans -- stored and printed on its own
+            elif path == '/api/treatment-plans':
+                patient_id = (body.get('patient_id') or '').strip()
+                if not patient_id:
+                    self._send_validation_error('Bemor tanlanmadi.', 'patient_id')
+                    return
+                cur.execute('SELECT id FROM patients WHERE id = ?', (patient_id,))
+                if not cur.fetchone():
+                    self._send_validation_error('Bemor topilmadi.', 'patient_id')
+                    return
+
+                values, err = consultation.clean_plan(body)
+                if err:
+                    self._send_validation_error(err)
+                    return
+
+                sess = self.current_session()
+                doctor_id = (body.get('doctor_id')
+                             or (sess['user'].get('staff_id') if sess else None) or None)
+                plan_id = consultation.save_plan(
+                    conn, patient_id, doctor_id, values,
+                    consultation_id=(body.get('consultation_id') or None))
+
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'message': 'Davolash rejasi saqlandi',
+                    'id': plan_id, 'plan_id': plan_id, 'patient_id': patient_id,
+                }, ensure_ascii=False).encode('utf-8'))
 
             # 12b. POST /api/nursery/administer
             #

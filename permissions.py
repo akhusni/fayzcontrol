@@ -162,6 +162,12 @@ API_RULES = [
     ('/api/patients',                 'crm',        None),
 
     # --- clinical ---------------------------------------------------------
+    # Consultation intake and treatment plans. Both are the doctor's work;
+    # the nurse and the pharmacist read a plan to carry it out.
+    ('/api/consultations/sections',   'doctors',    'read'),
+    ('/api/consultations/queue',      'doctors',    'read'),
+    ('/api/consultations',            'doctors',    None),
+    ('/api/treatment-plans',          'doctors',    None),
     ('/api/doctor/download-pdf/',     'doctors',    'read'),
     ('/api/doctor/clinical/',         'doctors',    'read'),
     ('/api/doctor/consultation-case', 'doctors',    None),
@@ -221,6 +227,11 @@ API_READ_EXEMPT = {
     '/api/hr/data',
 }
 
+# A treatment plan is an instruction other people carry out, so reading one is
+# granted to the nursery and pharmacy as well as to the doctors. Writing stays
+# with the doctors via the rule table above.
+PLAN_READERS = ('doctors', 'nursery', 'pharmacy')
+
 # ---------------------------------------------------------------------------
 # Portal pages -> module. A role that cannot read the module is redirected to
 # its own home page rather than shown an empty shell.
@@ -234,6 +245,7 @@ PAGE_RULES = {
     '/superpage.html':            ('crm',        'read'),
     '/reception.html':            ('reception',  'read'),
     '/doctor.html':               ('doctors',    'write'),
+    '/consultation.html':         ('doctors',    'write'),
     '/nurse.html':                ('nursery',    'read'),
     '/building_management.html':  ('facility',   'read'),
     '/crm.html':                  ('crm',        'read'),
@@ -343,6 +355,11 @@ def authorize_api(user, method, path):
     """
     if path in SELF_SERVICE:
         return True, None
+    # Reading a plan: allowed for any module that has to act on it.
+    if method == 'GET' and path.startswith('/api/treatment-plans'):
+        if any(can(user, m, 'read') for m in PLAN_READERS):
+            return True, None
+        return False, 'doctors:read required'
     if method == 'GET' and path in API_READ_EXEMPT:
         return True, None
     required = required_for_api(method, path)

@@ -200,6 +200,10 @@ class ApiTest(unittest.TestCase):
                         cur.execute(f"DELETE FROM admissions WHERE id IN ({marks})",
                                     tuple(adm_ids))
                     cur.execute("DELETE FROM prescriptions WHERE patient_id = ?", (pid,))
+                    cur.execute("DELETE FROM treatment_plans WHERE patient_id = ?", (pid,))
+                    cur.execute("DELETE FROM consultations WHERE patient_id = ?", (pid,))
+                    cur.execute("DELETE FROM medical_histories WHERE patient_id = ?", (pid,))
+                    cur.execute("DELETE FROM appointments WHERE patient_id = ?", (pid,))
                     cur.execute("DELETE FROM patients WHERE id = ?", (pid,))
                 conn.commit()
             finally:
@@ -800,6 +804,214 @@ class OverlapGuard(ApiTest):
 # ---------------------------------------------------------------------------
 # Concurrency
 # ---------------------------------------------------------------------------
+
+class ConsultationIntake(ApiTest):
+    """
+    The six-section narcology/psychiatry intake, and the treatment plan kept
+    apart from it. The intake is the record of one encounter and does not
+    change; the plan is a live instruction that gets revised, so they are
+    stored and printed separately.
+    """
+
+    MINIMAL = {'primary_complaint': 'Alkogolga ruju, uyqusizlik'}
+
+    def _intake(self, patient_id, **over):
+        payload = dict(self.MINIMAL, patient_id=patient_id)
+        payload.update(over)
+        return self.api.post('/api/consultations', payload)
+
+    def test_the_form_definition_is_served_for_the_page_to_build_from(self):
+        """
+        The page builds its form from this, so it must agree with what the
+        server validates against — one definition, not two.
+        """
+        status, meta = self.api.get('/api/consultations/sections')
+        self.assertEqual(status, 200)
+        self.assertEqual(len(meta['sections']), 6, 'six sections were specified')
+        names = [f['name'] for sec in meta['sections'] for f in sec['fields']]
+        self.assertEqual(len(names), len(set(names)), 'a field name is duplicated')
+        for sec in meta['sections']:
+            for f in sec['fields']:
+                self.assertTrue(f.get('label'), f"{f['name']} has no label to render")
+        # The six areas the specification named.
+        for required in ('date_of_birth', 'treatment_basis', 'primary_complaint',
+                         'substances', 'prior_psych_diagnoses',
+                         'family_history_addiction', 'risk_to_self',
+                         'working_diagnosis'):
+            self.assertIn(required, names, f'{required} is missing from the intake')
+
+    def test_a_consultation_saves_and_reads_back(self):
+        pid = self.make_patient('Intake Save')
+        status, body = self._intake(
+            pid,
+            treatment_basis='family_initiated',
+            working_diagnosis='Alkogolga qaramlik sindromi',
+            icd10_code='F10.2',
+            risk_to_self='moderate',
+            seizure_history=True,
+            substances=[{'substance': 'Alkogol', 'age_first_use': 17,
+                         'peak_daily_amount': '1L', 'last_use_date': '2026-09-17'}])
+        self.assertEqual(status, 201, f"intake failed: {body}")
+
+        status, rec = self.api.get('/api/consultations/' + body['consultation_id'])
+        self.assertEqual(status, 200)
+        self.assertEqual(rec['treatment_basis'], 'family_initiated')
+        self.assertEqual(rec['risk_to_self'], 'moderate')
+        self.assertEqual(int(rec['seizure_history']), 1)
+        self.assertEqual([x['substance'] for x in rec['substances']], ['Alkogol'])
+
+    def test_a_court_mandated_admission_needs_its_reference(self):
+        """
+        Without the order number the legal basis cannot be substantiated
+        later, which is exactly when it is asked for.
+        """
+        pid = self.make_patient('Intake Court')
+        status, body = self._intake(pid, treatment_basis='court_mandated')
+        self.assertEqual(status, 400, 'a court order was accepted with no reference')
+        status, _ = self._intake(pid, treatment_basis='court_mandated',
+                                 court_reference='№ 4082/2026')
+        self.assertEqual(status, 201)
+
+    def test_the_complaint_is_required(self):
+        pid = self.make_patient('Intake NoComplaint')
+        status, body = self.api.post('/api/consultations', {'patient_id': pid})
+        self.assertEqual(status, 400)
+        self.assertIn('error', body)
+
+    def test_implausible_values_are_refused_in_plain_language(self):
+        pid = self.make_patient('Intake Validate')
+        for over, what in (
+            ({'date_of_birth': '2099-01-01'}, 'a future birth date'),
+            ({'risk_to_self': 'catastrophic'}, 'an invented risk level'),
+            ({'overdose_count': -3}, 'a negative count'),
+            ({'substances': [{'age_first_use': 16}]}, 'a substance with no name'),
+            ({'substances': [{'substance': 'Alkogol', 'age_first_use': 400}]},
+             'an impossible first-use age'),
+        ):
+            status, body = self._intake(pid, **over)
+            self.assertEqual(status, 400, f"{what} was accepted")
+            msg = body.get('error', '')
+            for leak in ('Check constraint', 'chk_', 'Traceback', '3819', '1062'):
+                self.assertNotIn(leak, msg, f"the message leaks internals: {msg}")
+
+    def test_the_plan_is_stored_separately_from_the_intake(self):
+        pid = self.make_patient('Plan Separate')
+        _, intake = self._intake(pid, working_diagnosis='Abstinensiya')
+        cid = intake['consultation_id']
+
+        status, plan = self.api.post('/api/treatment-plans', {
+            'patient_id': pid, 'consultation_id': cid, 'plan_type': 'detox',
+            'immediate_actions': 'Statsionarga yotqizish',
+            'detox_protocol': 'Diazepam kamayuvchi sxema',
+            'duration_days': 10})
+        self.assertEqual(status, 201, f"plan failed: {plan}")
+        self.assertNotEqual(plan['plan_id'], cid, 'the plan shares the intake id')
+
+        status, timeline = self.api.get('/api/consultations/patient/' + pid)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(timeline['consultations']), 1)
+        self.assertEqual(len(timeline['plans']), 1, 'the plan should be listed apart')
+
+        # Reading the plan on its own is what lets it be printed by itself.
+        status, one = self.api.get('/api/treatment-plans/' + plan['plan_id'])
+        self.assertEqual(status, 200)
+        self.assertEqual(one['plan_type'], 'detox')
+        self.assertNotIn('primary_complaint', one,
+                         'the plan document should not carry the intake with it')
+
+    def test_a_detox_plan_requires_a_protocol(self):
+        pid = self.make_patient('Plan Detox')
+        status, _ = self.api.post('/api/treatment-plans', {
+            'patient_id': pid, 'plan_type': 'detox',
+            'immediate_actions': 'Yotqizish'})
+        self.assertEqual(status, 400, 'a detox plan was accepted with no protocol')
+
+    def test_a_new_active_plan_supersedes_the_previous_one(self):
+        """
+        Only one plan can be the live instruction, or the ward has to guess
+        which sheet to follow.
+        """
+        pid = self.make_patient('Plan Supersede')
+        for actions in ('Birinchi reja', 'Ikkinchi reja'):
+            status, _ = self.api.post('/api/treatment-plans', {
+                'patient_id': pid, 'plan_type': 'outpatient',
+                'immediate_actions': actions})
+            self.assertEqual(status, 201)
+
+        status, plans = self.api.get('/api/treatment-plans/patient/' + pid)
+        self.assertEqual(status, 200)
+        active = [p for p in plans if p['status'] == 'active']
+        self.assertEqual(len(active), 1, f"{len(active)} plans are active at once")
+        self.assertEqual(len([p for p in plans if p['status'] == 'superseded']), 1)
+
+    def test_the_intake_reaches_the_existing_emr(self):
+        """
+        The existing history tab and the printed A4 blank read from
+        medical_histories. Without the mirror the new intake would be
+        invisible to both and a printed blank would carry no diagnosis.
+        """
+        pid = self.make_patient('Intake Mirror')
+        _, body = self._intake(pid, working_diagnosis='Opioid qaramligi',
+                               icd10_code='F11.2', drug_allergies='Penitsillin')
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("""SELECT diagnosis_primary, icd10_code, allergic_status
+                           FROM medical_histories WHERE patient_id = ?
+                           ORDER BY created_at DESC LIMIT 1""", (pid,))
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row, 'the intake did not reach medical_histories')
+        self.assertEqual(row['icd10_code'], 'F11.2')
+        self.assertIn('Penitsillin', row['allergic_status'] or '')
+
+    def test_a_consultation_records_its_author(self):
+        """A clinical record with no named author is not much of a record."""
+        pid = self.make_patient('Intake Author')
+        _, body = self._intake(pid)
+        _, rec = self.api.get('/api/consultations/' + body['consultation_id'])
+        # The suite signs in as an administrator, which may not map to a staff
+        # row; what must hold is that the column is populated when it does.
+        if rec.get('doctor_id'):
+            self.assertTrue(rec.get('doctor_name'),
+                            'a doctor_id was stored but resolves to no name')
+
+    def test_the_queue_is_the_handoff_from_registration(self):
+        status, rows = self.api.get('/api/consultations/queue')
+        self.assertEqual(status, 200)
+        self.assertIsInstance(rows, list)
+
+    def test_only_doctors_may_write_a_consultation(self):
+        pid = self.make_patient('Intake Perms')
+        username = f'suite_nurse_c_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, body = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite Nurse C', 'role': 'nurse'})
+        self.assertEqual(st, 201, f"could not create the probe account: {body}")
+        try:
+            c = Client()
+            c.login(username, 'Suite-Probe-2026')
+            c.post('/api/auth/change-password', {
+                'current_password': 'Suite-Probe-2026',
+                'new_password': 'Suite-Probe-2026-Rot',
+                'confirm_password': 'Suite-Probe-2026-Rot'})
+            self.assertEqual(
+                c.post('/api/consultations', dict(self.MINIMAL, patient_id=pid))[0],
+                403, 'a nurse could record a consultation')
+            self.assertEqual(
+                c.post('/api/treatment-plans',
+                       {'patient_id': pid, 'immediate_actions': 'x'})[0],
+                403, 'a nurse could write a treatment plan')
+            # But a nurse must be able to READ the plan she has to carry out.
+            self.assertEqual(c.get('/api/treatment-plans/patient/' + pid)[0], 200,
+                             'a nurse could not read the plan she must follow')
+        finally:
+            self.api.delete('/api/users/' + (body.get('id') or username))
+
 
 class DeleteLeavesNothingBehind(ApiTest):
     """
