@@ -2361,6 +2361,67 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # Record one dose of the round: given, missed, refused or held.
             # Upserts on (prescription, date, slot), so correcting a mistaken
             # entry amends it instead of implying a second dose was given.
+            # POST /api/daily-logs/<admission_id> -- the daily observation.
+            # daily_logs had a read endpoint and no way to write one, so the
+            # vitals the ward takes every morning had nowhere to go.
+            elif path.startswith('/api/daily-logs'):
+                adm_id = (path.replace('/api/daily-logs', '').strip('/')
+                          or body.get('admission_id') or '').strip()
+                if not adm_id:
+                    self._send_validation_error('Yotish (admission) tanlanmadi.',
+                                                'admission_id')
+                    return
+
+                day, err = parse_date_param(body.get('date') or body.get('log_date'))
+                if err:
+                    self._send_validation_error(err, 'date')
+                    return
+                if day > datetime.date.today():
+                    self._send_validation_error(
+                        "Kelajakdagi kun uchun ko'rsatkich yozilmaydi.", 'date')
+                    return
+
+                cur.execute("""SELECT a.id, a.start_date,
+                                      COALESCE(a.actual_end_date, a.planned_end_date) AS end_date
+                               FROM admissions a WHERE a.id = ?""", (adm_id,))
+                adm = cur.fetchone()
+                if not adm:
+                    self._send_validation_error(f'Yotish topilmadi ({adm_id}).',
+                                                'admission_id')
+                    return
+                # A reading dated outside the stay belongs to a different
+                # admission, or to a typo.
+                if not (str(adm['start_date'])[:10] <= day.isoformat()
+                        <= str(adm['end_date'])[:10]):
+                    self._send_validation_error(
+                        f"Sana yotish muddatidan tashqarida "
+                        f"({str(adm['start_date'])[:10]} - {str(adm['end_date'])[:10]}).",
+                        'date')
+                    return
+
+                vitals, verr = nursery.parse_vitals(body)
+                if verr:
+                    self._send_validation_error(verr[0], verr[1])
+                    return
+
+                sess = self.current_session()
+                staff_id = (sess['user'].get('staff_id') if sess else None) or None
+                attended = body.get('attended', True)
+                attended = attended not in (False, 0, '0', 'false', 'no')
+                notes = (body.get('nurse_notes') or body.get('notes') or '').strip() or None
+
+                row = nursery.record_vitals(conn, adm_id, day, vitals,
+                                            attended=attended, nurse_notes=notes,
+                                            staff_id=staff_id)
+                audit.record(conn, 'daily_logs', adm_id, 'RECORD_VITALS',
+                             user=(sess['user'] if sess else None),
+                             new_data={'date': day.isoformat(), **vitals},
+                             ip_address=self.client_ip())
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps(
+                    {'message': "Ko'rsatkichlar saqlandi", 'log': dict(row) if row else None},
+                    ensure_ascii=False, default=str).encode('utf-8'))
+
             elif path == '/api/nursery/administer':
                 day, err = parse_date_param(body.get('date'))
                 if err:

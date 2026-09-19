@@ -648,6 +648,129 @@ class NurseStation(ApiTest):
             self.api.delete('/api/users/' + (body.get('id') or username))
 
 
+class NurseVitals(ApiTest):
+    """
+    daily_logs held the ward's observations and had a read endpoint only, so
+    the vitals taken every morning had nowhere to go: the table was described
+    in the schema, shown on the patient record, and never written.
+    """
+
+    def _admitted(self, name, bed, days_back=0, days_forward=6):
+        pid = self.make_patient(name)
+        start = _dt.date.today() - _dt.timedelta(days=days_back)
+        end = _dt.date.today() + _dt.timedelta(days=days_forward)
+        _, adm = self.admit(pid, bed, start.isoformat(), end.isoformat())
+        return pid, adm['admission_id']
+
+    def _logs(self, admission_id):
+        status, body = self.api.get('/api/daily-logs/' + admission_id)
+        self.assertEqual(status, 200)
+        return body
+
+    def test_a_days_observation_is_recorded_and_reads_back(self):
+        _, adm = self._admitted('Vitals A', BED_A)
+        today = _dt.date.today().isoformat()
+        status, body = self.api.post('/api/daily-logs/' + adm, {
+            'date': today, 'vital_bp_systolic': 128, 'vital_bp_diastolic': 82,
+            'vital_pulse': 76, 'vital_temp': 36.7, 'vital_spo2': 98,
+            'nurse_notes': 'Holati barqaror',
+        })
+        self.assertEqual(status, 201, f"vitals not recorded: {body}")
+        logs = self._logs(adm)
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs[0]['vital_pulse'], 76)
+        self.assertEqual(float(logs[0]['vital_temp']), 36.7)
+        self.assertEqual(logs[0]['nurse_notes'], 'Holati barqaror')
+
+    def test_recording_twice_in_a_day_amends_rather_than_duplicating(self):
+        _, adm = self._admitted('Vitals B', BED_B)
+        today = _dt.date.today().isoformat()
+        self.api.post('/api/daily-logs/' + adm, {'date': today, 'vital_pulse': 76})
+        self.api.post('/api/daily-logs/' + adm, {'date': today, 'vital_pulse': 88})
+        logs = self._logs(adm)
+        self.assertEqual(len(logs), 1, 'the day has two contradictory records')
+        self.assertEqual(logs[0]['vital_pulse'], 88)
+
+    def test_an_amendment_keeps_what_it_does_not_mention(self):
+        """
+        The afternoon round records a pulse. It must not wipe the blood
+        pressure taken that morning.
+        """
+        _, adm = self._admitted('Vitals C', BED_C)
+        today = _dt.date.today().isoformat()
+        self.api.post('/api/daily-logs/' + adm, {
+            'date': today, 'vital_bp_systolic': 128, 'vital_bp_diastolic': 82,
+            'vital_pulse': 76})
+        self.api.post('/api/daily-logs/' + adm, {'date': today, 'vital_pulse': 88})
+        logs = self._logs(adm)
+        self.assertEqual(logs[0]['vital_pulse'], 88)
+        self.assertEqual(logs[0]['vital_bp_systolic'], 128,
+                         "the morning's blood pressure was erased")
+
+    def test_a_blank_value_clears_a_reading_on_purpose(self):
+        """Absent leaves alone; present-but-empty is an explicit correction."""
+        _, adm = self._admitted('Vitals D', BED_A)
+        today = _dt.date.today().isoformat()
+        self.api.post('/api/daily-logs/' + adm, {'date': today, 'vital_pulse': 76})
+        self.api.post('/api/daily-logs/' + adm, {'date': today, 'vital_pulse': ''})
+        self.assertIsNone(self._logs(adm)[0]['vital_pulse'])
+
+    def test_an_implausible_reading_is_refused_in_plain_language(self):
+        _, adm = self._admitted('Vitals E', BED_B)
+        status, body = self.api.post('/api/daily-logs/' + adm, {'vital_temp': 58})
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'vital_temp')
+        self.assertIn('30.0', body.get('error', ''))
+
+    def test_diastolic_above_systolic_is_refused(self):
+        _, adm = self._admitted('Vitals F', BED_C)
+        status, body = self.api.post('/api/daily-logs/' + adm, {
+            'vital_bp_systolic': 100, 'vital_bp_diastolic': 120})
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'vital_bp_diastolic')
+
+    def test_vitals_cannot_be_recorded_for_a_future_day(self):
+        _, adm = self._admitted('Vitals G', BED_A)
+        ahead = (_dt.date.today() + _dt.timedelta(days=2)).isoformat()
+        status, _ = self.api.post('/api/daily-logs/' + adm,
+                                  {'date': ahead, 'vital_pulse': 70})
+        self.assertEqual(status, 400, 'recorded an observation not yet made')
+
+    def test_a_date_outside_the_stay_is_refused(self):
+        _, adm = self._admitted('Vitals H', BED_B)
+        before = (_dt.date.today() - _dt.timedelta(days=30)).isoformat()
+        status, body = self.api.post('/api/daily-logs/' + adm,
+                                     {'date': before, 'vital_pulse': 70})
+        self.assertEqual(status, 400, f"logged against the wrong stay: {body}")
+
+    def test_an_unknown_admission_is_refused(self):
+        status, _ = self.api.post('/api/daily-logs/ADM-DOES-NOT-EXIST',
+                                  {'vital_pulse': 70})
+        self.assertEqual(status, 400)
+
+    def test_only_the_ward_may_record_vitals(self):
+        """Same boundary as the medication round: nursing work, nursing rights."""
+        _, adm = self._admitted('Vitals I', BED_C)
+        hr = Client()
+        username = f'suite_vitals_hr_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, created = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite HR', 'role': 'hr_manager'})
+        self.assertEqual(st, 201, f"could not create probe account: {created}")
+        try:
+            st, login_body = hr.login(username, 'Suite-Probe-2026')
+            self.assertEqual(st, 200)
+            if login_body.get('must_change_password'):
+                hr.post('/api/auth/change-password', {
+                    'current_password': 'Suite-Probe-2026',
+                    'new_password': 'Suite-Probe-2026-Rotated',
+                    'confirm_password': 'Suite-Probe-2026-Rotated'})
+            self.assertEqual(hr.post('/api/daily-logs/' + adm, {'vital_pulse': 70})[0], 403)
+        finally:
+            self.api.delete('/api/users/' + (created.get('id') or username))
+
+
 class LoginThrottle(unittest.TestCase):
     """
     The login endpoint answered unlimited guesses at full speed, which on an

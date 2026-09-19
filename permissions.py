@@ -178,7 +178,9 @@ API_RULES = [
     # Nurses record administration and vitals against a stay.
     ('/api/nursery/round',            'nursery',    'read'),
     ('/api/nursery/administer',       'nursery',    'write'),
-    ('/api/daily-logs/',              'nursery',    None),
+    # Without the trailing slash so it also covers a POST that names the
+    # admission in the body rather than the path.
+    ('/api/daily-logs',               'nursery',    None),
 
     # --- ward / facility --------------------------------------------------
     # Ending a stay or moving a patient is a clinical decision, so those two

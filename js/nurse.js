@@ -180,8 +180,79 @@
               <div class="prn-title">Zaruratga ko'ra (rejada emas)</div>
               ${p.as_needed.map(o => renderPrn(o, canRecord)).join('')}
             </div>` : ''}
+          ${renderVitals(p, canRecord)}
         </article>`;
     }).join('');
+  }
+
+  // --- Vitals -------------------------------------------------------------
+  // daily_logs had a read endpoint and no way to write one, so the morning
+  // observation had nowhere to go. The fields show what was already recorded
+  // for the day being viewed; leaving one blank leaves the stored reading
+  // alone, and clearing one on purpose clears it.
+  const VITAL_FIELDS = [
+    { key: 'vital_bp_systolic',  label: 'Sist.', unit: 'mm', step: '1' },
+    { key: 'vital_bp_diastolic', label: 'Diast.', unit: 'mm', step: '1' },
+    { key: 'vital_pulse',        label: 'Puls', unit: 'zarb', step: '1' },
+    { key: 'vital_temp',         label: 'Harorat', unit: '°C', step: '0.1' },
+    { key: 'vital_spo2',         label: 'SpO2', unit: '%', step: '1' },
+  ];
+
+  function renderVitals(p, canRecord) {
+    const v = p.vitals || {};
+    const recorded = VITAL_FIELDS.some(f => v[f.key] !== null && v[f.key] !== undefined);
+    const by = v.nurse_name ? ` · ${esc(v.nurse_name)}` : '';
+
+    const inputs = VITAL_FIELDS.map(f => `
+      <label class="vital-field">
+        <span class="vital-label">${f.label}</span>
+        <input type="number" step="${f.step}" class="vital-input"
+               data-adm="${esc(p.admission_id)}" data-field="${f.key}"
+               value="${v[f.key] === null || v[f.key] === undefined ? '' : esc(v[f.key])}"
+               ${canRecord ? '' : 'disabled'}>
+        <span class="vital-unit">${f.unit}</span>
+      </label>`).join('');
+
+    return `
+      <div class="vitals-block${recorded ? ' is-recorded' : ''}">
+        <div class="vitals-head">
+          <span class="vitals-title"><i class="fas fa-heart-pulse"></i> Ko'rsatkichlar</span>
+          <span class="vitals-state">${recorded ? 'Yozilgan' + by : 'Yozilmagan'}</span>
+        </div>
+        <div class="vitals-row">
+          ${inputs}
+          <input type="text" class="vital-note" placeholder="Izoh (ixtiyoriy)"
+                 data-adm="${esc(p.admission_id)}" data-field="nurse_notes"
+                 value="${v.nurse_notes ? esc(v.nurse_notes) : ''}" ${canRecord ? '' : 'disabled'}>
+          <button type="button" class="btn-vitals-save" data-adm="${esc(p.admission_id)}"
+                  ${canRecord ? '' : 'disabled'}>
+            <i class="fas fa-floppy-disk"></i> Saqlash
+          </button>
+        </div>
+      </div>`;
+  }
+
+  async function saveVitals(admissionId, button) {
+    const payload = { date: state.date };
+    document.querySelectorAll(
+      `.vital-input[data-adm="${CSS.escape(admissionId)}"], .vital-note[data-adm="${CSS.escape(admissionId)}"]`
+    ).forEach(el => { payload[el.dataset.field] = el.value; });
+
+    button.disabled = true;
+    try {
+      const res = await fetch('/api/daily-logs/' + encodeURIComponent(admissionId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Xatolik (${res.status})`);
+      showToast("Ko'rsatkichlar saqlandi ✓", 'success');
+      await load();
+    } catch (e) {
+      showToast(e.message, 'danger');
+      button.disabled = false;
+    }
   }
 
   function renderTotals(t) {
@@ -320,6 +391,11 @@
 
     // Dose buttons are delegated: the list is re-rendered on every change.
     document.getElementById('round-container').addEventListener('click', e => {
+      const save = e.target.closest('.btn-vitals-save');
+      if (save) {
+        saveVitals(save.dataset.adm, save);
+        return;
+      }
       const btn = e.target.closest('.btn-dose');
       if (!btn) return;
       record(btn.dataset.rx, btn.dataset.slot, btn.dataset.status, btn.dataset.label);

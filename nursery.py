@@ -276,6 +276,18 @@ def _fetch_administrations(conn, day):
     return keyed, extras
 
 
+def _fetch_vitals(conn, day):
+    """One day's recorded observations, keyed by admission."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT dl.*, s.full_name AS nurse_name
+        FROM daily_logs dl
+        LEFT JOIN staff s ON dl.recorded_by_staff_id = s.id
+        WHERE dl.log_date = ?
+    """, (day.isoformat(),))
+    return {str(r['admission_id']): dict(r) for r in cur.fetchall()}
+
+
 def build_round(conn, day):
     """
     The medication round for one date, grouped by patient.
@@ -360,6 +372,12 @@ def build_round(conn, day):
     ordered = sorted(patients.values(),
                      key=lambda p: (str(p['room_number']), str(p['bed_code'])))
 
+    # Whatever the ward already observed on this day, so the sheet shows the
+    # morning's figures instead of an empty form.
+    vitals_by_admission = _fetch_vitals(conn, day)
+    for p in ordered:
+        p['vitals'] = vitals_by_admission.get(str(p['admission_id']))
+
     counts = {'planned': 0, 'given': 0, 'missed': 0, 'refused': 0,
               'held': 0, 'pending': 0, 'not_recorded': 0, 'scheduled': 0,
               'as_needed_orders': 0}
@@ -420,6 +438,110 @@ def record_dose(conn, prescription_id, day, slot_index, status,
           int(slot_index), slot_label, status, administered_at, staff_id, notes))
     conn.commit()
     return True
+
+
+# Vitals, and the range each one is believable in. The table carries the same
+# bounds as CHECK constraints, but a constraint violation reaches the nurse as
+# a MySQL error; these produce a sentence she can act on, naming the field.
+VITAL_RANGES = {
+    'vital_bp_systolic':  (50, 300,  "Sistolik bosim"),
+    'vital_bp_diastolic': (30, 200,  "Diastolik bosim"),
+    'vital_pulse':        (30, 250,  "Puls"),
+    'vital_temp':         (30.0, 45.0, "Harorat"),
+    'vital_spo2':         (50, 100,  "SpO2"),
+}
+
+
+def parse_vitals(body):
+    """
+    Read the vitals out of a request body.
+
+    Returns (values, error). Only fields the body actually mentions appear in
+    values: a key that is present but empty clears the reading, a key that is
+    absent leaves it alone. A blank is None rather than zero, because a missing
+    reading and a reading of nought are different clinical claims and the
+    column is nullable so the difference survives.
+    """
+    values = {}
+    for field, (low, high, label) in VITAL_RANGES.items():
+        if field not in body:
+            # Absent is not the same as blank. An amend that names only the
+            # pulse must not wipe the blood pressure recorded an hour earlier,
+            # so a field nobody mentioned is left out entirely and
+            # record_vitals keeps whatever is already stored.
+            continue
+        raw = body.get(field)
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            # Present but empty: an explicit clear.
+            values[field] = None
+            continue
+        try:
+            num = float(raw) if field == 'vital_temp' else int(raw)
+        except (TypeError, ValueError):
+            return None, (f"{label} raqam bo'lishi kerak.", field)
+        if not (low <= num <= high):
+            return None, (f"{label} {low}-{high} oralig'ida bo'lishi kerak "
+                          f"(kiritilgan: {num}).", field)
+        values[field] = num
+
+    sys_bp = values.get('vital_bp_systolic')
+    dia_bp = values.get('vital_bp_diastolic')
+    if sys_bp is not None and dia_bp is not None and dia_bp >= sys_bp:
+        return None, ("Diastolik bosim sistolikdan kichik bo'lishi kerak.",
+                      'vital_bp_diastolic')
+    return values, None
+
+
+def record_vitals(conn, admission_id, day, vitals, attended=True,
+                  nurse_notes=None, staff_id=None):
+    """
+    Write one day's observation for one stay.
+
+    daily_logs is unique on (admission_id, log_date), so a second reading for
+    the same day amends the first rather than adding a row -- the same rule the
+    medication round already follows, and for the same reason: a nurse
+    correcting a figure she mistyped should not leave two contradictory records
+    of the same morning.
+
+    Only what `vitals` names is overwritten. A round that records a pulse in
+    the afternoon leaves the morning's blood pressure where it is.
+    """
+    cur = conn.cursor()
+    columns = ['attended'] + list(VITAL_RANGES)
+    if nurse_notes is not None:
+        columns.append('nurse_notes')
+    row_values = {
+        'attended': 1 if attended else 0,
+        'nurse_notes': nurse_notes,
+        'recorded_by_staff_id': staff_id,
+    }
+    row_values.update({f: vitals.get(f) for f in VITAL_RANGES})
+
+    insert_cols = ['admission_id', 'log_date', 'attended', 'nurse_notes',
+                   'recorded_by_staff_id'] + list(VITAL_RANGES)
+    insert_params = [admission_id, day.isoformat(), row_values['attended'],
+                     nurse_notes, staff_id] + [vitals.get(f) for f in VITAL_RANGES]
+
+    # Amend only the fields this call carried, plus who recorded it.
+    update_cols = ['attended', 'recorded_by_staff_id'] + [f for f in VITAL_RANGES if f in vitals]
+    if nurse_notes is not None:
+        update_cols.append('nurse_notes')
+    update_clause = ', '.join(f"{c} = VALUES({c})" for c in update_cols)
+
+    cur.execute(f"""
+        INSERT INTO daily_logs ({', '.join(insert_cols)})
+        VALUES ({', '.join(['?'] * len(insert_cols))})
+        ON DUPLICATE KEY UPDATE {update_clause}
+    """, tuple(insert_params))
+    conn.commit()
+
+    cur.execute("""
+        SELECT dl.*, s.full_name AS nurse_name
+        FROM daily_logs dl
+        LEFT JOIN staff s ON dl.recorded_by_staff_id = s.id
+        WHERE dl.admission_id = ? AND dl.log_date = ?
+    """, (admission_id, day.isoformat()))
+    return cur.fetchone()
 
 
 def next_extra_slot(conn, prescription_id, day):
