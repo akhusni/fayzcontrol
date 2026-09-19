@@ -332,6 +332,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         self._set_json_headers(400)
         self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
+    def _send_server_error(self):
+        """
+        A 500 that says nothing about the inside of the system.
+
+        The traceback is already on the server log, where the people who run
+        the clinic can read it. What reaches the browser is a sentence a
+        receptionist can act on.
+        """
+        try:
+            self._set_json_headers(500)
+            self.wfile.write(json.dumps({
+                'error': "Serverda kutilmagan xatolik yuz berdi. "
+                         "Iltimos, qayta urinib ko'ring; takrorlansa "
+                         "tizim administratoriga xabar bering."
+            }, ensure_ascii=False).encode('utf-8'))
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
+
     def client_ip(self):
         """
         The caller's address, honouring the proxy header the documented Nginx
@@ -423,15 +441,25 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Pragma', 'no-cache')
         self.send_header('Expires', '0')
         self.send_header('X-Robots-Tag', 'noindex, nofollow, noarchive')
+        # A clinical record system should not be loadable inside someone
+        # else's page, should not have its content types guessed at, and
+        # should not leak patient ids through the Referer header when a
+        # member of staff follows a link off the portal.
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('X-Frame-Options', 'SAMEORIGIN')
+        self.send_header('Referrer-Policy', 'same-origin')
         super().end_headers()
 
     def _set_json_headers(self, status=200):
         try:
             self.send_response(status)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            # No Access-Control-Allow-Origin. The portals are served from this
+            # same origin, so none of them needs CORS, and the header used to
+            # say '*' on every clinical response -- an open invitation for any
+            # page on the internet to read this API. SameSite=Strict already
+            # keeps the session cookie off cross-site requests; this removes
+            # the standing offer as well.
             self.end_headers()
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             pass
@@ -476,8 +504,32 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if path.startswith('/api/'):
             self.handle_api_get(path, query)
-        else:
-            super().do_GET()
+            return
+
+        # Anything not on the allow-list is not on disk as far as the web
+        # is concerned. Checked after enforce_auth so a signed-in member of
+        # staff cannot download db_config.json or the source either.
+        if not auth.is_servable_path(path):
+            self.send_error(404, 'File not found')
+            return
+        super().do_GET()
+
+    def do_HEAD(self):
+        """
+        HEAD went straight to SimpleHTTPRequestHandler, which never asked
+        about the session: HEAD /doctor.html answered 200 where GET answers
+        302 to the login screen, and HEAD /db_config.json confirmed the
+        credentials file and its size. It now takes the same two gates as
+        GET.
+        """
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if self.enforce_auth(path):
+            return
+        if path.startswith('/api/') or not auth.is_servable_path(path):
+            self.send_error(404, 'File not found')
+            return
+        super().do_HEAD()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1330,9 +1382,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'API Endpoint not found'}).encode('utf-8'))
 
         except Exception as e:
+            # The detail goes to the server log, not to the browser: str(e) on
+            # a database error carries table and column names, file paths and
+            # sometimes the failing statement, which is a map of the system
+            # for anyone who can provoke a 500.
             traceback.print_exc()
-            self._set_json_headers(500)
-            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+            self._send_server_error()
         finally:
             if conn:
                 try: conn.close()
@@ -2582,9 +2637,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'POST Endpoint not found'}).encode('utf-8'))
 
         except Exception as e:
+            # The detail goes to the server log, not to the browser: str(e) on
+            # a database error carries table and column names, file paths and
+            # sometimes the failing statement, which is a map of the system
+            # for anyone who can provoke a 500.
             traceback.print_exc()
-            self._set_json_headers(500)
-            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+            self._send_server_error()
         finally:
             if conn:
                 try: conn.close()
@@ -2743,9 +2801,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'Endpoint not found'}).encode('utf-8'))
 
         except Exception as e:
+            # The detail goes to the server log, not to the browser: str(e) on
+            # a database error carries table and column names, file paths and
+            # sometimes the failing statement, which is a map of the system
+            # for anyone who can provoke a 500.
             traceback.print_exc()
-            self._set_json_headers(500)
-            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+            self._send_server_error()
         finally:
             if conn:
                 try: conn.close()
@@ -2925,9 +2986,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'Delete endpoint not found'}).encode('utf-8'))
 
         except Exception as e:
+            # The detail goes to the server log, not to the browser: str(e) on
+            # a database error carries table and column names, file paths and
+            # sometimes the failing statement, which is a map of the system
+            # for anyone who can provoke a 500.
             traceback.print_exc()
-            self._set_json_headers(500)
-            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+            self._send_server_error()
         finally:
             if conn:
                 try: conn.close()

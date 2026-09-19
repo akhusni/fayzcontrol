@@ -66,6 +66,69 @@ PUBLIC_PAGE_PATHS = {
 
 
 # ---------------------------------------------------------------------------
+# What may be served off disk at all
+#
+# requires_session() used to answer this by exclusion: anything that was not
+# an /api/ path and did not end in .html counted as a harmless static asset
+# and was handed to whoever asked. That is the wrong way round for a directory
+# that also holds the source, the schema, the request log and the database
+# credentials. Every one of these returned 200 to an anonymous caller:
+#
+#     /db_config.json      the MySQL password, in plaintext
+#     /auth.py             this file, including the hashing parameters
+#     /permissions.py      the whole access-control table
+#     /server.py           every endpoint and query in the system
+#     /data/users.json     the user store
+#     /server_log.txt      request history
+#     /data/seed_data.sql  and the rest of the schema dumps
+#
+# The rule is now an allow-list. A file is servable only if it is a portal
+# page, an asset the portals actually load, or one of the three reference
+# files the pages fetch by name; everything else is 404 whether or not the
+# caller is signed in, because no member of staff needs to download the
+# credentials file through the browser either.
+# ---------------------------------------------------------------------------
+
+STATIC_ASSET_DIRS = ('/css/', '/js/', '/assets/')
+
+STATIC_ASSET_SUFFIXES = (
+    '.css', '.js', '.mjs', '.map',
+    '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
+    '.woff', '.woff2', '.ttf', '.eot',
+)
+
+# Reference data the portals fetch by name: the ward layout and the two drug
+# catalogues. Everything else under data/ is clinic data or configuration.
+SERVABLE_DATA_FILES = {
+    '/data/clinic_rooms.json',
+    '/data/pharmacology_db.json',
+    '/data/fayz_house_meds.json',
+}
+
+ROOT_PUBLIC_FILES = {'/favicon.ico', '/robots.txt'}
+
+
+def is_servable_path(path):
+    """
+    True when `path` may be read off disk and sent to a browser.
+
+    Deliberately an allow-list: a file nobody thought about is refused rather
+    than served. Adding a new asset directory means adding it here, which is
+    the point.
+    """
+    if not path.startswith('/') or '..' in path or '\\' in path:
+        return False
+    if path in ROOT_PUBLIC_FILES or path in SERVABLE_DATA_FILES:
+        return True
+    if path.endswith('.html'):
+        # The portal pages sit at the top level; nothing nested is a page.
+        return path.count('/') == 1
+    if path.startswith(STATIC_ASSET_DIRS):
+        return path.endswith(STATIC_ASSET_SUFFIXES)
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Password hashing
 # ---------------------------------------------------------------------------
 
@@ -408,11 +471,14 @@ def requires_session(path):
         return False
     if path.startswith('/api/'):
         return path not in PUBLIC_API_PATHS
-    # Static assets are harmless on their own; the data behind them is not.
-    # Gate the portal pages, leave stylesheets, scripts and images open so the
-    # login screen renders correctly.
+    # Stylesheets, scripts and images stay open so the login screen renders.
+    # The portal pages and the reference data behind them do not: the ward
+    # layout and the drug catalogues are only fetched by pages that already
+    # require a session.
     if path in ('/', ''):
         return True
     if path.endswith('.html'):
+        return True
+    if path in SERVABLE_DATA_FILES:
         return True
     return False

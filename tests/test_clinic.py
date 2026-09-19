@@ -744,6 +744,116 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class StaticFileExposure(unittest.TestCase):
+    """
+    The web root is also the source tree. It holds server.py, auth.py,
+    permissions.py, the schema dumps, the request log and db_config.json --
+    which carries the MySQL password in plaintext.
+
+    requires_session() decided what to serve by exclusion: anything that was
+    not an /api/ path and did not end in .html was treated as a harmless
+    static asset. So every one of those files answered 200 to an anonymous
+    caller, and `curl https://<host>/db_config.json` returned the database
+    credentials. HEAD skipped the check altogether, because do_HEAD was never
+    overridden and fell through to SimpleHTTPRequestHandler.
+    """
+
+    SECRET_PATHS = [
+        '/db_config.json',
+        '/db_config.example.json',
+        '/auth.py',
+        '/permissions.py',
+        '/server.py',
+        '/db.py',
+        '/consultation.py',
+        '/data/users.json',
+        '/data/hr_db.json',
+        '/data/accounting_db.json',
+        '/data/reception_db.json',
+        '/data/seed_data.sql',
+        '/data/schema.mysql.sql',
+        '/data_mysql_dump.sql',
+        '/server_log.txt',
+        '/CHANGES.md',
+        '/README.md',
+        '/tests/test_clinic.py',
+        '/.gitignore',
+    ]
+
+    def fetch(self, path, method='GET'):
+        """Status code only, without following the login redirect."""
+        req = urllib.request.Request(BASE + path, method=method)
+        opener = urllib.request.build_opener(NoRedirect())
+        try:
+            with opener.open(req) as res:
+                return res.status, res.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+        except urllib.error.URLError:
+            return None, b''
+
+    def test_the_credentials_file_is_not_downloadable(self):
+        status, body = self.fetch('/db_config.json')
+        self.assertNotEqual(status, 200,
+                            'the MySQL password was served over HTTP')
+        self.assertNotIn(b'password', body.lower())
+
+    def test_no_source_or_data_file_is_downloadable(self):
+        served = []
+        for path in self.SECRET_PATHS:
+            status, _ = self.fetch(path)
+            if status == 200:
+                served.append(path)
+        self.assertEqual(served, [], f"served to an anonymous caller: {served}")
+
+    def test_head_is_gated_the_same_way_as_get(self):
+        """HEAD leaks existence and size, and it used to skip the gate."""
+        for path in ('/db_config.json', '/auth.py', '/data/users.json'):
+            status, _ = self.fetch(path, method='HEAD')
+            self.assertNotEqual(status, 200, f"HEAD {path} answered 200")
+
+    def test_head_on_a_portal_page_redirects_like_get(self):
+        status, _ = self.fetch('/doctor.html', method='HEAD')
+        self.assertEqual(status, 302,
+                         'HEAD served a portal page without a session')
+
+    def test_a_path_nobody_allowed_is_refused(self):
+        """The rule is an allow-list, so an unanticipated file is refused."""
+        for path in ('/install.py', '/update_pharmacology.py',
+                     '/data/pricing_config.json', '/run_clinic_server.ps1'):
+            status, _ = self.fetch(path)
+            self.assertNotEqual(status, 200, f"{path} was served")
+
+    def test_the_login_screen_still_has_its_assets(self):
+        """The gate must not be so eager that nobody can sign in."""
+        for path in ('/login.html', '/robots.txt',
+                     '/css/unified_header.css', '/js/fmh_dialogs.js'):
+            status, _ = self.fetch(path)
+            self.assertEqual(status, 200, f"{path} is needed anonymously")
+
+    def test_reference_data_is_served_to_signed_in_staff(self):
+        """
+        The ward layout and the drug catalogues are fetched by the portals, so
+        closing the directory must not take them with it.
+        """
+        if not credentials_present():
+            self.skipTest(CREDENTIALS_HINT)
+        api = Client()
+        if api.login()[0] != 200:
+            self.skipTest('could not sign in')
+        for path in ('/data/clinic_rooms.json', '/data/pharmacology_db.json',
+                     '/data/fayz_house_meds.json'):
+            req = urllib.request.Request(BASE + path)
+            req.add_header('Cookie', api.cookie)
+            opener = urllib.request.build_opener(NoRedirect())
+            with opener.open(req) as res:
+                self.assertEqual(res.status, 200, f"{path} unreachable when signed in")
+
+    def test_reference_data_is_not_public(self):
+        status, _ = self.fetch('/data/clinic_rooms.json')
+        self.assertNotEqual(status, 200, 'clinic layout served anonymously')
+
+
 class PasswordStorage(unittest.TestCase):
     """Passwords were stored in plaintext in data/users.json."""
 

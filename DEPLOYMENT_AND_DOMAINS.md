@@ -41,25 +41,42 @@ Katalog tarkibi quyidagicha bo'ladi:
 - `hr.html`
 - `medical_blank.html`
 - `server.py`
-- `api.php`
-- `.htaccess`
+- `.htaccess` (faqat himoya qoidalari)
 - `robots.txt`
-- `data/` (fayz_clinic.db va JSON bazalar)
+- `data/` (sxema va JSON konfiguratsiyalari — klinik ma'lumotlar MySQL'da)
+- `db_config.json` (arxivda yo'q — `db_config.example.json` dan nusxa oling)
 - `css/`
 - `js/`
 - `assets/`
 
 ---
 
-## ⚙️ 4. Serverda Ishga Tushirishning 2 Ta Usuli
+## ⚙️ 4. Serverda Ishga Tushirish (Systemd + Nginx)
 
-### Usul 1 (Eng Oson — PHP & Apache orqali):
-Sayt papkasiga yuklangan `.htaccess` va `api.php` tayyor sozlangan:
-- Foydalanuvchi `https://fayzcontrol.uz` ga kirganda, `.htaccess` avtomatik tarzda `superpage.html` ni ochadi.
-- API so'rovlari (`/api/*`) kelganda, `api.php` avtomatik tarzda `server.py` ni orqa fonda uyg'otadi va so'rovlarni unga yo'naltiradi. Hech qanday murakkab sozlash shart emas!
+> **Diqqat — eski "Apache + `api.php`" usuli olib tashlandi.**
+>
+> Avvalgi qo'llanmada "eng oson" deb ko'rsatilgan usul xavfli edi va endi
+> ishlamaydi:
+>
+> - `.htaccess` dagi `DirectoryIndex superpage.html` Apache'ga HTML
+>   sahifalarni **to'g'ridan-to'g'ri diskdan** berishni buyurardi. Sahifa
+>   himoyasi `server.py` ichida — ya'ni bu holda **hech qanday tekshiruv
+>   ishlamaydi**: `doctor.html`, `crm.html`, `accounting.html` va boshqa
+>   barcha portallar **istalgan odamga, parolsiz** ochilardi.
+> - `api.php` cookie'ni `server.py` ga **uzatmasdi** va javobdagi
+>   `Set-Cookie` ni qaytarmasdi, shuning uchun avtorizatsiya
+>   **umuman ishlamas edi**.
+> - `api.php?restart_backend` **hech qanday parolsiz** serverni o'chirib
+>   qayta ishga tushirardi va `server_log.txt` ning oxirgi qismini
+>   qaytarardi.
+>
+> `api.php` o'chirildi. `.htaccess` faqat himoya qoidalari sifatida
+> qoldirildi (manba kodi, `db_config.json` va `data/` ni yuklab olishni
+> taqiqlaydi).
 
-### Usul 2 (Professional — Linux Systemd Service & Nginx Proxy):
-Server terminalida (SSH):
+Yagona qo'llab-quvvatlanadigan usul — `server.py` ni systemd xizmati
+sifatida ishga tushirib, oldiga Nginx qo'yish.
+
 1. Servis faylini yarating:
    ```bash
    sudo nano /etc/systemd/system/fayzcontrol.service
@@ -68,38 +85,81 @@ Server terminalida (SSH):
    ```ini
    [Unit]
    Description=Fayz Control CRM Service
-   After=network.target
+   After=network.target mysql.service
 
    [Service]
    Type=simple
    User=www-data
    WorkingDirectory=/var/www/fayzcontrol/data/www/fayzcontrol.uz
-   ExecStart=/usr/bin/python3 server.py
+   ExecStart=/usr/bin/python3 server.py 3000
    Restart=always
    RestartSec=3
 
    [Install]
    WantedBy=multi-user.target
    ```
+
+   `server.py` faqat `127.0.0.1` ni tinglaydi — bu ataylab shunday.
+   `BIND_HOST` ni o'zgartirmang.
+
 3. Servisni yoqing va ishga tushiring:
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable --now fayzcontrol.service
+   sudo systemctl status fayzcontrol.service
    ```
 
-4. FastPanel'da sayt sozlamalari -> **Nginx** bo'limiga quyidagini qo'shing:
+4. FastPanel'da sayt sozlamalari → **Nginx** bo'limiga quyidagini qo'shing:
    ```nginx
    location / {
        proxy_pass http://127.0.0.1:3000;
-       proxy_set_header Host $host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_set_header Host              $host;
+       proxy_set_header X-Real-IP         $remote_addr;
+       proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
        proxy_set_header X-Forwarded-Proto $scheme;
    }
    ```
 
+   **`X-Forwarded-Proto` majburiy.** Sessiya cookie'siga `Secure`
+   belgisi aynan shu sarlavhaga qarab qo'yiladi; usiz cookie HTTPS
+   talab qilmaydigan holatda yuboriladi.
+
+   **`X-Real-IP` ham majburiy.** Kirishni cheklash va audit jurnali
+   shu manzilga tayanadi; usiz butun klinika bitta IP (`127.0.0.1`)
+   sifatida ko'rinadi.
+
+5. Tekshiring — ro'yxatdan o'tmasdan portal ochilmasligi kerak:
+   ```bash
+   curl -sI https://fayzcontrol.uz/doctor.html | head -1   # 302 -> /login.html
+   curl -s  https://fayzcontrol.uz/api/patients            # 401
+   curl -sI https://fayzcontrol.uz/db_config.json | head -1 # 403/404, hech qachon 200
+   ```
+
 ---
 
-## 🔗 5. Veb-Sayt Bilan Integratsiya
+## 🔗 5. Veb-Sayt Bilan Integratsiya — **HOZIRDA ISHLAMAYDI**
 
-Rasmiy saytingiz (`website-main`) foydalanuvchisi qabulga yozilganda, arizalar avtomatik ravishda `https://fayzcontrol.uz/api/reception/appointment` manziliga kelib tushadi va CRM da darhol aks etadi.
+Avval rasmiy sayt (`fayzmedical.uz`) qabulga yozilish arizasini
+`https://fayzcontrol.uz/api/reception/appointment` ga yuborardi va u
+to'g'ridan-to'g'ri CRM ga tushardi.
+
+**Bu endi ishlamaydi va buni bilib turish kerak.** Butun `/api/*`
+avtorizatsiya talab qiladi, `/api/reception/appointment` esa ochiq
+endpointlar ro'yxatida emas (`auth.py` → `PUBLIC_API_PATHS`). Sayt
+formasi endi **401** oladi va ariza **hech qayerga tushmaydi** —
+jimgina yo'qoladi.
+
+Uchta variant bor, qaysi birini tanlashni klinika hal qiladi:
+
+1. **Hozircha shunday qoldirish** va saytdagi formani telefon raqamiga
+   almashtirish. Eng xavfsiz, lekin onlayn yozilish yo'qoladi.
+2. **Alohida ochiq endpoint** qo'shish (masalan
+   `/api/public/appointment-request`): faqat yozish, faqat "yangi
+   ariza" holatida saqlaydi, IP bo'yicha cheklangan va
+   qabulxona tasdiqlamaguncha bemor kartasi yaratilmaydi. Spam va
+   bazani to'ldirish xavfi bor, shuning uchun cheklov majburiy.
+3. **Sayt uchun alohida xizmat hisobi** va API kaliti — sayt backend'i
+   (brauzer emas) shu kalit bilan murojaat qiladi.
+
+Tavsiya: **2-variant**, lekin bu alohida ish va deploydan oldin
+qilinishi shart emas. Muhimi — hozir forma ishlamasligini bilish.

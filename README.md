@@ -1,6 +1,6 @@
 # Fayz Medical House — Hospital Management & Clinical EMR Suite
 
-Toshkent shahridagi **"Fayz Medical House"** xususiy klinikasi uchun to'liq integratsiyalashgan, xavfsiz va SQLite ma'lumotlar bazasiga ulangan avtonom shifoxona boshqaruv tizimi (Hospital Information System / EMR & CRM).
+Toshkent shahridagi **"Fayz Medical House"** xususiy klinikasi uchun to'liq integratsiyalashgan, xavfsiz va MySQL 8 ma'lumotlar bazasiga ulangan avtonom shifoxona boshqaruv tizimi (Hospital Information System / EMR & CRM).
 
 ---
 
@@ -37,12 +37,11 @@ crm-suite/
 ├── hr.html                 # Inson resurslari, davomat, smenalar va maosh
 ├── reception.html          # Qabulxona, navbatlar va qo'ng'iroqlar
 ├── medical_blank.html      # A4 Tibbiy Epikriz va blank chop etish
-├── server.py               # SQLite REST API & Web Server (Auto-redirect / -> superpage.html)
+├── server.py               # MySQL REST API & Web Server (kirish sahifasiga yo'naltiradi)
 ├── pdf_generator.py        # ReportLab A4 rasmiy tibbiy epikriz generatori
 ├── install.py              # Baza va modullarni o'rnatish tekshiruvi
 ├── start_clinic.bat        # Windows bir-bosishda ishga tushirish skripti
 ├── run_clinic_server.ps1   # PowerShell orqali ishga tushirish skripti
-├── api.php                 # Apache / cPanel uchun API proksi
 ├── DEPLOYMENT_AND_DOMAINS.md # Domen va serverga o'rnatish qo'llanmasi
 ├── robots.txt              # Maxfiylik nazorati (barcha qidiruv botlarini bloklaydi)
 ├── css/
@@ -65,8 +64,7 @@ crm-suite/
 │   ├── reception.js
 │   └── xlsx.full.min.js
 └── data/
-    ├── fayz_clinic.db      # SQLite relational production baza
-    ├── schema.sql          # DB relyatsion sxemasi
+    ├── schema.mysql.sql    # MySQL sxemasi (asosiy)
     ├── seed_data.sql       # Boshlang'ich klinik ma'lumotlar
     ├── hr_db.json
     ├── accounting_db.json
