@@ -340,7 +340,7 @@
 
     document.getElementById('sel-name').textContent = patient.full_name || patient.patient_name || '—';
     const bits = [patient.patient_code, patient.phone || patient.patient_phone,
-                  patient.birth_year ? patient.birth_year + '-yil' : null,
+                  patient.birth_date || (patient.birth_year ? patient.birth_year + '-yil' : null),
                   patient.gender === 'female' ? 'Ayol' : (patient.gender === 'male' ? 'Erkak' : null)];
     document.getElementById('sel-meta').textContent = bits.filter(Boolean).join(' · ');
 
@@ -356,8 +356,16 @@
 
     // Carry over what registration already recorded, so the doctor is not
     // retyping details the patient has already given at the desk.
-    if (patient.birth_year && !document.getElementById('f-date_of_birth').value) {
-      document.getElementById('f-date_of_birth').value = `${patient.birth_year}-01-01`;
+    // Registration takes a real date of birth now. Only fall back to
+    // <year>-01-01 for records made before that field existed, where the year
+    // is genuinely all anyone knows.
+    const dobField = document.getElementById('f-date_of_birth');
+    if (dobField && !dobField.value) {
+      if (patient.birth_date) {
+        dobField.value = String(patient.birth_date).slice(0, 10);
+      } else if (patient.birth_year) {
+        dobField.value = `${patient.birth_year}-01-01`;
+      }
     }
     if (allergy && !document.getElementById('f-drug_allergies').value) {
       document.getElementById('f-drug_allergies').value = allergy;
@@ -453,7 +461,8 @@
         }
         selectPatient({
           id: q.patient_id, full_name: q.patient_name, patient_code: q.patient_code,
-          phone: q.patient_phone, birth_year: q.birth_year, gender: q.gender,
+          phone: q.patient_phone, birth_date: q.birth_date,
+          birth_year: q.birth_year, gender: q.gender,
           medical_allergies: q.medical_allergies,
         }, q.appointment_id);
       });

@@ -606,6 +606,43 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
         return False, str(e)
 
 
+_patient_columns_checked = False
+
+
+def ensure_patient_columns(conn):
+    """
+    Add patients.birth_date to a database created before it existed.
+
+    Idempotent and cheap, so it can run on every start. The column is new
+    because registration only ever stored a birth *year* -- and in practice
+    not even that: the desk had no field for it, so every patient registered
+    through reception was written as gender 'male', born 1990. A fabricated
+    date of birth in a medical record is worse than an empty one, so both are
+    now nullable and the desk is asked for them.
+    """
+    global _patient_columns_checked
+    if _patient_columns_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'patients'
+              AND COLUMN_NAME = 'birth_date'
+        """)
+        row = cur.fetchone()
+        have = (row['n'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0])
+        if not have:
+            cur.execute("ALTER TABLE patients ADD COLUMN birth_date DATE NULL AFTER gender")
+            # Anything already on file keeps its year; 1 January is a marker
+            # that only the year was ever known, not a claim about the day.
+            conn.commit()
+        _patient_columns_checked = True
+    except Exception as e:
+        print(f"[!] Could not add patients.birth_date: {e}")
+
+
 def list_room_availability(conn, start_date, end_date):
     """
     The occupancy board for one date range, room by room.

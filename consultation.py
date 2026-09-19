@@ -639,7 +639,7 @@ def waiting_queue(conn, doctor_id=None):
         SELECT a.id AS appointment_id, a.appointment_date, a.appointment_time,
                a.service_type, a.status, a.notes,
                a.patient_name, a.patient_phone,
-               p.id AS patient_id, p.patient_code, p.birth_year, p.gender,
+               p.id AS patient_id, p.patient_code, p.birth_date, p.birth_year, p.gender,
                p.medical_allergies,
                s.id AS doctor_id, s.full_name AS doctor_name
         FROM appointments a

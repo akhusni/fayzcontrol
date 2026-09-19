@@ -744,6 +744,124 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class PatientIdentity(ApiTest):
+    """
+    Date of birth and gender, as the front desk takes them.
+
+    Registration had no field for either, and the inserts said
+    body.get('gender', 'male') and body.get('birth_year', 1990), so every
+    patient registered at the desk entered the record as a man born in 1990.
+    An invented date of birth is worse than a missing one: the PDF header
+    prints an age from it and the consultation form pre-fills from it, and
+    nothing downstream can tell it from a real one.
+    """
+
+    def patient_row(self, patient_id):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT gender, birth_date, birth_year FROM patients WHERE id = ?",
+                        (patient_id,))
+            return cur.fetchone()
+        finally:
+            conn.close()
+
+    def test_a_date_of_birth_is_stored_and_its_year_derived(self):
+        pid = self.make_patient('Nilufar Karimova',
+                                birth_date='1985-03-14', gender='female')
+        row = self.patient_row(pid)
+        self.assertEqual(str(row['birth_date'])[:10], '1985-03-14')
+        self.assertEqual(row['gender'], 'female')
+        self.assertEqual(row['birth_year'], 1985,
+                         'birth_year is what the CRM and the PDF header read')
+
+    def test_nothing_is_invented_when_nothing_is_given(self):
+        pid = self.make_patient('Nomalum Bemor')
+        row = self.patient_row(pid)
+        self.assertIsNone(row['birth_date'])
+        self.assertIsNone(row['birth_year'], 'a birth year was invented')
+        self.assertIsNone(row['gender'], "gender defaulted to 'male'")
+
+    def test_an_unreadable_date_is_refused_in_plain_language(self):
+        status, body = self.api.post('/api/crm/patients',
+                                     {'full_name': 'X', 'birth_date': '14/03/1985'})
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'birth_date')
+
+    def test_a_date_of_birth_in_the_future_is_refused(self):
+        status, _ = self.api.post('/api/crm/patients',
+                                  {'full_name': 'X', 'birth_date': '2099-01-01'})
+        self.assertEqual(status, 400)
+
+    def test_an_unknown_gender_names_its_own_field(self):
+        status, body = self.api.post('/api/crm/patients',
+                                     {'full_name': 'X', 'gender': 'helicopter'})
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'gender',
+                         'the form would highlight the wrong input')
+
+    def test_saving_a_consultation_does_not_overwrite_what_is_known(self):
+        """
+        The doctor page updated patients with the same 'male'/1990 fallbacks,
+        so a woman born in 1985 recorded correctly at the desk became a man
+        born in 1990 the first time her consultation was saved.
+        """
+        pid = self.make_patient('Nilufar Saidova',
+                                birth_date='1985-03-14', gender='female')
+        status, _ = self.api.post('/api/doctor/consultation-case', {
+            'patient_id': pid,
+            'patient': {'full_name': 'Nilufar Saidova'},
+            'consultation_type': 'outpatient',
+        })
+        self.assertIn(status, (200, 201), 'consultation case did not save')
+        row = self.patient_row(pid)
+        self.assertEqual(row['gender'], 'female', 'gender was overwritten')
+        self.assertEqual(str(row['birth_date'])[:10], '1985-03-14',
+                         'date of birth was overwritten')
+
+    def test_a_patient_without_a_phone_is_not_merged_into_a_stranger(self):
+        """
+        Booking a consultation matched on `phone = ? OR full_name = ?` with the
+        phone bound even when empty. Most records carry an empty phone, so a
+        walk-in who left no number was filed under the first such patient in
+        the table.
+        """
+        existing = self.make_patient('Registrada Bemor')   # no phone
+        status, body = self.api.post('/api/reception/appointment', {
+            'patient_name': 'Butunlay Boshqa Odam',
+            'patient_phone': '',
+            'doctor_id': DOCTOR,
+            'date': '2029-05-05',
+        })
+        self.assertEqual(status, 201, f"appointment failed: {body}")
+        booked = body.get('patient_id')
+        if booked:
+            self._patients.append(booked)
+        self.assertNotEqual(booked, existing,
+                            'the visit was filed under an unrelated patient')
+
+    def test_the_doctor_queue_carries_the_date_of_birth(self):
+        """The handoff exists so the doctor is not retyping what the desk took."""
+        status, body = self.api.post('/api/reception/appointment', {
+            'patient_name': 'Navbatdagi Bemor',
+            'patient_phone': '+998901234599',
+            'birth_date': '1990-07-02',
+            'gender': 'male',
+            'doctor_id': DOCTOR,
+            'date': '2029-05-06',
+        })
+        self.assertEqual(status, 201, f"appointment failed: {body}")
+        if body.get('patient_id'):
+            self._patients.append(body['patient_id'])
+        qstatus, queue = self.api.get('/api/consultations/queue')
+        self.assertEqual(qstatus, 200)
+        mine = [q for q in queue if q.get('patient_id') == body.get('patient_id')]
+        self.assertTrue(mine, 'the booking did not reach the doctor queue')
+        self.assertEqual(str(mine[0].get('birth_date'))[:10], '1990-07-02')
+
+
 class StaticFileExposure(unittest.TestCase):
     """
     The web root is also the source tree. It holds server.py, auth.py,

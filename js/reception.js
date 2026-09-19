@@ -1452,6 +1452,10 @@ window.FMH_Reception = (function () {
     const notes = (document.getElementById('intake-notes')?.value || '').trim();
     const referral = document.getElementById('intake-referral-select')?.value || 'hotline';
     const startDate = document.getElementById('intake-start-date')?.value || todayStr();
+    // Anonymous intake deliberately keeps neither: the point of that mode is
+    // that nothing identifying is stored.
+    const birthDate = isAnon ? '' : (document.getElementById('intake-patient-birthdate')?.value || '');
+    const gender = isAnon ? '' : (document.getElementById('intake-patient-gender')?.value || '');
 
     if (type === 'inpatient' || type === 'anonymous') {
       // Auto-select first available bed if none clicked
@@ -1479,6 +1483,8 @@ window.FMH_Reception = (function () {
       const payload = {
         patient_name: isAnon ? 'Anonim Bemor' : (name || 'Yangi Bemor'),
         patient_phone: isAnon ? '' : phone,
+        birth_date: birthDate,
+        gender: gender,
         is_anonymous: isAnon ? 1 : 0,
         bed_id: bedId,
         attending_doctor_id: doctorId,
@@ -1569,6 +1575,8 @@ window.FMH_Reception = (function () {
           body: JSON.stringify({
             patient_name: isAnon ? 'Anonim Bemor' : name,
             patient_phone: isAnon ? '' : phone,
+            birth_date: birthDate,
+            gender: gender,
             doctor_id: doctorId,
             service_type: 'outpatient',
             date: startDate,

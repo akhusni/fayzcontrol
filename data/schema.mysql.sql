@@ -92,7 +92,11 @@ CREATE TABLE IF NOT EXISTS patients (
     full_name VARCHAR(255) NOT NULL,
     phone VARCHAR(64),
     emergency_contact VARCHAR(255),
-    gender VARCHAR(16) DEFAULT 'male' CHECK(gender IN ('male', 'female', 'other')),
+    gender VARCHAR(16) DEFAULT NULL CHECK(gender IS NULL OR gender IN ('male', 'female', 'other')),
+    -- Date of birth as the desk actually takes it. birth_year is kept because
+    -- the CRM, the PDF header and the consultation prefill all read it; it is
+    -- derived from birth_date whenever one is given, so the two cannot drift.
+    birth_date DATE DEFAULT NULL,
     birth_year INT,
     address TEXT,
     referral_source VARCHAR(64) DEFAULT 'walk_in',

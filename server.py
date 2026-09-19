@@ -179,6 +179,59 @@ def validate_birth_year(raw):
     return year, None
 
 
+GENDERS = ('male', 'female', 'other')
+
+
+def parse_birth_and_gender(body):
+    """
+    Date of birth and gender as the front desk supplies them.
+
+    Returns (birth_date_iso, birth_year, gender, error), where error is None
+    or a (message, field) pair naming the input at fault.
+
+    Registration had no field for either, and the inserts said
+    body.get('gender', 'male') and body.get('birth_year', 1990). Every patient
+    registered at the desk therefore entered the record as a man born in 1990.
+    An invented date of birth is worse than a missing one, because nothing
+    downstream can tell it apart from a real one -- the PDF header prints an
+    age from it and the consultation form pre-fills from it. Both columns are
+    now left empty unless someone actually supplies them.
+
+    birth_year is still derived and stored: the CRM list, the PDF header and
+    the consultation prefill all read it, and deriving it here is what keeps
+    it from drifting away from birth_date.
+    """
+    raw_date = (body.get('birth_date') or '').strip() if isinstance(body.get('birth_date'), str) else body.get('birth_date')
+    birth_date = None
+    birth_year = None
+
+    if raw_date:
+        try:
+            d = _dt.date.fromisoformat(str(raw_date)[:10])
+        except Exception:
+            return None, None, None, ("Tug'ilgan sana YYYY-MM-DD ko'rinishida bo'lishi kerak.", 'birth_date')
+        today = _dt.date.today()
+        if d > today:
+            return None, None, None, ("Tug'ilgan sana kelajakda bo'lishi mumkin emas.", 'birth_date')
+        if d.year < today.year - 130:
+            return None, None, None, ("Tug'ilgan sana haqiqiy emas.", 'birth_date')
+        birth_date = d.isoformat()
+        birth_year = d.year
+    elif body.get('birth_year') not in (None, ''):
+        birth_year, err = validate_birth_year(body.get('birth_year'))
+        if err:
+            return None, None, None, (err, 'birth_year')
+
+    gender = body.get('gender')
+    gender = gender.strip().lower() if isinstance(gender, str) else gender
+    if gender in ('', None):
+        gender = None
+    elif gender not in GENDERS:
+        return None, None, None, ("Jins qiymati noto'g'ri.", 'gender')
+
+    return birth_date, birth_year, gender, None
+
+
 def validate_amount(raw, field="Summa", allow_negative=False, maximum=10_000_000_000):
     """Money must be a number, and within a sane bound."""
     try:
@@ -199,6 +252,7 @@ from db import (
     transfer_patient_bed,
     discharge_patient,
     list_room_availability,
+    ensure_patient_columns,
     load_config
 )
 
@@ -1433,12 +1487,22 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 if not patient_id:
                     # No patient given: register one from the details supplied.
+                    # Date of birth and gender come from the desk now; they were
+                    # not asked for and not stored, so the column default filled
+                    # gender in as 'male' for everyone admitted this way.
+                    _bdate, _byear, _gender, _err = parse_birth_and_gender(body)
+                    if _err:
+                        self._send_validation_error(_err[0], _err[1])
+                        return
                     patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
                     pcode = f"FMH-2026-{patient_id[-4:]}"
                     cur.execute("""
-                        INSERT INTO patients (id, patient_code, full_name, phone, referral_source, is_anonymous, status)
-                        VALUES (?, ?, ?, ?, 'reception', 0, 'active')
-                    """, (patient_id, pcode, patient_name, patient_phone))
+                        INSERT INTO patients (id, patient_code, full_name, phone,
+                                              gender, birth_date, birth_year,
+                                              referral_source, is_anonymous, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', 0, 'active')
+                    """, (patient_id, pcode, patient_name, patient_phone,
+                          _gender, _bdate, _byear))
                     conn.commit()
 
                 if not doc_id:
@@ -1723,17 +1787,22 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if not pid:
                         pid = f"PAT-{int(datetime.datetime.now().timestamp() * 1000)}"
                 pcode = body.get('patient_code') or f"FMH-2026-{pid[-4:]}"
+                birth_date, birth_year, gender, _err = parse_birth_and_gender(body)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
+                    return
                 cur.execute("""
-                    INSERT INTO patients (id, patient_code, full_name, phone, emergency_contact, gender, birth_year, referral_source, is_anonymous, medical_allergies, chronic_conditions, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO patients (id, patient_code, full_name, phone, emergency_contact, gender, birth_date, birth_year, referral_source, is_anonymous, medical_allergies, chronic_conditions, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     pid,
                     pcode,
                     body.get('full_name', 'Anonim Bemor'),
                     body.get('phone', ''),
                     body.get('emergency_contact', ''),
-                    body.get('gender', 'male'),
-                    body.get('birth_year', 1990),
+                    gender,
+                    birth_date,
+                    birth_year,
                     body.get('referral_source', 'hotline'),
                     1 if body.get('is_anonymous', True) else 0,
                     body.get('medical_allergies', "Yo'q"),
@@ -1755,17 +1824,48 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 time_str = body.get('time') or '10:00'
                 srv_type = body.get('service_type', 'outpatient')
 
-                # Check if patient exists or auto-create
-                cur.execute("SELECT id FROM patients WHERE phone = ? OR full_name = ?", (patient_phone, patient_name))
-                p_exist = cur.fetchone()
+                _bdate, _byear, _gender, _err = parse_birth_and_gender(body)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
+                    return
+
+                # Find the patient, or register one.
+                #
+                # The match was `phone = ? OR full_name = ?` with the phone bound
+                # even when it was empty. Most records carry an empty phone, so
+                # booking a consultation for someone who did not leave a number
+                # matched the first such patient in the table and filed the visit
+                # under a stranger. An empty phone now matches nobody.
+                p_exist = None
+                if patient_phone and patient_phone.strip():
+                    cur.execute("SELECT id FROM patients WHERE phone = ? LIMIT 1",
+                                (patient_phone.strip(),))
+                    p_exist = cur.fetchone()
+                if not p_exist and patient_name and patient_name != 'Bemor':
+                    cur.execute("SELECT id FROM patients WHERE full_name = ? LIMIT 1",
+                                (patient_name,))
+                    p_exist = cur.fetchone()
+
                 if p_exist:
                     patient_id = p_exist[0]
+                    # Fill in details the desk has now and the record lacks,
+                    # without overwriting anything already known.
+                    cur.execute("""
+                        UPDATE patients
+                        SET gender     = COALESCE(gender, ?),
+                            birth_date = COALESCE(birth_date, ?),
+                            birth_year = COALESCE(birth_year, ?)
+                        WHERE id = ?
+                    """, (_gender, _bdate, _byear, patient_id))
                 else:
                     patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
                     cur.execute("""
-                        INSERT INTO patients (id, patient_code, full_name, phone, referral_source, is_anonymous, status)
-                        VALUES (?, ?, ?, ?, 'reception', 0, 'active')
-                    """, (patient_id, f"FMH-2026-{patient_id[-4:]}", patient_name, patient_phone))
+                        INSERT INTO patients (id, patient_code, full_name, phone,
+                                              gender, birth_date, birth_year,
+                                              referral_source, is_anonymous, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', 0, 'active')
+                    """, (patient_id, f"FMH-2026-{patient_id[-4:]}", patient_name,
+                          patient_phone, _gender, _bdate, _byear))
 
                 cur.execute("""
                     INSERT INTO appointments (id, patient_id, patient_name, patient_phone, doctor_id, service_type, appointment_date, appointment_time, status, notes)
@@ -1962,8 +2062,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 pt_data = body.get('patient') or {}
                 pt_name = (pt_data.get('full_name') or body.get('patient_name') or 'Yangi Bemor').strip()
                 pt_phone = pt_data.get('phone') or body.get('patient_phone') or ''
-                pt_gender = pt_data.get('gender') or body.get('gender') or 'male'
-                pt_birth = int(pt_data.get('birth_year') or body.get('birth_year') or 1990)
+                # These used to fall back to 'male' and 1990. On the UPDATE
+                # below that did not merely invent data for a new patient: it
+                # overwrote an existing one, so a woman born in 1985 recorded
+                # correctly at the desk became a man born in 1990 the first
+                # time a doctor saved her consultation. Unsupplied now means
+                # NULL, and the UPDATE keeps whatever is already on file.
+                _birth_src = dict(body)
+                for _k in ('birth_date', 'birth_year', 'gender'):
+                    if pt_data.get(_k) not in (None, ''):
+                        _birth_src[_k] = pt_data.get(_k)
+                pt_birth_date, pt_birth, pt_gender, _err = parse_birth_and_gender(_birth_src)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
+                    return
                 pt_address = pt_data.get('address') or body.get('address') or ''
                 pt_emergency = pt_data.get('emergency_contact') or body.get('emergency_contact') or ''
 
@@ -1983,17 +2095,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     patient_id = p_row['id'] if isinstance(p_row, dict) else p_row[0]
                     patient_code = p_row['patient_code'] if isinstance(p_row, dict) else p_row[1]
                     cur.execute("""
-                        UPDATE patients 
-                        SET full_name = ?, phone = ?, emergency_contact = ?, gender = ?, birth_year = ?, address = ?, medical_allergies = ?, status = 'active', updated_at = CURRENT_TIMESTAMP
+                        UPDATE patients
+                        SET full_name = ?, phone = ?, emergency_contact = ?,
+                            gender = COALESCE(?, gender),
+                            birth_date = COALESCE(?, birth_date),
+                            birth_year = COALESCE(?, birth_year),
+                            address = ?, medical_allergies = ?, status = 'active',
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
-                    """, (pt_name, pt_phone, pt_emergency, pt_gender, pt_birth, pt_address, allergy, patient_id))
+                    """, (pt_name, pt_phone, pt_emergency, pt_gender, pt_birth_date,
+                          pt_birth, pt_address, allergy, patient_id))
                 else:
                     patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
                     patient_code = f"FMH-2026-{patient_id[-4:]}"
                     cur.execute("""
-                        INSERT INTO patients (id, patient_code, full_name, phone, emergency_contact, gender, birth_year, address, referral_source, is_anonymous, medical_allergies, chronic_conditions, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'doctor_consultation', 0, ?, "Yo'q", 'active')
-                    """, (patient_id, patient_code, pt_name, pt_phone, pt_emergency, pt_gender, pt_birth, pt_address, allergy))
+                        INSERT INTO patients (id, patient_code, full_name, phone, emergency_contact, gender, birth_date, birth_year, address, referral_source, is_anonymous, medical_allergies, chronic_conditions, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'doctor_consultation', 0, ?, "Yo'q", 'active')
+                    """, (patient_id, patient_code, pt_name, pt_phone, pt_emergency,
+                          pt_gender, pt_birth_date, pt_birth, pt_address, allergy))
                 conn.commit()
 
                 consultation_type = body.get('consultation_type', 'outpatient')
@@ -3009,6 +3128,8 @@ def run_server():
         _c = get_db()
         try:
             audit.ensure_schema(_c)
+            # Adds patients.birth_date to a database made before it existed.
+            ensure_patient_columns(_c)
         finally:
             _c.close()
     except Exception as _e:
