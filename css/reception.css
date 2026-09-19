@@ -1950,3 +1950,248 @@ body.day-mode .form-input:focus, body.day-mode .form-select:focus {
   color: #ffffff !important;
 }
 
+
+/* ==========================================================================
+   ROOMS BOARD — free / occupied for a chosen date range
+   The desk sells a two-bed room as a unit, so the board groups by room
+   rather than showing fourteen loose beds the way the intake picker does.
+   ========================================================================== */
+
+.rooms-board-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.9rem;
+  margin-bottom: 1.1rem;
+}
+
+.rooms-board-controls .form-group { margin-bottom: 0; min-width: 160px; }
+
+.rooms-board-presets { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.rooms-board-preset {
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm, 6px);
+  padding: 7px 13px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.rooms-board-preset:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: var(--primary-light);
+}
+
+.rooms-board-preset.active {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: var(--primary-light);
+}
+
+.rooms-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1.3rem;
+}
+
+.rooms-summary-cell {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 0.8rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rooms-summary-value {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-family: var(--font-mono);
+}
+
+.rooms-summary-label {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.rooms-summary-cell.good .rooms-summary-value { color: var(--emerald); }
+.rooms-summary-cell.bad  .rooms-summary-value { color: #fb7185; }
+.rooms-summary-cell.warn .rooms-summary-value { color: #fbbf24; }
+.rooms-summary-cell.vip  .rooms-summary-value { color: #c084fc; }
+
+.rooms-floor { margin-bottom: 1.6rem; }
+
+.rooms-floor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rooms-floor-count { color: var(--emerald); font-family: var(--font-mono); }
+
+.rooms-floor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 0.9rem;
+}
+
+.room-card {
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.85rem 0.95rem;
+}
+
+.room-card.free      { border-left-color: var(--emerald); }
+.room-card.partial   { border-left-color: #f59e0b; }
+.room-card.full      { border-left-color: #fb7185; }
+.room-card.whole-room { border-left-color: var(--purple, #a855f7); }
+
+.room-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+}
+
+.room-card-title { font-size: 0.85rem; font-weight: 800; color: var(--text-primary); }
+
+.room-card-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.room-chip {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.room-chip.free    { background: rgba(16, 185, 129, 0.14); color: var(--emerald); }
+.room-chip.partial { background: rgba(245, 158, 11, 0.14); color: #fbbf24; }
+.room-chip.full    { background: rgba(244, 63, 94, 0.14);  color: #fb7185; }
+
+.room-card-beds { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.room-bed {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  grid-template-areas: "code status" "code detail";
+  gap: 0 0.6rem;
+  align-items: center;
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+}
+
+.room-bed-code {
+  grid-area: code;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.room-bed-status {
+  grid-area: status;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.room-bed-detail {
+  grid-area: detail;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.room-bed.available {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+.room-bed.available .room-bed-code,
+.room-bed.available .room-bed-status { color: var(--emerald); }
+
+.room-bed.occupied {
+  background: rgba(244, 63, 94, 0.07);
+  border-color: rgba(244, 63, 94, 0.2);
+}
+.room-bed.occupied .room-bed-code,
+.room-bed.occupied .room-bed-status { color: #fb7185; }
+
+/* Paid for and deliberately left empty: not free to sell, not occupied. */
+.room-bed.room_locked {
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.28);
+}
+.room-bed.room_locked .room-bed-code,
+.room-bed.room_locked .room-bed-status { color: #c084fc; }
+
+.room-bed.partial_conflict,
+.room-bed.cleaning,
+.room-bed.maintenance,
+.room-bed.out_of_service {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.room-bed.partial_conflict .room-bed-code,
+.room-bed.partial_conflict .room-bed-status,
+.room-bed.cleaning .room-bed-code,
+.room-bed.cleaning .room-bed-status,
+.room-bed.maintenance .room-bed-code,
+.room-bed.maintenance .room-bed-status,
+.room-bed.out_of_service .room-bed-code,
+.room-bed.out_of_service .room-bed-status { color: #fbbf24; }
+
+.rooms-board-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-top: 0.4rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* A bed withdrawn from service used to fall through to the free styling in
+   the intake picker, so it was painted green and offered to the desk. */
+.bed-slot.maintenance,
+.bed-slot.out_of_service {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .rooms-floor-grid { grid-template-columns: 1fr; }
+  .rooms-board-controls .form-group { min-width: 100%; }
+}

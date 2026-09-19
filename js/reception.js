@@ -57,6 +57,17 @@ window.FMH_Reception = (function () {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
+  // Patient names reach the board straight from the database and are placed
+  // into markup, so they are escaped rather than trusted.
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function formatUZS(n) {
     if (n == null || isNaN(n)) return '0 so\'m';
     return Number(n).toLocaleString('uz-UZ') + ' so\'m';
@@ -140,90 +151,10 @@ window.FMH_Reception = (function () {
   // MASTER EMBEDDED DATA (Zero-Network / file:// Protocol Resilient)
   // Ensures Reception is ALWAYS 100% rendered with zero blank screens
   // ============================================================
-  const DEFAULT_ROOMS_DATA = {
-    floors: [
-      {
-        floor_number: 1,
-        rooms: [
-          {
-            id: 'ROOM-11',
-            name_uz: '11-Xona (Standart 2-kishilik)',
-            room_number: '11',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-1A', bed_number: '1A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-1B', bed_number: '1B', type: 'standard', daily_rate: 720000 }
-            ]
-          },
-          {
-            id: 'ROOM-12',
-            name_uz: '12-Xona (Standart 2-kishilik)',
-            room_number: '12',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-2A', bed_number: '2A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-2B', bed_number: '2B', type: 'standard', daily_rate: 720000 }
-            ]
-          }
-        ]
-      },
-      {
-        floor_number: 2,
-        rooms: [
-          {
-            id: 'ROOM-21',
-            name_uz: '21-Xona (Standart 2-kishilik / Lyuks 1.1M)',
-            room_number: '21',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-21A', bed_number: '21A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-21B', bed_number: '21B', type: 'standard', daily_rate: 720000 }
-            ]
-          },
-          {
-            id: 'ROOM-22',
-            name_uz: '22-Xona (Standart 2-kishilik / Lyuks 1.1M)',
-            room_number: '22',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-22A', bed_number: '22A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-22B', bed_number: '22B', type: 'standard', daily_rate: 720000 }
-            ]
-          },
-          {
-            id: 'ROOM-23',
-            name_uz: '23-Xona (Standart 2-kishilik / Lyuks 1.1M)',
-            room_number: '23',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-23A', bed_number: '23A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-23B', bed_number: '23B', type: 'standard', daily_rate: 720000 }
-            ]
-          },
-          {
-            id: 'ROOM-24',
-            name_uz: '24-Xona (Standart 2-kishilik / Lyuks 1.1M)',
-            room_number: '24',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-24A', bed_number: '24A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-24B', bed_number: '24B', type: 'standard', daily_rate: 720000 }
-            ]
-          },
-          {
-            id: 'ROOM-25',
-            name_uz: '25-Xona (Standart 2-kishilik / Lyuks 1.1M)',
-            room_number: '25',
-            has_beds: true,
-            beds: [
-              { bed_id: 'BED-25A', bed_number: '25A', type: 'standard', daily_rate: 720000 },
-              { bed_id: 'BED-25B', bed_number: '25B', type: 'standard', daily_rate: 720000 }
-            ]
-          }
-        ]
-      }
-    ]
-  };
+  // The ward layout used to be embedded here as a fallback, and fetched
+  // from data/clinic_rooms.json when the network was up. Both had drifted
+  // from the rooms and beds tables, which are what the booking guard
+  // actually consults; the layout now arrives with the occupancy board.
 
   const DEFAULT_RECEPTION_DATA = {
     service_types: [
@@ -261,7 +192,10 @@ window.FMH_Reception = (function () {
   async function init() {
     // 1. Synchronously populate default resilient state so UI is never blank
     State.data = JSON.parse(JSON.stringify(DEFAULT_RECEPTION_DATA));
-    State.beds = computeLiveBedStatuses(DEFAULT_ROOMS_DATA);
+    // The bed grid stays on its loading state until the server answers. It
+    // used to be filled in from a guess first, which showed the desk a ward
+    // that was free by default.
+    State.beds = [];
     indexBookedSlots();
 
     // 2. Initial Render
@@ -329,18 +263,10 @@ window.FMH_Reception = (function () {
   }
 
   async function loadApiData() {
-    // --- STEP 1: Load clinic_rooms.json or use embedded master beds ---
-    let roomsData = DEFAULT_ROOMS_DATA;
-    try {
-      const roomsRes = await fetch('data/clinic_rooms.json');
-      if (roomsRes.ok) {
-        roomsData = await roomsRes.json();
-      }
-    } catch (e) {
-      // Use DEFAULT_ROOMS_DATA
-    }
-
-    // --- STEP 2: REST API endpoints (relative URLs) ---
+    // The ward layout is no longer read from data/clinic_rooms.json: the rooms
+    // and beds tables are what the booking guard consults, and the file had
+    // drifted from them.
+    // --- REST API endpoints (relative URLs) ---
     try {
       const [patientsRes, admissionsRes, recRes, staffRes, bedsRes] = await Promise.all([
         fetch('/api/patients'),
@@ -383,216 +309,154 @@ window.FMH_Reception = (function () {
       // Running in offline / local file mode
     }
 
-    // Always compute live bed statuses against Building Management localStorage & active admissions
-    State.beds = computeLiveBedStatuses(roomsData);
+    // Occupancy for the dates the form is asking about, and for today (the
+    // KPI census), both straight from the admissions table.
+    await Promise.all([
+      fetchAvailability(),
+      fetchTodayBoard(),
+    ]);
   }
 
 
   // ============================================================
-  // SHARED BED STATUS ENGINE
-  // Mirrors building_management.js refreshBedStatuses() exactly.
-  // Single source of truth: clinic_rooms.json + localStorage bookings
+  // BED AVAILABILITY — asked of the server, for the dates in the form
+  //
+  // This used to be worked out here in the browser: the ward layout from a
+  // static data/clinic_rooms.json, merged with bookings kept in localStorage
+  // under the building-management key, plus a hand-written table of which bed
+  // partners which so a room sold whole could grey out its second bed.
+  //
+  // None of that ever left the machine. A booking in one receptionist's
+  // localStorage blocked a real bed for whoever sat at that computer and was
+  // invisible to everyone else — and to the server, which is what actually
+  // approves the booking. The layout drifted from the rooms table, and the
+  // overlap arithmetic here disagreed with the server's at the boundary, so
+  // the desk was offered beds that were then refused on submit.
+  //
+  // /api/facility/availability answers the same question from the admissions
+  // table, using the rule that approves the booking.
   // ============================================================
-  const BM_STORAGE_KEY = 'FMH_FACILITY_14BEDS_STORAGE_V18';
 
-  const PARTNER_MAP = {
-    'BED-1A': 'BED-1B', 'BED-1B': 'BED-1A',
-    'BED-2A': 'BED-2B', 'BED-2B': 'BED-2A',
-    'BED-21A': 'BED-21B', 'BED-21B': 'BED-21A',
-    'BED-22A': 'BED-22B', 'BED-22B': 'BED-22A',
-    'BED-23A': 'BED-23B', 'BED-23B': 'BED-23A',
-    'BED-24A': 'BED-24B', 'BED-24B': 'BED-24A',
-    'BED-25A': 'BED-25B', 'BED-25B': 'BED-25A',
-  };
-
-  function bmIsFullRoom(booking) {
-    if (!booking) return false;
-    if (booking.is_full_room === true) return true;
-    const p = String(booking.program || '').toLowerCase();
-    return p.includes('butun xona') || p.includes('lyuks') || p.includes('lux') ||
-           p.includes('vip solo') || p.includes('1 100 000') || p.includes('full room') ||
-           p.includes('statsionar_full_room');
+  function addDays(dateStr, days) {
+    const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number);
+    const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+    dt.setUTCDate(dt.getUTCDate() + (days || 0));
+    return dt.toISOString().slice(0, 10);
   }
 
-  function datesOverlap(a1, a2, b1, b2) {
-    return a1 < b2 && a2 > b1;
+  // The dates the form is currently asking about.
+  function intakeWindow() {
+    const start = document.getElementById('intake-start-date')?.value || todayStr();
+    const days = parseInt(document.getElementById('intake-days')?.value) || 7;
+    return { start: String(start).slice(0, 10), end: addDays(start, days) };
   }
 
-    function computeLiveBedStatuses(roomsData, targetStartDate, targetEndDate) {
-    const today = todayStr();
-    const reqStart = targetStartDate || document.getElementById('intake-start-date')?.value || today;
-    const reqDays = parseInt(document.getElementById('intake-days')?.value) || 7;
-    
-    let reqEnd = targetEndDate;
-    if (!reqEnd) {
-      try {
-        const dObj = new Date(reqStart);
-        dObj.setDate(dObj.getDate() + reqDays);
-        reqEnd = dObj.toISOString().slice(0, 10);
-      } catch (e) {
-        reqEnd = reqStart;
-      }
-    }
-
-    // 1. Gather live admissions from MySQL State.admissions
-    const dbBookings = (State.admissions || []).filter(a => a.status === 'active').map(a => ({
-      id: a.id,
-      bed_id: String(a.bed_id || '').toUpperCase(),
-      patient_name: a.patient_name || 'Bemor',
-      start_date: (a.start_date || today).slice(0, 10),
-      end_date: (a.actual_end_date || a.planned_end_date || a.end_date || today).slice(0, 10),
-      status: a.status,
-      is_full_room: a.program_type === 'statsionar_full_room'
-    }));
-
-    // 2. Gather Building Management local storage bookings
-    let localBookings = [];
+  async function fetchAvailability(startDate, endDate) {
+    const win = intakeWindow();
+    const start = startDate || win.start;
+    const end = endDate || win.end;
     try {
-      const raw = localStorage.getItem(BM_STORAGE_KEY);
-      if (raw !== null) {
-        localBookings = JSON.parse(raw);
+      const res = await fetch('/api/facility/availability'
+        + `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
       }
-    } catch (e) { localBookings = []; }
-
-    // Fallback to sample bookings only if storage has never been initialized
-    if (!dbBookings.length && !localBookings.length && roomsData?.sample_calendar_bookings) {
-      localBookings = roomsData.sample_calendar_bookings;
+      const board = await res.json();
+      State.availability = board;
+      State.beds = flattenAvailability(board);
+      return board;
+    } catch (e) {
+      // Keep the previous picture rather than blanking the grid: an empty
+      // board reads as "no free beds", which is a different claim from
+      // "could not ask".
+      console.error('availability:', e);
+      showToast(`Karavot holatini yuklab bo'lmadi: ${e.message}`, 'error');
+      return State.availability || null;
     }
+  }
 
-    // Merge and deduplicate bookings
-    const allBookings = [...dbBookings];
-    localBookings.forEach(lb => {
-      if (lb && lb.status !== 'cancelled' && lb.status !== 'completed') {
-        const cleanId = String(lb.bed_id || '').toUpperCase();
-        const exists = allBookings.some(b => b.id === lb.id || (b.bed_id === cleanId && b.start_date === lb.start_date));
-        if (!exists) {
-          allBookings.push({
-            ...lb,
-            bed_id: cleanId
-          });
-        }
-      }
-    });
+  // Today's picture, for the header census. Kept separate from the board
+  // above because the form is usually asking about a future stay, and the
+  // KPI strip is about who is in the building right now.
+  async function fetchTodayBoard() {
+    const today = todayStr();
+    try {
+      const res = await fetch('/api/facility/availability'
+        + `?start=${today}&end=${addDays(today, 1)}`);
+      if (!res.ok) return State.todayBoard || null;
+      State.todayBoard = await res.json();
+      return State.todayBoard;
+    } catch (e) {
+      console.error('today census:', e);
+      return State.todayBoard || null;
+    }
+  }
 
-    // 3. Flatten all 14 beds from clinic rooms data
+  // Both the picker and the room board read this flat per-bed shape.
+  function flattenAvailability(board) {
     const beds = [];
-    (roomsData?.floors || DEFAULT_ROOMS_DATA.floors || []).forEach(floor => {
-      (floor.rooms || []).forEach(room => {
-        if (room.has_beds && room.beds) {
-          room.beds.forEach(bed => {
-            beds.push({
-              ...bed,
-              floor_number: floor.floor_number,
-              room_name_uz: room.name_uz,
-              room_id: room.id,
-              bed_code: bed.bed_number,
-              bed_type: bed.type,
-              default_daily_rate: bed.daily_rate,
-            });
-          });
+    (board?.rooms || []).forEach(room => {
+      (room.beds || []).forEach(b => {
+        const occ = b.occupant || null;
+        const conflict = b.conflict || null;
+        const entry = {
+          bed_id: b.bed_id,
+          bed_code: b.bed_code,
+          bed_type: b.bed_type,
+          default_daily_rate: b.default_daily_rate,
+          floor_number: b.floor_number,
+          room_id: b.room_id,
+          room_number: b.room_number,
+          room_name_uz: b.room_name_uz,
+          physical_bed_status: b.physical_status,
+          status: b.status,
+          system_bed_status: b.status,
+          next_reserved_date: b.next_booking || null,
+          current_patient: null,
+          check_out: null,
+          booking_start: null,
+          booking_end: null,
+          locked_by: null,
+          lock_reason: null,
+          conflict_date: null,
+        };
+
+        if (b.status === 'occupied' && occ) {
+          entry.current_patient = occ.patient_name;
+          entry.check_out = occ.end_date;
+          entry.booking_start = occ.start_date;
+          entry.booking_end = occ.end_date;
+        } else if (b.status === 'room_locked' && occ) {
+          // The room was sold whole: this bed stays empty and is paid for.
+          entry.status = 'occupied';
+          entry.system_bed_status = 'occupied';
+          entry.lock_reason = 'vip_solo_partner';
+          entry.locked_by = occ.patient_name;
+          entry.booking_start = occ.start_date;
+          entry.booking_end = occ.end_date;
+        } else if (b.status === 'partial_conflict' && conflict) {
+          entry.current_patient = conflict.patient_name;
+          entry.conflict_date = conflict.start_date;
+          entry.check_out = conflict.end_date;
         }
+        beds.push(entry);
       });
     });
-
-    // 4. Calculate dynamic status for EACH bed relative to [reqStart, reqEnd]
-    beds.forEach(bed => {
-      const bedId = String(bed.bed_id).toUpperCase();
-      const partnerId = PARTNER_MAP[bedId] || null;
-
-      // Direct booking that overlaps the requested dates [reqStart, reqEnd]
-      const directOverlap = allBookings.find(b =>
-        b.bed_id === bedId &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        datesOverlap(reqStart, reqEnd, b.start_date, b.end_date)
-      );
-
-      // Direct booking active specifically on reqStart
-      const directOnStart = allBookings.find(b =>
-        b.bed_id === bedId &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        b.start_date <= reqStart && b.end_date > reqStart
-      );
-
-      // Partner Solo Lux booking overlapping requested dates
-      const partnerOverlap = partnerId ? allBookings.find(b =>
-        b.bed_id === String(partnerId).toUpperCase() &&
-        bmIsFullRoom(b) &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        datesOverlap(reqStart, reqEnd, b.start_date, b.end_date)
-      ) : null;
-
-      // Next future booking after reqEnd
-      const nextBooking = allBookings
-        .filter(b => b.bed_id === bedId && b.status !== 'cancelled' && b.status !== 'completed' && b.start_date >= reqEnd)
-        .sort((a, b) => a.start_date.localeCompare(b.start_date))[0] || null;
-
-      // Next future partner lock
-      const nextPartnerLock = partnerId ? allBookings
-        .filter(b => b.bed_id === String(partnerId).toUpperCase() && bmIsFullRoom(b) && b.status !== 'cancelled' && b.status !== 'completed' && b.start_date >= reqEnd)
-        .sort((a, b) => a.start_date.localeCompare(b.start_date))[0] || null : null;
-
-      // Match live hardware and occupancy state from /api/beds
-      const liveBed = (State.liveBeds || []).find(lb =>
-        String(lb.bed_id).toUpperCase() === bedId ||
-        String(lb.bed_code).toUpperCase() === bedId ||
-        String(lb.bed_code).toUpperCase() === String(bed.bed_number).toUpperCase()
-      );
-
-      if (liveBed) {
-        bed.physical_bed_status = liveBed.physical_bed_status;
-        bed.next_reserved_date = liveBed.next_reserved_date;
-      }
-
-      // Determine dynamic state
-      if (partnerOverlap) {
-        bed.system_bed_status = 'occupied';
-        bed.status = 'occupied';
-        bed.locked_by = partnerOverlap.patient_name;
-        bed.lock_reason = 'vip_solo_partner';
-        bed.booking_start = partnerOverlap.start_date;
-        bed.booking_end = partnerOverlap.end_date;
-      } else if (directOnStart) {
-        bed.system_bed_status = 'occupied';
-        bed.status = 'occupied';
-        bed.current_patient = directOnStart.patient_name;
-        bed.check_out = directOnStart.end_date;
-        bed.booking_start = directOnStart.start_date;
-      } else if (liveBed && (liveBed.physical_bed_status === 'cleaning' || liveBed.status === 'cleaning')) {
-        // Bed is in post-discharge clinical sanitation
-        bed.system_bed_status = 'cleaning';
-        bed.status = 'cleaning';
-        bed.cleaning_reason = 'Sanitar dezinfeksiya';
-      } else if (directOverlap) {
-        // Free on the first day, but conflict occurs during the stay
-        bed.system_bed_status = 'partial_conflict';
-        bed.status = 'partial_conflict';
-        bed.current_patient = directOverlap.patient_name;
-        bed.conflict_date = directOverlap.start_date;
-        bed.check_out = directOverlap.end_date;
-      } else {
-        // 100% AVAILABLE during requested stay!
-        bed.system_bed_status = 'available';
-        bed.status = 'available';
-        bed.next_booking = nextBooking;
-        bed.next_partner_lock = nextPartnerLock;
-      }
-    });
-
     return beds;
   }
 
-  // Re-sync beds from Building Management on demand
+  // Re-read the ward from the server. Kept under its old exported name so
+  // the buttons and the cross-tab listeners that call it keep working.
   function refreshBedsFromBuildingManagement() {
-    try {
-      loadApiData().then(() => {
-        renderBedPicker();
-        renderKPIs();
-        showToast('Karavot holatlari Building Management bilan sinxronlashtirildi ✓', 'success');
-      });
-    } catch (e) { /* ignore */ }
+    return loadApiData().then(() => {
+      renderBedPicker();
+      renderKPIs();
+      // The rooms tab asks about its own date range, so it is re-read rather
+      // than repainted from the intake window's answer.
+      if (State.activeTab === 'rooms') loadRoomsBoard();
+      showToast("Karavot holatlari bazadan yangilandi ✓", 'success');
+    }).catch(() => {});
   }
 
 
@@ -604,66 +468,29 @@ window.FMH_Reception = (function () {
     }
   }
 
-    // ============================================================
-  // REAL-TIME CURRENT BED CENSUS (RIGHT NOW / TODAY ONLY)
-  // Strictly counts patients physically in beds TODAY.
-  // Never counts future reservations, tomorrow's bookings, or bookings anytime later!
+  // ============================================================
+  // BED CENSUS FOR TODAY
+  //
+  // Who is in the building right now. This used to be counted here, over the
+  // admissions list merged with whatever the browser had in localStorage, and
+  // it carried its own copy of the whole-room rule as a hand-written table of
+  // partner beds. It is one reading of the same board the picker uses, so it
+  // now comes from the server with everything else.
   // ============================================================
   function getRealTimeBedCensus() {
-    const today = todayStr();
-    const totalBeds = 14;
-    const occupiedBedIdsToday = new Set();
-
-    // 1. Live MySQL admissions: Active AND today is strictly within [start_date, end_date]
-    (State.admissions || []).forEach(a => {
-      if (a.status === 'active') {
-        const start = (a.start_date || '').slice(0, 10);
-        const end = (a.actual_end_date || a.planned_end_date || a.end_date || '').slice(0, 10);
-        // Only count if patient is physically in bed TODAY
-        if (start && end && start <= today && end >= today) {
-          if (a.bed_id) {
-            const bId = String(a.bed_id).toUpperCase();
-            occupiedBedIdsToday.add(bId);
-            if (a.program_type === 'statsionar_full_room' || a.is_full_room) {
-              const partner = PARTNER_MAP[bId];
-              if (partner) occupiedBedIdsToday.add(partner);
-            }
-          }
-        }
-      }
-    });
-
-    // 2. Building Management local storage: ONLY if active TODAY
-    try {
-      const raw = localStorage.getItem(BM_STORAGE_KEY);
-      if (raw) {
-        const bmList = JSON.parse(raw);
-        bmList.forEach(b => {
-          if (b && b.status !== 'cancelled' && b.status !== 'completed') {
-            const bStart = (b.start_date || '').slice(0, 10);
-            const bEnd = (b.end_date || '').slice(0, 10);
-            // Strictly today: Start <= today <= End
-            if (bStart && bEnd && bStart <= today && bEnd >= today) {
-              const bId = String(b.bed_id || '').toUpperCase();
-              occupiedBedIdsToday.add(bId);
-              if (bmIsFullRoom(b)) {
-                const partner = PARTNER_MAP[bId];
-                if (partner) occupiedBedIdsToday.add(partner);
-              }
-            }
-          }
-        });
-      }
-    } catch (e) {}
-
-    const occupiedCount = Math.min(totalBeds, occupiedBedIdsToday.size);
-    const availableCount = Math.max(0, totalBeds - occupiedCount);
-
+    const board = State.todayBoard;
+    if (!board || !board.summary) {
+      return { total: 0, occupied: 0, available: 0, occupiedBedIds: [] };
+    }
+    const beds = (board.rooms || []).reduce((acc, r) => acc.concat(r.beds || []), []);
+    // A bed held empty because its room was sold whole is not free to offer,
+    // so it counts against availability even though nobody is lying in it.
+    const held = beds.filter(b => b.status === 'occupied' || b.status === 'room_locked');
     return {
-      total: totalBeds,
-      occupied: occupiedCount,
-      available: availableCount,
-      occupiedBedIds: Array.from(occupiedBedIdsToday)
+      total: board.summary.total_beds || beds.length,
+      occupied: held.length,
+      available: board.summary.available || 0,
+      occupiedBedIds: held.map(b => b.bed_id),
     };
   }
 
@@ -721,6 +548,9 @@ window.FMH_Reception = (function () {
     State.activeTab = tabId;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tabId));
+    // The board is re-read on open rather than kept warm: somebody else may
+    // have admitted or discharged a patient since the page loaded.
+    if (tabId === 'rooms') renderRoomsTab();
   }
 
   // ============================================================
@@ -906,6 +736,13 @@ window.FMH_Reception = (function () {
         statusLabel = '🧹 Dezinfeksiya';
         subLabel = 'Tozalanmoqda';
         tooltip += ` | 🧹 Sanitar tozalash va dezinfeksiya jarayonida (qabulga yopiq)`;
+      } else if (status === 'maintenance' || status === 'out_of_service') {
+        // These two fell through to the free branch and were painted green,
+        // so a bed withdrawn from service was still offered to the desk.
+        const isRepair = status === 'maintenance';
+        statusLabel = isRepair ? '🔧 Ta`mirda' : '⛔ Xizmatdan tashqari';
+        subLabel = 'Qabulga yopiq';
+        tooltip += ` | ${isRepair ? "🔧 Ta'mirlash ishlari" : '⛔ Xizmatdan chiqarilgan'} — bemor joylashtirilmaydi`;
       } else if (isPartial) {
         statusLabel = '⚠️ Band';
         subLabel = `${b.conflict_date ? b.conflict_date.slice(5) + ' dan' : 'Qisman'}`;
@@ -942,6 +779,8 @@ window.FMH_Reception = (function () {
     const startDate = document.getElementById('intake-start-date')?.value || todayStr();
     if (status === 'cleaning') {
       showToast(`⚠️ ${bedId} karavotida hozir dezinfeksiya va sanitar tozalash ketmoqda. Bemor joylashtirishdan oldin Statsionar bo'limida tozalashni yakunlang!`, 'warning');
+    } else if (status === 'maintenance' || status === 'out_of_service') {
+      showToast(`⛔ ${bedId} karavoti hozir xizmatda emas (${status === 'maintenance' ? "ta'mirlash" : 'xizmatdan chiqarilgan'}). Statsionar bo'limi uni qaytargach tanlash mumkin.`, 'warning');
     } else if (status === 'occupied') {
       showToast(`❌ ${bedId} karavoti ${startDate} sanasida band! (${occupant || 'Bemor yotibdi'})`, 'warning');
     } else if (status === 'partial_conflict') {
@@ -949,18 +788,178 @@ window.FMH_Reception = (function () {
     }
   }
 
-  function updateBedPickerForSelectedDate() {
-    const start = document.getElementById('intake-start-date')?.value || todayStr();
-    const days = parseInt(document.getElementById('intake-days')?.value) || 7;
-    let end = start;
-    try {
-      const d = new Date(start);
-      d.setDate(d.getDate() + days);
-      end = d.toISOString().slice(0, 10);
-    } catch(e) {}
+  // ============================================================
+  // TAB: THE ROOMS BOARD (free / occupied, for a chosen date range)
+  //
+  // The desk's first question of the day, and the one the intake form could
+  // not answer: which rooms are free, and until when. The bed picker inside
+  // the form only ever shows the dates that form is asking about, and only as
+  // fourteen loose beds — a two-bed room is a unit the desk sells, so it is
+  // shown as one.
+  // ============================================================
 
-    State.beds = computeLiveBedStatuses(DEFAULT_ROOMS_DATA, start, end);
-    
+  const ROOM_STATUS_UZ = {
+    free: "Bo'sh",
+    partial: "Qisman band",
+    full: "To'la band",
+  };
+
+  const BED_STATUS_UZ = {
+    available: "Bo'sh",
+    occupied: 'Band',
+    room_locked: 'Butun xona (bo`sh turadi)',
+    partial_conflict: 'Davr ichida band',
+    cleaning: 'Dezinfeksiya',
+    maintenance: "Ta'mirda",
+    out_of_service: 'Xizmatdan tashqari',
+  };
+
+  function roomsBoardWindow() {
+    const start = document.getElementById('rooms-board-start')?.value || todayStr();
+    const end = document.getElementById('rooms-board-end')?.value || addDays(start, 7);
+    return { start: String(start).slice(0, 10), end: String(end).slice(0, 10) };
+  }
+
+  async function loadRoomsBoard() {
+    const win = roomsBoardWindow();
+    if (win.end <= win.start) {
+      showToast("Ketish sanasi kelish sanasidan keyin bo'lishi kerak.", 'warning');
+      return;
+    }
+    const grid = document.getElementById('rooms-board-grid');
+    if (grid) grid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Xonalar holati yuklanmoqda...</p></div>';
+    try {
+      const res = await fetch('/api/facility/availability'
+        + `?start=${encodeURIComponent(win.start)}&end=${encodeURIComponent(win.end)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      State.roomsBoard = await res.json();
+      renderRoomsBoard();
+    } catch (e) {
+      console.error('rooms board:', e);
+      if (grid) {
+        grid.innerHTML = `<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><p>${escapeHtml(e.message)}</p></div>`;
+      }
+      showToast(`Xonalar holatini yuklab bo'lmadi: ${e.message}`, 'error');
+    }
+  }
+
+  function setRoomsBoardPreset(days) {
+    const startEl = document.getElementById('rooms-board-start');
+    const endEl = document.getElementById('rooms-board-end');
+    const start = startEl?.value || todayStr();
+    if (startEl) startEl.value = start;
+    if (endEl) endEl.value = addDays(start, days);
+    document.querySelectorAll('.rooms-board-preset').forEach(b =>
+      b.classList.toggle('active', String(b.dataset.days) === String(days)));
+    loadRoomsBoard();
+  }
+
+  function renderRoomsBoard() {
+    const grid = document.getElementById('rooms-board-grid');
+    if (!grid) return;
+    const board = State.roomsBoard;
+    if (!board || !board.rooms) {
+      grid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Xonalar holati yuklanmoqda...</p></div>';
+      return;
+    }
+
+    renderRoomsBoardSummary(board);
+
+    const floors = {};
+    board.rooms.forEach(r => {
+      (floors[r.floor_number] = floors[r.floor_number] || []).push(r);
+    });
+
+    grid.innerHTML = Object.keys(floors).sort().map(floorNo => {
+      const rooms = floors[floorNo];
+      const freeHere = rooms.reduce((n, r) => n + r.free_beds, 0);
+      return `
+        <div class="rooms-floor">
+          <div class="rooms-floor-head">
+            <span><i class="fas fa-layer-group"></i> ${floorNo}-Qavat</span>
+            <span class="rooms-floor-count">${freeHere} bo'sh o'rin</span>
+          </div>
+          <div class="rooms-floor-grid">
+            ${rooms.map(renderRoomCard).join('')}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderRoomCard(room) {
+    const status = room.status || 'free';
+    const capacity = room.beds.length;
+    return `
+      <div class="room-card ${status}${room.locked_whole_room ? ' whole-room' : ''}">
+        <div class="room-card-head">
+          <div>
+            <div class="room-card-title">${escapeHtml(room.room_name_uz || room.room_number + '-Xona')}</div>
+            <div class="room-card-sub">${capacity} o'rin${room.locked_whole_room ? " · 👑 Butun xona band" : ''}</div>
+          </div>
+          <span class="room-chip ${status}">${ROOM_STATUS_UZ[status] || status}</span>
+        </div>
+        <div class="room-card-beds">
+          ${room.beds.map(renderRoomCardBed).join('')}
+        </div>
+      </div>`;
+  }
+
+  function renderRoomCardBed(bed) {
+    const status = bed.status || 'available';
+    const who = bed.occupant || bed.conflict || null;
+    let detail;
+    if (status === 'available') {
+      detail = bed.next_booking
+        ? `${formatDate(bed.next_booking)} gacha bo'sh`
+        : "Butun davr bo'sh";
+    } else if (who) {
+      detail = `${escapeHtml(who.patient_name || 'Bemor')} · ${formatDate(who.start_date)} — ${formatDate(who.end_date)}`;
+    } else {
+      detail = 'Qabulga yopiq';
+    }
+    return `
+      <div class="room-bed ${status}">
+        <span class="room-bed-code">${escapeHtml(bed.bed_code || bed.bed_id)}</span>
+        <span class="room-bed-status">${BED_STATUS_UZ[status] || status}</span>
+        <span class="room-bed-detail">${detail}</span>
+      </div>`;
+  }
+
+  function renderRoomsBoardSummary(board) {
+    const el = document.getElementById('rooms-board-summary');
+    if (!el || !board.summary) return;
+    const s = board.summary;
+    const cells = [
+      { label: "Bo'sh o'rin", value: s.available, tone: 'good' },
+      { label: 'Band', value: s.occupied, tone: 'bad' },
+      { label: 'Butun xona ushlab turilgan', value: s.room_locked, tone: 'vip' },
+      { label: 'Davr ichida band', value: s.partial_conflict, tone: 'warn' },
+      { label: 'Dezinfeksiya', value: s.cleaning, tone: 'warn' },
+      { label: "Bo'sh xona", value: `${s.free_rooms} / ${s.total_rooms}`, tone: 'good' },
+    ];
+    el.innerHTML = cells.map(c => `
+      <div class="rooms-summary-cell ${c.tone}">
+        <span class="rooms-summary-value">${c.value}</span>
+        <span class="rooms-summary-label">${c.label}</span>
+      </div>`).join('');
+  }
+
+  function renderRoomsTab() {
+    const startEl = document.getElementById('rooms-board-start');
+    const endEl = document.getElementById('rooms-board-end');
+    if (startEl && !startEl.value) startEl.value = todayStr();
+    if (endEl && !endEl.value) endEl.value = addDays(startEl?.value || todayStr(), 7);
+    loadRoomsBoard();
+  }
+
+  async function updateBedPickerForSelectedDate() {
+    const win = intakeWindow();
+    await fetchAvailability(win.start, win.end);
+    const start = win.start;
+
     // Check if previously selected bed is still available on new dates
     if (State.intake.selectedBed) {
       const current = (State.beds || []).find(b => b.bed_id === State.intake.selectedBed);
@@ -1756,27 +1755,13 @@ window.FMH_Reception = (function () {
         }
       }
 
-      // Synchronize Building Management storage
-      try {
-        let bmBookings = [];
-        const raw = localStorage.getItem(BM_STORAGE_KEY);
-        if (raw) {
-          try { bmBookings = JSON.parse(raw); } catch (e) { bmBookings = []; }
-        }
-        bmBookings.push({
-          id: json.id || `BOOK-REC-${Date.now()}`,
-          bed_id: data.bedId,
-          patient_name: data.isAnon ? 'Anonim Bemor' : data.name,
-          patient_phone: data.phone || '',
-          doctor: 'Shifokor',
-          program: programName(data.program),
-          start_date: startDateStr,
-          end_date: endDateStr,
-          status: 'active'
-        });
-        localStorage.setItem(BM_STORAGE_KEY, JSON.stringify(bmBookings));
-        window.dispatchEvent(new CustomEvent('fmh_bookings_updated', { detail: bmBookings }));
-      } catch (bmErr) {}
+      // The admission is in the database; it used to be copied into this
+      // browser's localStorage as well, which is where the phantom bookings
+      // came from. That copy was never cleared when a stay was discharged or
+      // deleted, so it went on blocking the bed on this machine only.
+      // building_management.js rebuilds the same store from /api/admissions
+      // every time it loads, so nothing is lost by not writing it here.
+      window.dispatchEvent(new CustomEvent('fmh_bookings_updated'));
 
       // Reset form and re-fetch real database data
       State.intake.selectedBed = null;
@@ -2534,6 +2519,10 @@ window.FMH_Reception = (function () {
     setBedDatePreset,
     updateBedPickerForSelectedDate,
     notifyBedConflict,
+    renderRoomsBoard,
+    renderRoomsTab,
+    loadRoomsBoard,
+    setRoomsBoardPreset,
   };
 
 })();
@@ -2545,9 +2534,12 @@ document.addEventListener('DOMContentLoaded', () => {
   window.FMH_Reception.init();
 });
 
-// Live Synchronizer with Building Management & Local Storage
+// Another tab changed something the ward cares about, so re-read it from the
+// server. The bed key this watched for ('..._V16') was two versions behind the
+// one anything actually wrote, so this never fired for beds at all; occupancy
+// no longer lives in localStorage either way.
 window.addEventListener('storage', (e) => {
-  if (e.key === 'FMH_FACILITY_14BEDS_STORAGE_V16' || e.key === 'FMH_RECEPTION_DATA_V1' || e.key === 'FMH_PATIENTS_V1') {
+  if (e.key === 'FMH_RECEPTION_DATA_V1' || e.key === 'FMH_PATIENTS_V1') {
     window.FMH_Reception.refreshBedsFromBuildingManagement();
   }
 });
