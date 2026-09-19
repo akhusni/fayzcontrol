@@ -1883,6 +1883,67 @@ class PdfExport(ApiTest):
         self.assertTrue(body.startswith(b'%PDF'), 'response was not a PDF')
         self.assertGreater(len(body), 1000, 'PDF looks truncated')
 
+    def test_the_medication_round_downloads_as_a_pdf(self):
+        """
+        The round could be printed from the browser and not downloaded. A
+        signed sheet gets filed, so it has to exist as a file the ward can keep
+        and re-send, not only as whatever the browser rendered that afternoon.
+        """
+        pid = self.make_patient('Round PDF Bemor')
+        start = _dt.date.today()
+        end = start + _dt.timedelta(days=6)
+        _, adm = self.admit(pid, BED_A, start.isoformat(), end.isoformat())
+        status, rx = self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'admission_id': adm['admission_id'],
+            'medication_name': 'Diazepam', 'dosage': '10mg', 'route': 'IM',
+            'frequency': 'Kuniga 2 mahal', 'duration_days': 5,
+        })
+        self.assertIn(status, (200, 201), f"prescription failed: {rx}")
+
+        req = urllib.request.Request(
+            BASE + '/api/nursery/round/pdf?date=' + start.isoformat())
+        req.add_header('Cookie', self.api.cookie)
+        with urllib.request.urlopen(req) as res:
+            self.assertEqual(res.status, 200)
+            self.assertEqual(res.headers.get('Content-Type'), 'application/pdf')
+            self.assertIn('attachment', res.headers.get('Content-Disposition', ''))
+            body = res.read()
+        self.assertTrue(body.startswith(b'%PDF'), 'response was not a PDF')
+        self.assertGreater(len(body), 800, 'PDF looks truncated')
+
+    def test_a_day_with_nobody_on_the_ward_is_not_an_empty_pdf(self):
+        """An empty sheet would be filed as though the round had been done."""
+        far = (_dt.date.today() + _dt.timedelta(days=900)).isoformat()
+        req = urllib.request.Request(BASE + '/api/nursery/round/pdf?date=' + far)
+        req.add_header('Cookie', self.api.cookie)
+        opener = urllib.request.build_opener(NoRedirect())
+        try:
+            with opener.open(req) as res:
+                self.fail(f"an empty day produced a sheet (HTTP {res.status})")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 404)
+
+    def test_the_round_pdf_is_nursing_work(self):
+        """Same boundary as the round itself: HR has no business with it."""
+        username = f'suite_pdf_hr_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, created = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite HR', 'role': 'hr_manager'})
+        self.assertEqual(st, 201, f"could not create probe account: {created}")
+        try:
+            hr = Client()
+            st, login_body = hr.login(username, 'Suite-Probe-2026')
+            self.assertEqual(st, 200)
+            if login_body.get('must_change_password'):
+                hr.post('/api/auth/change-password', {
+                    'current_password': 'Suite-Probe-2026',
+                    'new_password': 'Suite-Probe-2026-Rotated',
+                    'confirm_password': 'Suite-Probe-2026-Rotated'})
+            self.assertEqual(hr.get('/api/nursery/round/pdf')[0], 403)
+        finally:
+            self.api.delete('/api/users/' + (created.get('id') or username))
+
     def test_pdf_module_imports(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.insert(0, root)

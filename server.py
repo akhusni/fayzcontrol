@@ -52,9 +52,10 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 try:
-    from pdf_generator import generate_patient_pdf
+    from pdf_generator import generate_patient_pdf, generate_round_pdf
 except Exception as e:
     generate_patient_pdf = None
+    generate_round_pdf = None
 
 # ----------------------------------------------------------------------------
 # Shared-state safety for the threaded server.
@@ -963,6 +964,37 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # prescriptions and overlaid with what was actually recorded. A
             # future date answers "what will this patient receive"; a past one
             # answers "what did they receive".
+            # GET /api/nursery/round/pdf?date= -- the same sheet as a file.
+            # The round could be printed from the browser but not downloaded,
+            # and a signed sheet gets filed: it has to exist as something the
+            # ward can keep and re-send, not only as whatever the browser
+            # rendered that afternoon.
+            elif path == '/api/nursery/round/pdf':
+                day, err = parse_date_param(query.get('date', [None])[0])
+                if err:
+                    self._send_validation_error(err, 'date')
+                    return
+                if not generate_round_pdf:
+                    self._set_json_headers(503)
+                    self.wfile.write(json.dumps(
+                        {'error': "PDF moduli yuklanmagan (reportlab o'rnatilganmi?)."},
+                        ensure_ascii=False).encode('utf-8'))
+                    return
+                pdf_bytes = generate_round_pdf(day)
+                if not pdf_bytes:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps(
+                        {'error': "Bu kunda dori berish rejasi yo'q."},
+                        ensure_ascii=False).encode('utf-8'))
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition',
+                                 f'attachment; filename="FMH_dori_varaqasi_{day.isoformat()}.pdf"')
+                self.send_header('Content-Length', str(len(pdf_bytes)))
+                self.end_headers()
+                self.wfile.write(pdf_bytes)
+
             elif path == '/api/nursery/round':
                 day, err = parse_date_param(query.get('date', [None])[0])
                 if err:

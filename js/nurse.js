@@ -401,6 +401,35 @@
       record(btn.dataset.rx, btn.dataset.slot, btn.dataset.status, btn.dataset.label);
     });
 
+    // The browser's print dialog renders the page; this asks the server for
+    // the same sheet as a file, so it can be filed and re-sent later.
+    document.getElementById('btn-download-round').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/nursery/round/pdf?date=' + encodeURIComponent(state.date));
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Xatolik (${res.status})`);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `FMH_dori_varaqasi_${state.date}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Revoked on the next tick: Safari cancels the download if the object
+        // URL disappears in the same frame as the click.
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) {
+        showToast(err.message, 'danger');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     document.getElementById('btn-print-round').addEventListener('click', () => {
       const stamp = new Date();
       const p = n => String(n).padStart(2, '0');

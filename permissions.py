@@ -176,6 +176,7 @@ API_RULES = [
     ('/api/doctor/notes',             'doctors',    None),
     ('/api/doctor/prescriptions',     'doctors',    None),
     # Nurses record administration and vitals against a stay.
+    ('/api/nursery/round/pdf',        'nursery',    'read'),
     ('/api/nursery/round',            'nursery',    'read'),
     ('/api/nursery/administer',       'nursery',    'write'),
     # Without the trailing slash so it also covers a POST that names the

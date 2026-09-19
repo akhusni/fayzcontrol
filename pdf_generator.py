@@ -321,3 +321,189 @@ def generate_patient_pdf(*args, **kwargs):
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
+
+
+# =============================================================================
+# NURSE STATION — DAILY MEDICATION ROUND
+# =============================================================================
+#
+# The round could be printed from the browser but not downloaded: there was no
+# PDF of it, only the page's own print stylesheet. A printed sheet is signed
+# and filed, so it needs to exist as a file the ward can keep and re-send, not
+# only as whatever the browser happened to render that afternoon.
+
+_ROUND_STATE_UZ = {
+    'given':        'Berildi',
+    'missed':       "O'tkazib yuborildi",
+    'refused':      'Bemor rad etdi',
+    'held':         "To'xtatildi",
+    'pending':      'Kutilmoqda',
+    'scheduled':    'Rejalashtirilgan',
+    'not_recorded': 'Qayd etilmagan',
+}
+
+
+def _clinic_letterhead(styles, PRIMARY, DARK_TEXT, MUTED_TEXT):
+    """The masthead both documents share, so they cannot drift apart."""
+    clinic_name_style = ParagraphStyle(
+        'ClinicNameR', parent=styles['Heading2'], fontName='Helvetica-Bold',
+        fontSize=13, leading=15, textColor=DARK_TEXT)
+    clinic_sub_style = ParagraphStyle(
+        'ClinicSubR', parent=styles['Normal'], fontName='Helvetica-Bold',
+        fontSize=7.5, leading=9, textColor=PRIMARY)
+    meta_style = ParagraphStyle(
+        'MetaStyleR', parent=styles['Normal'], fontName='Helvetica',
+        fontSize=7.5, leading=10, textColor=MUTED_TEXT, alignment=2)
+
+    header = Table([[
+        [Paragraph("FAYZ MEDICAL HOUSE", clinic_name_style),
+         Paragraph("XUSUSIY NARKOLOGIYA VA PSIXIATRIYA KLINIKASI", clinic_sub_style)],
+        [Paragraph("<b>O'zR SSV Litsenziyasi:</b> № 4082-00", meta_style),
+         Paragraph("<b>Manzil:</b> Toshkent sh., Yunusobod t., Bodomzor str. 42", meta_style),
+         Paragraph("<b>Ishonch Telefoni:</b> +998 (71) 200-03-03", meta_style)],
+    ]], colWidths=[280, 240])
+    header.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    return header
+
+
+def generate_round_pdf(day):
+    """
+    One day's medication round as a PDF, in ward order.
+
+    `day` is a datetime.date. Built from nursery.build_round, so the sheet is
+    the same reading of the same orders the nurse station shows -- a future
+    date is answerable because the round is derived from the standing orders
+    rather than from what has been recorded.
+
+    Returns PDF bytes, or None when the day has no patients on it.
+    """
+    import nursery
+
+    conn = get_db()
+    try:
+        round_data = nursery.build_round(conn, day)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if not round_data['patients']:
+        return None
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30,
+                            topMargin=30, bottomMargin=30,
+                            title=f"Dori berish varaqasi {round_data['date']}")
+
+    styles = getSampleStyleSheet()
+    PRIMARY = colors.HexColor('#0284c7')
+    DARK_TEXT = colors.HexColor('#0f172a')
+    MUTED_TEXT = colors.HexColor('#64748b')
+    BG_LIGHT = colors.HexColor('#f1f5f9')
+    BORDER_COLOR = colors.HexColor('#cbd5e1')
+
+    title_style = ParagraphStyle('RTitle', parent=styles['Heading1'],
+                                 fontName='Helvetica-Bold', fontSize=14,
+                                 leading=17, textColor=DARK_TEXT, alignment=1)
+    subtitle_style = ParagraphStyle('RSub', parent=styles['Normal'],
+                                    fontName='Helvetica', fontSize=8.5,
+                                    leading=11, textColor=MUTED_TEXT, alignment=1)
+    body = ParagraphStyle('RBody', parent=styles['Normal'], fontName='Helvetica',
+                          fontSize=8, leading=10, textColor=DARK_TEXT)
+    bold = ParagraphStyle('RBold', parent=styles['Normal'],
+                          fontName='Helvetica-Bold', fontSize=9, leading=11,
+                          textColor=DARK_TEXT)
+    small = ParagraphStyle('RSmall', parent=styles['Normal'], fontName='Helvetica',
+                           fontSize=7, leading=9, textColor=MUTED_TEXT)
+
+    story = [_clinic_letterhead(styles, PRIMARY, DARK_TEXT, MUTED_TEXT),
+             HRFlowable(width="100%", thickness=2, color=PRIMARY,
+                        spaceBefore=4, spaceAfter=10),
+             Paragraph("KUNLIK DORI BERISH VARAQASI (LIST NAZNACHENIY)", title_style)]
+
+    when = round_data['date']
+    if round_data['is_future']:
+        when += " — rejalashtirilgan kun"
+    elif round_data['is_past']:
+        when += " — o'tgan kun"
+    story.append(Paragraph(when, subtitle_style))
+
+    t = round_data['totals']
+    story.append(Paragraph(
+        f"Rejada: {t['planned']} &nbsp;·&nbsp; Berilgan: {t['given']} &nbsp;·&nbsp; "
+        f"Zaruratga ko'ra: {t['as_needed_orders']} &nbsp;·&nbsp; "
+        f"Bemorlar: {len(round_data['patients'])}", subtitle_style))
+    story.append(Spacer(1, 10))
+
+    for p in round_data['patients']:
+        block = [Paragraph(
+            f"{p['bed_code']} &nbsp; ({p['room_number']}-xona) &nbsp;&nbsp; "
+            f"<b>{p['patient_name']}</b> &nbsp; <font size='7' color='#64748b'>"
+            f"{p['patient_code']}</font>", bold)]
+
+        allergy = (p.get('medical_allergies') or '').strip()
+        if allergy and allergy.lower() not in ("yo'q", "yoq", "-"):
+            block.append(Paragraph(
+                f"<font color='#b91c1c'><b>ALLERGIYA:</b> {allergy}</font>", body))
+
+        rows = [[Paragraph("<b>Vaqt</b>", body), Paragraph("<b>Dori</b>", body),
+                 Paragraph("<b>Doza / yo'l</b>", body), Paragraph("<b>Holat</b>", body),
+                 Paragraph("<b>Imzo</b>", body)]]
+        for d in p['doses']:
+            rows.append([
+                Paragraph(d['slot_label'] or '—', body),
+                Paragraph(d['medication_name'] or '—', body),
+                Paragraph(f"{d.get('dosage') or ''} {d.get('route') or ''}".strip() or '—', body),
+                Paragraph(_ROUND_STATE_UZ.get(d['state'], d['state']), body),
+                Paragraph('', body),
+            ])
+        for o in p.get('as_needed', []):
+            rows.append([
+                Paragraph("<i>zarurat</i>", body),
+                Paragraph(o.get('medication_name') or '—', body),
+                Paragraph(f"{o.get('dosage') or ''} {o.get('route') or ''}".strip() or '—', body),
+                Paragraph("Zaruratga ko'ra", body),
+                Paragraph('', body),
+            ])
+
+        table = Table(rows, colWidths=[70, 150, 110, 105, 100], repeatRows=1)
+        table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.4, BORDER_COLOR),
+            ('BACKGROUND', (0, 0), (-1, 0), BG_LIGHT),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        block.append(table)
+
+        # The morning's observation, on the same sheet as the doses.
+        v = p.get('vitals') or {}
+        def _v(key, unit=''):
+            val = v.get(key)
+            return f"{val}{unit}" if val is not None else '____'
+        block.append(Paragraph(
+            f"Ko'rsatkichlar: AB {_v('vital_bp_systolic')}/{_v('vital_bp_diastolic')} mm &nbsp;·&nbsp; "
+            f"Puls {_v('vital_pulse')} &nbsp;·&nbsp; Harorat {_v('vital_temp', '°C')} &nbsp;·&nbsp; "
+            f"SpO2 {_v('vital_spo2', '%')}"
+            + (f" &nbsp;·&nbsp; {v['nurse_notes']}" if v.get('nurse_notes') else ''),
+            small))
+        block.append(Spacer(1, 9))
+        story.append(KeepTogether(block))
+
+    story.append(HRFlowable(width="100%", thickness=1.2, color=PRIMARY,
+                            spaceBefore=6, spaceAfter=6))
+    story.append(Table([[
+        Paragraph("Navbatchi hamshira: ______________________", body),
+        Paragraph("Bosh hamshira: ______________________", body),
+        Paragraph("Sana: ______________", body),
+    ]], colWidths=[200, 200, 120]))
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
