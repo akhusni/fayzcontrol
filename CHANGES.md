@@ -168,10 +168,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
    xodimlar qaytadan kirishi kerak.
 6. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
    emas, yillar o'tib sekinlashadi.
-7. Uch xil sxema fayli mavjud (`data_mysql_dump.sql` ichida INSERT
-   yo'q). `data/schema.mysql.sql` asosiy deb tanlandi — tasdiqlash
-   kerak.
-8. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+7. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
    ko'rish uchun SQL kerak).
 
 ---

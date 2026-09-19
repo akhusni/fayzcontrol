@@ -772,7 +772,7 @@ class StaticFileExposure(unittest.TestCase):
         '/data/reception_db.json',
         '/data/seed_data.sql',
         '/data/schema.mysql.sql',
-        '/data_mysql_dump.sql',
+        '/data/pricing_config.json',
         '/server_log.txt',
         '/CHANGES.md',
         '/README.md',

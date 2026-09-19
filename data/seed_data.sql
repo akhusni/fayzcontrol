@@ -1,12 +1,28 @@
 -- ============================================================================
--- FAYZ MEDICAL HOUSE — MASTER PRODUCTION SEED DATA
--- Contains: 12 Rooms, 14 Inpatient Beds, Medical Staff, Services Catalog, Essential Pharmacy Formulary
+-- FAYZ MEDICAL HOUSE — MASTER PRODUCTION SEED DATA (MySQL 8)
+-- Contains: 12 Rooms, 14 Inpatient Beds, Medical Staff, Services Catalog,
+--           Essential Pharmacy Formulary
+--
+-- Load AFTER data/schema.mysql.sql:
+--     mysql -u <user> -p <database> < data/schema.mysql.sql
+--     mysql -u <user> -p <database> < data/seed_data.sql
+--
+-- These statements said INSERT OR REPLACE INTO, which is SQLite. MySQL
+-- rejects it outright with error 1064, so a fresh install following the
+-- README ended up with no rooms, no beds and no staff -- and the whole
+-- stationary side of the system has nothing to work with.
+--
+-- INSERT IGNORE, not REPLACE INTO: REPLACE deletes the existing row and
+-- inserts a new one, which resets every column the seed does not name
+-- (created_at among them) and briefly removes a row that beds and admissions
+-- point at. IGNORE leaves anything already there alone, so this file stays
+-- safe to re-run against a populated database.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
 -- 1. CLINIC ROOMS & WARDS
 -- ----------------------------------------------------------------------------
-INSERT OR REPLACE INTO rooms (id, floor_number, room_number, room_name_uz, room_name_ru, room_name_en, room_type, total_capacity) VALUES
+INSERT IGNORE INTO rooms (id, floor_number, room_number, room_name_uz, room_name_ru, room_name_en, room_type, total_capacity) VALUES
 ('ROOM-CONS-1', 1, '1-KONS', '1-Konsultatsiya (Bosh shifokor)', 'Кабинет 1 (Главврач)', 'Consultation 1 (Chief Doctor)', 'consultation', 1),
 ('ROOM-CONS-2', 1, '2-KONS', '2-Konsultatsiya (Diagnostika & Psixoterapiya)', 'Кабинет 2 (Диагностика)', 'Consultation 2 (Diagnostics)', 'consultation', 1),
 ('ROOM-REG-1',  1, 'QABUL',  'Qabulxona va Kutish zali', 'Регистратура и Приемный покой', 'Reception & Lobby', 'reception', 4),
@@ -24,7 +40,7 @@ INSERT OR REPLACE INTO rooms (id, floor_number, room_number, room_name_uz, room_
 -- ----------------------------------------------------------------------------
 -- 2. 14 INPATIENT BEDS (100% Bo'sh / Available)
 -- ----------------------------------------------------------------------------
-INSERT OR REPLACE INTO beds (id, room_id, bed_code, bed_type, default_daily_rate, status) VALUES
+INSERT IGNORE INTO beds (id, room_id, bed_code, bed_type, default_daily_rate, status) VALUES
 ('BED-1A',  'ROOM-11', '1A',  'standard', 720000.0, 'available'),
 ('BED-1B',  'ROOM-11', '1B',  'standard', 720000.0, 'available'),
 ('BED-2A',  'ROOM-12', '2A',  'standard', 720000.0, 'available'),
@@ -44,7 +60,7 @@ INSERT OR REPLACE INTO beds (id, room_id, bed_code, bed_type, default_daily_rate
 -- ----------------------------------------------------------------------------
 -- 3. MEDICAL & CLINICAL STAFF
 -- ----------------------------------------------------------------------------
-INSERT OR REPLACE INTO staff (id, full_name, role, specialty, phone, salary_base, is_active) VALUES
+INSERT IGNORE INTO staff (id, full_name, role, specialty, phone, salary_base, is_active) VALUES
 ('STF-DOC-01', 'Dr. Bobur Mirzayev',   'chief_doctor', 'Bosh Shifokor / Narkolog-Psixiatr', '+998901001122', 15000000.0, 1),
 ('STF-DOC-02', 'Dr. Jasur Aliyev',     'doctor',       'Shifokor-Narkolog',                 '+998902003344', 12000000.0, 1),
 ('STF-DOC-03', 'Dr. Dilnoza Rahimova', 'doctor',       'Psixoterapevt / Psixiatr',          '+998903005566', 10000000.0, 1),
@@ -55,7 +71,7 @@ INSERT OR REPLACE INTO staff (id, full_name, role, specialty, phone, salary_base
 -- ----------------------------------------------------------------------------
 -- 4. MASTER SERVICES PRICING CATALOG
 -- ----------------------------------------------------------------------------
-INSERT OR REPLACE INTO services_catalog (id, name, category, unit_price, description) VALUES
+INSERT IGNORE INTO services_catalog (id, name, category, unit_price, description) VALUES
 ('SRV-DETOX-5',   'Standart Detoksikatsiya dasturi (5 kun)', 'inpatient',     3600000.0, '5 kunlik to''liq statsionar detoks, dori-darmonlar va nazorat'),
 ('SRV-DETOX-10',  'Intensiv Reabilitatsiya dasturi (10 kun)','inpatient',     7200000.0, '10 kunlik to''liq kompleks reabilitatsiya va psixoterapiya'),
 ('SRV-CONS-DOC',  'Shifokor Narkolog/Psixiatr konsultatsiyasi','consultation', 250000.0,  'Birlamchi chuqurlashtirilgan ko''rik va davolash rejasi'),
@@ -67,7 +83,7 @@ INSERT OR REPLACE INTO services_catalog (id, name, category, unit_price, descrip
 -- ----------------------------------------------------------------------------
 -- 5. MASTER MEDICATIONS & PHARMACOLOGY CATALOG
 -- ----------------------------------------------------------------------------
-INSERT OR REPLACE INTO medications_catalog (id, name, category, form, standard_dosage, unit_price, stock_quantity, min_stock_level) VALUES
+INSERT IGNORE INTO medications_catalog (id, name, category, form, standard_dosage, unit_price, stock_quantity, min_stock_level) VALUES
 ('MED-001', 'Reamberin 1.5% 400ml',      'Detoksikatsiya',  'Infuzion flakon', '400 ml', 45000.0,  50, 15),
 ('MED-002', 'Heptral 500mg (Ademetionin)','Gepatoprotektor', 'Ampula/Flakon',   '500 mg', 120000.0, 30, 10),
 ('MED-003', 'Mexidol 5% 2ml',            'Antioksidant',    'Ampula',          '2 ml',   25000.0,  60, 20),

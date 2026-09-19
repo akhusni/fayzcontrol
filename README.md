@@ -77,25 +77,73 @@ crm-suite/
 
 ## 🚀 Ishga Tushirish
 
-```powershell
+```bash
 # 0. Talab qilinadigan kutubxonalar
-python -m pip install PyMySQL reportlab
+python3 -m pip install PyMySQL reportlab
 
 # 1. Baza sozlamalarini yaratish
 #    (db_config.example.json -> db_config.json, o'z parolingizni kiriting)
-copy db_config.example.json db_config.json
+cp db_config.example.json db_config.json
+chmod 600 db_config.json          # faqat egasi o'qiy olsin
 
-# 2. Baza va tizim holatini tekshirish
-python install.py
+# 2. Bazani yaratish — YANGI O'RNATISHDA MAJBURIY
+#    Jadvallar avtomatik yaratilmaydi. Tartib muhim:
+mysql -u <user> -p <database> < data/schema.mysql.sql   # jadvallar va view'lar
+mysql -u <user> -p <database> < data/seed_data.sql      # 12 xona, 14 o'rin, xodimlar, katalog
 
-# 3. Serverni ishga tushirish
-python server.py
-# yoki
-.\start_clinic.bat
+# 3. Baza va tizim holatini tekshirish (faqat tekshiradi, yaratmaydi)
+python3 install.py
+
+# 4. Serverni ishga tushirish
+python3 server.py 3000
 ```
+
+`data/schema.mysql.sql` — **yagona to'g'ri sxema fayli**. Avval yana ikkitasi
+bor edi (`data/schema_mysql.sql` va `data_mysql_dump.sql`); ikkalasi ham
+eskirgan va `medication_administrations` jadvali yo'q edi — ya'ni ular bilan
+o'rnatilgan tizimda hamshiralar posti ishlamasdi. Ular olib tashlandi.
+
+`consultations` va `treatment_plans` jadvallari server birinchi marta shu
+modullarga murojaat qilganda avtomatik yaratiladi.
 
 Brauzerda: `http://localhost:3000` → `login.html` ochiladi. Tizimga
 kirgandan so'ng `superpage.html` ga o'tadi.
+
+### 💾 Zaxira Nusxa (Backup) — ishga tushirishdan oldin sozlang
+
+Bu tibbiy yozuvlar tizimi. Bazani yo'qotish — bemorlar tarixini yo'qotish
+degani. Hozircha **hech qanday avtomatik zaxira yo'q**.
+
+Minimal yechim — kunlik `mysqldump` va cron:
+
+```bash
+sudo mkdir -p /var/backups/fayzcontrol && sudo chmod 700 /var/backups/fayzcontrol
+
+sudo tee /usr/local/bin/fayzcontrol-backup.sh >/dev/null <<'SH'
+#!/bin/bash
+set -euo pipefail
+DEST=/var/backups/fayzcontrol
+STAMP=$(date +%F_%H%M)
+mysqldump --single-transaction --routines --triggers \
+  -u <user> -p'<parol>' <database> | gzip > "$DEST/fayzhouse_$STAMP.sql.gz"
+# 30 kundan eski nusxalarni o'chirish
+find "$DEST" -name 'fayzhouse_*.sql.gz' -mtime +30 -delete
+SH
+sudo chmod 700 /usr/local/bin/fayzcontrol-backup.sh
+
+# Har kuni soat 02:00 da
+echo '0 2 * * * root /usr/local/bin/fayzcontrol-backup.sh' | sudo tee /etc/cron.d/fayzcontrol-backup
+```
+
+`--single-transaction` InnoDB uchun jadvallarni bloklamasdan izchil nusxa
+oladi, ya'ni klinika ishlayotgan paytda ham xavfsiz.
+
+**Zaxirani tiklashni kamida bir marta sinab ko'ring.** Tekshirilmagan zaxira
+— zaxira emas:
+
+```bash
+gunzip -c /var/backups/fayzcontrol/fayzhouse_<sana>.sql.gz | mysql -u <user> -p <test_database>
+```
 
 ### 🔐 Avtorizatsiya
 
