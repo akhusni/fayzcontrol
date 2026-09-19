@@ -1375,3 +1375,179 @@ body.super-portal-page .portal-master-nav .portal-nav-pill:not(.active) span {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   HEADER LAYOUT — OVERLAP, ROUND TWO
+   --------------------------------------------------------------------------
+   The action cluster spilled out of its own box again and painted over the
+   last two navigation pills. Measured on doctor.html at a 2000px viewport:
+   the cluster's box began at x=1222, but its first child — the signed-in
+   user chip — rendered at x=1090, i.e. 132px to the LEFT of its own
+   container, straight across 'Qabulxona' and 'CRM'.
+
+   Two causes, one of them new.
+
+   1. The chip did not exist when the header was last measured. Sign-in adds
+      it (fmh_dialogs.js) as the first child of .portal-actions-cluster, and
+      it is 258px wide for 'Bosh Administrator (Superadmin)'. That took the
+      cluster from ~316px to ~574px.
+
+      With it, the full-label header needs 290 (brand) + 728 (nav) + 574
+      (cluster) = 1592px, and .portal-nav-wrapper is capped at 1640px with
+      1.5rem of padding either side — exactly 1592px of usable width. The
+      header was not fitting, it was tying. Any longer name, any different
+      font metric, any zoom step, and it overflows. A real doctor's name is
+      longer than the demo account's.
+
+   2. The grid could not express what it meant. The trailing track was
+      minmax(290px, auto) next to a 1fr middle track. An fr track is greedy
+      and its automatic minimum is its own content, so the middle track
+      claimed the space and the trailing track resolved smaller than the
+      content it held. Combined with flex-shrink: 0, nowrap and visible
+      overflow on the cluster, the surplus had nowhere to go but sideways,
+      over the nav.
+
+   The fix is to stop relying on the total landing under 1592px.
+
+   - The grid now reads: auto | minmax(0, 1fr) | auto. Both end tracks size
+     to their content, and the middle one is the only thing that yields,
+     which is the correct priority: the brand and the controls are fixed
+     objects, the nav is the elastic one.
+   - The one variable-width element is the user's name, so it is capped and
+     ellipsised. That makes the header's width deterministic instead of a
+     function of who signed in.
+   - 'Sayt' becomes an icon. It is an external link with a title, it is the
+     least-used control in the bar, and its label was costing space that the
+     navigation labels use better.
+   - If the nav still cannot fit, it scrolls inside its own track rather than
+     escaping it. Nothing in this header can overlap anything else again,
+     whatever is added to either end.
+
+   Budget after this: 290 + 728 + ~429 = ~1447 inside 1592, so ~145px of
+   slack at the widest layout instead of nothing.
+   ========================================================================== */
+
+/* --- 1. The structural fix: only the nav may yield ------------------------ */
+.portal-nav-wrapper {
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  gap: 0 0.75rem !important;
+}
+
+/* The brand was pinned to 290px, but its logo and two lines of text measure
+   222px — 68px of the row was reserved for nothing. It now takes what it
+   needs, which is the cheapest space in the header: no label is lost for it. */
+.portal-brand {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.portal-center-nav-zone {
+  min-width: 0 !important;
+}
+
+/* Last resort. If the pills genuinely cannot fit, they scroll within their
+   own track instead of spilling over the brand or the controls. */
+.portal-master-nav {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+
+.portal-master-nav::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* The cluster keeps its content width now that it has a track of its own. */
+.portal-actions-cluster,
+.super-topbar-right {
+  min-width: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+/* --- 2. The signed-in chip: identity, not an action ---------------------- */
+/* Set from JS as inline cssText, so these have to out-rank inline styles. */
+#fmh-session-chip {
+  max-width: 230px !important;
+  overflow: hidden !important;
+  /* A hairline before it separates who you are from what you can do. */
+  margin-right: 0.15rem !important;
+  padding-right: 0.7rem !important;
+  border-right: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
+}
+
+/* The name is the only part of this header whose width depends on the data.
+   Capping it is what makes the rest of the layout predictable. The full name
+   stays available as the element's title. */
+#fmh-session-chip > span:nth-of-type(2) {
+  display: block !important;
+  max-width: 150px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* --- 3. Two controls that read fine as icons ----------------------------- */
+/* The theme toggle is a switch, not a readout: the sun/moon says what it does
+   and it carries a title. Its label cost 55px that the navigation uses better. */
+.portal-actions-cluster .btn-unified-theme-toggle span {
+  display: none !important;
+}
+
+.portal-actions-cluster .btn-unified-theme-toggle {
+  padding-left: 9px !important;
+  padding-right: 9px !important;
+}
+
+/* 'Sayt' is a link off the portal, not a tool. */
+.portal-actions-cluster a.btn-header-outline[href^="https://fayzmedical"] span {
+  display: none !important;
+}
+
+.portal-actions-cluster a.btn-header-outline[href^="https://fayzmedical"] {
+  padding-left: 9px !important;
+  padding-right: 9px !important;
+}
+
+/* --- 4. Consistent control height, so the row reads as one band ---------- */
+.portal-actions-cluster > * {
+  min-height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+/* --- 5. Degradation order, tightest last -------------------------------- */
+/* The nav gives up its inactive labels before anything else is touched; the
+   active one stays, so the bar still says which portal you are in.
+
+   The threshold is measured, not guessed. With every label shown the row is
+   223 (brand) + 12 + 728 (nav) + 12 + 568 (cluster) = 1543px, and the wrapper
+   adds 48px of padding, so the full-label layout needs a 1591px viewport.
+   1620px leaves ~30px for font-rendering differences between machines. It was
+   1450px, which was measured before sign-in started adding the user chip and
+   left 1451-1590px showing labels that did not fit. */
+@media (max-width: 1620px) {
+  .portal-master-nav .portal-nav-pill:not(.active) span {
+    display: none !important;
+  }
+}
+
+/* Then the secondary actions drop their labels, keeping the primary one. */
+@media (max-width: 1240px) {
+  #fmh-session-chip > span:nth-of-type(2) {
+    max-width: 96px !important;
+  }
+  .portal-actions-cluster a.btn-header-outline span {
+    display: none !important;
+  }
+}
+
+/* Narrow: the chip keeps the avatar and the way out, and drops the name. */
+@media (max-width: 1080px) {
+  #fmh-session-chip > span:nth-of-type(2) {
+    display: none !important;
+  }
+  #fmh-session-chip {
+    max-width: none !important;
+    padding-right: 0.5rem !important;
+  }
+}

@@ -311,11 +311,25 @@
         'background:var(--bg-panel,#0a1b33);border:1px solid var(--border-subtle,rgba(255,255,255,0.08));' +
         'color:var(--text-secondary,#cbd5e1);white-space:nowrap;min-height:32px;';
       const u = session.user || {};
-      chip.innerHTML =
-        '<span>' + (u.avatar || '👤') + '</span>' +
-        '<span title="' + (session.role_label || u.role || '') + '">' +
-          (u.full_name || u.username || '') +
-        '</span>';
+      const name = u.full_name || u.username || '';
+      const role = session.role_label || u.role || '';
+
+      // Built as nodes rather than innerHTML: the name comes from the staff
+      // record, and concatenating it into markup let a name containing angle
+      // brackets write into the header.
+      const avatar = document.createElement('span');
+      avatar.textContent = u.avatar || '👤';
+
+      const label = document.createElement('span');
+      label.textContent = name;
+
+      // The stylesheet caps this span's width and ellipsises it, so the whole
+      // name has to stay reachable somewhere: the chip carries it as a title
+      // alongside the job title it already showed.
+      chip.title = role ? name + ' — ' + role : name;
+
+      chip.appendChild(avatar);
+      chip.appendChild(label);
 
       const out = document.createElement('button');
       out.type = 'button';
