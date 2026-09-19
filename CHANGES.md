@@ -157,27 +157,34 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
    birinchi kirishda parolni almashtirishni talab qiladi, lekin
    parollar almashtirilishi kerak.
 
-2. **Tasdiqlash kerak — "butun xona" qoidasi.** Hozir faqat
-   `statsionar_full_room` dasturi xonani yaxlit band qiladi. Agar
-   lyuks/VIP boshqa nom bilan ham sotilsa, ro'yxatni aytib bering:
-   qoida `db.py` dagi `FULL_ROOM_PROGRAMS` da, bitta joyda.
-3. **Tasdiqlash kerak — ketish kuni.** Endi bemor chiqqan kuni o'rin
-   yangi bemorga beriladi (hisob-kitobga mos). Agar dezinfeksiya uchun
-   bir kun oraliq kerak bo'lsa, buni alohida qoida qilish mumkin.
-4. **Statsionar kunlik ko'rik** — shifokorning kunlik ko'rik moduli.
-5. **Farmatsevt va oshxona sahifalari.**
-6. `building_management.html` hali ham bronlarni `localStorage` da
+**Keyingi ish (tavsiya etilgan tartibda):**
+
+2. **Statsionar kunlik ko'rik** — shifokorning kunlik ko'rik moduli.
+3. **Farmatsevt va oshxona sahifalari.**
+4. `building_management.html` hali ham bronlarni `localStorage` da
    saqlaydi. Qabulxona endi unga bog'liq emas, lekin o'sha sahifaning
    o'zi ham bazaga o'tkazilishi kerak.
-7. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
+5. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
    xodimlar qaytadan kirishi kerak.
-8. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
+6. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
    emas, yillar o'tib sekinlashadi.
-9. Uch xil sxema fayli mavjud (`data_mysql_dump.sql` ichida INSERT
+7. Uch xil sxema fayli mavjud (`data_mysql_dump.sql` ichida INSERT
    yo'q). `data/schema.mysql.sql` asosiy deb tanlandi — tasdiqlash
    kerak.
-10. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
-    ko'rish uchun SQL kerak).
+8. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+   ko'rish uchun SQL kerak).
+
+---
+
+**Klinika tomonidan tasdiqlangan qarorlar:**
+
+- **Butun xona faqat bitta dastur orqali sotiladi** —
+  `statsionar_full_room`. Boshqa lyuks/VIP nomlari yo'q, shuning uchun
+  `db.py` dagi `FULL_ROOM_PROGRAMS` ro'yxati shundayligicha qoladi.
+- **Ketish kuni o'rin darhol yangi bemorga beriladi.** Dezinfeksiya
+  uchun alohida bir kunlik oraliq kerak emas — tozalash tez bajariladi.
+  Haqiqiy chiqarishda o'rin baribir `cleaning` holatiga o'tadi va
+  tozalash yakunlanmaguncha qabul qilinmaydi.
 
 ---
 
