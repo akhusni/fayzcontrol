@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 60 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 78 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil sentabr
 
 ---
@@ -24,6 +24,8 @@ qoplangan.
 | `beds.status` ga `'available'` yozilardi (4 joyda) | Karavotni xizmatga qaytarish **umuman ishlamasdi** — karavotlar `cleaning` holatida qolib, palata bo'shab qolardi. |
 | Muvaffaqiyatsiz qabul bemor yozuvini qoldirardi | Har bir rad etilgan qabul "Yangi Bemor" nomli keraksiz yozuv qoldirardi. |
 | `building_management.js` da cheksiz rekursiya | Haqiqiy bronlar mavjud bo'lganda sahifa stack overflow bilan ishlamay qolardi. |
+| "Butun xona" qoidasi faqat brauzerda edi | Xona **1.1 mln/kun** ga yaxlit sotilgandan keyin ham ikkinchi o'ringa bemor qo'yish qabul qilinardi. Ya'ni bemor alohida xona uchun to'lab, yoniga begona odam joylashtirilishi mumkin edi. Ko'chirish (transfer) yo'li ham xuddi shunday ochiq edi. |
+| Sana chegarasi hisob-kitob bilan mos emasdi | Hisob-kitob `DATEDIFF(end, start)` — ketish kuni tunab qolinmaydi. Tekshiruv esa ikkala chetini ham band deb hisoblardi, shuning uchun **bemor chiqqan kuni yangi bemorni qabul qilib bo'lmasdi**: panel o'rinni bo'sh ko'rsatar, server esa rad etardi. |
 
 ---
 
@@ -104,11 +106,41 @@ Narkologiya/psixiatriya uchun **6 bo'limli, 41 maydonli** anketa.
 - Qabulxonadan yo'naltirilgan bemorlar navbati — resepshn olgan
   ma'lumotlar avtomatik to'ldiriladi.
 
+### Qabulxona: xonalar holati paneli (`reception.html`)
+
+Qabulxonaning kunlik birinchi savoli — **qaysi xona bo'sh va qachongacha**.
+Avval bunga javob yo'q edi: qabul shaklidagi karavot tanlash faqat o'sha
+shakl so'ragan sanalarni va 14 ta alohida o'rinni ko'rsatardi, klinika esa
+xonani yaxlit sotadi.
+
+- Yangi **"Xonalar Holati"** tabi: qavatlar bo'yicha xonalar, har birida
+  o'rinlar, kim yotgani va qaysi sanagacha. Sana oralig'ini tanlash
+  (Bugun / 1 hafta / 10 kun / 1 oy).
+- **Butun xona** band bo'lganda ikkinchi o'rin `bo'sh` ham, `band` ham emas —
+  *"butun xona (bo'sh turadi)"* deb ko'rsatiladi: u pullangan va ataylab
+  bo'sh qoldirilgan.
+
+### Karavot bandligi endi serverdan olinadi
+
+Avval bandlik brauzerda hisoblanardi. Buning o'rniga
+`GET /api/facility/availability` qo'shildi. Nima almashtirildi:
+
+| Avval | Muammo |
+| :--- | :--- |
+| `data/clinic_rooms.json` + `reception.js` ichidagi nusxasi | Ikkalasi ham `rooms`/`beds` jadvallaridan farq qilib ketgandi. |
+| `localStorage` dagi bronlar | Faqat bitta kompyuterda mavjud edi: bitta xodimning brauzeridagi bron **haqiqiy o'rinni bloklardi**, boshqalarga va serverga esa ko'rinmasdi. Qabulxona har bir qabulni o'sha joyga yozardi, lekin **hech narsa uni o'chirmasdi** — bemor chiqarilgandan keyin ham o'rin bloklangan qolaverardi. |
+| Qo'lda yozilgan "qaysi o'rin qaysi bilan juft" jadvali | Butun xona qoidasi endi serverda; palatalar o'zgarsa ham mos qoladi. |
+| KPI uchun alohida, ikkinchi bandlik hisobi | O'z nusxasidagi qoidalar bilan. Endi bitta manbadan. |
+
+Yo'l-yo'lakay tuzatildi: ta'mirdagi yoki xizmatdan chiqarilgan o'rin
+**yashil (bo'sh) ko'rsatilardi**; tablar orasidagi sinxronizatsiya esa ikki
+versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
+
 ---
 
 ## 5. Sinov va infratuzilma
 
-- **60 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **78 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
@@ -125,22 +157,27 @@ Narkologiya/psixiatriya uchun **6 bo'limli, 41 maydonli** anketa.
    birinchi kirishda parolni almashtirishni talab qiladi, lekin
    parollar almashtirilishi kerak.
 
-**Keyingi ish (tavsiya etilgan tartibda):**
-
-2. **Qabulxona (Registration)** — bo'sh/band xonalar paneli va ikki
-   yo'nalish (konsultatsiya / statsionar). Konsultatsiya yo'nalishi
-   ishlayapti; statsionar qismi texnik topshiriqda tugallanmagan.
-3. **Statsionar kunlik ko'rik** — shifokorning kunlik ko'rik moduli.
-4. **Farmatsevt va oshxona sahifalari.**
-5. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
+2. **Tasdiqlash kerak — "butun xona" qoidasi.** Hozir faqat
+   `statsionar_full_room` dasturi xonani yaxlit band qiladi. Agar
+   lyuks/VIP boshqa nom bilan ham sotilsa, ro'yxatni aytib bering:
+   qoida `db.py` dagi `FULL_ROOM_PROGRAMS` da, bitta joyda.
+3. **Tasdiqlash kerak — ketish kuni.** Endi bemor chiqqan kuni o'rin
+   yangi bemorga beriladi (hisob-kitobga mos). Agar dezinfeksiya uchun
+   bir kun oraliq kerak bo'lsa, buni alohida qoida qilish mumkin.
+4. **Statsionar kunlik ko'rik** — shifokorning kunlik ko'rik moduli.
+5. **Farmatsevt va oshxona sahifalari.**
+6. `building_management.html` hali ham bronlarni `localStorage` da
+   saqlaydi. Qabulxona endi unga bog'liq emas, lekin o'sha sahifaning
+   o'zi ham bazaga o'tkazilishi kerak.
+7. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
    xodimlar qaytadan kirishi kerak.
-6. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
+8. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
    emas, yillar o'tib sekinlashadi.
-7. Uch xil sxema fayli mavjud (`data_mysql_dump.sql` ichida INSERT
+9. Uch xil sxema fayli mavjud (`data_mysql_dump.sql` ichida INSERT
    yo'q). `data/schema.mysql.sql` asosiy deb tanlandi — tasdiqlash
    kerak.
-8. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
-   ko'rish uchun SQL kerak).
+10. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+    ko'rish uchun SQL kerak).
 
 ---
 
