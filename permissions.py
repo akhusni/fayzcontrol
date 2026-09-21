@@ -90,10 +90,10 @@ ROLES = {
         'label': 'Hamshira',
         'permissions': ['nursery', 'kitchen', 'crm:read', 'admissions:read',
                         'facility:read', 'pharmacy:read', 'doctors:read'],
-        # The dedicated nurse station (daily medication round, vitals, the
-        # date-picker history) is still to be built. Until nurse.html exists
-        # they land on the patient list, which they may read.
-        'home': '/crm.html',
+        # The nurse station now exists, so a nurse lands on her own round
+        # rather than on the patient list. This still said /crm.html from
+        # when nurse.html was only planned.
+        'home': '/nurse.html',
     },
 
     # Intake: registers patients and routes them to a doctor or a bed.
