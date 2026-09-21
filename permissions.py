@@ -173,6 +173,8 @@ API_RULES = [
     ('/api/doctor/consultation-case', 'doctors',    None),
     ('/api/doctor/anamnesis',         'doctors',    None),
     ('/api/doctor/epicrisis',         'doctors',    None),
+    # The ward round: read the board, write the day's assessment.
+    ('/api/doctor/ward-round',        'doctors',    'read'),
     ('/api/doctor/notes',             'doctors',    None),
     ('/api/doctor/prescriptions',     'doctors',    None),
     # Nurses record administration and vitals against a stay.
@@ -252,6 +254,10 @@ PAGE_RULES = {
     '/reception.html':            ('reception',  'read'),
     '/doctor.html':               ('doctors',    'write'),
     '/consultation.html':         ('doctors',    'write'),
+    # The stationary ward round. Writing the day's assessment is the
+    # point of the page, so it needs the same grant as the other two
+    # clinical screens rather than read-only.
+    '/ward.html':                 ('doctors',    'write'),
     '/nurse.html':                ('nursery',    'read'),
     '/building_management.html':  ('facility',   'read'),
     '/crm.html':                  ('crm',        'read'),

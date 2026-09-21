@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Statsionar Ko'rigi | Fayz Medical House</title>
+  <meta name="description" content="Statsionardagi bemorlar va kunlik shifokor ko'rigi.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/nurse.css?v=1.2">
+  <link rel="stylesheet" href="css/ward.css?v=1.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.3"></script>
+</head>
+<body class="nurse-portal ward-portal">
+
+  <!-- ===================================================================
+       UNIFIED PORTAL HEADER
+       Navigation is trimmed to this user's permissions by fmh_dialogs.js.
+       =================================================================== -->
+  <header class="portal-master-header">
+    <div class="portal-nav-wrapper">
+
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="consultation.html" class="portal-nav-pill pill-doctor" title="Konsultatsiya">
+            <i class="fas fa-user-doctor"></i> <span>Konsultatsiya</span>
+          </a>
+          <a href="ward.html" class="portal-nav-pill pill-doctor active" title="Statsionar ko'rigi">
+            <i class="fas fa-stethoscope"></i> <span>Ko'rik</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & EMR">
+            <i class="fas fa-user-md"></i> <span>EMR</span>
+          </a>
+          <a href="nurse.html" class="portal-nav-pill pill-nurse" title="Hamshiralar Posti">
+            <i class="fas fa-syringe"></i> <span>Hamshira Posti</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Qabulxona">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="portal-actions-cluster">
+        <button type="button" class="btn-header-primary" id="btn-print-ward"
+                title="Ko'rik varaqasini chop etish">
+          <i class="fas fa-print"></i> <span>A4 Chop Etish</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <div class="nurse-chipbar no-print">
+    <div class="nurse-chip">
+      <i class="fas fa-bed"></i>
+      <span>Statsionarda:</span> <span class="val" id="chip-total">0</span>
+    </div>
+    <div class="nurse-chip is-given">
+      <i class="fas fa-circle-check"></i>
+      <span>Ko'rikdan o'tgan:</span> <span class="val" id="chip-seen">0</span>
+    </div>
+    <div class="nurse-chip is-pending">
+      <i class="fas fa-clock"></i>
+      <span>Kutilmoqda:</span> <span class="val" id="chip-waiting">0</span>
+    </div>
+  </div>
+
+  <main class="nurse-main">
+
+    <!-- ===============================================================
+         DATE NAVIGATOR
+         Past days show what was written; today is the round to do.
+         =============================================================== -->
+    <section class="nurse-datebar no-print">
+      <div class="nurse-datebar-left">
+        <button type="button" class="btn-date-step" id="btn-prev-day" title="Oldingi kun">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <input type="date" id="ward-date" class="nurse-date-input"
+               aria-label="Ko'rik sanasi">
+        <button type="button" class="btn-date-step" id="btn-next-day" title="Keyingi kun">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+        <button type="button" class="btn-today" id="btn-today">Bugun</button>
+      </div>
+      <div class="nurse-datebar-right">
+        <span class="nurse-date-label" id="date-label">&nbsp;</span>
+      </div>
+    </section>
+
+    <div class="print-only nurse-print-head">
+      <div class="nurse-print-title">FAYZ MEDICAL HOUSE</div>
+      <div class="nurse-print-sub">STATSIONAR KUNLIK KO'RIK VARAQASI</div>
+      <div class="nurse-print-meta">
+        Sana: <strong id="print-date"></strong> &nbsp;·&nbsp;
+        Shifokor: <strong id="print-doctor"></strong> &nbsp;·&nbsp;
+        Chop etilgan: <strong id="print-stamp"></strong>
+      </div>
+    </div>
+
+    <div id="ward-container" class="nurse-round"></div>
+
+    <div id="ward-empty" class="nurse-empty" style="display:none;">
+      <i class="fas fa-bed-pulse"></i>
+      <div class="nurse-empty-title">Bu kunda statsionarda bemor yo'q</div>
+      <div class="nurse-empty-text">
+        Tanlangan sanada karavotda yotgan faol bemor topilmadi.
+      </div>
+    </div>
+
+  </main>
+
+  <script src="js/ward.js?v=1.0"></script>
+</body>
+</html>

@@ -276,6 +276,89 @@ def _fetch_administrations(conn, day):
     return keyed, extras
 
 
+def ward_round(conn, day):
+    """
+    Everyone in a bed on `day`, and whether the doctor has seen them yet.
+
+    The per-patient check-up already existed but there was no list: a doctor
+    had to know who was in the building and open each record in turn, with
+    nothing anywhere saying who had been seen and who was still waiting. This
+    is that list.
+
+    Each entry carries the stay (which day of how many), the nurse's
+    observation for the day, and the doctor's own note if one has been written.
+    """
+    cur = conn.cursor()
+    iso = day.isoformat()
+
+    cur.execute("""
+        SELECT a.id AS admission_id, a.patient_id, a.program_type,
+               a.start_date, a.planned_end_date, a.actual_end_date,
+               a.admission_notes,
+               p.full_name AS patient_name, p.patient_code, p.gender,
+               p.birth_date, p.birth_year, p.medical_allergies,
+               b.bed_code, r.room_number, r.room_name_uz, r.floor_number,
+               s.id AS doctor_id, s.full_name AS doctor_name
+        FROM admissions a
+        JOIN patients p ON a.patient_id = p.id
+        JOIN beds b ON a.bed_id = b.id
+        JOIN rooms r ON b.room_id = r.id
+        LEFT JOIN staff s ON a.attending_doctor_id = s.id
+        WHERE a.status = 'active'
+          AND a.start_date <= ?
+          AND COALESCE(a.actual_end_date, a.planned_end_date) >= ?
+        ORDER BY r.floor_number, r.room_number, b.bed_code
+    """, (iso, iso))
+    stays = [dict(r) for r in cur.fetchall()]
+    if not stays:
+        return {'date': iso, 'is_past': day < _dt.date.today(),
+                'is_today': day == _dt.date.today(), 'is_future': day > _dt.date.today(),
+                'patients': [], 'totals': {'total': 0, 'seen': 0, 'waiting': 0}}
+
+    ids = [s['admission_id'] for s in stays]
+    marks = ', '.join(['?'] * len(ids))
+
+    cur.execute(f"""
+        SELECT dn.*, s.full_name AS doctor_name
+        FROM doctor_daily_notes dn
+        LEFT JOIN staff s ON dn.doctor_id = s.id
+        WHERE dn.note_date = ? AND dn.admission_id IN ({marks})
+    """, tuple([iso] + ids))
+    notes = {str(r['admission_id']): dict(r) for r in cur.fetchall()}
+
+    cur.execute(f"""
+        SELECT dl.*, s.full_name AS nurse_name
+        FROM daily_logs dl
+        LEFT JOIN staff s ON dl.recorded_by_staff_id = s.id
+        WHERE dl.log_date = ? AND dl.admission_id IN ({marks})
+    """, tuple([iso] + ids))
+    vitals = {str(r['admission_id']): dict(r) for r in cur.fetchall()}
+
+    out = []
+    for st in stays:
+        adm_id = str(st['admission_id'])
+        start = _dt.datetime.strptime(str(st['start_date'])[:10], '%Y-%m-%d').date()
+        end_raw = st['actual_end_date'] or st['planned_end_date']
+        end = _dt.datetime.strptime(str(end_raw)[:10], '%Y-%m-%d').date()
+        entry = dict(st)
+        entry['day_of_stay'] = (day - start).days + 1
+        entry['total_days'] = max(1, (end - start).days)
+        entry['checkup'] = notes.get(adm_id)
+        entry['vitals'] = vitals.get(adm_id)
+        entry['seen'] = adm_id in notes
+        out.append(entry)
+
+    seen = sum(1 for e in out if e['seen'])
+    return {
+        'date': iso,
+        'is_past': day < _dt.date.today(),
+        'is_today': day == _dt.date.today(),
+        'is_future': day > _dt.date.today(),
+        'patients': out,
+        'totals': {'total': len(out), 'seen': seen, 'waiting': len(out) - seen},
+    }
+
+
 def _fetch_vitals(conn, day):
     """One day's recorded observations, keyed by admission."""
     cur = conn.cursor()

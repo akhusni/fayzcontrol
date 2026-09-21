@@ -648,6 +648,171 @@ class NurseStation(ApiTest):
             self.api.delete('/api/users/' + (body.get('id') or username))
 
 
+class WardRound(ApiTest):
+    """
+    The stationary ward round: who is in a bed today, and who the doctor has
+    already seen.
+
+    The per-patient check-up existed inside the EMR but had never once worked:
+    POST /api/doctor/notes wrote a column named vital_bp, and the table has
+    vital_bp_systolic and vital_bp_diastolic, so every save raised 'Unknown
+    column' and answered 500. doctor_daily_notes was empty in a database that
+    had been in use. There was also no list -- a doctor had to already know who
+    was in the building and open each record in turn.
+    """
+
+    def _admitted(self, name, bed, days_back=0, days_forward=6):
+        pid = self.make_patient(name)
+        start = _dt.date.today() - _dt.timedelta(days=days_back)
+        end = _dt.date.today() + _dt.timedelta(days=days_forward)
+        _, adm = self.admit(pid, bed, start.isoformat(), end.isoformat())
+        return pid, adm['admission_id']
+
+    def _board(self, day=None):
+        path = '/api/doctor/ward-round'
+        if day:
+            path += '?date=' + day.isoformat()
+        status, body = self.api.get(path)
+        self.assertEqual(status, 200, f"ward round failed: {body}")
+        return body
+
+    def _entry(self, board, admission_id):
+        for p in board['patients']:
+            if p['admission_id'] == admission_id:
+                return p
+        return None
+
+    def _checkup(self, pid, adm, **kw):
+        payload = {'patient_id': pid, 'admission_id': adm,
+                   'dynamics_notes': kw.pop('dynamics', 'Holati barqaror')}
+        payload.update(kw)
+        return self.api.post('/api/doctor/notes', payload)
+
+    def test_a_check_up_can_be_recorded_at_all(self):
+        """The regression that matters: this endpoint answered 500 every time."""
+        pid, adm = self._admitted('Ward A', BED_A)
+        status, body = self._checkup(pid, adm, patient_condition='satisfactory',
+                                     vital_pulse=72, vital_temp=36.6)
+        self.assertEqual(status, 201, f"check-up did not save: {body}")
+
+    def test_the_board_lists_who_is_in_a_bed(self):
+        pid, adm = self._admitted('Ward B', BED_B)
+        entry = self._entry(self._board(), adm)
+        self.assertIsNotNone(entry, 'an admitted patient was missing from the round')
+        self.assertEqual(entry['patient_name'], 'Ward B')
+        self.assertEqual(entry['bed_code'], '21B')
+
+    def test_the_board_separates_seen_from_waiting(self):
+        pid_a, adm_a = self._admitted('Ward Seen', BED_A)
+        pid_b, adm_b = self._admitted('Ward Waiting', BED_B)
+        self._checkup(pid_a, adm_a, dynamics='Ko`rildi')
+
+        board = self._board()
+        self.assertTrue(self._entry(board, adm_a)['seen'])
+        self.assertFalse(self._entry(board, adm_b)['seen'])
+        self.assertGreaterEqual(board['totals']['seen'], 1)
+        self.assertGreaterEqual(board['totals']['waiting'], 1)
+
+    def test_the_board_says_which_day_of_the_stay_it_is(self):
+        pid, adm = self._admitted('Ward Day', BED_C, days_back=3, days_forward=6)
+        entry = self._entry(self._board(), adm)
+        self.assertEqual(entry['day_of_stay'], 4, 'day four of the stay')
+        self.assertEqual(entry['total_days'], 9)
+
+    def test_a_patient_not_yet_admitted_is_not_on_the_board(self):
+        pid = self.make_patient('Ward Future')
+        start = _dt.date.today() + _dt.timedelta(days=5)
+        end = start + _dt.timedelta(days=5)
+        _, adm = self.admit(pid, BED_A, start.isoformat(), end.isoformat())
+        self.assertIsNone(self._entry(self._board(), adm['admission_id']),
+                          'a stay that has not started was on today\'s round')
+
+    def test_recording_twice_amends_rather_than_duplicating(self):
+        pid, adm = self._admitted('Ward Amend', BED_B)
+        self._checkup(pid, adm, dynamics='Birinchi xulosa')
+        self._checkup(pid, adm, dynamics='Tuzatilgan xulosa')
+        entry = self._entry(self._board(), adm)
+        self.assertEqual(entry['checkup']['dynamics_notes'], 'Tuzatilgan xulosa')
+
+        status, notes = self.api.get('/api/doctor/notes?patient_id=' + pid)
+        self.assertEqual(status, 200)
+        today = _dt.date.today().isoformat()
+        same_day = [n for n in notes if str(n.get('note_date'))[:10] == today]
+        self.assertEqual(len(same_day), 1,
+                         'the same morning has two contradictory assessments')
+
+    def test_an_amendment_keeps_vitals_it_does_not_mention(self):
+        pid, adm = self._admitted('Ward Keep', BED_C)
+        self._checkup(pid, adm, dynamics='Birinchi', vital_pulse=80, vital_temp=36.8)
+        self._checkup(pid, adm, dynamics='Matn tuzatildi')
+        entry = self._entry(self._board(), adm)
+        self.assertEqual(entry['checkup']['vital_pulse'], 80,
+                         'correcting the text erased the recorded pulse')
+
+    def test_nothing_is_invented_when_no_vitals_are_given(self):
+        """
+        It used to default to 120/80, pulse 72, 36.6 degrees and SpO2 98. An
+        invented vital sign is indistinguishable from a measured one.
+        """
+        pid, adm = self._admitted('Ward Blank', BED_A)
+        self._checkup(pid, adm, dynamics='Ko`rik o`tkazildi')
+        c = self._entry(self._board(), adm)['checkup']
+        for field in ('vital_bp_systolic', 'vital_bp_diastolic', 'vital_pulse',
+                      'vital_temp', 'vital_spo2'):
+            self.assertIsNone(c[field], f"{field} was invented")
+
+    def test_a_round_with_nothing_written_in_it_is_refused(self):
+        pid, adm = self._admitted('Ward Empty', BED_B)
+        status, body = self.api.post('/api/doctor/notes', {
+            'patient_id': pid, 'admission_id': adm, 'dynamics_notes': '   '})
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'dynamics_notes')
+
+    def test_an_unknown_condition_is_refused(self):
+        pid, adm = self._admitted('Ward Cond', BED_C)
+        status, body = self._checkup(pid, adm, patient_condition='fine')
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'patient_condition')
+
+    def test_an_implausible_vital_is_refused(self):
+        pid, adm = self._admitted('Ward Vital', BED_A)
+        status, body = self._checkup(pid, adm, vital_pulse=400)
+        self.assertEqual(status, 400)
+        self.assertEqual(body.get('field'), 'vital_pulse')
+
+    def test_a_round_cannot_be_written_for_a_future_day(self):
+        pid, adm = self._admitted('Ward Ahead', BED_B)
+        ahead = (_dt.date.today() + _dt.timedelta(days=2)).isoformat()
+        status, _ = self._checkup(pid, adm, note_date=ahead)
+        self.assertEqual(status, 400, 'recorded a round that has not happened')
+
+    def test_the_round_is_doctors_work(self):
+        """A nurse records doses and vitals; the assessment is the doctor's."""
+        pid, adm = self._admitted('Ward Role', BED_C)
+        username = f'suite_ward_nurse_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, created = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite Nurse', 'role': 'nurse'})
+        self.assertEqual(st, 201, f"could not create probe account: {created}")
+        try:
+            nurse = Client()
+            st, login_body = nurse.login(username, 'Suite-Probe-2026')
+            self.assertEqual(st, 200)
+            if login_body.get('must_change_password'):
+                nurse.post('/api/auth/change-password', {
+                    'current_password': 'Suite-Probe-2026',
+                    'new_password': 'Suite-Probe-2026-Rotated',
+                    'confirm_password': 'Suite-Probe-2026-Rotated'})
+            self.assertEqual(nurse.post('/api/doctor/notes', {
+                'patient_id': pid, 'admission_id': adm,
+                'dynamics_notes': 'x'})[0], 403)
+            # But she may read the board: she needs to know who is in a bed.
+            self.assertEqual(nurse.get('/api/doctor/ward-round')[0], 200)
+        finally:
+            self.api.delete('/api/users/' + (created.get('id') or username))
+
+
 class NurseVitals(ApiTest):
     """
     daily_logs held the ward's observations and had a read endpoint only, so

@@ -254,6 +254,7 @@ from db import (
     discharge_patient,
     list_room_availability,
     ensure_patient_columns,
+    ensure_ward_round_schema,
     load_config
 )
 
@@ -969,6 +970,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # and a signed sheet gets filed: it has to exist as something the
             # ward can keep and re-send, not only as whatever the browser
             # rendered that afternoon.
+            # GET /api/doctor/ward-round?date= -- who is in a bed today and
+            # who the doctor has already seen. The per-patient check-up
+            # existed; the list did not, so a doctor had to already know who
+            # was in the building and open each record in turn.
+            elif path == '/api/doctor/ward-round':
+                day, err = parse_date_param(query.get('date', [None])[0])
+                if err:
+                    self._send_validation_error(err, 'date')
+                    return
+                board = nursery.ward_round(conn, day)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(board, ensure_ascii=False,
+                                            default=str).encode('utf-8'))
+
             elif path == '/api/nursery/round/pdf':
                 day, err = parse_date_param(query.get('date', [None])[0])
                 if err:
@@ -2030,28 +2045,92 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({'message': 'Prescription created', 'id': rx_id}).encode('utf-8'))
 
-            # 10. POST /api/doctor/notes (Add daily examination note)
+            # 10. POST /api/doctor/notes -- the daily ward-round assessment.
+            #
+            # This wrote a column named vital_bp. The table has
+            # vital_bp_systolic and vital_bp_diastolic and never had
+            # vital_bp, so every save raised 'Unknown column' and answered
+            # 500: the check-up tab had never once recorded anything, and
+            # doctor_daily_notes was empty in a database that had been in use.
+            #
+            # It also invented the observations it was given no values for --
+            # 120/80, pulse 72, 36.6 degrees, SpO2 98, 'Holat barqaror'. In a
+            # medical record an invented vital sign is indistinguishable from
+            # a measured one; blank now stays blank.
             elif path == '/api/doctor/notes':
-                cur.execute("""
-                    INSERT INTO doctor_daily_notes (patient_id, admission_id, doctor_id, note_date, patient_condition, vital_bp, vital_pulse, vital_temp, vital_spo2, dynamics_notes, treatment_adjustments)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pid = (body.get('patient_id') or '').strip()
+                adm_id = (body.get('admission_id') or '').strip() or None
+                if not pid:
+                    self._send_validation_error('Bemor tanlanmadi.', 'patient_id')
+                    return
+
+                day, err = parse_date_param(body.get('note_date') or body.get('date'))
+                if err:
+                    self._send_validation_error(err, 'note_date')
+                    return
+                if day > datetime.date.today():
+                    self._send_validation_error(
+                        "Kelajakdagi kun uchun ko'rik yozilmaydi.", 'note_date')
+                    return
+
+                condition = (body.get('patient_condition') or 'moderate').strip()
+                if condition not in ('satisfactory', 'moderate', 'severe', 'critical'):
+                    self._send_validation_error(
+                        "Holat noto'g'ri. Ruxsat etilgan: satisfactory, moderate, "
+                        "severe, critical.", 'patient_condition')
+                    return
+
+                dynamics = (body.get('dynamics_notes') or '').strip()
+                if not dynamics:
+                    # The column is NOT NULL, and a round with nothing written
+                    # in it is not a round.
+                    self._send_validation_error(
+                        "Dinamika (ko'rik xulosasi) to'ldirilishi shart.",
+                        'dynamics_notes')
+                    return
+
+                # Same ranges and the same messages as the nurse's vitals.
+                vitals, verr = nursery.parse_vitals(body)
+                if verr:
+                    self._send_validation_error(verr[0], verr[1])
+                    return
+
+                sess = self.current_session()
+                doc_id = (body.get('doctor_id')
+                          or (sess['user'].get('staff_id') if sess else None))
+
+                # As on the nurse's sheet, an amendment only touches what it
+                # names: correcting the written assessment must not silently
+                # erase a pulse recorded on the same round.
+                _upd = ['doctor_id', 'patient_condition', 'dynamics_notes']
+                _upd += [f for f in nursery.VITAL_RANGES if f in vitals]
+                if 'treatment_adjustments' in body:
+                    _upd.append('treatment_adjustments')
+                _clause = ', '.join(f"{c} = VALUES({c})" for c in _upd)
+                cur.execute(f"""
+                    INSERT INTO doctor_daily_notes (
+                        patient_id, admission_id, doctor_id, note_date,
+                        patient_condition, vital_bp_systolic, vital_bp_diastolic,
+                        vital_pulse, vital_temp, vital_spo2,
+                        dynamics_notes, treatment_adjustments)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE {_clause}
                 """, (
-                    body.get('patient_id'),
-                    body.get('admission_id'),
-                    body.get('doctor_id', 'STF-DOC-01'),
-                    body.get('note_date', datetime.date.today().isoformat()),
-                    body.get('patient_condition', 'moderate'),
-                    body.get('vital_bp', '120/80'),
-                    int(body.get('vital_pulse', 72)),
-                    float(body.get('vital_temp', 36.6)),
-                    int(body.get('vital_spo2', 98)),
-                    body.get('dynamics_notes', 'Holat barqaror'),
-                    body.get('treatment_adjustments', '')
+                    pid, adm_id, doc_id, day.isoformat(), condition,
+                    vitals.get('vital_bp_systolic'), vitals.get('vital_bp_diastolic'),
+                    vitals.get('vital_pulse'), vitals.get('vital_temp'),
+                    vitals.get('vital_spo2'), dynamics,
+                    (body.get('treatment_adjustments') or '').strip() or None,
                 ))
                 conn.commit()
-                conn.close()
+                audit.record(conn, 'doctor_daily_notes', adm_id or pid, 'WARD_ROUND',
+                             user=(sess['user'] if sess else None),
+                             new_data={'date': day.isoformat(), 'condition': condition},
+                             ip_address=self.client_ip())
                 self._set_json_headers(201)
-                self.wfile.write(json.dumps({'message': 'Daily note saved'}).encode('utf-8'))
+                self.wfile.write(json.dumps(
+                    {'message': "Ko'rik saqlandi", 'date': day.isoformat()},
+                    ensure_ascii=False).encode('utf-8'))
 
             # 11. POST /api/doctor/epicrisis (Save Discharge Epicrisis)
             elif path == '/api/doctor/epicrisis':
@@ -3223,6 +3302,8 @@ def run_server():
             audit.ensure_schema(_c)
             # Adds patients.birth_date to a database made before it existed.
             ensure_patient_columns(_c)
+            # One ward-round note per stay per day.
+            ensure_ward_round_schema(_c)
         finally:
             _c.close()
     except Exception as _e:

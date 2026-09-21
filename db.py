@@ -643,6 +643,58 @@ def ensure_patient_columns(conn):
         print(f"[!] Could not add patients.birth_date: {e}")
 
 
+_ward_round_checked = False
+
+
+def ensure_ward_round_schema(conn):
+    """
+    One doctor's note per stay per day.
+
+    doctor_daily_notes had no unique key, so the ward round could file two
+    contradictory assessments of the same patient on the same morning and
+    nothing would object. The round is a daily record; a doctor amending what
+    they wrote an hour ago should replace it, not add to it.
+
+    Idempotent, so it can run on every start.
+    """
+    global _ward_round_checked
+    if _ward_round_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'doctor_daily_notes'
+              AND INDEX_NAME = 'uq_admission_note_date'
+        """)
+        row = cur.fetchone()
+        have = (row['n'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0])
+        if not have:
+            # Collapse any duplicates a previous version could have written
+            # before adding the constraint, keeping the most recent of each day.
+            cur.execute("""
+                DELETE n FROM doctor_daily_notes n
+                JOIN (
+                    SELECT admission_id, note_date, MAX(id) AS keep_id
+                    FROM doctor_daily_notes
+                    WHERE admission_id IS NOT NULL
+                    GROUP BY admission_id, note_date
+                    HAVING COUNT(*) > 1
+                ) d ON n.admission_id = d.admission_id
+                   AND n.note_date = d.note_date
+                   AND n.id <> d.keep_id
+            """)
+            cur.execute("""
+                ALTER TABLE doctor_daily_notes
+                ADD UNIQUE KEY uq_admission_note_date (admission_id, note_date)
+            """)
+            conn.commit()
+        _ward_round_checked = True
+    except Exception as e:
+        print(f"[!] Could not add the ward-round unique key: {e}")
+
+
 def list_room_availability(conn, start_date, end_date):
     """
     The occupancy board for one date range, room by room.

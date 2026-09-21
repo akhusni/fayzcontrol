@@ -1,0 +1,156 @@
+/* ==========================================================================
+   FAYZ MEDICAL HOUSE — STATIONARY WARD ROUND
+   Builds on nurse.css: the two boards share the card, the chip bar and the
+   date navigator, so the ward reads the same way whichever post you sit at.
+   ========================================================================== */
+
+.ward-card {
+  border-left: 3px solid rgba(245, 158, 11, 0.55);
+}
+
+/* Seen today. The colour carries the same meaning as on the round sheet. */
+.ward-card.is-seen {
+  border-left-color: var(--emerald, #10b981);
+}
+
+.ward-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ward-status.seen {
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--emerald, #10b981);
+}
+
+.ward-status.waiting {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+}
+
+/* The nurse's observation, as context. It is a separate record by a separate
+   person, so it is shown and not edited here. */
+.ward-nursevitals {
+  margin: 0.55rem 0 0.7rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+}
+
+.ward-novitals { color: var(--text-muted); font-style: italic; }
+.ward-by { color: var(--text-muted); font-size: 0.72rem; }
+
+.ward-form { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.ward-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: flex-end;
+}
+
+.ward-field { display: flex; flex-direction: column; gap: 3px; }
+.ward-grow { flex: 1 1 260px; min-width: 200px; }
+.ward-field-condition { min-width: 150px; }
+
+.ward-label {
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.ward-condition,
+.ward-dynamics,
+.ward-adjust {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 6px 9px;
+  width: 100%;
+  resize: vertical;
+}
+
+.ward-condition:focus-visible,
+.ward-dynamics:focus-visible,
+.ward-adjust:focus-visible {
+  outline: 2px solid var(--primary-light, #38bdf8);
+  outline-offset: 1px;
+}
+
+.ward-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.btn-ward-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(34, 211, 238, 0.14);
+  border: 1px solid rgba(34, 211, 238, 0.42);
+  color: #22d3ee;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-ward-save:hover:not(:disabled) { background: rgba(34, 211, 238, 0.24); }
+.btn-ward-save:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Day mode */
+[data-theme="day"] .ward-nursevitals,
+body.day-mode .ward-nursevitals {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme="day"] .ward-condition,
+[data-theme="day"] .ward-dynamics,
+[data-theme="day"] .ward-adjust,
+body.day-mode .ward-condition,
+body.day-mode .ward-dynamics,
+body.day-mode .ward-adjust {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+/* On paper the written assessment is what matters; the controls are not. */
+@media print {
+  .ward-form-actions, .btn-ward-save { display: none !important; }
+  .ward-card { page-break-inside: avoid; border-left-width: 2px; }
+  .ward-condition, .ward-dynamics, .ward-adjust {
+    border: none;
+    border-bottom: 1px solid #333;
+    background: none;
+    color: #000;
+  }
+  .ward-nursevitals { background: none; border: 1px solid #999; color: #000; }
+}
+
+@media (max-width: 720px) {
+  .ward-form-row { flex-direction: column; align-items: stretch; }
+  .ward-grow, .ward-field-condition { min-width: 100%; }
+}

@@ -282,6 +282,10 @@ CREATE TABLE IF NOT EXISTS doctor_daily_notes (
     dynamics_notes TEXT NOT NULL,
     treatment_adjustments TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- The ward round is a daily record: one assessment per stay per day, so
+    -- amending what was written an hour ago replaces it instead of filing a
+    -- second, contradictory note for the same morning.
+    UNIQUE KEY uq_admission_note_date (admission_id, note_date),
     FOREIGN KEY (patient_id) REFERENCES patients(id) ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (admission_id) REFERENCES admissions(id) ON UPDATE CASCADE ON DELETE SET NULL,
     FOREIGN KEY (doctor_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL
