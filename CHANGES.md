@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 78 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 120 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil sentabr
 
 ---
@@ -25,6 +25,11 @@ qoplangan.
 | Muvaffaqiyatsiz qabul bemor yozuvini qoldirardi | Har bir rad etilgan qabul "Yangi Bemor" nomli keraksiz yozuv qoldirardi. |
 | `building_management.js` da cheksiz rekursiya | Haqiqiy bronlar mavjud bo'lganda sahifa stack overflow bilan ishlamay qolardi. |
 | "Butun xona" qoidasi faqat brauzerda edi | Xona **1.1 mln/kun** ga yaxlit sotilgandan keyin ham ikkinchi o'ringa bemor qo'yish qabul qilinardi. Ya'ni bemor alohida xona uchun to'lab, yoniga begona odam joylashtirilishi mumkin edi. Ko'chirish (transfer) yo'li ham xuddi shunday ochiq edi. |
+| Shifokorning kunlik ko'rigi **hech qachon saqlanmagan** | `POST /api/doctor/notes` mavjud bo'lmagan `vital_bp` ustuniga yozardi — har bir saqlash 500 xatolik qaytarardi. `doctor_daily_notes` jadvali ishlatilayotgan bazada **bo'm-bo'sh** edi: interfeys ishlayotgandek ko'rinardi va shifokor yozgan hamma narsani jimgina yo'qotardi. |
+| Ko'rik to'ldirilmagan ko'rsatkichlarni **o'ylab topardi** | Bo'sh qoldirilsa avtomatik `120/80`, puls `72`, `36.6°`, SpO2 `98` yozilardi. Tibbiy yozuvda o'ylab topilgan ko'rsatkichni o'lchangandan ajratib bo'lmaydi — ular imzolanib, rasmiy hujjatga tushardi. |
+| Ro'yxatga olishda jins va tug'ilgan sana so'ralmasdi | Server ularni o'zi to'ldirardi: **har bir bemor "erkak, 1990-yilda tug'ilgan"** deb yozilardi. Konsultatsiya saqlanganda esa bu qiymatlar **to'g'ri yozuvni ham ustidan yozardi**. |
+| Konsultatsiya boshqa bemorga yozilishi mumkin edi | Bemorni qidirish `phone = ? OR full_name = ?` edi va telefon bo'sh bo'lsa ham solishtirardi. Ko'pchilik yozuvda telefon bo'sh — shuning uchun raqam qoldirmagan bemorning tashrifi **birinchi uchragan begona bemorga** yozilardi. |
+| Hamshira ko'rsatkichlarini saqlay olmasdi | `daily_logs` faqat o'qish uchun ochiq edi — yozish yo'li umuman yo'q edi. |
 | Sana chegarasi hisob-kitob bilan mos emasdi | Hisob-kitob `DATEDIFF(end, start)` — ketish kuni tunab qolinmaydi. Tekshiruv esa ikkala chetini ham band deb hisoblardi, shuning uchun **bemor chiqqan kuni yangi bemorni qabul qilib bo'lmasdi**: panel o'rinni bo'sh ko'rsatar, server esa rad etardi. |
 
 ---
@@ -120,6 +125,38 @@ xonani yaxlit sotadi.
   *"butun xona (bo'sh turadi)"* deb ko'rsatiladi: u pullangan va ataylab
   bo'sh qoldirilgan.
 
+### Statsionar kunlik ko'rigi (`ward.html`)
+
+Avval ko'rik faqat bitta bemor ichida, EMR sahifasida bor edi — **ro'yxat
+yo'q edi**. Shifokor kim yotganini oldindan bilishi va har bir kartani
+alohida ochishi kerak edi; kim ko'rikdan o'tgani, kim kutayotgani hech
+qayerda ko'rinmasdi.
+
+- Tanlangan kunda karavotda yotgan barcha bemorlar — palata tartibida:
+  o'rin, xona, ism, **nechanchi kun / jami**, mas'ul shifokor, allergiya.
+- Hamshira o'sha kuni yozgan ko'rsatkichlar **kontekst sifatida**
+  ko'rsatiladi (tahrirlanmaydi — bu boshqa xodimning alohida yozuvi).
+- Har bir kartada ko'rikning o'zi: umumiy holat, ko'rsatkichlar, dinamika
+  va davolashga o'zgartirish. Ko'rikdan o'tgan bemor **yashil** bo'ladi,
+  sarlavhada esa "ko'rikdan o'tgan / kutilmoqda" soni turadi.
+- Kun bo'yicha bitta ko'rik: tuzatish **almashtiradi**, ikkinchi qarama-qarshi
+  yozuv qo'shmaydi.
+
+### Hamshira: ko'rsatkichlar va PDF
+
+- **Ko'rsatkichlar yoziladi.** Har bir bemor kartasida AB, puls, harorat,
+  SpO2 va izoh. Kun bo'yicha bitta yozuv — tuzatish almashtiradi. Tuzatish
+  **faqat o'zi nomlagan maydonni** o'zgartiradi: kunduzgi puls ertalabki
+  bosimni o'chirib yubormaydi.
+- **PDF yuklab olish.** Avval faqat brauzer orqali chop etish bor edi.
+  Imzolangan varaqa tikiladi — demak u fayl sifatida mavjud bo'lishi kerak.
+
+### Ro'yxatga olishda tug'ilgan sana va jins
+
+Qabulxona endi **tug'ilgan sanani** (yilni emas) va **jinsni** so'raydi;
+ikkalasi shifokor anketasiga avtomatik o'tadi. To'ldirilmasa — bo'sh
+qoladi, o'ylab topilmaydi.
+
 ### Karavot bandligi endi serverdan olinadi
 
 Avval bandlik brauzerda hisoblanardi. Buning o'rniga
@@ -140,7 +177,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **78 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **120 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
@@ -159,16 +196,15 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 **Keyingi ish (tavsiya etilgan tartibda):**
 
-2. **Statsionar kunlik ko'rik** — shifokorning kunlik ko'rik moduli.
-3. **Farmatsevt va oshxona sahifalari.**
-4. `building_management.html` hali ham bronlarni `localStorage` da
+2. **Farmatsevt va oshxona sahifalari.**
+3. `building_management.html` hali ham bronlarni `localStorage` da
    saqlaydi. Qabulxona endi unga bog'liq emas, lekin o'sha sahifaning
    o'zi ham bazaga o'tkazilishi kerak.
-5. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
+4. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
    xodimlar qaytadan kirishi kerak.
-6. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
+5. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
    emas, yillar o'tib sekinlashadi.
-7. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+6. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
    ko'rish uchun SQL kerak).
 
 ---
