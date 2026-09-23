@@ -462,6 +462,33 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             payload['request_id'] = request_id
         self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
+    def _send_health(self):
+        """
+        Is the service usable? 200 when yes, 503 when the database is not
+        reachable -- which is the failure a monitor needs to catch, because
+        the pages still load in that state and only break once staff try to
+        do anything.
+        """
+        db_ok = False
+        conn = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute('SELECT 1')
+            cur.fetchone()
+            db_ok = True
+        except Exception as e:
+            print(f'[health] database unreachable: {e}')
+        finally:
+            if conn:
+                try: conn.close()
+                except Exception: pass
+        self._set_json_headers(200 if db_ok else 503)
+        self.wfile.write(json.dumps({
+            'status': 'ok' if db_ok else 'degraded',
+            'database': 'ok' if db_ok else 'unreachable',
+        }).encode('utf-8'))
+
     def _send_server_error(self):
         """
         A 500 that says nothing about the inside of the system.
@@ -628,6 +655,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
+
+        # Answered before the session gate, because whatever is watching
+        # this server cannot sign in. Nothing here is worth hiding: it
+        # says only whether the service and its database are up, with no
+        # version, no counts and no error text -- a failing probe should
+        # not teach a stranger what went wrong.
+        if path == '/api/health':
+            self._send_health()
+            return
 
         if self.enforce_auth(path):
             return
@@ -3590,6 +3626,9 @@ def run_server():
         _c = get_db()
         try:
             audit.ensure_schema(_c)
+            # Index the trail by time: without it a retention sweep, or
+            # any question about a date range, reads every row.
+            audit.ensure_index(_c)
             # Adds patients.birth_date to a database made before it existed.
             ensure_patient_columns(_c)
             # One ward-round note per stay per day.

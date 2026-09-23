@@ -229,6 +229,38 @@ SELECT entity_name, entity_id, action_type,
 FROM audit_logs ORDER BY id DESC LIMIT 50;
 ```
 
+**Saqlash muddati.** Jurnal o'z-o'zidan cheklanmaydi — sinov paytida bir necha
+kunda 82 000 yozuvga yetdi. Endi `timestamp` bo'yicha indeks bor (usiz sana
+bo'yicha qidiruv butun jadvalni o'qirdi) va tozalash skripti:
+
+```bash
+./scripts/prune-audit.py --dry-run   # nima o'chishini aytadi, o'chirmaydi
+./scripts/prune-audit.py             # sozlangan muddatni qo'llaydi
+./scripts/prune-audit.py --days 365  # bir marta boshqa muddat
+```
+
+Standart **730 kun (2 yil)** — ataylab uzoq, chunki bu tibbiy audit jurnali va
+uni qancha saqlash klinika va nazorat organi qaroriga bog'liq.
+`FMH_AUDIT_KEEP_DAYS=0` — hech narsa o'chirilmaydi.
+
+Haftalik tozalash `scripts/fayzcontrol-backup.cron` ichida.
+
+### 🩺 Servis Holati (monitoring)
+
+```bash
+curl https://fayzcontrol.uz/api/health
+```
+
+`{"status":"ok","database":"ok"}` va **200** — hammasi joyida.
+Baza yiqilsa **503** va `"database":"unreachable"`.
+
+Buni kuzatuvchi tizimga ulang. **Sahifaning o'zini tekshirish yetarli emas:**
+baza o'chgan holatda ham `login.html` **200 qaytaradi** — sahifalar ochiladi,
+lekin xodim hech narsa qila olmaydi. Faqat shu endpoint buni ko'rsatadi.
+
+Endpoint avtorizatsiyasiz javob beradi (kuzatuvchi tizim tizimga kira olmaydi)
+va ataylab hech qanday versiya, son yoki xato matnini bermaydi.
+
 ### 🔒 Kirishni Cheklash
 
 Noto'g'ri parol bilan urinishlar hisoblanadi: bitta hisob uchun 8 marta

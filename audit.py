@@ -23,6 +23,7 @@ Auditing must never break the request it is describing: every failure here is
 swallowed and reported to the console.
 """
 
+import os
 import json
 import datetime as _dt
 
@@ -88,6 +89,77 @@ def ensure_schema(conn):
         print(f"[!] Could not widen audit_logs.action_type ({e}). "
               f"Authentication events will not be recorded.")
         _schema_checked = True   # do not retry on every request
+
+
+# How long the trail is kept. Two years by default -- generous, because this is
+# a medical audit trail and how long it must be retained is a decision for the
+# clinic and its regulator, not for this file. Set FMH_AUDIT_KEEP_DAYS to 0 to
+# keep everything for ever.
+KEEP_DAYS = int(os.environ.get('FMH_AUDIT_KEEP_DAYS', 730))
+
+_index_checked = False
+
+
+def ensure_index(conn):
+    """
+    Index audit_logs by time.
+
+    The table had indexes on its primary key and on performed_by_staff_id and
+    nothing else, so anything asking "what happened between these dates" --
+    a retention sweep, or the viewer this still needs -- had to read every
+    row. It reached 82,000 rows in a few days of testing.
+
+    Idempotent; safe on every start.
+    """
+    global _index_checked
+    if _index_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'audit_logs'
+              AND INDEX_NAME = 'idx_audit_timestamp'
+        """)
+        row = cur.fetchone()
+        have = row['n'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+        if not have:
+            cur.execute("CREATE INDEX idx_audit_timestamp ON audit_logs (`timestamp`)")
+            conn.commit()
+            print("[✓] audit_logs indexed by timestamp.")
+        _index_checked = True
+    except Exception as e:
+        print(f"[!] Could not index audit_logs by timestamp: {e}")
+        _index_checked = True
+
+
+def prune(conn, keep_days=None):
+    """
+    Drop entries older than the retention window. Returns how many went.
+
+    Deleted in batches so a first run against a table that has never been
+    pruned cannot hold a single enormous transaction open while the clinic is
+    working.
+    """
+    keep = KEEP_DAYS if keep_days is None else int(keep_days)
+    if keep <= 0:
+        return 0
+    ensure_index(conn)
+    cur = conn.cursor()
+    removed = 0
+    while True:
+        cur.execute("""
+            DELETE FROM audit_logs
+            WHERE `timestamp` < DATE_SUB(NOW(), INTERVAL ? DAY)
+            LIMIT 5000
+        """, (keep,))
+        n = cur.rowcount or 0
+        conn.commit()
+        removed += n
+        if n < 5000:
+            break
+    return removed
 
 
 def _staff_id_for(user):

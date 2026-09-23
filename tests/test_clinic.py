@@ -1150,6 +1150,93 @@ class PatientIdentity(ApiTest):
         self.assertEqual(str(mine[0].get('birth_date'))[:10], '1990-07-02')
 
 
+class Operations(ApiTest):
+    """
+    The things that matter to whoever keeps this running, rather than to the
+    clinic: is it up, and does the audit trail stay a manageable size.
+    """
+
+    def test_health_answers_without_a_session(self):
+        """Whatever monitors this cannot sign in."""
+        req = urllib.request.Request(BASE + '/api/health')
+        opener = urllib.request.build_opener(NoRedirect())
+        with opener.open(req) as res:
+            self.assertEqual(res.status, 200)
+            body = json.loads(res.read())
+        self.assertEqual(body['status'], 'ok')
+        self.assertEqual(body['database'], 'ok')
+
+    def test_health_says_nothing_it_does_not_have_to(self):
+        """
+        A failing probe is readable by anyone, so it carries no version, no
+        counts and no error text.
+        """
+        req = urllib.request.Request(BASE + '/api/health')
+        with urllib.request.build_opener(NoRedirect()).open(req) as res:
+            body = json.loads(res.read())
+        self.assertEqual(set(body), {'status', 'database'})
+
+    def test_the_audit_trail_is_searchable_by_date(self):
+        """
+        audit_logs had indexes on its primary key and on the staff id, and
+        nothing else, so a question about a date range -- or a retention
+        sweep -- had to read every row of a table with no upper bound.
+        """
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SHOW INDEX FROM audit_logs")
+            names = {r['Key_name'] for r in cur.fetchall()}
+        finally:
+            conn.close()
+        self.assertIn('idx_audit_timestamp', names,
+                      'the audit trail cannot be queried by date')
+
+    def test_retention_removes_only_what_is_past_the_window(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        import audit
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            # A row well inside the window, and one well outside it.
+            cur.execute("""INSERT INTO audit_logs
+                           (entity_name, entity_id, action_type, `timestamp`)
+                           VALUES ('suite_probe', 'KEEP', 'CREATE', NOW())""")
+            cur.execute("""INSERT INTO audit_logs
+                           (entity_name, entity_id, action_type, `timestamp`)
+                           VALUES ('suite_probe', 'DROP', 'CREATE',
+                                   DATE_SUB(NOW(), INTERVAL 900 DAY))""")
+            conn.commit()
+
+            audit.prune(conn, keep_days=730)
+
+            cur.execute("""SELECT entity_id FROM audit_logs
+                           WHERE entity_name = 'suite_probe'""")
+            left = {r['entity_id'] for r in cur.fetchall()}
+            self.assertIn('KEEP', left, 'retention deleted a current entry')
+            self.assertNotIn('DROP', left, 'retention kept an expired entry')
+
+            cur.execute("DELETE FROM audit_logs WHERE entity_name = 'suite_probe'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_retention_can_be_switched_off(self):
+        """Keeping everything for ever is a legitimate choice for a medical
+        record, so zero means zero rather than delete-everything."""
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        import audit
+        conn = get_db()
+        try:
+            self.assertEqual(audit.prune(conn, keep_days=0), 0)
+        finally:
+            conn.close()
+
+
 class PublicEnquiry(ApiTest):
     """
     The booking form on the public website.

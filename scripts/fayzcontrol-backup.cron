@@ -11,6 +11,11 @@ FMH_BACKUP_KEEP_DAYS=30
 # 02:15 every night
 15 2 * * * www-data /var/www/fayzcontrol.uz/scripts/backup.sh >> /var/log/fayzcontrol-backup.log 2>&1
 
+# 03:30 every Sunday: apply the audit-trail retention window. The table has
+# no limit of its own and is only searchable by date because of the index this
+# adds; how long it must be kept is a decision for the clinic.
+30 3 * * 0 www-data /var/www/fayzcontrol.uz/scripts/prune-audit.py >> /var/log/fayzcontrol-backup.log 2>&1
+
 # 03:00 every Sunday: prove the newest archive still restores.
 # Needs an admin account; set FMH_ADMIN_DB_USER / FMH_ADMIN_DB_PASSWORD.
 # 0 3 * * 0 root /var/www/fayzcontrol.uz/scripts/restore-test.sh >> /var/log/fayzcontrol-backup.log 2>&1
