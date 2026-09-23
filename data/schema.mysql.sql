@@ -128,6 +128,32 @@ CREATE TABLE IF NOT EXISTS appointments (
     FOREIGN KEY (doctor_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Enquiries submitted from the public website.
+--
+-- Deliberately NOT the appointments table and deliberately not a patient
+-- record: this is unverified input from the open internet, and the one
+-- endpoint that writes it needs no authentication. Nothing here reaches the
+-- clinical tables until someone at the desk reads it and accepts it, so spam
+-- cannot fill the patient list.
+CREATE TABLE IF NOT EXISTS appointment_requests (
+    id VARCHAR(64) PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(64) NOT NULL,
+    preferred_date DATE,
+    service_type VARCHAR(64),
+    note TEXT,
+    source VARCHAR(64) NOT NULL DEFAULT 'website',
+    status VARCHAR(32) NOT NULL DEFAULT 'new' CHECK(status IN ('new', 'accepted', 'rejected')),
+    ip_address VARCHAR(64),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    handled_by VARCHAR(64),
+    handled_at DATETIME,
+    patient_id VARCHAR(64),
+    appointment_id VARCHAR(64),
+    INDEX idx_request_status (status, created_at),
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS call_logs (
     id VARCHAR(64) PRIMARY KEY,
     caller_name VARCHAR(255),

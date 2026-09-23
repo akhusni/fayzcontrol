@@ -137,29 +137,80 @@ sifatida ishga tushirib, oldiga Nginx qo'yish.
 
 ---
 
-## 🔗 5. Veb-Sayt Bilan Integratsiya — **HOZIRDA ISHLAMAYDI**
+## 🔗 5. Veb-Sayt Bilan Integratsiya
 
-Avval rasmiy sayt (`fayzmedical.uz`) qabulga yozilish arizasini
-`https://fayzcontrol.uz/api/reception/appointment` ga yuborardi va u
-to'g'ridan-to'g'ri CRM ga tushardi.
+Rasmiy sayt (`fayzmedical.uz`) dagi yozilish formasi CRM ga ulanadi.
 
-**Bu endi ishlamaydi va buni bilib turish kerak.** Butun `/api/*`
-avtorizatsiya talab qiladi, `/api/reception/appointment` esa ochiq
-endpointlar ro'yxatida emas (`auth.py` → `PUBLIC_API_PATHS`). Sayt
-formasi endi **401** oladi va ariza **hech qayerga tushmaydi** —
-jimgina yo'qoladi.
+> **Nima o'zgardi.** Avval forma to'g'ridan-to'g'ri
+> `/api/reception/appointment` ga yozardi. Butun `/api/*` avtorizatsiya
+> talab qila boshlagach, o'sha endpoint **401** qaytaradigan bo'ldi va
+> arizalar **jimgina yo'qola boshladi** — hech qayerda qayd etilmasdi va
+> hech kimga xabar berilmasdi. Endi ular uchun alohida ochiq endpoint bor.
 
-Uchta variant bor, qaysi birini tanlashni klinika hal qiladi:
+### Sayt shu manzilga yuboradi
 
-1. **Hozircha shunday qoldirish** va saytdagi formani telefon raqamiga
-   almashtirish. Eng xavfsiz, lekin onlayn yozilish yo'qoladi.
-2. **Alohida ochiq endpoint** qo'shish (masalan
-   `/api/public/appointment-request`): faqat yozish, faqat "yangi
-   ariza" holatida saqlaydi, IP bo'yicha cheklangan va
-   qabulxona tasdiqlamaguncha bemor kartasi yaratilmaydi. Spam va
-   bazani to'ldirish xavfi bor, shuning uchun cheklov majburiy.
-3. **Sayt uchun alohida xizmat hisobi** va API kaliti — sayt backend'i
-   (brauzer emas) shu kalit bilan murojaat qiladi.
+```
+POST https://fayzcontrol.uz/api/public/appointment-request
+Content-Type: application/json
 
-Tavsiya: **2-variant**, lekin bu alohida ish va deploydan oldin
-qilinishi shart emas. Muhimi — hozir forma ishlamasligini bilish.
+{
+  "full_name":      "Aziza Rahimova",      // majburiy
+  "phone":          "+998 90 111 22 33",   // majburiy
+  "preferred_date": "2026-10-05",          // ixtiyoriy, o'tgan sana bo'lmasin
+  "service_type":   "consultation",        // ixtiyoriy
+  "note":           "Konsultatsiyaga yozilmoqchiman",  // ixtiyoriy
+  "website":        ""                     // TUZOQ: ko'rinmas maydon, bo'sh qolsin
+}
+```
+
+Javob **201** va `{"message": "...", "request_id": "REQ-..."}`.
+
+Formaga `website` nomli **yashirin** maydon qo'ying (CSS bilan bekiting).
+Odam uni ko'rmaydi va to'ldirmaydi; bot esa har bir maydonni to'ldiradi.
+To'ldirilgan bo'lsa server **201 qaytaradi, lekin hech narsa saqlamaydi** —
+bot buni bilib ololmaydi.
+
+### Bu endpoint nima qiladi va nima qilmaydi
+
+- Faqat `appointment_requests` jadvaliga yozadi. **Bemor kartasi ochilmaydi,
+  navbat band qilinmaydi** — bu tekshirilmagan ma'lumot.
+- Qabulxona "Saytdan So'rovlar" tabida ko'radi. **"Qabul qilish"** bosilgandagina
+  bemor kartasi ochiladi va navbatga yoziladi. Spam bazani to'ldira olmaydi.
+- Bir IP dan **soatiga 5 ta** ariza va **kuniga 20 ta** (urinishlar alohida
+  hisoblanadi — telefon raqamini xato yozish arizani "yeb" qo'ymaydi).
+- Tizimdagi **yagona** avtorizatsiyasiz yoziladigan yo'l. Qolgan barcha
+  `/api/*` avvalgidek yopiq.
+
+### CORS
+
+Sayt boshqa domenda, shuning uchun **faqat shu endpoint** CORS javobini
+beradi va **faqat ro'yxatdagi domenlar uchun**. Standart:
+`https://fayzmedical.uz` va `https://www.fayzmedical.uz`. O'zgartirish:
+
+```ini
+Environment=FMH_PUBLIC_SITE_ORIGIN=https://fayzmedical.uz,https://www.fayzmedical.uz
+```
+
+(systemd servis faylida). Boshqa domendan kelgan so'rovga CORS sarlavhasi
+berilmaydi va brauzer uni bloklaydi.
+
+### Sozlamalar
+
+| O'zgaruvchi | Ma'nosi | Standart |
+| :--- | :--- | :--- |
+| `FMH_PUBLIC_SITE_ORIGIN` | CORS ruxsat etilgan domenlar (vergul bilan) | `https://fayzmedical.uz,https://www.fayzmedical.uz` |
+| `FMH_PUBLIC_ENQUIRY_PER_HOUR` | Bir IP dan soatiga saqlanadigan ariza | `5` |
+| `FMH_PUBLIC_ENQUIRY_PER_DAY` | Bir IP dan kuniga | `20` |
+| `FMH_PUBLIC_ENQUIRY_ATTEMPTS_PER_HOUR` | Bir IP dan soatiga urinish (xatolar ham) | `30` |
+
+### Tekshirish
+
+```bash
+curl -i -X POST https://fayzcontrol.uz/api/public/appointment-request \
+  -H 'Content-Type: application/json' \
+  -H 'Origin: https://fayzmedical.uz' \
+  -d '{"full_name":"Test Bemor","phone":"+998901112233"}'
+```
+
+`201` va `Access-Control-Allow-Origin: https://fayzmedical.uz` bo'lishi kerak.
+So'ng qabulxonada "Saytdan So'rovlar" tabini oching — ariza shu yerda turadi.

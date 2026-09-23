@@ -1150,6 +1150,235 @@ class PatientIdentity(ApiTest):
         self.assertEqual(str(mine[0].get('birth_date'))[:10], '1990-07-02')
 
 
+class PublicEnquiry(ApiTest):
+    """
+    The booking form on the public website.
+
+    It used to POST straight at /api/reception/appointment. Once the API
+    required a session that endpoint answered 401, so every enquiry from the
+    website vanished: nothing recorded, nobody told, and the clinic had no way
+    to know enquiries had stopped arriving.
+
+    They land in appointment_requests now, through the only route in the system
+    that accepts a write without a session. Nothing it writes is clinical data
+    until somebody at the desk accepts it, so spam cannot fill the patient list.
+    """
+
+    PATH = '/api/public/appointment-request'
+    SITE = 'https://fayzmedical.uz'
+
+    def enquire(self, payload, ip=None, origin=None):
+        """
+        Post as the website would. Each test uses its own X-Real-IP so the
+        per-address rate limit of one test cannot spend another's allowance;
+        the server trusts that header because only Nginx can reach the socket.
+        """
+        req = urllib.request.Request(BASE + self.PATH,
+                                     data=json.dumps(payload).encode(),
+                                     method='POST')
+        req.add_header('Content-Type', 'application/json')
+        req.add_header('X-Real-IP', ip or f'203.0.113.{os.getpid() % 250 + 1}')
+        if origin:
+            req.add_header('Origin', origin)
+        opener = urllib.request.build_opener(NoRedirect())
+        try:
+            with opener.open(req) as res:
+                body = res.read().decode()
+                return res.status, (json.loads(body) if body.strip() else {}), dict(res.headers)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()
+            try:
+                return e.code, json.loads(body), dict(e.headers)
+            except Exception:
+                return e.code, {}, dict(e.headers)
+
+    def table_counts(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            out = {}
+            for t in ('appointment_requests', 'patients', 'appointments'):
+                cur.execute(f'SELECT COUNT(*) AS n FROM {t}')
+                out[t] = cur.fetchone()['n']
+            return out
+        finally:
+            conn.close()
+
+    def cleanup_requests(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT patient_id, appointment_id FROM appointment_requests")
+            for r in cur.fetchall():
+                if r['appointment_id']:
+                    cur.execute('DELETE FROM appointments WHERE id = ?', (r['appointment_id'],))
+                if r['patient_id']:
+                    cur.execute('DELETE FROM patients WHERE id = ?', (r['patient_id'],))
+            cur.execute('DELETE FROM appointment_requests')
+            conn.commit()
+        finally:
+            conn.close()
+
+    def tearDown(self):
+        self.cleanup_requests()
+        super().tearDown()
+
+    def test_the_website_can_lodge_an_enquiry_without_signing_in(self):
+        status, body, _ = self.enquire(
+            {'full_name': 'Aziza Rahimova', 'phone': '+998 90 111 22 33'},
+            ip='203.0.113.11')
+        self.assertEqual(status, 201, f"the website could not book: {body}")
+        self.assertIn('request_id', body)
+
+    def test_an_enquiry_is_not_yet_a_patient(self):
+        """Unverified input from the internet stays out of the clinical tables."""
+        before = self.table_counts()
+        self.enquire({'full_name': 'Ehtimoliy Bemor', 'phone': '+998901112233'},
+                     ip='203.0.113.12')
+        after = self.table_counts()
+        self.assertEqual(after['appointment_requests'], before['appointment_requests'] + 1)
+        self.assertEqual(after['patients'], before['patients'],
+                         'a stranger on the internet created a patient record')
+        self.assertEqual(after['appointments'], before['appointments'],
+                         'a stranger on the internet booked a clinic slot')
+
+    def test_rubbish_is_refused_in_plain_language(self):
+        for payload, field in [
+                ({'phone': '+998901112233'}, 'full_name'),
+                ({'full_name': 'Test', 'phone': '12'}, 'phone'),
+                ({'full_name': 'Test', 'phone': '+998901112233',
+                  'preferred_date': '2020-01-01'}, 'preferred_date')]:
+            status, body, _ = self.enquire(payload, ip='203.0.113.13')
+            self.assertEqual(status, 400, f"{field} was accepted: {body}")
+            self.assertEqual(body.get('field'), field)
+
+    def test_a_bot_that_fills_every_field_is_dropped_silently(self):
+        """
+        The honeypot is a field no person sees. Answering 201 and storing
+        nothing means a script cannot tell which of its submissions landed.
+        """
+        before = self.table_counts()['appointment_requests']
+        status, _, _ = self.enquire(
+            {'full_name': 'Bot', 'phone': '+998901112233', 'website': 'http://spam'},
+            ip='203.0.113.14')
+        self.assertEqual(status, 201, 'the bot learned it was detected')
+        self.assertEqual(self.table_counts()['appointment_requests'], before,
+                         'the honeypot submission was stored')
+
+    def test_typing_mistakes_do_not_spend_the_booking_allowance(self):
+        """
+        Somebody mistyping their phone number three times has not used up
+        their enquiries; only stored ones count against the strict limit.
+        """
+        ip = '203.0.113.15'
+        for _ in range(3):
+            self.assertEqual(self.enquire({'full_name': 'Aziza', 'phone': '12'}, ip=ip)[0], 400)
+        status, body, _ = self.enquire(
+            {'full_name': 'Aziza Rahimova', 'phone': '+998901112233'}, ip=ip)
+        self.assertEqual(status, 201, f"the typos cost a real booking: {body}")
+
+    def test_a_flood_from_one_address_is_cut_off(self):
+        ip = '203.0.113.16'
+        codes = [self.enquire({'full_name': f'Flood {i}', 'phone': '+998901112233'},
+                              ip=ip)[0] for i in range(8)]
+        self.assertIn(429, codes, 'an address could lodge unlimited enquiries')
+        self.assertLessEqual(codes.count(201), 6, 'the limit let too many through')
+
+    def test_cors_is_offered_to_the_clinic_site_and_nobody_else(self):
+        _, _, headers = self.enquire(
+            {'full_name': 'Origin Test', 'phone': '+998901112233'},
+            ip='203.0.113.17', origin=self.SITE)
+        self.assertEqual(headers.get('Access-Control-Allow-Origin'), self.SITE)
+
+        _, _, other = self.enquire(
+            {'full_name': 'Origin Test 2', 'phone': '+998901112233'},
+            ip='203.0.113.18', origin='https://evil.example')
+        self.assertIsNone(other.get('Access-Control-Allow-Origin'),
+                          'any site on the internet was invited to call this API')
+
+    def test_no_other_route_answers_without_a_session(self):
+        """Opening one door must not have opened the rest."""
+        for path in ('/api/patients', '/api/reception/requests', '/api/crm/patients',
+                     '/api/reception/appointment'):
+            req = urllib.request.Request(BASE + path)
+            opener = urllib.request.build_opener(NoRedirect())
+            try:
+                with opener.open(req) as res:
+                    self.fail(f"{path} answered {res.status} with no session")
+            except urllib.error.HTTPError as e:
+                self.assertIn(e.code, (401, 403), f"{path} answered {e.code}")
+                self.assertIsNone(e.headers.get('Access-Control-Allow-Origin'),
+                                  f"{path} offered CORS")
+
+    def test_the_desk_sees_what_came_in(self):
+        self.enquire({'full_name': 'Ko`rinadigan Bemor', 'phone': '+998901112233',
+                      'note': 'Konsultatsiya'}, ip='203.0.113.19')
+        status, body = self.api.get('/api/reception/requests')
+        self.assertEqual(status, 200)
+        names = [r['full_name'] for r in body['requests']]
+        self.assertIn('Ko`rinadigan Bemor', names)
+        self.assertGreaterEqual(body['waiting'], 1)
+
+    def test_accepting_is_what_creates_the_patient(self):
+        _, body, _ = self.enquire(
+            {'full_name': 'Sanjar Toshmatov', 'phone': '+998934445566'},
+            ip='203.0.113.20')
+        req_id = body['request_id']
+        before = self.table_counts()
+
+        status, result = self.api.post(f'/api/reception/requests/{req_id}/accept', {})
+        self.assertEqual(status, 201, f"accept failed: {result}")
+        self.assertIn('patient_id', result)
+        self.assertIn('appointment_id', result)
+
+        after = self.table_counts()
+        self.assertEqual(after['patients'], before['patients'] + 1)
+        self.assertEqual(after['appointments'], before['appointments'] + 1)
+
+    def test_rejecting_creates_nothing(self):
+        _, body, _ = self.enquire({'full_name': 'Spam Bot', 'phone': '+998901112233'},
+                                  ip='203.0.113.21')
+        before = self.table_counts()
+        status, result = self.api.post(f"/api/reception/requests/{body['request_id']}/reject", {})
+        self.assertEqual(status, 200, f"reject failed: {result}")
+        after = self.table_counts()
+        self.assertEqual(after['patients'], before['patients'])
+        self.assertEqual(after['appointments'], before['appointments'])
+
+    def test_an_enquiry_is_only_decided_once(self):
+        _, body, _ = self.enquire({'full_name': 'Ikki Marta', 'phone': '+998901112233'},
+                                  ip='203.0.113.22')
+        req_id = body['request_id']
+        self.assertEqual(self.api.post(f'/api/reception/requests/{req_id}/accept', {})[0], 201)
+        status, second = self.api.post(f'/api/reception/requests/{req_id}/reject', {})
+        self.assertEqual(status, 400, 'the same enquiry was decided twice')
+        self.assertEqual(second.get('field'), 'status')
+
+    def test_the_inbox_is_receptions_work(self):
+        username = f'suite_enq_hr_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, created = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite HR', 'role': 'hr_manager'})
+        self.assertEqual(st, 201, f"could not create probe account: {created}")
+        try:
+            hr = Client()
+            st, login_body = hr.login(username, 'Suite-Probe-2026')
+            self.assertEqual(st, 200)
+            if login_body.get('must_change_password'):
+                hr.post('/api/auth/change-password', {
+                    'current_password': 'Suite-Probe-2026',
+                    'new_password': 'Suite-Probe-2026-Rotated',
+                    'confirm_password': 'Suite-Probe-2026-Rotated'})
+            self.assertEqual(hr.get('/api/reception/requests')[0], 403)
+        finally:
+            self.api.delete('/api/users/' + (created.get('id') or username))
+
+
 class StaticFileExposure(unittest.TestCase):
     """
     The web root is also the source tree. It holds server.py, auth.py,

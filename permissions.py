@@ -199,6 +199,10 @@ API_RULES = [
     ('/api/facility/beds',            'facility',   None),
 
     # --- front desk -------------------------------------------------------
+    # The public website's enquiries, and the desk acting on them. The
+    # route that receives them is public (auth.PUBLIC_API_PATHS); reading
+    # and deciding is reception's work.
+    ('/api/reception/requests',       'reception',  None),
     ('/api/reception/appointment',    'reception',  None),
     ('/api/reception/appointments',   'reception',  'read'),
     ('/api/reception/call-log',       'reception',  None),

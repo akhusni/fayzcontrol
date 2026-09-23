@@ -2195,3 +2195,126 @@ body.day-mode .form-input:focus, body.day-mode .form-select:focus {
   .rooms-floor-grid { grid-template-columns: 1fr; }
   .rooms-board-controls .form-group { min-width: 100%; }
 }
+
+/* ==========================================================================
+   ENQUIRIES FROM THE PUBLIC WEBSITE
+   Unverified input from the open internet: shown apart from clinical data,
+   and nothing here becomes a patient until someone at the desk accepts it.
+   ========================================================================== */
+
+.requests-note {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.07);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.request-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--amber, #f59e0b);
+}
+
+.request-card.accepted { border-left-color: var(--emerald, #10b981); opacity: 0.75; }
+.request-card.rejected { border-left-color: #64748b; opacity: 0.6; }
+
+.request-main { flex: 1 1 320px; min-width: 240px; }
+
+.request-name {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.request-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.request-note {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--border-subtle);
+}
+
+.request-handled { margin-top: 0.4rem; font-size: 0.72rem; color: var(--text-muted); }
+
+.request-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.request-status {
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.request-status.new      { background: rgba(245, 158, 11, 0.16); color: #fbbf24; }
+.request-status.accepted { background: rgba(16, 185, 129, 0.16); color: var(--emerald, #10b981); }
+.request-status.rejected { background: rgba(100, 116, 139, 0.18); color: #94a3b8; }
+
+.btn-request {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  border: 1px solid transparent;
+}
+
+.btn-request.accept {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.42);
+  color: var(--emerald, #10b981);
+}
+.btn-request.accept:hover:not(:disabled) { background: rgba(16, 185, 129, 0.26); }
+
+.btn-request.reject {
+  background: rgba(100, 116, 139, 0.12);
+  border-color: rgba(100, 116, 139, 0.35);
+  color: #94a3b8;
+}
+.btn-request.reject:hover:not(:disabled) { background: rgba(100, 116, 139, 0.22); }
+
+.btn-request:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* The tab badge only draws attention when something is actually waiting. */
+.tab-count.is-waiting {
+  background: var(--amber, #f59e0b) !important;
+  color: #0f172a !important;
+}
+
+[data-theme="day"] .request-card, body.day-mode .request-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}

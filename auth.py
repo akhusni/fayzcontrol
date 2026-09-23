@@ -48,6 +48,11 @@ PUBLIC_API_PATHS = {
     '/api/auth/login',
     '/api/auth/logout',
     '/api/auth/session',
+    # The public website's booking enquiry. The only route that accepts a
+    # write without a session: it inserts into appointment_requests and
+    # touches nothing clinical, and reception decides what is real. See the
+    # handler in server.py for the rate limit and the field caps.
+    '/api/public/appointment-request',
 }
 
 # Reachable by any signed-in user regardless of role: these are about the

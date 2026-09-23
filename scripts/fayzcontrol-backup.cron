@@ -1,0 +1,16 @@
+# Fayz Medical House — nightly database backup
+#
+#   sudo cp scripts/fayzcontrol-backup.cron /etc/cron.d/fayzcontrol-backup
+#
+# Adjust the path and the user to match the installation. FMH_BACKUP_DIR must
+# be writable by that user and should NOT sit on the same disk as the database.
+SHELL=/bin/bash
+FMH_BACKUP_DIR=/var/backups/fayzcontrol
+FMH_BACKUP_KEEP_DAYS=30
+
+# 02:15 every night
+15 2 * * * www-data /var/www/fayzcontrol.uz/scripts/backup.sh >> /var/log/fayzcontrol-backup.log 2>&1
+
+# 03:00 every Sunday: prove the newest archive still restores.
+# Needs an admin account; set FMH_ADMIN_DB_USER / FMH_ADMIN_DB_PASSWORD.
+# 0 3 * * 0 root /var/www/fayzcontrol.uz/scripts/restore-test.sh >> /var/log/fayzcontrol-backup.log 2>&1

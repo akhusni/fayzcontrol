@@ -190,6 +190,14 @@ window.FMH_Reception = (function () {
   // INIT & DATA LOADING
   // ============================================================
   async function init() {
+    // Accept/reject are delegated: the list is re-rendered after every change.
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('.btn-request');
+      if (!btn) return;
+      decideRequest(btn.dataset.id,
+                    btn.classList.contains('accept') ? 'accept' : 'reject', btn);
+    });
+
     // 1. Synchronously populate default resilient state so UI is never blank
     State.data = JSON.parse(JSON.stringify(DEFAULT_RECEPTION_DATA));
     // The bed grid stays on its loading state until the server answers. It
@@ -551,6 +559,7 @@ window.FMH_Reception = (function () {
     // The board is re-read on open rather than kept warm: somebody else may
     // have admitted or discharged a patient since the page loaded.
     if (tabId === 'rooms') renderRoomsTab();
+    if (tabId === 'requests') loadRequests();
   }
 
   // ============================================================
@@ -785,6 +794,116 @@ window.FMH_Reception = (function () {
       showToast(`❌ ${bedId} karavoti ${startDate} sanasida band! (${occupant || 'Bemor yotibdi'})`, 'warning');
     } else if (status === 'partial_conflict') {
       showToast(`⚠️ ${bedId} karavotida tanlangan davr davomida bron mavjud! Boshqa karavot tanlang.`, 'warning');
+    }
+  }
+
+  // ============================================================
+  // TAB: ENQUIRIES FROM THE PUBLIC WEBSITE
+  //
+  // The site's booking form used to POST straight at
+  // /api/reception/appointment. Once the API required a session that endpoint
+  // answered 401 and the enquiry vanished — nothing recorded, nobody told.
+  // They arrive in appointment_requests now, and this is where the desk reads
+  // them. Nothing here is a patient until somebody accepts it.
+  // ============================================================
+
+  const REQUEST_STATUS_UZ = {
+    new: 'Yangi',
+    accepted: 'Qabul qilingan',
+    rejected: 'Rad etilgan',
+  };
+
+  async function loadRequests() {
+    const host = document.getElementById('requests-list');
+    if (!host) return;
+    const want = document.getElementById('requests-filter')?.value || 'new';
+    host.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Yuklanmoqda...</p></div>';
+    try {
+      const res = await fetch('/api/reception/requests?status=' + encodeURIComponent(want));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Xatolik (${res.status})`);
+      }
+      const data = await res.json();
+      State.requests = data.requests || [];
+      renderRequests(data);
+    } catch (e) {
+      host.innerHTML = `<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><p>${escapeHtml(e.message)}</p></div>`;
+    }
+  }
+
+  function renderRequests(data) {
+    const host = document.getElementById('requests-list');
+    const badge = document.getElementById('tab-count-requests');
+    if (badge) {
+      badge.textContent = data.waiting || 0;
+      badge.classList.toggle('is-waiting', (data.waiting || 0) > 0);
+    }
+    if (!data.requests.length) {
+      host.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i>
+        <p>Bu holatda so'rov yo'q.</p></div>`;
+      return;
+    }
+    host.innerHTML = data.requests.map(r => {
+      const isNew = r.status === 'new';
+      return `
+        <article class="request-card ${escapeHtml(r.status)}">
+          <div class="request-main">
+            <div class="request-name">${escapeHtml(r.full_name)}</div>
+            <div class="request-meta">
+              <span><i class="fas fa-phone"></i> ${escapeHtml(r.phone)}</span>
+              ${r.preferred_date ? `<span><i class="fas fa-calendar"></i> ${formatDate(r.preferred_date)}</span>` : ''}
+              <span><i class="fas fa-clock"></i> ${formatDateTime(r.created_at)}</span>
+            </div>
+            ${r.note ? `<div class="request-note">${escapeHtml(r.note)}</div>` : ''}
+            ${r.handled_by ? `<div class="request-handled">${REQUEST_STATUS_UZ[r.status]} — ${escapeHtml(r.handled_by)}</div>` : ''}
+          </div>
+          <div class="request-actions">
+            <span class="request-status ${escapeHtml(r.status)}">${REQUEST_STATUS_UZ[r.status] || r.status}</span>
+            ${isNew ? `
+              <button type="button" class="btn-request accept" data-id="${escapeHtml(r.id)}">
+                <i class="fas fa-user-check"></i> Qabul qilish
+              </button>
+              <button type="button" class="btn-request reject" data-id="${escapeHtml(r.id)}">
+                <i class="fas fa-ban"></i> Rad etish
+              </button>` : ''}
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  async function decideRequest(id, action, button) {
+    if (action === 'reject') {
+      const ok = window.fmhConfirm
+        ? await window.fmhConfirm({
+            title: "So'rovni rad etish",
+            message: "Bu so'rov rad etilgan deb belgilanadi. Bemor kartasi ochilmaydi.",
+            confirmText: 'Rad etish', cancelText: 'Bekor qilish', type: 'warning' })
+        : true;
+      if (!ok) return;
+    }
+    button.disabled = true;
+    try {
+      const res = await fetch(`/api/reception/requests/${encodeURIComponent(id)}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Xatolik (${res.status})`);
+      showToast(action === 'accept'
+        ? "✓ So'rov qabul qilindi — bemor navbatga yozildi"
+        : "So'rov rad etildi", action === 'accept' ? 'success' : 'warning');
+      await loadRequests();
+      if (action === 'accept') {
+        await loadApiData();
+        renderKPIs();
+        renderAppointmentsTab();
+        renderDirectoryTab();
+      }
+    } catch (e) {
+      showToast(e.message, 'error');
+      button.disabled = false;
     }
   }
 
@@ -2529,6 +2648,7 @@ window.FMH_Reception = (function () {
     notifyBedConflict,
     renderRoomsBoard,
     renderRoomsTab,
+    loadRequests,
     loadRoomsBoard,
     setRoomsBoardPreset,
   };

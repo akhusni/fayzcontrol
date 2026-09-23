@@ -643,6 +643,51 @@ def ensure_patient_columns(conn):
         print(f"[!] Could not add patients.birth_date: {e}")
 
 
+_requests_table_checked = False
+
+
+def ensure_appointment_requests(conn):
+    """
+    Create appointment_requests on a database made before it existed.
+
+    Enquiries from the public website used to POST straight at
+    /api/reception/appointment. Once the API required authentication that
+    endpoint answered 401 and the enquiry vanished with nothing recorded and
+    nobody told. They land here instead, where the desk can see them; this is
+    unverified input from the open internet, so it is kept out of the patients
+    and appointments tables until someone accepts it.
+    """
+    global _requests_table_checked
+    if _requests_table_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS appointment_requests (
+                id VARCHAR(64) PRIMARY KEY,
+                full_name VARCHAR(255) NOT NULL,
+                phone VARCHAR(64) NOT NULL,
+                preferred_date DATE,
+                service_type VARCHAR(64),
+                note TEXT,
+                source VARCHAR(64) NOT NULL DEFAULT 'website',
+                status VARCHAR(32) NOT NULL DEFAULT 'new'
+                    CHECK(status IN ('new', 'accepted', 'rejected')),
+                ip_address VARCHAR(64),
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                handled_by VARCHAR(64),
+                handled_at DATETIME,
+                patient_id VARCHAR(64),
+                appointment_id VARCHAR(64),
+                INDEX idx_request_status (status, created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        _requests_table_checked = True
+    except Exception as e:
+        print(f"[!] Could not create appointment_requests: {e}")
+
+
 _ward_round_checked = False
 
 

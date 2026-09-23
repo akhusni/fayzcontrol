@@ -109,40 +109,61 @@ modullarga murojaat qilganda avtomatik yaratiladi.
 Brauzerda: `http://localhost:3000` → `login.html` ochiladi. Tizimga
 kirgandan so'ng `superpage.html` ga o'tadi.
 
-### 💾 Zaxira Nusxa (Backup) — ishga tushirishdan oldin sozlang
+### 💾 Zaxira Nusxa (Backup)
 
 Bu tibbiy yozuvlar tizimi. Bazani yo'qotish — bemorlar tarixini yo'qotish
-degani. Hozircha **hech qanday avtomatik zaxira yo'q**.
-
-Minimal yechim — kunlik `mysqldump` va cron:
+degani. Zaxira olish uchun tayyor skript bor:
 
 ```bash
-sudo mkdir -p /var/backups/fayzcontrol && sudo chmod 700 /var/backups/fayzcontrol
-
-sudo tee /usr/local/bin/fayzcontrol-backup.sh >/dev/null <<'SH'
-#!/bin/bash
-set -euo pipefail
-DEST=/var/backups/fayzcontrol
-STAMP=$(date +%F_%H%M)
-mysqldump --single-transaction --routines --triggers \
-  -u <user> -p'<parol>' <database> | gzip > "$DEST/fayzhouse_$STAMP.sql.gz"
-# 30 kundan eski nusxalarni o'chirish
-find "$DEST" -name 'fayzhouse_*.sql.gz' -mtime +30 -delete
-SH
-sudo chmod 700 /usr/local/bin/fayzcontrol-backup.sh
-
-# Har kuni soat 02:00 da
-echo '0 2 * * * root /usr/local/bin/fayzcontrol-backup.sh' | sudo tee /etc/cron.d/fayzcontrol-backup
+./scripts/backup.sh            # zaxira oladi va eskilarini tozalaydi
+./scripts/backup.sh --verify   # oladi va arxiv o'qilishini tekshiradi
+./scripts/backup.sh --list     # hozir nima saqlanayotganini ko'rsatadi
 ```
 
-`--single-transaction` InnoDB uchun jadvallarni bloklamasdan izchil nusxa
-oladi, ya'ni klinika ishlayotgan paytda ham xavfsiz.
+Ulanish ma'lumotlarini `db_config.json` dan oladi — parol **buyruq satrida
+ko'rinmaydi** (u vaqtinchalik `0600` faylga yoziladi va skript tugashi bilan
+o'chiriladi).
 
-**Zaxirani tiklashni kamida bir marta sinab ko'ring.** Tekshirilmagan zaxira
-— zaxira emas:
+Sozlamalar (ixtiyoriy):
+
+| O'zgaruvchi | Ma'nosi | Standart |
+| :--- | :--- | :--- |
+| `FMH_BACKUP_DIR` | Zaxiralar papkasi | `/var/backups/fayzcontrol` |
+| `FMH_BACKUP_KEEP_DAYS` | Necha kun saqlanadi | `30` |
+
+**Har kecha avtomatik olish:**
 
 ```bash
-gunzip -c /var/backups/fayzcontrol/fayzhouse_<sana>.sql.gz | mysql -u <user> -p <test_database>
+sudo cp scripts/fayzcontrol-backup.cron /etc/cron.d/fayzcontrol-backup
+# ichidagi yo'l va foydalanuvchini o'z serveringizga moslang
+```
+
+Zaxira **bazadan boshqa diskda** turishi kerak — disk ishdan chiqsa,
+baza bilan zaxira birga yo'qolmasin.
+
+#### Tiklashni sinab ko'rish — bu majburiy
+
+Tekshirilmagan zaxira zaxira emas. Buni bir marta bajaring:
+
+```bash
+./scripts/restore-test.sh
+```
+
+Skript eng oxirgi arxivni **alohida vaqtinchalik bazaga** tiklaydi, uni
+jonli baza bilan jadval-ma-jadval solishtiradi va vaqtinchalik nusxani
+o'chiradi. **Jonli bazaga tegmaydi.** Natija shunday bo'lishi kerak:
+
+```
+[restore-test] tables  live=24  restored=24
+[restore-test] views   live=5   restored=5
+[restore-test] RESULT: the archive reproduces the database exactly
+```
+
+Bunga `CREATE DATABASE` huquqi bor hisob kerak (masalan `root`) — ilovaning
+o'z hisobida bunday huquq ataylab yo'q:
+
+```bash
+FMH_ADMIN_DB_USER=root FMH_ADMIN_DB_PASSWORD=... ./scripts/restore-test.sh
 ```
 
 ### 🔐 Avtorizatsiya

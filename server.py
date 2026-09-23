@@ -77,6 +77,63 @@ except Exception as e:
 WRITE_LOCK = threading.RLock()
 
 
+# ----------------------------------------------------------------------------
+# Public enquiry endpoint: the one route that answers without a session.
+#
+# The marketing site posts booking enquiries from the visitor's browser, so
+# this is the only place the open internet can write to. It is kept narrow:
+# it writes to appointment_requests and nothing else, creates no patient and
+# no appointment, and is rate limited per address so a script cannot fill the
+# table overnight. Nothing it writes reaches a clinical table until somebody
+# at the desk reads it and accepts it.
+#
+# The site is on another domain, so this route -- and only this route --
+# answers CORS, for the configured origin only.
+# ----------------------------------------------------------------------------
+PUBLIC_ENQUIRY_PATH = '/api/public/appointment-request'
+PUBLIC_SITE_ORIGINS = tuple(
+    o.strip() for o in os.environ.get(
+        'FMH_PUBLIC_SITE_ORIGIN',
+        'https://fayzmedical.uz,https://www.fayzmedical.uz').split(',')
+    if o.strip())
+PUBLIC_ENQUIRY_PER_HOUR = int(os.environ.get('FMH_PUBLIC_ENQUIRY_PER_HOUR', 5))
+PUBLIC_ENQUIRY_PER_DAY = int(os.environ.get('FMH_PUBLIC_ENQUIRY_PER_DAY', 20))
+# Attempts are allowed to run well ahead of accepted submissions: somebody
+# mistyping their phone number three times has not used up their booking.
+PUBLIC_ENQUIRY_ATTEMPTS_PER_HOUR = int(
+    os.environ.get('FMH_PUBLIC_ENQUIRY_ATTEMPTS_PER_HOUR', 30))
+
+_ENQUIRY_HITS = {}          # (bucket, ip) -> list of datetimes
+_ENQUIRY_LOCK = threading.RLock()
+
+
+def enquiry_rate_ok(bucket, ip, per_hour, per_day=None):
+    """
+    Whether this address may act again, and record that it did.
+
+    Two buckets are counted separately. 'attempt' covers every POST,
+    including the ones refused for a bad phone number, and stops a script
+    hammering the endpoint. 'stored' counts only enquiries that were
+    actually written, so a person fumbling the form does not spend their
+    allowance on typing mistakes.
+
+    Counted in memory, like the login throttle: a restart forgives
+    everyone, which is the right trade at this size.
+    """
+    now = datetime.datetime.now()
+    key = (bucket, ip)
+    with _ENQUIRY_LOCK:
+        hits = [t for t in _ENQUIRY_HITS.get(key, [])
+                if (now - t).total_seconds() < 86400]
+        last_hour = sum(1 for t in hits if (now - t).total_seconds() < 3600)
+        if last_hour >= per_hour or (per_day is not None and len(hits) >= per_day):
+            _ENQUIRY_HITS[key] = hits
+            return False
+        hits.append(now)
+        _ENQUIRY_HITS[key] = hits
+        return True
+
+
 def read_json_file(path, default=None):
     """
     Load a JSON data file.
@@ -255,6 +312,7 @@ from db import (
     list_room_availability,
     ensure_patient_columns,
     ensure_ward_round_schema,
+    ensure_appointment_requests,
     load_config
 )
 
@@ -377,7 +435,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[!] Could not audit {self.command} {path}: {e}")
 
-    def _send_validation_error(self, message, field=None):
+    def _send_validation_error(self, message, field=None, cors=False):
         """
         Refuse a request because of its input, in words the person who typed it
         can act on. 400, and never the raw database error.
@@ -385,7 +443,23 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         payload = {'error': message}
         if field:
             payload['field'] = field
-        self._set_json_headers(400)
+        self._set_json_headers(400, cors=cors)
+        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+
+    def _send_enquiry_ok(self, request_id=None):
+        """
+        The reply the website shows its visitor.
+
+        Deliberately the same whether the enquiry was stored or silently
+        dropped as a bot, so a script cannot tell which of its submissions
+        landed. It promises a call back rather than a booking, because nobody
+        at the clinic has seen it yet.
+        """
+        self._set_json_headers(201, cors=True)
+        payload = {'message': "So'rovingiz qabul qilindi. Qabulxona tez orada "
+                              "siz bilan bog'lanadi."}
+        if request_id:
+            payload['request_id'] = request_id
         self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
     def _send_server_error(self):
@@ -506,10 +580,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Referrer-Policy', 'same-origin')
         super().end_headers()
 
-    def _set_json_headers(self, status=200):
+    def _set_json_headers(self, status=200, cors=False):
         try:
             self.send_response(status)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
+            # cors=True only on the public enquiry route, whose caller is
+            # the marketing site on another domain.
+            if cors:
+                self._enquiry_cors()
             # No Access-Control-Allow-Origin. The portals are served from this
             # same origin, so none of them needs CORS, and the header used to
             # say '*' on every clinical response -- an open invitation for any
@@ -520,8 +598,31 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             pass
 
+    def _enquiry_cors(self):
+        """
+        Allow the marketing site to call the enquiry route, and nothing else
+        to call anything. Returns True when the caller's Origin is one we
+        publish to; the headers are sent by the caller before end_headers().
+        """
+        origin = self.headers.get('Origin')
+        if origin and origin in PUBLIC_SITE_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Vary', 'Origin')
+            self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.send_header('Access-Control-Max-Age', '600')
+            return True
+        return False
+
     def do_OPTIONS(self):
-        self._set_json_headers(200)
+        # Preflight is answered only for the public enquiry route. Every
+        # other endpoint is same-origin and needs no CORS at all.
+        path = urllib.parse.urlparse(self.path).path
+        self.send_response(204 if path == PUBLIC_ENQUIRY_PATH else 404)
+        if path == PUBLIC_ENQUIRY_PATH:
+            self._enquiry_cors()
+        self.send_header('Content-Length', '0')
+        self.end_headers()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1195,6 +1296,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
+            # GET /api/reception/requests?status=new -- enquiries from the
+            # public website, waiting for someone at the desk to look at them.
+            elif path == '/api/reception/requests':
+                ensure_appointment_requests(conn)
+                wanted = (query.get('status', ['new'])[0] or 'new').strip()
+                if wanted == 'all':
+                    cur.execute("""SELECT * FROM appointment_requests
+                                   ORDER BY created_at DESC LIMIT 200""")
+                else:
+                    if wanted not in ('new', 'accepted', 'rejected'):
+                        self._send_validation_error("Holat noto'g'ri.", 'status')
+                        return
+                    cur.execute("""SELECT * FROM appointment_requests
+                                   WHERE status = ?
+                                   ORDER BY created_at DESC LIMIT 200""", (wanted,))
+                rows = [dict(r) for r in cur.fetchall()]
+                cur.execute("SELECT COUNT(*) AS n FROM appointment_requests WHERE status = 'new'")
+                waiting = cur.fetchone()['n']
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'requests': rows, 'waiting': waiting},
+                                            ensure_ascii=False, default=str).encode('utf-8'))
+
             elif path == '/api/reception/walk-ins':
                 cur.execute("""
                     SELECT apt.*, p.patient_code, s.full_name AS doctor_name
@@ -1862,6 +1985,173 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'message': 'Patient created', 'id': pid, 'patient_code': pcode}).encode('utf-8'))
 
             # 6. POST /api/reception/appointment (Book Consultation / Appointment)
+            # POST /api/public/appointment-request
+            #
+            # An enquiry from the public website. The only unauthenticated
+            # write in the system, so it is deliberately the narrowest one:
+            # it inserts a row into appointment_requests and does nothing
+            # else. No patient is registered, no appointment is booked, no
+            # clinical table is touched, and the desk decides what is real.
+            # POST /api/reception/requests/<id>/accept|reject
+            #
+            # Accepting is the moment an enquiry becomes clinical data: only
+            # here is a patient registered and an appointment booked, and only
+            # by someone who has read it. Rejecting leaves the row for the
+            # record and creates nothing.
+            elif path.startswith('/api/reception/requests/'):
+                parts = [p for p in path.split('/') if p]
+                if len(parts) < 5 or parts[-1] not in ('accept', 'reject'):
+                    self._send_validation_error("Noma'lum amal.", 'action')
+                    return
+                req_id, action = parts[-2], parts[-1]
+
+                ensure_appointment_requests(conn)
+                cur.execute('SELECT * FROM appointment_requests WHERE id = ?', (req_id,))
+                row = cur.fetchone()
+                if not row:
+                    self._send_validation_error(f"So'rov topilmadi ({req_id}).", 'id')
+                    return
+                if row['status'] != 'new':
+                    self._send_validation_error(
+                        f"Bu so'rov allaqachon ko'rib chiqilgan ({row['status']}).", 'status')
+                    return
+
+                sess = self.current_session()
+                actor = (sess['user'].get('username') if sess else None)
+
+                if action == 'reject':
+                    cur.execute("""UPDATE appointment_requests
+                                   SET status = 'rejected', handled_by = ?,
+                                       handled_at = NOW()
+                                   WHERE id = ?""", (actor, req_id))
+                    conn.commit()
+                    audit.record(conn, 'appointment_requests', req_id, 'REJECT',
+                                 user=(sess['user'] if sess else None),
+                                 ip_address=self.client_ip())
+                    self._set_json_headers(200)
+                    self.wfile.write(json.dumps({'message': "So'rov rad etildi"},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+
+                # --- accept: register the patient and book the visit --------
+                phone = (row['phone'] or '').strip()
+                name = (row['full_name'] or '').strip() or 'Bemor'
+                patient_id = None
+                if phone:
+                    cur.execute('SELECT id FROM patients WHERE phone = ? LIMIT 1', (phone,))
+                    found = cur.fetchone()
+                    if found:
+                        patient_id = found['id']
+                if not patient_id:
+                    patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                    cur.execute("""
+                        INSERT INTO patients (id, patient_code, full_name, phone,
+                                              referral_source, is_anonymous, status)
+                        VALUES (?, ?, ?, ?, 'website', 0, 'active')
+                    """, (patient_id, f"FMH-2026-{patient_id[-4:]}", name, phone))
+
+                apt_id = f"APT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                apt_date = (body.get('appointment_date')
+                            or str(row['preferred_date'] or '')[:10]
+                            or datetime.date.today().isoformat())
+                apt_time = (body.get('appointment_time') or '10:00')
+                cur.execute("""
+                    INSERT INTO appointments (id, patient_id, patient_name, patient_phone,
+                                              doctor_id, service_type, appointment_date,
+                                              appointment_time, status, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
+                """, (apt_id, patient_id, name, phone,
+                      body.get('doctor_id') or None,
+                      row['service_type'] or 'outpatient',
+                      apt_date, apt_time,
+                      row['note'] or 'Saytdan kelgan so\'rov'))
+
+                cur.execute("""UPDATE appointment_requests
+                               SET status = 'accepted', handled_by = ?, handled_at = NOW(),
+                                   patient_id = ?, appointment_id = ?
+                               WHERE id = ?""", (actor, patient_id, apt_id, req_id))
+                conn.commit()
+                audit.record(conn, 'appointment_requests', req_id, 'ACCEPT',
+                             user=(sess['user'] if sess else None),
+                             new_data={'patient_id': patient_id, 'appointment_id': apt_id},
+                             ip_address=self.client_ip())
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'message': "So'rov qabul qilindi va navbatga yozildi",
+                    'patient_id': patient_id, 'appointment_id': apt_id,
+                }, ensure_ascii=False).encode('utf-8'))
+
+            elif path == PUBLIC_ENQUIRY_PATH:
+                ip = self.client_ip()
+
+                # A hidden field no person fills in. Bots fill every input
+                # they find, so a non-empty one is a bot; answer 201 anyway so
+                # it learns nothing, and record nothing.
+                if (body.get('website') or body.get('company') or '').strip():
+                    self._send_enquiry_ok()
+                    return
+
+                if not enquiry_rate_ok('attempt', ip,
+                                      PUBLIC_ENQUIRY_ATTEMPTS_PER_HOUR):
+                    self._set_json_headers(429, cors=True)
+                    self.wfile.write(json.dumps({
+                        'error': "Juda ko'p so'rov yuborildi. Iltimos, keyinroq "
+                                 "urinib ko'ring yoki klinikaga qo'ng'iroq qiling."
+                    }, ensure_ascii=False).encode('utf-8'))
+                    return
+
+                name = (body.get('full_name') or body.get('name') or '').strip()
+                phone = (body.get('phone') or '').strip()
+                if len(name) < 2 or len(name) > 160:
+                    self._send_validation_error('Ism kiritilishi kerak.', 'full_name',
+                                                cors=True)
+                    return
+                digits = ''.join(ch for ch in phone if ch.isdigit())
+                if not (7 <= len(digits) <= 15):
+                    self._send_validation_error("Telefon raqami to'g'ri emas.", 'phone',
+                                                cors=True)
+                    return
+
+                preferred = None
+                if (body.get('preferred_date') or '').strip():
+                    day, derr = parse_date_param(body.get('preferred_date'))
+                    if derr:
+                        self._send_validation_error(derr, 'preferred_date', cors=True)
+                        return
+                    if day < datetime.date.today():
+                        self._send_validation_error(
+                            "Sana o'tib ketgan.", 'preferred_date', cors=True)
+                        return
+                    preferred = day.isoformat()
+
+                # The input is good; now spend one of this address's actual
+                # bookings.
+                if not enquiry_rate_ok('stored', ip, PUBLIC_ENQUIRY_PER_HOUR,
+                                      PUBLIC_ENQUIRY_PER_DAY):
+                    self._set_json_headers(429, cors=True)
+                    self.wfile.write(json.dumps({
+                        'error': "Juda ko'p so'rov yuborildi. Iltimos, keyinroq "
+                                 "urinib ko'ring yoki klinikaga qo'ng'iroq qiling."
+                    }, ensure_ascii=False).encode('utf-8'))
+                    return
+
+                ensure_appointment_requests(conn)
+                req_id = f"REQ-{datetime.datetime.now():%Y%m%d%H%M%S}-{os.urandom(2).hex()}"
+                cur.execute("""
+                    INSERT INTO appointment_requests
+                        (id, full_name, phone, preferred_date, service_type,
+                         note, source, status, ip_address)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)
+                """, (
+                    req_id, name[:160], phone[:60], preferred,
+                    (body.get('service_type') or '')[:60] or None,
+                    (body.get('note') or body.get('message') or '')[:1000] or None,
+                    (body.get('source') or 'website')[:60],
+                    ip[:60],
+                ))
+                conn.commit()
+                self._send_enquiry_ok(req_id)
+
             elif path == '/api/reception/appointment':
                 apt_id = body.get('id') or f"APT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
                 patient_name = (body.get('patient_name') or 'Bemor').strip()
@@ -3304,6 +3594,8 @@ def run_server():
             ensure_patient_columns(_c)
             # One ward-round note per stay per day.
             ensure_ward_round_schema(_c)
+            # Where the public website's enquiries land.
+            ensure_appointment_requests(_c)
         finally:
             _c.close()
     except Exception as _e:

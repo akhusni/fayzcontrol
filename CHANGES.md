@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 120 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 133 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil sentabr
 
 ---
@@ -125,6 +125,40 @@ xonani yaxlit sotadi.
   *"butun xona (bo'sh turadi)"* deb ko'rsatiladi: u pullangan va ataylab
   bo'sh qoldirilgan.
 
+### Saytdan kelgan arizalar (`/api/public/appointment-request`)
+
+Rasmiy saytdagi yozilish formasi CRM ga **ariza yubora olmay qolgandi**:
+u `/api/reception/appointment` ga yozardi, avtorizatsiya joriy etilgach esa
+o'sha endpoint 401 qaytaradigan bo'ldi. Arizalar **jimgina yo'qolardi** —
+hech qayerda qayd etilmasdi va hech kimga xabar berilmasdi.
+
+- Sayt uchun **alohida ochiq endpoint**. Tizimdagi yagona avtorizatsiyasiz
+  yoziladigan yo'l, shuning uchun ataylab tor qilingan: faqat
+  `appointment_requests` jadvaliga yozadi, **bemor kartasi ochmaydi va
+  navbat band qilmaydi**.
+- Qabulxonada **"Saytdan So'rovlar"** tabi. Bemor kartasi faqat xodim
+  **"Qabul qilish"** bosganda ochiladi — spam bazani to'ldira olmaydi.
+- IP bo'yicha cheklov: soatiga 5 ariza, kuniga 20. Urinishlar alohida
+  hisoblanadi, ya'ni telefon raqamini xato yozish arizani "yeb" qo'ymaydi.
+- Ko'rinmas "tuzoq" maydon: bot to'ldirsa, server 201 qaytaradi-yu **hech
+  narsa saqlamaydi**.
+- CORS **faqat shu endpoint** uchun va **faqat klinika sayti** domeniga
+  ochiladi.
+
+### Zaxira nusxa (backup)
+
+Avval umuman yo'q edi. Endi `scripts/backup.sh` va
+`scripts/restore-test.sh`:
+
+- Parol **buyruq satrida ko'rinmaydi** — vaqtinchalik `0600` faylga
+  yoziladi va skript tugashi bilan o'chiriladi.
+- `restore-test.sh` arxivni **alohida vaqtinchalik bazaga** tiklaydi,
+  jonli baza bilan jadval-ma-jadval solishtiradi va nusxani o'chiradi.
+  Sinovdan o'tkazildi: 24 jadval, 5 view, farq yo'q.
+- Yo'l-yo'lakay topildi: `mysqldump` ga `--set-gtid-purged=OFF` bermasa,
+  arxiv **24-qatorda tiklanmay to'xtaydi** ("GTID_PURGED cannot be
+  changed"). Bu faqat haqiqiy tiklashni sinab ko'rganda ma'lum bo'ladi.
+
 ### Statsionar kunlik ko'rigi (`ward.html`)
 
 Avval ko'rik faqat bitta bemor ichida, EMR sahifasida bor edi — **ro'yxat
@@ -177,7 +211,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **120 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **133 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
@@ -187,24 +221,27 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 6. Hal qilinishi kerak bo'lgan masalalar
 
-**Darhol (PO/administrator qaroriga muhtoj):**
+**Serverda bajarilishi kerak (kod emas, amal):**
 
-1. **Standart parollarni almashtirish.** `superadmin` va boshqa hisoblar
-   dastlabki parollarda — ular tarqatilgan arxivda bo'lgan. Tizim
-   birinchi kirishda parolni almashtirishni talab qiladi, lekin
-   parollar almashtirilishi kerak.
+1. **Zaxira cron'ini o'rnatish.** Skriptlar tayyor va sinovdan o'tgan
+   (`scripts/backup.sh`, `scripts/restore-test.sh`), lekin ular
+   **o'z-o'zidan ishlamaydi** — `/etc/cron.d/` ga qo'yilishi kerak.
+   `README.md` → "Zaxira Nusxa" bo'limi.
+2. **Parollarni tarqatish.** Barcha 16 hisobga yangi bir martalik parol
+   berilgan va har biri birinchi kirishda o'z parolini o'rnatishga
+   majbur. Excel faylini xodimlarga bergach **o'chiring**.
 
 **Keyingi ish (tavsiya etilgan tartibda):**
 
-2. **Farmatsevt va oshxona sahifalari.**
-3. `building_management.html` hali ham bronlarni `localStorage` da
+3. **Farmatsevt va oshxona sahifalari.**
+4. `building_management.html` hali ham bronlarni `localStorage` da
    saqlaydi. Qabulxona endi unga bog'liq emas, lekin o'sha sahifaning
    o'zi ham bazaga o'tkazilishi kerak.
-4. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
+5. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
    xodimlar qaytadan kirishi kerak.
-5. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
+6. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
    emas, yillar o'tib sekinlashadi.
-6. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+7. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
    ko'rish uchun SQL kerak).
 
 ---
