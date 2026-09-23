@@ -38,24 +38,35 @@ INSERT IGNORE INTO rooms (id, floor_number, room_number, room_name_uz, room_name
 ('ROOM-25',     2, '25',     '25-Xona (2 o''rinli / Lyuks 1.1M)', 'Палата 25 (2-местная / Lyuks 1.1M)', 'Ward 25 (2-bed / Lux 1.1M)', 'standard_ward', 2);
 
 -- ----------------------------------------------------------------------------
--- 2. 14 INPATIENT BEDS (100% Bo'sh / Available)
+-- 2. 14 INPATIENT BEDS
+--
+-- beds.status is the PHYSICAL state of the bed and accepts only
+-- operational / cleaning / maintenance / out_of_service. 'available',
+-- 'occupied' and 'reserved' are DERIVED for a given date by the
+-- v_bed_live_status view; writing one of them violates beds_chk_3.
+--
+-- These fourteen rows said 'available'. INSERT IGNORE swallowed the
+-- constraint violation without a word, so a fresh install produced twelve
+-- rooms and ZERO beds, and the whole stationary side had nothing to work
+-- with. It only appears on an empty database -- which is exactly what a new
+-- clinic starts with.
 -- ----------------------------------------------------------------------------
 INSERT IGNORE INTO beds (id, room_id, bed_code, bed_type, default_daily_rate, status) VALUES
-('BED-1A',  'ROOM-11', '1A',  'standard', 720000.0, 'available'),
-('BED-1B',  'ROOM-11', '1B',  'standard', 720000.0, 'available'),
-('BED-2A',  'ROOM-12', '2A',  'standard', 720000.0, 'available'),
-('BED-2B',  'ROOM-12', '2B',  'standard', 720000.0, 'available'),
+('BED-1A',  'ROOM-11', '1A',  'standard', 720000.0, 'operational'),
+('BED-1B',  'ROOM-11', '1B',  'standard', 720000.0, 'operational'),
+('BED-2A',  'ROOM-12', '2A',  'standard', 720000.0, 'operational'),
+('BED-2B',  'ROOM-12', '2B',  'standard', 720000.0, 'operational'),
 
-('BED-21A', 'ROOM-21', '21A', 'standard', 720000.0, 'available'),
-('BED-21B', 'ROOM-21', '21B', 'standard', 720000.0, 'available'),
-('BED-22A', 'ROOM-22', '22A', 'standard', 720000.0, 'available'),
-('BED-22B', 'ROOM-22', '22B', 'standard', 720000.0, 'available'),
-('BED-23A', 'ROOM-23', '23A', 'standard', 720000.0, 'available'),
-('BED-23B', 'ROOM-23', '23B', 'standard', 720000.0, 'available'),
-('BED-24A', 'ROOM-24', '24A', 'standard', 720000.0, 'available'),
-('BED-24B', 'ROOM-24', '24B', 'standard', 720000.0, 'available'),
-('BED-25A', 'ROOM-25', '25A', 'standard', 720000.0, 'available'),
-('BED-25B', 'ROOM-25', '25B', 'standard', 720000.0, 'available');
+('BED-21A', 'ROOM-21', '21A', 'standard', 720000.0, 'operational'),
+('BED-21B', 'ROOM-21', '21B', 'standard', 720000.0, 'operational'),
+('BED-22A', 'ROOM-22', '22A', 'standard', 720000.0, 'operational'),
+('BED-22B', 'ROOM-22', '22B', 'standard', 720000.0, 'operational'),
+('BED-23A', 'ROOM-23', '23A', 'standard', 720000.0, 'operational'),
+('BED-23B', 'ROOM-23', '23B', 'standard', 720000.0, 'operational'),
+('BED-24A', 'ROOM-24', '24A', 'standard', 720000.0, 'operational'),
+('BED-24B', 'ROOM-24', '24B', 'standard', 720000.0, 'operational'),
+('BED-25A', 'ROOM-25', '25A', 'standard', 720000.0, 'operational'),
+('BED-25B', 'ROOM-25', '25B', 'standard', 720000.0, 'operational');
 
 -- ----------------------------------------------------------------------------
 -- 3. MEDICAL & CLINICAL STAFF
