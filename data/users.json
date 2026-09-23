@@ -2,7 +2,7 @@
   {
     "id": "USR-SUPER-01",
     "username": "superadmin",
-    "password": "pbkdf2_sha256$240000$9e2c6012c02bf258ef003936dc438486$e596266d47d4e4c38574829ab20c0913f0639ca1f703b6abd491a4e376a52a2f",
+    "password": "pbkdf2_sha256$240000$5309cd5ca44bfd9c4191dba79d77f93b$cc1a57b77bdba005342d31a72ceff239558d1316f66b325b06c1ed7a9f100cb3",
     "full_name": "Bosh Administrator (Superadmin)",
     "role": "superadmin",
     "avatar": "👑",
@@ -12,7 +12,7 @@
   {
     "id": "USR-DOC-01",
     "username": "dr_bobur",
-    "password": "pbkdf2_sha256$240000$8294c3457d3a1f57d3d32a9482c7a6d7$b9c714df82842a1cff76c7bb08310adb7eeee45c86cbec470581eac593364c45",
+    "password": "pbkdf2_sha256$240000$80601158aea185bc7d5cc4bfb8ced0b8$1f97180db2932f3ab36b20a26f86d5d1d44c32bbd678db3eda26cceda07b68fc",
     "full_name": "Dr. Bobur Mirzayev",
     "role": "doctor",
     "staff_id": "STF-DOC-01",
@@ -25,7 +25,7 @@
   {
     "id": "USR-DOC-02",
     "username": "dr_jasur",
-    "password": "pbkdf2_sha256$240000$c2e68d9bbc58a89968a37f38cb99899b$f2ee969fbc27e16f93526826af7e928a5d294ba48814b38759a66592744d716f",
+    "password": "pbkdf2_sha256$240000$f85b613d988f5118495826611302028f$1759c2f89d1da201280b48b78cb966c143d5cfaca7e2d4a6df9d7e1a6ab47329",
     "full_name": "Dr. Jasur Aliyev",
     "role": "doctor",
     "staff_id": "STF-DOC-02",
@@ -38,7 +38,7 @@
   {
     "id": "USR-DOC-03",
     "username": "dr_dilnoza",
-    "password": "pbkdf2_sha256$240000$3a6741b364b832392b7ada5b654576c3$f90837e7d784ecfdc43a8373eb1f03f06b337cb79ff858cc51ee696f7ffbec46",
+    "password": "pbkdf2_sha256$240000$5950fc18d0ac7c2266c8a1cdae7b7b1d$a90a3e06d4e0ea91d1b7f31ab30964c8cf295c10af8cf02d46c5deb2791937dc",
     "full_name": "Dr. Dilnoza Rahimova",
     "role": "doctor",
     "staff_id": "STF-DOC-03",
@@ -51,7 +51,7 @@
   {
     "id": "USR-DOC-ALIAS",
     "username": "doctor",
-    "password": "pbkdf2_sha256$240000$47e52daefce57db8b7c054123e55a8c3$7856ec7d858c29bcafa78db30c1c4ddbe15678f656b1a2dd66b2d905710d04b4",
+    "password": "pbkdf2_sha256$240000$f71f8ea9d1e2843a25cac5f405f12cb6$fdf24e1056495077ee4061d70dd914ac6f1e692d76f6f016f9fb73b398fc6df0",
     "full_name": "Dr. Bobur Mirzayev",
     "role": "doctor",
     "staff_id": "STF-DOC-01",
@@ -64,7 +64,7 @@
   {
     "id": "USR-NURSE-01",
     "username": "nurse",
-    "password": "pbkdf2_sha256$240000$d016e3515e85425effc0c20ebc23324d$d351d06fd99672c38e3d72df4270f9268bf063a663d823b561cea8d72da9b993",
+    "password": "pbkdf2_sha256$240000$44ddc73322a4cfd743df344fe7f6fcc8$dc9e731a428cfe93b6cbdd0b395af28d7b4aaac5e50bc8e8df2f635d1dc5371a",
     "full_name": "Dildora Karimova",
     "role": "nurse",
     "avatar": "💉",
@@ -76,7 +76,7 @@
   {
     "id": "USR-ACCT-01",
     "username": "accountant",
-    "password": "pbkdf2_sha256$240000$8e5f67125fbc097b87f8c2d796a727e2$50bdde496973d9b1f26a5fa54a9a780778554a2607ab1c4029408311f5cf0b5f",
+    "password": "pbkdf2_sha256$240000$38930fb3145dc27c6466a78d83cc9058$cc29c830a600d7159333636cfd24d51fc9f4dba0f52bc5b092967965cdd0f8d9",
     "full_name": "Muxiddin Aliyev",
     "role": "accountant",
     "avatar": "💳",
@@ -88,7 +88,7 @@
   {
     "id": "USR-REC-01",
     "username": "reception",
-    "password": "pbkdf2_sha256$240000$1b9c6f5e9401681110f5bea2301c6c8b$1993cf603feede2a74d4206c2da76ea0136228ec7a81fe7f5d46a7b7d9383bea",
+    "password": "pbkdf2_sha256$240000$587ee3828c5b6611e165240783a68372$bfe4b44be33cfeea8ec70bc029a49268f0582646a92629660d2bc5e4c8a339fe",
     "full_name": "Rayhona Salimova",
     "role": "receptionist",
     "avatar": "📋",
@@ -100,7 +100,7 @@
   {
     "id": "USR-ADM-01",
     "username": "admin_klinika",
-    "password": "pbkdf2_sha256$240000$d773ea0031466b4cefa15964a32dab59$0ac4d3e7ff6f209bcbed2083c0e1eea474ec0f0bf4ba3da71338b807a99221da",
+    "password": "pbkdf2_sha256$240000$c0ddfe8bd0349319ef19dfcc7b87c9f8$b09ab39a509aa7c5527a97f9ff86a9689cedc5cd7beec5e5b451c5e0ed2e00ce",
     "full_name": "Klinika Administratori",
     "role": "admin",
     "avatar": "🛡️",
@@ -112,7 +112,7 @@
   {
     "id": "USR-CHI-01",
     "username": "bosh_shifokor",
-    "password": "pbkdf2_sha256$240000$b6d0e17b7a315d29d787a5596eb30b83$a693fea132af1e388a55c2334c5d30b4fe83bcb2a60793143d17645df5fdd133",
+    "password": "pbkdf2_sha256$240000$673685cb0ae2c7f3fee9b9dae1e1b9fc$da4dbf9724e8a3024bdc3ffd08fa23cc54cc2a0386793fe8b3e6a821bbb59fb9",
     "full_name": "Bosh Shifokor",
     "role": "chief_doctor",
     "avatar": "🩺",
@@ -124,7 +124,7 @@
   {
     "id": "USR-NUR-02",
     "username": "hamshira_2",
-    "password": "pbkdf2_sha256$240000$a2f4e2e30c765179da5d20a7732a8c63$4270c668ff2aaa6e7f802b722e90248fb89e30674f26ade0e0d385df7d2371eb",
+    "password": "pbkdf2_sha256$240000$c08e40158285faa6c14035487d4826c3$e12a483c908275799520f1eaf2fcdb6432183db0412a6f07fdd8093906af37bf",
     "full_name": "Navbatchi Hamshira (2-post)",
     "role": "nurse",
     "avatar": "💉",
@@ -136,7 +136,7 @@
   {
     "id": "USR-REC-02",
     "username": "qabul_2",
-    "password": "pbkdf2_sha256$240000$ebfef61ac24d93b8c9f3094a19179c8e$9204f3aabb3681d8804ddeddf34172ba60898b329e308ed08b9240b429bf0e1e",
+    "password": "pbkdf2_sha256$240000$7ff48c20ec18c0a35cef6054d537a6d3$1875f0a943a1ec9df135aae19ea4f0e786d8c0ad51c1931cde36d5eb77738e08",
     "full_name": "Qabulxona Xodimi (2-smena)",
     "role": "receptionist",
     "avatar": "📋",
@@ -148,7 +148,7 @@
   {
     "id": "USR-PHA-01",
     "username": "farmatsevt",
-    "password": "pbkdf2_sha256$240000$ebd575ccce4c711164e9e465e9e8ecf1$5e04aeeeea521446bf60d950beb59ba159465517cdc517a0047c7b2bd325e6c5",
+    "password": "pbkdf2_sha256$240000$ab2da91e428e2b7a03a285206142737e$a0c07af3e8d6352b2bdc9c680f7e8cb76575861b5a60e2f0711ab6bf03506e1c",
     "full_name": "Farmatsevt",
     "role": "pharmacist",
     "avatar": "💊",
@@ -160,7 +160,7 @@
   {
     "id": "USR-WAR-01",
     "username": "statsionar",
-    "password": "pbkdf2_sha256$240000$c5c80ee19fa82cc79d1365cbd41c0b27$98df808b31228c845f936ecbdf92a3409545274a979a45917a54002b6e331f94",
+    "password": "pbkdf2_sha256$240000$1dd1fc967204a37b31fff0833155337e$4725ca2d848753bbb3fec5904bb972a9a7a2401143d46b0a1501b3be922f88cd",
     "full_name": "Statsionar Menejeri",
     "role": "ward_manager",
     "avatar": "🏨",
@@ -172,7 +172,7 @@
   {
     "id": "USR-HR_-01",
     "username": "kadrlar",
-    "password": "pbkdf2_sha256$240000$dc0549a3b4c222526fb96d6484c1d68d$b5986bc60f1cf32ac52e895c4d897d2d8ef64755bd006440ee4f469f422bc89e",
+    "password": "pbkdf2_sha256$240000$2b54387ab1e7ab605685ea5933e915dd$6d458e1cedfb233548b4839e6d52977cec3e843f8346e5af21b111e3d5cfb65a",
     "full_name": "Kadrlar Bo'limi Boshlig'i",
     "role": "hr_manager",
     "avatar": "👥",
@@ -184,7 +184,7 @@
   {
     "id": "USR-KIT-01",
     "username": "oshxona",
-    "password": "pbkdf2_sha256$240000$0bd25fb9532e5feae9eae01603257090$36053ee1d8f954e50e21dbe7b1f2612abde50c6e4185d83ce75a869adb8d6e80",
+    "password": "pbkdf2_sha256$240000$5c70fdea385e1194ca45ccffc607b75f$3dab7790434130a0d175dafe51f661cf4657ec6cf9a1272712beb6c01f45c49a",
     "full_name": "Oshxona Xodimi",
     "role": "kitchen_staff",
     "avatar": "🍲",
