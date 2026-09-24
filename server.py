@@ -489,6 +489,23 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             'database': 'ok' if db_ok else 'unreachable',
         }).encode('utf-8'))
 
+    def _actor_staff_id(self, body, field='staff_id'):
+        """
+        Who is doing this, as a staff id, or None.
+
+        Five handlers used to fall back to a literal 'STF-DOC-01' or
+        'STF-REC-01' -- real people -- so a prescription, a transfer or a cash
+        receipt with no author was recorded over the name of whoever happened
+        to hold that id. On a medical or financial record that is a signature.
+        An unknown author is now None, which is honest and which the column
+        already allows.
+        """
+        given = (body or {}).get(field)
+        if given:
+            return given
+        sess = self.current_session()
+        return (sess['user'].get('staff_id') if sess else None) or None
+
     def _send_server_error(self):
         """
         A 500 that says nothing about the inside of the system.
@@ -1767,7 +1784,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 new_bed_id = body.get('new_bed_id')
                 transfer_date = (body.get('transfer_date') or datetime.date.today().isoformat())[:10]
                 reason = body.get('reason') or "Palata ko'chirildi"
-                staff_id = body.get('staff_id') or 'STF-REC-01'
+                staff_id = self._actor_staff_id(body)
 
                 success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id)
                 if not success:
@@ -1881,7 +1898,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     body.get('transaction_ref', f"CHK-{pay_id[-4:]}"),
                     pay_date,
                     body.get('notes', ''),
-                    body.get('received_by_staff_id', 'STF-REC-01')
+                    self._actor_staff_id(body, 'received_by_staff_id')
                 ))
 
                 conn.commit()
@@ -2014,8 +2031,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     birth_year,
                     body.get('referral_source', 'hotline'),
                     1 if body.get('is_anonymous', True) else 0,
-                    body.get('medical_allergies', "Yo'q"),
-                    body.get('chronic_conditions', "Yo'q"),
+                    # Not asked is not the same as none. These defaulted to
+                    # "Yo'q", so a record nobody had questioned asserted the
+                    # patient had no allergies -- and the doctor's page raises
+                    # its allergy warning from this column, so the warning
+                    # stayed silent. Unknown is now NULL and shows as unknown.
+                    (body.get('medical_allergies') or '').strip() or None,
+                    (body.get('chronic_conditions') or '').strip() or None,
                     body.get('status', 'active')
                 ))
                 conn.commit()
@@ -2328,7 +2350,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         hid,
                         pid,
                         body.get('admission_id'),
-                        body.get('doctor_id', 'STF-DOC-01'),
+                        self._actor_staff_id(body, 'doctor_id'),
                         body.get('complaints', ''),
                         body.get('anamnesis_morbi', ''),
                         body.get('anamnesis_vitae', ''),
@@ -2348,9 +2370,57 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': 'Medical history saved', 'id': hid}).encode('utf-8'))
 
-            # 9. POST /api/doctor/prescriptions (Add medication order)
+            # 9. POST /api/doctor/prescriptions -- a medication order.
+            #
+            # Every field here used to have a fallback: a request naming only
+            # the drug was stored as 400 ml of it, intravenously by drip, once
+            # every morning for five days, signed by STF-DOC-01. The nurse
+            # station builds the medication round from exactly these columns,
+            # so a nurse would have been handed a five-day infusion order that
+            # no doctor wrote. Nothing clinical is invented now: what the
+            # prescriber did not say is refused or left empty.
             elif path == '/api/doctor/prescriptions':
                 rx_id = body.get('id') or f"RX-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+
+                med = (body.get('medication_name') or '').strip()
+                if not med:
+                    self._send_validation_error('Dori nomi kiritilishi shart.',
+                                                'medication_name')
+                    return
+                # Dose and route decide what reaches the patient; a blank one
+                # is a question for the prescriber, not something to fill in.
+                for field, label in (('dosage', 'Doza'), ('route', 'Yuborish yo\'li'),
+                                     ('frequency', 'Qabul chastotasi')):
+                    if not (body.get(field) or '').strip():
+                        self._send_validation_error(
+                            f'{label} kiritilishi shart.', field)
+                        return
+
+                days_raw = body.get('duration_days')
+                if days_raw in (None, ''):
+                    self._send_validation_error('Davomiylik (kun) kiritilishi shart.',
+                                                'duration_days')
+                    return
+                try:
+                    duration_days = int(days_raw)
+                except (TypeError, ValueError):
+                    self._send_validation_error('Davomiylik raqam bo\'lishi kerak.',
+                                                'duration_days')
+                    return
+                if not (1 <= duration_days <= 365):
+                    self._send_validation_error(
+                        'Davomiylik 1-365 kun oralig\'ida bo\'lishi kerak.',
+                        'duration_days')
+                    return
+
+                # Authorship is a signature on a medical order. It comes from
+                # the request or from whoever is signed in, and is left NULL
+                # when neither is known -- never attributed to a named doctor
+                # who was not asked, which is what it used to do. Unknown is
+                # not a reason to refuse the order: the audit trail still
+                # records which account wrote it.
+                rx_doctor = self._actor_staff_id(body, 'doctor_id')
+
                 cur.execute("""
                     INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, route, frequency, duration_days, timing, instructions, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2358,15 +2428,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     rx_id,
                     body.get('patient_id'),
                     body.get('admission_id'),
-                    body.get('doctor_id', 'STF-DOC-01'),
-                    body.get('medication_name', ''),
-                    body.get('form', 'Infuzion flakon'),
-                    body.get('dosage', '400 ml'),
-                    body.get('route', 'V/I tomchilab (kapelnitsa)'),
-                    body.get('frequency', 'Kuniga 1 mahal'),
-                    int(body.get('duration_days', 5)),
-                    body.get('timing', 'Ertalab'),
-                    body.get('instructions', ''),
+                    rx_doctor,
+                    med,
+                    (body.get('form') or '').strip() or None,
+                    body.get('dosage').strip(),
+                    body.get('route').strip(),
+                    body.get('frequency').strip(),
+                    duration_days,
+                    (body.get('timing') or '').strip() or None,
+                    (body.get('instructions') or '').strip() or None,
                     body.get('status', 'active')
                 ))
                 conn.commit()
@@ -2461,9 +2531,39 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     {'message': "Ko'rik saqlandi", 'date': day.isoformat()},
                     ensure_ascii=False).encode('utf-8'))
 
-            # 11. POST /api/doctor/epicrisis (Save Discharge Epicrisis)
+            # 11. POST /api/doctor/epicrisis -- the discharge summary.
+            #
+            # This is the document the patient leaves with and the clinic is
+            # held to. Saving it empty used to produce a complete one:
+            # diagnosis 'Alkogol intoksikatsiyasi remissiya davri', ICD-10
+            # F10.2, outcome 'recovered', signed by STF-DOC-01 -- a diagnosis
+            # nobody made, over the name of a doctor who was not asked. The
+            # clinical findings are now required and the signature comes from
+            # whoever is signed in.
             elif path == '/api/doctor/epicrisis':
                 epi_id = body.get('id') or f"EPI-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+
+                diagnosis = (body.get('diagnosis_final') or '').strip()
+                if not diagnosis:
+                    self._send_validation_error(
+                        'Yakuniy tashxis kiritilishi shart.', 'diagnosis_final')
+                    return
+
+                status_val = (body.get('discharge_status') or '').strip()
+                if not status_val:
+                    self._send_validation_error(
+                        'Chiqish holati tanlanishi shart.', 'discharge_status')
+                    return
+
+                epi_date, derr = parse_date_param(body.get('epicrisis_date'))
+                if derr:
+                    self._send_validation_error(derr, 'epicrisis_date')
+                    return
+
+                # As on the prescription: recorded when known, NULL when not,
+                # never someone else's name.
+                epi_doctor = self._actor_staff_id(body, 'doctor_id')
+
                 cur.execute("""
                     INSERT INTO discharge_epicrises (id, patient_id, admission_id, doctor_id, epicrisis_date, diagnosis_final, icd10_code, treatment_summary, home_prescriptions, psycho_recommendations, discharge_status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2471,14 +2571,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     epi_id,
                     body.get('patient_id'),
                     body.get('admission_id'),
-                    body.get('doctor_id', 'STF-DOC-01'),
-                    body.get('epicrisis_date', datetime.date.today().isoformat()),
-                    body.get('diagnosis_final', 'Alkogol intoksikatsiyasi remissiya davri'),
-                    body.get('icd10_code', 'F10.2'),
-                    body.get('treatment_summary', ''),
-                    body.get('home_prescriptions', ''),
-                    body.get('psycho_recommendations', ''),
-                    body.get('discharge_status', 'recovered')
+                    epi_doctor,
+                    epi_date.isoformat(),
+                    diagnosis,
+                    (body.get('icd10_code') or '').strip() or None,
+                    (body.get('treatment_summary') or '').strip() or None,
+                    (body.get('home_prescriptions') or '').strip() or None,
+                    (body.get('psycho_recommendations') or '').strip() or None,
+                    status_val
                 ))
                 conn.commit()
                 conn.close()
@@ -2487,8 +2587,18 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 11b. POST /api/doctor/consultation-case (Atomic Consultation, Kasallik Varaqasi & Retseptlar)
             elif path == '/api/doctor/consultation-case':
-                doc_id = body.get('doctor_id') or 'STF-DOC-01'
-                doc_name = body.get('doctor_name') or 'Dr. Bobur Mirzayev'
+                doc_id = self._actor_staff_id(body, 'doctor_id')
+                # The name is printed into the notes this handler generates.
+                # It defaulted to a real doctor's name, so a case saved by
+                # anyone else read as that doctor's work. Look it up from
+                # the id, and say nothing rather than name the wrong person.
+                doc_name = (body.get('doctor_name') or '').strip()
+                if not doc_name and doc_id:
+                    cur.execute('SELECT full_name FROM staff WHERE id = ?', (doc_id,))
+                    _dr = cur.fetchone()
+                    if _dr:
+                        doc_name = _dr['full_name']
+                doc_name = doc_name or 'Shifokor'
                 
                 # Verify doctor name from staff table if possible
                 try:
@@ -2520,7 +2630,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 pt_emergency = pt_data.get('emergency_contact') or body.get('emergency_contact') or ''
 
                 anam_data = body.get('anamnesis') or {}
-                allergy = anam_data.get('allergic_status') or body.get('allergic_status', "Yo'q")
+                # Same rule as above: an allergy history nobody took is
+                # unknown, not absent.
+                allergy = (anam_data.get('allergic_status')
+                           or body.get('allergic_status') or '').strip() or None
 
                 pid = body.get('patient_id') or pt_data.get('id')
                 p_row = None
@@ -3326,7 +3439,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 new_bed_id = body.get('new_bed_id')
                 transfer_date = (body.get('transfer_date') or datetime.date.today().isoformat())[:10]
                 reason = body.get('reason') or "Palata ko'chirildi"
-                staff_id = body.get('staff_id') or 'STF-REC-01'
+                staff_id = self._actor_staff_id(body)
 
                 success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id)
                 if not success:

@@ -1150,6 +1150,160 @@ class PatientIdentity(ApiTest):
         self.assertEqual(str(mine[0].get('birth_date'))[:10], '1990-07-02')
 
 
+class NothingClinicalIsInvented(ApiTest):
+    """
+    Every field of a medication order and a discharge summary used to have a
+    fallback, so a request that named only the drug was stored as a complete
+    order, and an empty discharge summary was stored as a complete document.
+
+    Demonstrated before the fix: posting {"medication_name": "Analgin"} was
+    recorded as 400 ml of it, intravenously by drip, once every morning for
+    five days, over the name of a doctor who had not been asked. The nurse
+    station builds its medication round from exactly those columns.
+
+    An invented clinical value is indistinguishable from a measured one, which
+    is what makes it worse than a blank.
+    """
+
+    def _stay(self, name, bed):
+        pid = self.make_patient(name)
+        start = _dt.date.today()
+        end = start + _dt.timedelta(days=7)
+        _, adm = self.admit(pid, bed, start.isoformat(), end.isoformat())
+        return pid, adm['admission_id']
+
+    def _row(self, table, patient_id, columns):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            # patients is keyed by id; everything else references patient_id.
+            key = 'id' if table == 'patients' else 'patient_id'
+            cur.execute(f"SELECT {columns} FROM {table} WHERE {key} = ?", (patient_id,))
+            return cur.fetchone()
+        finally:
+            conn.close()
+
+    # --- medication orders -------------------------------------------------
+
+    def test_a_drug_name_alone_is_not_a_prescription(self):
+        pid, adm = self._stay('Rx Bare', BED_A)
+        status, body = self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'admission_id': adm, 'medication_name': 'Analgin'})
+        self.assertEqual(status, 400, f"an incomplete order was accepted: {body}")
+        self.assertIsNone(self._row('prescriptions', pid, 'id'),
+                          'an incomplete order reached the record')
+
+    def test_each_missing_part_of_an_order_is_named(self):
+        pid, adm = self._stay('Rx Fields', BED_B)
+        base = {'patient_id': pid, 'admission_id': adm, 'medication_name': 'Analgin',
+                'dosage': '2 ml', 'route': 'M/I', 'frequency': 'Kuniga 2 mahal',
+                'duration_days': 3}
+        for field in ('medication_name', 'dosage', 'route', 'frequency', 'duration_days'):
+            payload = dict(base)
+            payload[field] = ''
+            status, body = self.api.post('/api/doctor/prescriptions', payload)
+            self.assertEqual(status, 400, f"{field} was allowed to be blank")
+            self.assertEqual(body.get('field'), field)
+
+    def test_an_order_stores_what_was_written_and_nothing_else(self):
+        pid, adm = self._stay('Rx Exact', BED_C)
+        status, body = self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'admission_id': adm, 'medication_name': 'Analgin',
+            'dosage': '2 ml', 'route': 'M/I', 'frequency': 'Kuniga 2 mahal',
+            'duration_days': 3})
+        self.assertEqual(status, 201, f"a complete order was refused: {body}")
+
+        row = self._row('prescriptions', pid,
+                        'medication_name, dosage, route, frequency, duration_days, form, timing')
+        self.assertEqual(row['dosage'], '2 ml')
+        self.assertEqual(row['route'], 'M/I')
+        self.assertEqual(row['duration_days'], 3)
+        # Never asked for, so never filled in. These used to become
+        # 'Infuzion flakon' and 'Ertalab'.
+        self.assertIsNone(row['form'], 'a dosage form was invented')
+        self.assertIsNone(row['timing'], 'a time of day was invented')
+
+    def test_an_implausible_duration_is_refused(self):
+        pid, adm = self._stay('Rx Days', BED_A)
+        for days in (0, -3, 4000):
+            status, _ = self.api.post('/api/doctor/prescriptions', {
+                'patient_id': pid, 'admission_id': adm, 'medication_name': 'Analgin',
+                'dosage': '2 ml', 'route': 'M/I', 'frequency': 'Kuniga 1 mahal',
+                'duration_days': days})
+            self.assertEqual(status, 400, f"duration {days} was accepted")
+
+    # --- the discharge summary ---------------------------------------------
+
+    def test_an_empty_discharge_summary_is_refused(self):
+        """
+        It used to produce a complete document: diagnosis 'Alkogol
+        intoksikatsiyasi remissiya davri', ICD-10 F10.2, outcome 'recovered'.
+        """
+        pid, adm = self._stay('Epi Empty', BED_B)
+        status, body = self.api.post('/api/doctor/epicrisis',
+                                     {'patient_id': pid, 'admission_id': adm})
+        self.assertEqual(status, 400, f"an empty discharge summary was saved: {body}")
+        self.assertEqual(body.get('field'), 'diagnosis_final')
+        self.assertIsNone(self._row('discharge_epicrises', pid, 'id'),
+                          'an empty discharge summary reached the record')
+
+    def test_a_discharge_summary_keeps_to_what_the_doctor_wrote(self):
+        pid, adm = self._stay('Epi Real', BED_C)
+        status, body = self.api.post('/api/doctor/epicrisis', {
+            'patient_id': pid, 'admission_id': adm,
+            'diagnosis_final': 'F10.2 remissiya', 'discharge_status': 'recovered'})
+        self.assertEqual(status, 201, f"a real discharge summary was refused: {body}")
+        row = self._row('discharge_epicrises', pid,
+                        'diagnosis_final, icd10_code, treatment_summary')
+        self.assertEqual(row['diagnosis_final'], 'F10.2 remissiya')
+        self.assertIsNone(row['icd10_code'], 'an ICD-10 code was invented')
+        self.assertIsNone(row['treatment_summary'], 'a treatment summary was invented')
+
+    # --- allergies and authorship ------------------------------------------
+
+    def test_an_allergy_history_nobody_took_is_unknown_not_none(self):
+        """
+        medical_allergies defaulted to "Yo'q". The doctor's page raises its
+        allergy warning from this column, so a record nobody had questioned
+        asserted the patient was safe and the warning stayed silent.
+        """
+        pid = self.make_patient('Allergy Unknown')
+        row = self._row('patients', pid, 'medical_allergies, chronic_conditions')
+        self.assertIsNone(row['medical_allergies'],
+                          'the record claims the patient has no allergies')
+        self.assertIsNone(row['chronic_conditions'])
+
+    def test_a_stated_allergy_is_kept(self):
+        pid = self.make_patient('Allergy Known', medical_allergies='Penitsillin')
+        self.assertEqual(
+            self._row('patients', pid, 'medical_allergies')['medical_allergies'],
+            'Penitsillin')
+
+    def test_work_is_never_signed_by_a_doctor_who_was_not_asked(self):
+        """
+        doctor_id fell back to the literal 'STF-DOC-01' -- a real person -- so
+        an order with no stated author was recorded over their name.
+        """
+        pid, adm = self._stay('Rx Author', BED_A)
+        self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'admission_id': adm, 'medication_name': 'Analgin',
+            'dosage': '2 ml', 'route': 'M/I', 'frequency': 'Kuniga 1 mahal',
+            'duration_days': 2})
+        author = self._row('prescriptions', pid, 'doctor_id')['doctor_id']
+        self.assertNotEqual(author, 'STF-DOC-01',
+                            'the order was signed by a doctor who was not asked')
+
+    def test_a_stated_author_is_kept(self):
+        pid, adm = self._stay('Rx Author Kept', BED_B)
+        self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'admission_id': adm, 'doctor_id': DOCTOR,
+            'medication_name': 'Analgin', 'dosage': '2 ml', 'route': 'M/I',
+            'frequency': 'Kuniga 1 mahal', 'duration_days': 2})
+        self.assertEqual(self._row('prescriptions', pid, 'doctor_id')['doctor_id'], DOCTOR)
+
+
 class Operations(ApiTest):
     """
     The things that matter to whoever keeps this running, rather than to the
