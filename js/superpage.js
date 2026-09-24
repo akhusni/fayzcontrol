@@ -8,23 +8,41 @@
 
   // State & RBAC
   let activeDepartment = 'executive';
-  let currentRole = localStorage.getItem('fmh_active_role') || 'superadmin';
+  // Who is signed in, and what they may see, come from the server -- not from
+  // localStorage.
+  //
+  // This used to read fmh_active_role out of localStorage and default it to
+  // 'superadmin', then invent a superadmin user object when none was stored.
+  // So a fresh browser opened the full administrative shell, and anyone could
+  // set that key to any role and be shown departments their job has no rights
+  // to. The data was never at risk -- permissions.py refuses every call
+  // regardless -- but the page showed sections that then answered 403 to
+  // everything inside them, which reads as a broken system rather than a
+  // forbidden one.
+  //
+  // loadSession() replaces both from /api/auth/session before anything renders.
+  let currentRole = null;
   let currentUser = null;
-  try {
-    const savedUser = localStorage.getItem('fmh_active_user');
-    currentUser = savedUser ? JSON.parse(savedUser) : null;
-  } catch (e) { currentUser = null; }
+  let serverRole = null;      // the real one, for deciding what may be previewed
+  let previewRole = null;     // an administrator looking at another role's layout
 
-  if (!currentUser) {
-    currentUser = {
-      id: 'USR-SUP-01',
-      username: 'superadmin',
-      full_name: 'Bosh Administrator',
-      role: 'superadmin',
-      avatar: '👑'
-    };
-    localStorage.setItem('fmh_active_user', JSON.stringify(currentUser));
-    localStorage.setItem('fmh_active_role', 'superadmin');
+  async function loadSession() {
+    try {
+      const res = await fetch('/api/auth/session');
+      const s = await res.json();
+      if (s && s.authenticated && s.user) {
+        currentUser = s.user;
+        serverRole = s.user.role || null;
+        currentRole = serverRole;
+        return;
+      }
+    } catch (e) {
+      console.error('[superpage] could not read the session:', e);
+    }
+    // The 401 wrapper in fmh_dialogs.js sends an unauthenticated visitor to
+    // the login screen; until then show nothing rather than an admin shell.
+    currentUser = null;
+    currentRole = null;
   }
 
   const ROLE_CONFIG = {
@@ -217,29 +235,29 @@
 
   function switchRole(roleKey) {
     if (!ROLE_CONFIG[roleKey]) return;
+    // Previewing another role is an administrator's tool, so it is gated on
+    // the role the SERVER reports, not on the one currently displayed --
+    // otherwise one switch into 'superadmin' unlocked every other switch.
+    // It changes only what this page draws; every request still carries the
+    // real account and is answered on that basis.
+    if (serverRole !== 'superadmin' && serverRole !== 'admin') {
+      showToast("⚠️ Rolni almashtirish faqat administrator uchun.", "danger");
+      return;
+    }
     currentRole = roleKey;
-    localStorage.setItem('fmh_active_role', roleKey);
 
-    const mockNames = {
-      superadmin: { full_name: 'Bosh Administrator', username: 'superadmin' },
-      doctor: { full_name: 'Dr. Rahim Karimov', username: 'doctor' },
-      nurse: { full_name: 'Malika Karimova', username: 'nurse' },
-      accountant: { full_name: 'Nodir Aliyev', username: 'accountant' },
-      reception: { full_name: 'Shahnoza Umarova', username: 'reception' }
-    };
-
-    currentUser = {
-      id: `USR-${roleKey.toUpperCase()}`,
-      username: mockNames[roleKey].username,
-      full_name: mockNames[roleKey].full_name,
-      role: roleKey,
-      avatar: ROLE_CONFIG[roleKey].avatar
-    };
-    localStorage.setItem('fmh_active_user', JSON.stringify(currentUser));
+    // The header keeps showing who is actually signed in. This used to swap
+    // in an invented person -- 'Dr. Rahim Karimov', 'Malika Karimova' -- so
+    // the page, and anything printed from it, displayed a name belonging to
+    // nobody. Previewing a role changes the layout, never the identity.
+    previewRole = roleKey;
 
     closeAllModals();
     updateHeaderUserWidget();
-    showToast(`👑 Foydalanuvchi roli: <strong>${ROLE_CONFIG[roleKey].name}</strong>`, 'info');
+    showToast(
+      `Ko'rinish: <strong>${ROLE_CONFIG[roleKey].name}</strong> — ` +
+      `siz hamon <strong>${(currentUser && currentUser.full_name) || 'tizimda'}</strong> ` +
+      `sifatida ishlayapsiz.`, 'info');
   }
 
   // =========================================================================
@@ -282,6 +300,8 @@
   async function init() {
     applyTheme(currentTheme);
     startLiveClock();
+    // Before anything renders: the server decides who this is.
+    await loadSession();
     await loadPricingConfig();
     await loadMasterDatabases();
     initSampleTransactions();

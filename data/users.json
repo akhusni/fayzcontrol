@@ -192,5 +192,16 @@
     "is_active": true,
     "staff_id": "STF-KIT-01",
     "must_change_password": true
+  },
+  {
+    "id": "USR-REC-17",
+    "username": "suite_receptionist_17121",
+    "password": "pbkdf2_sha256$240000$fc44d1651315ab311e5bbe0e7679ec14$1f2daf6ae34a73b6e1e42fe2860ab3eb9c45cd9c8de399fe736f5b8f2d570975",
+    "full_name": "Suite receptionist",
+    "role": "receptionist",
+    "avatar": "👤",
+    "phone": "",
+    "is_active": true,
+    "must_change_password": true
   }
 ]
