@@ -456,8 +456,11 @@ def get_intake(conn, consultation_id):
     if data.get('substances'):
         try:
             data['substances'] = json.loads(data['substances'])
-        except Exception:
-            pass
+        except Exception as e:
+            # Leave the raw string in place so nothing is lost, but the page
+            # expects a list and will render it wrongly, so do not do it
+            # silently.
+            print(f"[consultation] substances is not readable JSON: {e}")
     return data
 
 
@@ -601,8 +604,11 @@ def get_plan(conn, plan_id):
     if data.get('medication_plan'):
         try:
             data['medication_plan'] = json.loads(data['medication_plan'])
-        except Exception:
-            pass
+        except Exception as e:
+            # Leave the raw string in place so nothing is lost, but the page
+            # expects a list and will render it wrongly, so do not do it
+            # silently.
+            print(f"[consultation] medication_plan is not readable JSON: {e}")
     return data
 
 

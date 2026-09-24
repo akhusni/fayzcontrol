@@ -536,8 +536,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                              ip_address=self.client_ip())
             finally:
                 conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # The refusal still stands -- an unreachable database must not
+            # turn a 403 into a 500. But it leaves a hole in the trail, and
+            # a hole nobody is told about is worse than the missing row.
+            print(f'[audit] refusal of {self.command} {path} was NOT recorded: {e}')
 
         if path.startswith('/api/'):
             self._set_json_headers(403)
@@ -3077,6 +3080,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # 14. POST /api/users (Create / Register user)
             elif path == '/api/users':
                 users_file = os.path.join(BASE_DIR, 'data', 'users.json')
+                # A missing store is not an empty store. read_json_file
+                # returns the default for an absent file, and this handler
+                # then writes that default back plus the new account --
+                # rebuilding the whole user list from one row and losing
+                # every existing login, silently. The file has gone missing
+                # once already on this project. Refuse instead: something is
+                # wrong that creating a user will not fix.
+                if not os.path.exists(users_file):
+                    print(f'[!] user store missing at {users_file}; refusing to recreate it')
+                    self._set_json_headers(503)
+                    self.wfile.write(json.dumps({
+                        'error': "Foydalanuvchilar bazasi topilmadi. Yangi hisob "
+                                 "yaratilmadi - tizim administratoriga murojaat qiling."
+                    }, ensure_ascii=False).encode('utf-8'))
+                    return
                 u_list = read_json_file(users_file, [])
 
                 username = (body.get('username') or '').strip().lower()

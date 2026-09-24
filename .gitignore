@@ -29,3 +29,10 @@ pymysql.broken.vendored/
 # Backups of the credential file are credential files too.
 db_config.json.*
 db_config.*.bak
+
+# Stray copies of the user store. Two turned up in data/ with the .json
+# extension stripped ('users', 'users 2'), each a full copy of every account's
+# hash. They are not servable over HTTP, but they have no business in the tree.
+data/users
+data/users[ .]*
+!data/users.json

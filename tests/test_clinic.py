@@ -2436,6 +2436,36 @@ class PdfExport(ApiTest):
             self.skipTest(f"reportlab not installed: {e}")
 
 
+PROBE_PREFIXES = ('suite_', 'concurrent_probe_', 'pwpolicy_probe')
+
+
+def sweep_probe_accounts(when):
+    """Remove any account this suite created and failed to clean up."""
+    if not credentials_present():
+        return
+    api = Client()
+    if api.login()[0] != 200:
+        return
+    status, users = api.get('/api/users')
+    if status != 200 or not isinstance(users, list):
+        return
+    stale = [u for u in users
+             if str(u.get('username', '')).startswith(PROBE_PREFIXES)]
+    # This runs against the file that holds every real login, so it refuses to
+    # act if its own selection looks wrong. A sweep that would remove most of
+    # the accounts has misidentified something, and the right answer is to stop
+    # and say so rather than to tidy up.
+    if stale and len(stale) > len(users) // 2:
+        print(f"  [suite] REFUSING to sweep: {len(stale)} of {len(users)} accounts "
+              f"matched a probe prefix, which cannot be right")
+        return
+    for u in stale:
+        api.delete('/api/users/' + (u.get('id') or u['username']))
+    if stale:
+        print(f"  [suite] swept {len(stale)} leftover probe account(s) {when}: "
+              + ', '.join(u['username'] for u in stale))
+
+
 if __name__ == '__main__':
     argv = [sys.argv[0]]
     verbose = '-v' in sys.argv or '--verbose' in sys.argv
@@ -2456,5 +2486,13 @@ if __name__ == '__main__':
         print("    export FMH_TEST_PASS='your-password'\n")
         sys.exit(2)
 
+    # The suite creates throwaway accounts to probe each role. Every test
+    # that makes one also deletes it, but one occasionally survived into
+    # data/users.json -- a tracked file, so the residue showed up in `git
+    # status` and would have shipped in a package built from the working tree.
+    # Rather than chase a rare interleaving, cleanup is made total: sweep
+    # before and after, so an interrupted run leaves nothing behind either.
+    sweep_probe_accounts('before')
     result = unittest.TextTestRunner(verbosity=2 if verbose else 1).run(suite)
+    sweep_probe_accounts('after')
     sys.exit(0 if result.wasSuccessful() else 1)

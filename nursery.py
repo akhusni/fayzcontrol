@@ -198,8 +198,11 @@ def prescription_window(row):
             adm_start = _dt.date.fromisoformat(str(adm_start)[:10])
             if adm_start > start:
                 start = adm_start
-        except Exception:
-            pass
+        except Exception as e:
+            # Falling back to the prescription's own start is the safe choice,
+            # but it can schedule doses for days before the patient arrived, so
+            # say so rather than let the round quietly disagree with the stay.
+            print(f"[nursery] unreadable admission start {adm_start!r}: {e}")
 
     days = row.get('duration_days') or 1
     try:
