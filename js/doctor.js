@@ -134,7 +134,7 @@
   // =========================================================================
   async function init() {
     applyTheme(state.currentTheme);
-    checkDoctorAuth();
+    await checkDoctorAuth();
     updateDoctorIdentityDisplay();
     setupEventListeners();
 
@@ -1255,7 +1255,7 @@
       timing: med.default_timing || '',
       instructions: med.instructions || '',
       status: 'active',
-      doctor_name: state.doctors.find(d => d.id === state.activeDoctorId)?.name || 'Dr. Shifokor'
+      doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
     };
 
     if (!(await addPrescription(rxData))) return;
@@ -1306,7 +1306,7 @@
         timing: document.getElementById('rx-timing').value,
         instructions: document.getElementById('rx-instructions').value,
         status: 'active',
-        doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || state.doctors.find(d => d.id === state.activeDoctorId)?.name || 'Dr. Shifokor'
+        doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
       };
     }
 
@@ -1389,7 +1389,7 @@
       addPrescription({
         id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
         status: 'active',
-        doctor_name: state.doctors.find(d => d.id === state.activeDoctorId)?.name || 'Dr. Shifokor',
+        doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
         ...item
       });
     });
@@ -1485,7 +1485,7 @@
       return `
         <div class="diary-entry-card">
           <div class="diary-top-row">
-            <div class="diary-date"><i class="fas fa-calendar-check"></i> ${n.date} • ${n.doctor_name || 'Dr. Shifokor'}</div>
+            <div class="diary-date"><i class="fas fa-calendar-check"></i> ${n.date} • ${n.doctor_name || '—'}</div>
             ${condBadge}
           </div>
           <div class="diary-vitals-box">
@@ -1528,7 +1528,7 @@
       spo2: parseInt(document.getElementById('note-spo2').value) || null,
       dynamics: dynamics,
       treatment: document.getElementById('note-treatment').value,
-      doctor_name: state.doctors.find(d => d.id === state.activeDoctorId)?.name || 'Dr. Shifokor'
+      doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
     };
 
     try {
@@ -2078,43 +2078,47 @@
   // =========================================================================
   // DOCTOR AUTHENTICATION & IDENTITY ENGINE
   // =========================================================================
-  function checkDoctorAuth() {
-    const savedDoc = localStorage.getItem(STORAGE_KEYS.ACTIVE_DOCTOR);
-    if (savedDoc) {
-      try {
-        const parsed = JSON.parse(savedDoc);
-        if (parsed && (parsed.username || parsed.staff_id)) {
-          state.authenticatedDoctor = parsed;
-          state.activeDoctorId = parsed.staff_id;
-          hideDoctorAuthModal();
-          return true;
-        }
-      } catch (e) {}
-    }
+  // Who is at the keyboard comes from the server session only.
+  //
+  // This trusted the doctor last saved in localStorage, so on a shared PC the
+  // next person to open the page worked -- and signed orders -- under the
+  // previous doctor's name. An administrator was made CLINIC_DOCTORS[0], a
+  // real doctor, and everything they wrote went out over that doctor's
+  // signature. An administrator now works as themselves (no staff id), which
+  // the server records as unsigned while the audit trail names the account.
+  function doctorFromUser(u, roleLabel) {
+    const isDoctor = u.role === 'doctor' || u.role === 'chief_doctor';
+    const match = CLINIC_DOCTORS.find(d => d.username === u.username);
+    if (match) return { ...match, staff_id: u.staff_id || match.staff_id };
+    return {
+      username: u.username,
+      staff_id: u.staff_id || null,
+      name: u.full_name || u.username,
+      role: isDoctor ? (u.role === 'chief_doctor' ? 'Bosh Shifokor / Narkolog' : 'Shifokor') : (roleLabel || u.role),
+      specialty: u.specialty || '',
+      avatar: u.avatar || '👨‍⚕️',
+      is_superadmin: !isDoctor
+    };
+  }
 
-    const activeUser = localStorage.getItem('fmh_active_user') || localStorage.getItem('fmh_user');
-    if (activeUser) {
-      try {
-        const u = JSON.parse(activeUser);
-        const match = CLINIC_DOCTORS.find(d => d.username === u.username || d.staff_id === u.staff_id);
-        if (match) {
-          state.authenticatedDoctor = match;
-          state.activeDoctorId = match.staff_id;
-          localStorage.setItem(STORAGE_KEYS.ACTIVE_DOCTOR, JSON.stringify(match));
-          hideDoctorAuthModal();
-          return true;
-        } else if (u.role === 'superadmin' || u.role === 'admin') {
-          state.authenticatedDoctor = { ...CLINIC_DOCTORS[0], is_superadmin: true };
-          state.activeDoctorId = CLINIC_DOCTORS[0].staff_id;
-          localStorage.setItem(STORAGE_KEYS.ACTIVE_DOCTOR, JSON.stringify(state.authenticatedDoctor));
-          hideDoctorAuthModal();
-          return true;
-        }
-      } catch (e) {}
-    }
+  async function checkDoctorAuth() {
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_DOCTOR);
+    let session = null;
+    try {
+      const res = await fetch('/api/auth/session', { cache: 'no-store' });
+      if (res.ok) session = await res.json();
+    } catch (e) {}
 
-    showDoctorAuthModal();
-    return false;
+    if (!session || !session.authenticated || !session.user) {
+      state.authenticatedDoctor = null;
+      state.activeDoctorId = '';
+      showDoctorAuthModal();
+      return false;
+    }
+    state.authenticatedDoctor = doctorFromUser(session.user, session.role_label);
+    state.activeDoctorId = state.authenticatedDoctor.staff_id || '';
+    hideDoctorAuthModal();
+    return true;
   }
 
   function showDoctorAuthModal() {
@@ -2184,15 +2188,7 @@
         // local check below.
         if (data.user) {
           verified = true;
-          const clinicMatch = CLINIC_DOCTORS.find(d => d.username === data.user.username);
-          doctorData = clinicMatch || {
-            username: data.user.username,
-            staff_id: data.user.staff_id || 'STF-DOC-01',
-            name: data.user.full_name || 'Dr. Shifokor',
-            role: data.user.role === 'chief_doctor' ? 'Bosh Shifokor / Narkolog' : 'Shifokor',
-            specialty: data.user.specialty || 'Narkologiya',
-            avatar: '👨‍⚕️'
-          };
+          doctorData = doctorFromUser(data.user);
         }
       }
     } catch (netErr) {
@@ -2217,14 +2213,7 @@
     }
 
     state.authenticatedDoctor = doctorData;
-    state.activeDoctorId = doctorData.staff_id;
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_DOCTOR, JSON.stringify(doctorData));
-    localStorage.setItem('fmh_active_user', JSON.stringify({
-      username: doctorData.username,
-      full_name: doctorData.name,
-      role: 'doctor',
-      staff_id: doctorData.staff_id
-    }));
+    state.activeDoctorId = doctorData.staff_id || '';
 
     hideDoctorAuthModal();
     updateDoctorIdentityDisplay();
@@ -2241,6 +2230,10 @@
       type: 'warning'
     });
     if (!confirmedLogout) return;
+    // End the server session too. Clearing only this page left the account
+    // signed in, so the next person at a shared PC reloaded straight back
+    // into this doctor's cabinet.
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_DOCTOR);
     state.authenticatedDoctor = null;
     state.activeDoctorId = '';
@@ -2250,7 +2243,7 @@
   }
 
   function updateDoctorIdentityDisplay() {
-    const doc = state.authenticatedDoctor || CLINIC_DOCTORS[0];
+    const doc = state.authenticatedDoctor || { name: '—', role: '' };
     const nameEl = document.getElementById('active-doctor-display-name');
     const titleEl = document.getElementById('active-doctor-display-title');
     const avatarEl = document.getElementById('active-doctor-avatar');
@@ -2259,7 +2252,7 @@
     if (nameEl) nameEl.textContent = doc.name;
     if (titleEl) titleEl.textContent = doc.role || doc.specialty || 'Shifokor';
     if (avatarEl) avatarEl.textContent = doc.avatar || '👨‍⚕️';
-    if (modalDocEl) modalDocEl.textContent = `${doc.name} (${doc.role || doc.specialty})`;
+    if (modalDocEl) modalDocEl.textContent = doc.role || doc.specialty ? `${doc.name} (${doc.role || doc.specialty})` : doc.name;
   }
 
   // =========================================================================
