@@ -6,6 +6,18 @@
 window.FMH_Print = (function() {
   'use strict';
 
+  // What an empty field prints as. These papers are signed and handed to
+  // the patient, and every blank used to print as something plausible: a
+  // diagnosis, a course of treatment, a named doctor who never saw the
+  // patient, stay dates of 20-27 August, a 720,000 so'm payment, a 1.5
+  // million bonus on every payslip.
+  const NOT_RECORDED = 'Qayd etilmagan';
+  const DISCHARGE_OUTCOMES = {
+    recovered: "Sog'aydi", improved: 'Yaxshilandi', unchanged: "O'zgarishsiz",
+    transferred: "Boshqa muassasaga o'tkazildi",
+    against_medical_advice: 'Shifokor tavsiyasiga qarshi ketdi'
+  };
+
   function formatUZS(amount) {
     return (Number(amount) || 0).toLocaleString('uz-UZ') + " so'm";
   }
@@ -56,7 +68,7 @@ window.FMH_Print = (function() {
   }
 
   function getCommonAuthZone(roles = {}) {
-    const docName = roles.doctor || "Dr. Bobur Mirzayev";
+    const docName = roles.doctor || "—";
     const headName = roles.head || "Qabulxona Mudiri";
     const patientName = roles.patient || "Bemor / Vakil";
 
@@ -206,15 +218,15 @@ window.FMH_Print = (function() {
    */
   function admissionSlip(data, admId) {
     const isAnon = Boolean(data.is_anonymous || data.isAnon);
-    const pName = isAnon ? "[ ANONIM BEMOR ]" : (data.name || data.patient_name || "Yangi Bemor");
+    const pName = isAnon ? "[ ANONIM BEMOR ]" : (data.name || data.patient_name || "—");
     const pPhone = isAnon ? "Maxfiy" : (data.phone || data.patient_phone || "—");
-    const days = parseInt(data.days || data.total_days) || 7;
-    const rate = parseFloat(data.rate || data.daily_price) || 720000;
+    const days = parseInt(data.days || data.total_days) || 0;
+    const rate = parseFloat(data.rate || data.daily_price) || 0;
     const total = days * rate;
     const advance = parseFloat(data.advance) || 0;
     const balance = Math.max(0, total - advance);
     const startDate = data.startDate || data.start_date || new Date().toISOString().slice(0, 10);
-    const id = admId || data.id || `ADM-2026-${Date.now().toString().slice(-4)}`;
+    const id = admId || data.id || '—';
 
     const html = `
       ${getCommonHeader("STATSIONARGA QABUL VARAQASI", id, "QABULXONA & KASSA BO'LIMI")}
@@ -230,7 +242,7 @@ window.FMH_Print = (function() {
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Biriktirilgan Karavot</span>
-          <span class="val highlight"><i class="fas fa-bed"></i> ${data.bedId || data.bed_id || 'BED-1A'}</span>
+          <span class="val highlight"><i class="fas fa-bed"></i> ${data.bedId || data.bed_id || '—'}</span>
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Qabul Sanasi</span>
@@ -251,7 +263,7 @@ window.FMH_Print = (function() {
         <tbody>
           <tr>
             <td>
-              <strong>${data.program || data.program_type || 'Kompleks Statsionar Detoksikatsiya'}</strong>
+              <strong>${data.program || data.program_type || '—'}</strong>
               <div style="font-size:7pt; color:#64748b;">24/7 Shifokor va hamshiralik nazorati, palata, 3 mahal parhez taom, dori-darmonlar</div>
             </td>
             <td class="text-center"><strong>${days} kun</strong></td>
@@ -277,7 +289,7 @@ window.FMH_Print = (function() {
       </div>
 
       ${getCommonAuthZone({
-        doctor: data.doctor_name || "Dr. Bobur Mirzayev",
+        doctor: data.doctor_name || "—",
         patient: pName
       })}
 
@@ -382,9 +394,9 @@ window.FMH_Print = (function() {
   function prescriptionSheet(patient, rxList = [], doctor = {}) {
     const isAnon = Boolean(patient.is_anonymous);
     const pName = isAnon ? "[ ANONIM BEMOR ]" : (patient.full_name || "Bemor");
-    const docName = doctor.full_name || "Dr. Bobur Mirzayev";
+    const docName = doctor.full_name || "—";
     const adm = patient.active_admission || {};
-    const bedStr = adm.bed_code || adm.bed_id || "1-Palata";
+    const bedStr = adm.bed_code || adm.bed_id || "—";
 
     let rowsHtml = "";
     if (!rxList || !rxList.length) {
@@ -394,10 +406,10 @@ window.FMH_Print = (function() {
         <tr>
           <td class="text-center font-mono">${idx + 1}</td>
           <td><strong>${rx.medication_name || rx.name || 'Dori vositasi'}</strong></td>
-          <td class="text-center font-mono">${rx.dosage || rx.standard_dosage || '1 flakon'}</td>
-          <td class="text-center">${rx.route || 'V/I tomchilab (IV)'}</td>
-          <td class="text-center">${rx.frequency || '1 mahal'}</td>
-          <td style="font-size:7pt;">${rx.instructions || rx.notes || 'Rejim bo`yicha'}</td>
+          <td class="text-center font-mono">${rx.dosage || rx.standard_dosage || '—'}</td>
+          <td class="text-center">${rx.route || '—'}</td>
+          <td class="text-center">${rx.frequency || '—'}</td>
+          <td style="font-size:7pt;">${rx.instructions || rx.notes || ''}</td>
         </tr>`).join('');
     }
 
@@ -474,10 +486,10 @@ window.FMH_Print = (function() {
   function dischargeEpicrisis(patient, epicrisis = {}, doctor = {}) {
     const isAnon = Boolean(patient.is_anonymous);
     const pName = isAnon ? "[ ANONIM BEMOR ]" : (patient.full_name || "Bemor");
-    const docName = doctor.full_name || "Dr. Bobur Mirzayev";
+    const docName = doctor.full_name || "—";
     const adm = patient.active_admission || {};
-    const admStart = adm.start_date || epicrisis.admission_date || "2026-08-20";
-    const admEnd = adm.actual_end_date || adm.planned_end_date || epicrisis.discharge_date || "2026-08-27";
+    const admStart = adm.start_date || epicrisis.admission_date || "";
+    const admEnd = adm.actual_end_date || adm.planned_end_date || epicrisis.discharge_date || "";
 
     const html = `
       ${getCommonHeader("RASMIY TIBBIY CHIQARISH EPIKRIZI", `EPI-${patient.patient_code || patient.id}`, "KASALLIK TARIXI & REABILITATSIYA")}
@@ -503,23 +515,23 @@ window.FMH_Print = (function() {
 
       <div class="fmh-section-title"><i class="fas fa-diagnoses"></i> 1. Yakuniy Klinik Tashxis (ICD-10)</div>
       <div class="fmh-callout-box blue">
-        <strong>Asosiy Tashxis:</strong> ${epicrisis.final_diagnosis || epicrisis.diagnosis || "F10.2 Spirtli ichimliklarga qaramlik sindromi, faol remissiya bosqichi."}
-        <br><span style="font-size:7.5pt; color:#475569;">Hamroh kasalliklar: Gepatopatiya, surunkali astenik sindrom, vegetativ disfunksiya.</span>
+        <strong>Asosiy Tashxis:</strong> ${epicrisis.final_diagnosis || epicrisis.diagnosis_final || epicrisis.diagnosis || NOT_RECORDED}
+        ${epicrisis.diagnosis_secondary ? `<br><span style="font-size:7.5pt; color:#475569;">Hamroh kasalliklar: ${epicrisis.diagnosis_secondary}</span>` : ''}
       </div>
 
       <div class="fmh-section-title"><i class="fas fa-procedures"></i> 2. O'tkazilgan Kompleks Muolajalar</div>
       <p style="margin:4px 0; font-size:8.5pt;">
-        ${epicrisis.treatment_summary || "O'tkazilgan statsionar davolash jarayonida to'liq detoksikatsion infuzion terapiya (Reamberin, Glutathione, Mexidol), gepatoprotektiv himoya (Heptral), vitaminoterapiya va individual psixoterapevtik korreksiya seanslari to'liq hajmda muvaffaqiyatli bajarildi."}
+        ${epicrisis.treatment_summary || NOT_RECORDED}
       </p>
 
       <div class="fmh-section-title"><i class="fas fa-heartbeat"></i> 3. Chiqarishdagi Klinik Holat & Natija</div>
       <div class="fmh-callout-box">
-        <strong>Holat:</strong> ${epicrisis.discharge_status || "Bemorning umumiy somatik va psixo-emotsional holati qoniqarli. Intoksikatsiya belgilari to'liq bartaraf etildi, uyqu va ishtaha tiklandi. Moddaga nisbatan patologik mayl so'ndirildi."}
+        <strong>Holat:</strong> ${DISCHARGE_OUTCOMES[epicrisis.discharge_status] || epicrisis.discharge_status || NOT_RECORDED}
       </div>
 
       <div class="fmh-section-title"><i class="fas fa-clipboard-list"></i> 4. Ambulator Tavsiyalar va Profilaktika</div>
       <p style="margin:4px 0; font-size:8.5pt;">
-        ${epicrisis.recommendations || "1) Psixoterapevt qabulida haftada 1 marta reabilitatsion ko'rik. 2) Jigar va asab tizimini qo'llab-quvvatlovchi nootrop dori vositalarini qabul qilish. 3) To'liq sog'lom turmush tarzi va stressdan himoyalanish."}
+        ${epicrisis.recommendations || epicrisis.psycho_recommendations || NOT_RECORDED}
       </p>
 
       ${getCommonAuthZone({
@@ -541,10 +553,10 @@ window.FMH_Print = (function() {
     const isAnon = Boolean(patient?.is_anonymous);
     const pName = isAnon ? "[ ANONIM BEMOR ]" : (patient?.full_name || "Bemor");
     const pCode = patient?.patient_code || "—";
-    const amount = Number(payment.amount || invoice.paid_amount || invoice.amount || 720000);
+    const amount = Number(payment.amount || invoice.paid_amount || invoice.amount || 0);
     const totalBilled = Number(invoice.total_amount || amount);
     const balance = Math.max(0, totalBilled - amount);
-    const payId = payment.id || invoice.id || `PAY-2026-${Date.now().toString().slice(-4)}`;
+    const payId = payment.id || invoice.id || '—';
 
     const html = `
       ${getCommonHeader("RASMIY TO'LOV KVITANSIYASI", payId, "MOLIYA & KASSA BO'LIMI")}
@@ -617,9 +629,9 @@ window.FMH_Print = (function() {
    * 6. HR: Employee Official Payslip (Xodim Ish Haqi Varaqasi)
    */
   function employeePayslip(staff, salaryData = {}) {
-    const base = Number(salaryData.base_salary || staff.salary_base || 12000000);
-    const bonus = Number(salaryData.bonuses || 1500000);
-    const nightShift = Number(salaryData.night_shifts || 800000);
+    const base = Number(salaryData.base_salary || staff.salary_base || 0);
+    const bonus = Number(salaryData.bonuses || 0);
+    const nightShift = Number(salaryData.night_shifts || 0);
     const gross = base + bonus + nightShift;
     const incomeTax = gross * 0.12;
     const inps = gross * 0.001;
@@ -641,7 +653,7 @@ window.FMH_Print = (function() {
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Tabel Raqami</span>
-          <span class="val font-mono">${staff.id || "STF-01"}</span>
+          <span class="val font-mono">${staff.id || "—"}</span>
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Hisob Davri</span>

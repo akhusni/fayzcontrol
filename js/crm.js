@@ -411,7 +411,7 @@
               <option value="male" ${p.gender === 'male' ? 'selected' : ''}>Erkak</option>
               <option value="female" ${p.gender === 'female' ? 'selected' : ''}>Ayol</option>
             </select>
-            <input type="number" id="edit-patient-birthyear" class="crm-form-control" value="${p.birth_year || 1990}" style="width: 100px;">
+            <input type="number" id="edit-patient-birthyear" class="crm-form-control" value="${p.birth_year || ''}" style="width: 100px;">
           </div>
         </div>
         <div class="crm-form-group">
@@ -427,11 +427,11 @@
         </div>
         <div class="crm-form-group full-width">
           <label class="crm-form-label" style="color: var(--rose);"><i class="fas fa-exclamation-triangle"></i> Dori-Darmon Allergiyalari (Allergik Anamnez)</label>
-          <input type="text" id="edit-patient-allergies" class="crm-form-control" value="${p.medical_allergies || "Yo'q"}" style="border-color: rgba(244, 63, 94, 0.4);">
+          <input type="text" id="edit-patient-allergies" class="crm-form-control" value="${p.medical_allergies || ''}" style="border-color: rgba(244, 63, 94, 0.4);">
         </div>
         <div class="crm-form-group full-width">
           <label class="crm-form-label">Yondosh Surunkali Kasalliklar</label>
-          <textarea id="edit-patient-chronic" class="crm-form-control" rows="2">${p.chronic_conditions || "Yo'q"}</textarea>
+          <textarea id="edit-patient-chronic" class="crm-form-control" rows="2">${p.chronic_conditions || ''}</textarea>
         </div>
       </div>
       <div style="margin-top: 1.25rem; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
@@ -670,8 +670,8 @@
       gender: document.getElementById('edit-patient-gender').value,
       birth_year: parseInt(document.getElementById('edit-patient-birthyear').value, 10) || p.birth_year,
       referral_source: document.getElementById('edit-patient-referral').value,
-      medical_allergies: document.getElementById('edit-patient-allergies').value.trim() || "Yo'q",
-      chronic_conditions: document.getElementById('edit-patient-chronic').value.trim() || "Yo'q"
+      medical_allergies: document.getElementById('edit-patient-allergies').value.trim() || null,
+      chronic_conditions: document.getElementById('edit-patient-chronic').value.trim() || null
     };
 
     try {
@@ -747,11 +747,11 @@
       phone: document.getElementById('new-patient-phone').value.trim() || '+998 (90) 000-00-00',
       emergency_contact: document.getElementById('new-patient-emergency').value.trim() || '',
       gender: document.getElementById('new-patient-gender').value,
-      birth_year: parseInt(document.getElementById('new-patient-birthyear').value, 10) || 1990,
+      birth_year: parseInt(document.getElementById('new-patient-birthyear').value, 10) || null,
       referral_source: document.getElementById('new-patient-referral').value,
       is_anonymous: 1,
-      medical_allergies: document.getElementById('new-patient-allergies').value.trim() || "Yo'q",
-      chronic_conditions: document.getElementById('new-patient-chronic').value.trim() || "Yo'q",
+      medical_allergies: document.getElementById('new-patient-allergies').value.trim() || null,
+      chronic_conditions: document.getElementById('new-patient-chronic').value.trim() || null,
       status: document.getElementById('new-patient-status').value,
       total_admissions_count: 0,
       total_billed: 0,
@@ -814,8 +814,8 @@
       'Jinsi': p.gender === 'male' ? 'Erkak' : 'Ayol',
       'Tug\'ilgan Yili': p.birth_year || '-',
       'Jalb Qilish Manbasi': referralLabels[p.referral_source] || p.referral_source,
-      'Allergiyalar': p.medical_allergies || "Yo'q",
-      'Surunkali Kasalliklar': p.chronic_conditions || "Yo'q",
+      'Allergiyalar': p.medical_allergies || '',
+      'Surunkali Kasalliklar': p.chronic_conditions || '',
       'Status': p.status.toUpperCase(),
       'Jami Hisoblangan': p.total_billed || 0,
       'To\'langan Summa': p.total_paid || 0,
@@ -947,10 +947,10 @@
       return;
     }
     if (window.FMH_Print) {
-      window.FMH_Print.dischargeEpicrisis(p, {
-        diagnosis: p.chronic_conditions || "F10.2 Spirtli ichimliklarga qaramlik",
-        treatment_summary: "Kompleks statsionar detoksikatsiya va psixoterapevtik tiklanish kursi to'liq o'tkazildi."
-      }, { full_name: "Dr. Bobur Mirzayev" });
+      // It printed the chronic-conditions field (or F10.2) as the diagnosis,
+      // a course of treatment that was never recorded, and the signature
+      // of a named doctor. Blanks now print as 'Qayd etilmagan'.
+      window.FMH_Print.dischargeEpicrisis(p, {}, {});
     } else {
       window.print();
     }

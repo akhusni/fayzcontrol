@@ -1641,36 +1641,39 @@
           const patients = await res.json();
           if (Array.isArray(patients) && patients.length > 0) {
             const p = patients[0];
-            const pName = p.full_name || "Bemor A.X.";
-            const pPhone = p.phone || "+998 90 000 00 00";
-            const pAge = p.birth_year ? `${new Date().getFullYear() - p.birth_year} yosh` : "40 yosh";
-            
-            document.getElementById('p1-name').value = pName;
-            document.getElementById('p1-dob').value = `${p.birth_year || 1985} (${pAge})`;
-            document.getElementById('p1-gender').value = p.gender === 'male' ? 'Erkak' : 'Ayol';
-            document.getElementById('p1-phone').value = pPhone;
-            document.getElementById('p1-address').value = "Toshkent sh., Yunusobod tumani";
-            document.getElementById('p1-blood').value = "A(II) Rh+ (Musbat)";
+            // Only what is on the patient's record. This used to fill the
+            // rest of the official blank with invented findings -- blood group
+            // A(II) Rh+, 175 cm / 78 kg, sugar 5.2, a diagnosis, a treatment
+            // plan -- next to a real person's name, ready to print and sign.
+            const pName = p.full_name || '';
+            const pPhone = p.phone || '';
+            const pAge = p.birth_year ? `${new Date().getFullYear() - p.birth_year} yosh` : '';
+            const vit = p.latest_vitals || {};
+            const bp = (vit.vital_bp_systolic && vit.vital_bp_diastolic) ? `${vit.vital_bp_systolic}/${vit.vital_bp_diastolic}` : '';
+            const vitae = [
+              p.medical_allergies ? `Allergik status: ${p.medical_allergies}.` : '',
+              p.chronic_conditions ? `Surunkali kasalliklar: ${p.chronic_conditions}.` : ''
+            ].filter(Boolean).join(' ');
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
 
-            const vit = p.latest_vitals;
-            document.getElementById('v-bp').value = vit ? `${vit.vital_bp_systolic || 120}/${vit.vital_bp_diastolic || 80}` : "120/80 mm.sim.ust";
-            document.getElementById('v-hr').value = vit ? `${vit.vital_pulse || 76} zarba/daq` : "76 zarba/daq";
-            document.getElementById('v-spo2').value = vit ? `${vit.vital_spo2 || 98} %` : "98 %";
-            document.getElementById('v-temp').value = vit ? `${vit.vital_temp || 36.6} °C` : "36.6 °C";
-            document.getElementById('v-weight').value = "175 sm / 78 kg";
-            document.getElementById('v-sugar').value = "5.2 mmol/l";
-
-            document.getElementById('p1-complaints').value = "Bemor umumiy intoksikatsiya, holsizlik, jismoniy charchoq va uyqu buzilishidan shikoyat qilmoqda.";
-            document.getElementById('p1-morbi').value = "Holat so'nggi kunlarda zo'raygan. Fayz Medical House statsionariga reabilitatsiya va detoksikatsiya kursi uchun murojaat qilgan.";
-            document.getElementById('p1-vitae').value = `Allergik status: ${p.medical_allergies || "Yo'q"}. Surunkali kasalliklar: ${p.chronic_conditions || "Yo'q"}.`;
-            document.getElementById('p1-status').value = "Umumiy ahvoli barqaror. Nafas olish ravon, o'pkada xirillashlar yo'q. Gemodinamik ko'rsatkichlar me'yorda.";
-            document.getElementById('p1-diagnosis').value = "Asosiy tashxis: F10.2 — Spirtli ichimliklarga qaramlik sindromi. O'tkir intoksikatsiyadan keyingi holat.\nHamroh tashxis: Somatoform vegetativ disfunksiya.";
-            document.getElementById('p1-plan').value = "1. To'liq laborator detoksikatsiya infuzion terapiyasi (Reamberin, Gepa-Merts).\n2. Gepatoprotektor va vitaminoterapiya (Vit B1, B6, C).\n3. Psixoterapevtik korreksiya va 24/7 shifokor nazorati.";
-
-            document.getElementById('p2-name').value = pName;
-            document.getElementById('p2-age').value = pAge;
-            document.getElementById('p2-phone').value = pPhone;
-            document.getElementById('p2-diag').value = "F10.2 — Detoksikatsiya va tiklanish kursi";
+            setVal('p1-name', pName);
+            setVal('p1-dob', p.birth_year ? `${p.birth_year} (${pAge})` : '');
+            setVal('p1-gender', p.gender === 'male' ? 'Erkak' : (p.gender === 'female' ? 'Ayol' : ''));
+            setVal('p1-phone', pPhone);
+            setVal('p1-address', p.address || '');
+            setVal('p1-blood', '');
+            setVal('v-bp', bp);
+            setVal('v-hr', vit.vital_pulse ? `${vit.vital_pulse} zarba/daq` : '');
+            setVal('v-spo2', vit.vital_spo2 ? `${vit.vital_spo2} %` : '');
+            setVal('v-temp', vit.vital_temp ? `${vit.vital_temp} °C` : '');
+            setVal('v-weight', '');
+            setVal('v-sugar', '');
+            ['p1-complaints', 'p1-morbi', 'p1-status', 'p1-diagnosis', 'p1-plan', 'p2-diag']
+              .forEach(id => setVal(id, ''));
+            setVal('p1-vitae', vitae);
+            setVal('p2-name', pName);
+            setVal('p2-age', pAge);
+            setVal('p2-phone', pPhone);
 
             window.FMH_Toast(`Bemor: ${pName} ma'lumotlari muvaffaqiyatli yuklandi!`, 'success');
             return;
