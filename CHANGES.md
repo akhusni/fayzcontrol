@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 133 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 148 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil sentabr
 
 ---
@@ -31,6 +31,11 @@ qoplangan.
 | Konsultatsiya boshqa bemorga yozilishi mumkin edi | Bemorni qidirish `phone = ? OR full_name = ?` edi va telefon bo'sh bo'lsa ham solishtirardi. Ko'pchilik yozuvda telefon bo'sh — shuning uchun raqam qoldirmagan bemorning tashrifi **birinchi uchragan begona bemorga** yozilardi. |
 | Hamshira ko'rsatkichlarini saqlay olmasdi | `daily_logs` faqat o'qish uchun ochiq edi — yozish yo'li umuman yo'q edi. |
 | Sana chegarasi hisob-kitob bilan mos emasdi | Hisob-kitob `DATEDIFF(end, start)` — ketish kuni tunab qolinmaydi. Tekshiruv esa ikkala chetini ham band deb hisoblardi, shuning uchun **bemor chiqqan kuni yangi bemorni qabul qilib bo'lmasdi**: panel o'rinni bo'sh ko'rsatar, server esa rad etardi. |
+| Dori buyurtmasi va chiqarish xulosasi bo'sh maydonlarni **o'ylab topardi** | Faqat dori nomi yuborilsa, buyurtma "infuzion flakon, 400 ml, tomchi, 5 kun" bo'lib, **STF-DOC-01** nomidan yozilardi — hamshira aynan shu buyurtmani bajarardi. Bo'sh chiqarish xulosasi tayyor tashxis (F10.2) va "sog'aydi" natijasi bilan saqlanardi. Endi dori, doza, yo'l, chastota va muddat majburiy; tashxis va natija ham. |
+| Allergiya va surunkali kasallik standart holda "Yo'q" edi | Hech kim so'ramagan bemor "allergiyasi yo'q" deb yozilardi va shifokor sahifasidagi **allergiya ogohlantirishi o'chib qolardi**. Endi bo'sh qoladi. |
+| Muallif noma'lum bo'lsa, yozuv haqiqiy xodim nomiga yozilardi | Buyurtma, karavot ko'chirish yoki kassa kvitansiyasi `STF-DOC-01`/`STF-REC-01` nomidan saqlanardi. Endi kirgan hisobdan olinadi yoki bo'sh qoladi. |
+| Xatolar jimgina yutilardi (4 joyda) | Audit yozuvi yozilmasa, qabul sanasi o'qilmasa — hech kim bilmasdi. Endi server jurnaliga yoziladi. |
+| Foydalanuvchilar fayli yo'qolsa, yangi hisob qo'shish **barcha hisoblarni o'chirardi** | Endi 503 bilan rad etiladi. |
 
 ---
 
@@ -74,6 +79,11 @@ avtorizatsiyasiz ochiq edi. Loyihaning o'z Nginx sxemasi bo'yicha bu
 - **Ma'lumotlar bazasi paroli** `db.py` dan olib tashlandi (avval
   konfiguratsiya yo'qolsa ishlab chiqarish bazasiga ulanardi) va
   `database_report.html` dagi ochiq parol ham.
+- **Bosh sahifa roli serverdan olinadi.** `superpage` rolni brauzerdan
+  (`localStorage`) o'qirdi: hech kim kirmagan brauzer superadmin panelini
+  ochardi. Ma'lumot baribir server tomonidan himoyalangan edi, lekin endi
+  ism va rol faqat `/api/auth/session` dan olinadi, rolni almashtirish esa
+  soxta ism ("Dr. Rahim Karimov") qo'ymaydi.
 
 ---
 
@@ -211,7 +221,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **133 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **148 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
