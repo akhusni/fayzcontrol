@@ -323,6 +323,44 @@ import nursery
 import consultation
 
 
+def new_record_id(cur, table, prefix):
+    """
+    A free id of the form PREFIX-####, probed against `table`.
+
+    Fourteen handlers drew the four digits at random and inserted without
+    looking. With 9,000 possible values the first clash is likely by about
+    the 112th row, and every one after that fails as a 500: a prescription,
+    an appointment or a discharge summary the doctor has to type again. The
+    probe is safe without a transaction because writes run one at a time
+    under WRITE_LOCK. A saturated space falls back to a millisecond stamp.
+    """
+    for _ in range(200):
+        candidate = f"{prefix}-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+        cur.execute(f"SELECT 1 FROM {table} WHERE id = ? LIMIT 1", (candidate,))
+        if not cur.fetchone():
+            return candidate
+    return f"{prefix}-{int(datetime.datetime.now().timestamp() * 1000)}"
+
+
+def new_patient_ids(cur, id_prefix='PAT-2026'):
+    """
+    A free (id, patient_code) pair sharing the same digits.
+
+    patient_code is UNIQUE and was derived from the id's last four digits,
+    so even a free id could fail on the code -- PAT-1234 from the CRM and
+    PAT-2026-1234 from the desk both make FMH-2026-1234. Both are probed.
+    """
+    for _ in range(200):
+        n = int(os.urandom(3).hex(), 16) % 9000 + 1000
+        pid, code = f"{id_prefix}-{n}", f"FMH-2026-{n}"
+        cur.execute("SELECT 1 FROM patients WHERE id = ? OR patient_code = ? LIMIT 1",
+                    (pid, code))
+        if not cur.fetchone():
+            return pid, code
+    ms = int(datetime.datetime.now().timestamp() * 1000)
+    return f"{id_prefix}-{ms}", f"FMH-2026-{ms}"
+
+
 class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
@@ -1728,8 +1766,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if _err:
                         self._send_validation_error(_err[0], _err[1])
                         return
-                    patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
-                    pcode = f"FMH-2026-{patient_id[-4:]}"
+                    patient_id, pcode = new_patient_ids(cur)
                     cur.execute("""
                         INSERT INTO patients (id, patient_code, full_name, phone,
                                               gender, birth_date, birth_year,
@@ -1923,7 +1960,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 3. POST /api/accounting/transaction (Create Expense / Incasso / Operational Cash Flow)
             elif path == '/api/accounting/transaction':
-                trx_id = body.get('id') or f"TRX-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                trx_id = body.get('id') or new_record_id(cur, 'accounting_transactions', 'TRX-2026')
                 amount = float(body.get('amount', 0))
                 txn_type = body.get('type', 'expense')
                 category = body.get('category', 'operational_expense')
@@ -2011,18 +2048,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # check, so registrations started failing on duplicate primary keys
                 # well before the clinic reached a few hundred patients. Probe for a
                 # free id in the same PAT-#### format, falling back to a millisecond
-                # timestamp if the random space is saturated.
+                # timestamp if the random space is saturated. The code is probed
+                # with it (see new_patient_ids).
                 pid = body.get('id')
+                pcode = body.get('patient_code')
                 if not pid:
-                    for _ in range(200):
-                        candidate = f"PAT-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
-                        cur.execute("SELECT 1 FROM patients WHERE id = ? LIMIT 1", (candidate,))
-                        if not cur.fetchone():
-                            pid = candidate
-                            break
-                    if not pid:
-                        pid = f"PAT-{int(datetime.datetime.now().timestamp() * 1000)}"
-                pcode = body.get('patient_code') or f"FMH-2026-{pid[-4:]}"
+                    pid, _pcode = new_patient_ids(cur, 'PAT')
+                    pcode = pcode or _pcode
+                pcode = pcode or f"FMH-2026-{pid[-4:]}"
                 birth_date, birth_year, gender, _err = parse_birth_and_gender(body)
                 if _err:
                     self._send_validation_error(_err[0], _err[1])
@@ -2114,14 +2147,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if found:
                         patient_id = found['id']
                 if not patient_id:
-                    patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                    patient_id, _pcode = new_patient_ids(cur)
                     cur.execute("""
                         INSERT INTO patients (id, patient_code, full_name, phone,
                                               referral_source, is_anonymous, status)
                         VALUES (?, ?, ?, ?, 'website', 0, 'active')
-                    """, (patient_id, f"FMH-2026-{patient_id[-4:]}", name, phone))
+                    """, (patient_id, _pcode, name, phone))
 
-                apt_id = f"APT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                apt_id = new_record_id(cur, 'appointments', 'APT-2026')
                 apt_date = (body.get('appointment_date')
                             or str(row['preferred_date'] or '')[:10]
                             or datetime.date.today().isoformat())
@@ -2224,7 +2257,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_enquiry_ok(req_id)
 
             elif path == '/api/reception/appointment':
-                apt_id = body.get('id') or f"APT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                apt_id = body.get('id') or new_record_id(cur, 'appointments', 'APT-2026')
                 patient_name = (body.get('patient_name') or '').strip()
                 patient_phone = body.get('patient_phone', '')
                 doc_id = body.get('doctor_id')
@@ -2278,13 +2311,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         WHERE id = ?
                     """, (_gender, _bdate, _byear, patient_id))
                 else:
-                    patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                    patient_id, _pcode = new_patient_ids(cur)
                     cur.execute("""
                         INSERT INTO patients (id, patient_code, full_name, phone,
                                               gender, birth_date, birth_year,
                                               referral_source, is_anonymous, status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', 0, 'active')
-                    """, (patient_id, f"FMH-2026-{patient_id[-4:]}", patient_name,
+                    """, (patient_id, _pcode, patient_name,
                           patient_phone, _gender, _bdate, _byear))
 
                 cur.execute("""
@@ -2309,7 +2342,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 7. POST /api/reception/call-log (Log Hotline / CRM Call)
             elif path == '/api/reception/call-log':
-                call_id = body.get('id') or f"CALL-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                call_id = body.get('id') or new_record_id(cur, 'call_logs', 'CALL-2026')
                 cur.execute("""
                     INSERT INTO call_logs (id, caller_name, caller_phone, call_direction, source, category, priority, status, notes)
                     VALUES (?, ?, ?, 'inbound', ?, ?, ?, ?, ?)
@@ -2364,7 +2397,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         hid
                     ))
                 else:
-                    hid = body.get('id') or f"MH-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                    hid = body.get('id') or new_record_id(cur, 'medical_histories', 'MH-2026')
                     cur.execute("""
                         INSERT INTO medical_histories (id, patient_id, admission_id, doctor_id, complaints, anamnesis_morbi, anamnesis_vitae, allergic_status, somatic_status, psychiatric_status, diagnosis_primary, diagnosis_secondary, icd10_code)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2402,7 +2435,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # no doctor wrote. Nothing clinical is invented now: what the
             # prescriber did not say is refused or left empty.
             elif path == '/api/doctor/prescriptions':
-                rx_id = body.get('id') or f"RX-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                rx_id = body.get('id') or new_record_id(cur, 'prescriptions', 'RX-2026')
 
                 med = (body.get('medication_name') or '').strip()
                 if not med:
@@ -2563,7 +2596,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # clinical findings are now required and the signature comes from
             # whoever is signed in.
             elif path == '/api/doctor/epicrisis':
-                epi_id = body.get('id') or f"EPI-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                epi_id = body.get('id') or new_record_id(cur, 'discharge_epicrises', 'EPI-2026')
 
                 diagnosis = (body.get('diagnosis_final') or '').strip()
                 if not diagnosis:
@@ -2693,8 +2726,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if not pt_name:
                         self._send_validation_error("Bemorning ismi kiritilmagan.", 'full_name')
                         return
-                    patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
-                    patient_code = f"FMH-2026-{patient_id[-4:]}"
+                    patient_id, patient_code = new_patient_ids(cur)
                     # chronic_conditions was the literal "Yo'q" -- none -- for
                     # a history nobody took.
                     cur.execute("""
@@ -2745,7 +2777,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             except Exception as e_cr:
                                 print("Warning syncing clinic_rooms.json on admission:", e_cr)
 
-                apt_id = f"APT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                apt_id = new_record_id(cur, 'appointments', 'APT-2026')
                 apt_service = 'inpatient_consult' if consultation_type == 'inpatient' else 'outpatient'
                 cur.execute("""
                     INSERT INTO appointments (id, patient_id, patient_name, patient_phone, doctor_id, service_type, appointment_date, appointment_time, status, notes)
@@ -2763,7 +2795,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 ))
                 conn.commit()
 
-                hid = f"MH-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                hid = new_record_id(cur, 'medical_histories', 'MH-2026')
                 complaints = anam_data.get('complaints') or body.get('complaints', '')
                 anam_morbi = anam_data.get('anamnesis_morbi') or body.get('anamnesis_morbi', '')
                 anam_vitae = anam_data.get('anamnesis_vitae') or body.get('anamnesis_vitae', '')
@@ -2796,7 +2828,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 rx_items = body.get('prescriptions') or []
                 saved_rx = []
                 for rx in rx_items:
-                    rx_id = f"RX-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
+                    rx_id = new_record_id(cur, 'prescriptions', 'RX-2026')
                     med_name = rx.get('medication_name') or rx.get('name', '')
                     if not med_name:
                         continue

@@ -1367,6 +1367,52 @@ class NothingClinicalIsInvented(ApiTest):
         self.assertEqual(body.get('field'), 'full_name')
 
 
+class FreshIds(unittest.TestCase):
+    """
+    Fourteen handlers drew a random PREFIX-#### id and inserted it without
+    looking. With 9,000 values a clash is likely by the 112th row, and each
+    one failed as a 500 -- a prescription or appointment typed again. These
+    drive the helpers with a fake cursor, so no server or database is needed.
+    """
+
+    class _Cur:
+        def __init__(self, taken):
+            self.taken, self.queries, self._hit = set(taken), [], False
+
+        def execute(self, sql, params):
+            self.queries.append(sql)
+            self._hit = any(p in self.taken for p in params)
+
+        def fetchone(self):
+            return (1,) if self._hit else None
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import server
+        cls.server = server
+
+    def test_a_free_id_keeps_the_familiar_format(self):
+        cur = self._Cur(taken=())
+        rid = self.server.new_record_id(cur, 'prescriptions', 'RX-2026')
+        self.assertRegex(rid, r'^RX-2026-\d{4}$')
+        self.assertIn('prescriptions', cur.queries[0], 'the id was not probed')
+
+    def test_a_taken_id_is_never_handed_out(self):
+        taken = {f"RX-2026-{n}" for n in range(1000, 10000)}
+        rid = self.server.new_record_id(self._Cur(taken), 'prescriptions', 'RX-2026')
+        self.assertNotIn(rid, taken)
+        self.assertTrue(rid.startswith('RX-2026-'))
+
+    def test_a_patient_code_clash_is_avoided_too(self):
+        """PAT-1234 (CRM) and PAT-2026-1234 (desk) both made FMH-2026-1234."""
+        taken = {f"FMH-2026-{n}" for n in range(1000, 10000)}
+        pid, code = self.server.new_patient_ids(self._Cur(taken))
+        self.assertNotIn(code, taken)
+        self.assertEqual(pid.split('-')[-1], code.split('-')[-1],
+                         'the id and the code no longer share their digits')
+
+
 class Operations(ApiTest):
     """
     The things that matter to whoever keeps this running, rather than to the
