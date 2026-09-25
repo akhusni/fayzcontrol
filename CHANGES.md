@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 148 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 158 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil sentabr
 
 ---
@@ -36,6 +36,12 @@ qoplangan.
 | Muallif noma'lum bo'lsa, yozuv haqiqiy xodim nomiga yozilardi | Buyurtma, karavot ko'chirish yoki kassa kvitansiyasi `STF-DOC-01`/`STF-REC-01` nomidan saqlanardi. Endi kirgan hisobdan olinadi yoki bo'sh qoladi. |
 | Xatolar jimgina yutilardi (4 joyda) | Audit yozuvi yozilmasa, qabul sanasi o'qilmasa — hech kim bilmasdi. Endi server jurnaliga yoziladi. |
 | Foydalanuvchilar fayli yo'qolsa, yangi hisob qo'shish **barcha hisoblarni o'chirardi** | Endi 503 bilan rad etiladi. |
+| Ismsiz bemor "Yangi Bemor" deb ro'yxatga olinardi; shifokor tanlanmasa, ro'yxatdagi **birinchi shifokor** mas'ul qilinardi | Endi ism majburiy; shifokorsiz yotish shifokorsiz saqlanadi, shifokorsiz qabul (appointment) rad etiladi. Konsultatsiya saqlanganda qayd etilgan **allergiya o'chib ketardi** — endi saqlanib qoladi. |
+| Yozuv ID lari (retsept, qabul, epikriz, bemor) 9000 qiymatdan tekshiruvsiz tanlanardi (14 joyda) | ~112 yozuvdan keyin saqlashlar tasodifan 500 xatolik bilan tugay boshlardi. Endi bo'sh ID tekshirib olinadi. |
+| Shifokor sahifasi server **rad etgan retseptni** ham "muvaffaqiyatli qo'shildi" deb ko'rsatardi | Hamshira bu dorini hech qachon ko'rmasdi. Endi server javobi kutiladi va sababi ko'rsatiladi. |
+| Shifokor sahifasi bo'sh maydonlarni **o'ylab topardi** | Bosim 120/80, puls 72, 36.6°, SpO2 98, jins "Erkak", allergiya "Yo'q", tashxis F10.2; chop etilgan kartada "tremor bor", "OIV/gepatit inkor qilinadi". Epikriz doim "sog'aydi" deb saqlanardi — endi **chiqish natijasi tanlanadi** (yangi maydon). |
+| Rasmiy hujjatlar (epikriz, qabul varaqasi, muolaja varaqasi, kvitansiya, oylik varaqasi) bo'sh joyni to'ldirardi | Soxta tashxis va hamroh kasalliklar, "Dr. Bobur Mirzayev" imzosi, 20–27 avgust sanalari, 720 000 so'm to'lov, har oylikka 1,5 mln bonus. Endi "Qayd etilmagan", "—" yoki 0. |
+| A4 blankdagi "Namuna" tugmasi haqiqiy bemor ismi yoniga **soxta qon guruhi** (A(II) Rh+), vazn, qand, tashxis va reja yozardi | Endi faqat bemor yozuvidagi haqiqiy ma'lumotlar qo'yiladi. |
 
 ---
 
@@ -221,7 +227,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **148 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **158 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
