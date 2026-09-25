@@ -2319,14 +2319,30 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # booking a consultation for someone who did not leave a number
                 # matched the first such patient in the table and filed the visit
                 # under a stranger. An empty phone now matches nobody.
+                #
+                # It then matched on the phone alone, or on the name alone. A
+                # family sharing one phone became one patient, two people
+                # called Aziz Karimov became one patient, and every anonymous
+                # visit -- all named 'Anonim Bemor', phone '—' -- was filed in
+                # one record, so each stranger's history showed the others'.
+                # A match now needs the phone AND the name, or with no phone
+                # the name AND the date of birth. Anything less registers a
+                # new patient: a duplicate can be merged later, a merged
+                # stranger's allergies cannot be un-read.
+                is_anon = str(body.get('is_anonymous') or '').lower() in ('1', 'true')
+                patient_phone = (patient_phone or '').strip()
+                if is_anon or patient_phone in ('—', '-'):
+                    patient_phone = ''
                 p_exist = None
-                if patient_phone and patient_phone.strip():
-                    cur.execute("SELECT id FROM patients WHERE phone = ? LIMIT 1",
-                                (patient_phone.strip(),))
+                if is_anon:
+                    pass
+                elif patient_phone:
+                    cur.execute("SELECT id FROM patients WHERE phone = ? AND full_name = ? LIMIT 1",
+                                (patient_phone, patient_name))
                     p_exist = cur.fetchone()
-                if not p_exist and patient_name:
-                    cur.execute("SELECT id FROM patients WHERE full_name = ? LIMIT 1",
-                                (patient_name,))
+                elif _bdate:
+                    cur.execute("SELECT id FROM patients WHERE full_name = ? AND birth_date = ? LIMIT 1",
+                                (patient_name, _bdate))
                     p_exist = cur.fetchone()
 
                 if p_exist:
@@ -2346,9 +2362,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         INSERT INTO patients (id, patient_code, full_name, phone,
                                               gender, birth_date, birth_year,
                                               referral_source, is_anonymous, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', 0, 'active')
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', ?, 'active')
                     """, (patient_id, _pcode, patient_name,
-                          patient_phone, _gender, _bdate, _byear))
+                          patient_phone, _gender, _bdate, _byear, 1 if is_anon else 0))
 
                 cur.execute("""
                     INSERT INTO appointments (id, patient_id, patient_name, patient_phone, doctor_id, service_type, appointment_date, appointment_time, status, notes)
@@ -2715,8 +2731,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if pid:
                     cur.execute("SELECT id, patient_code FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
                     p_row = cur.fetchone()
-                elif pt_phone:
-                    cur.execute("SELECT id, patient_code FROM patients WHERE phone = ?", (pt_phone,))
+                elif pt_phone and pt_name:
+                    # The phone alone used to decide, and the UPDATE below then
+                    # renamed that record: a mother's consultation saved with
+                    # her son's phone turned his record into hers. Phone and
+                    # name must both match; otherwise a new patient is made.
+                    cur.execute("SELECT id, patient_code FROM patients WHERE phone = ? AND full_name = ?",
+                                (pt_phone, pt_name))
                     p_row = cur.fetchone()
 
                 if p_row:

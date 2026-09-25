@@ -2073,30 +2073,34 @@ window.FMH_Reception = (function () {
       created_at: new Date().toISOString(),
     };
 
+    // Booked only once the server has it. The answer used to be ignored, so a
+    // refused booking still took the slot on screen; and a second request
+    // then registered the patient again through /api/patients, leaving a
+    // duplicate record behind every appointment -- the appointment endpoint
+    // already finds or registers the patient itself. The id comes from the
+    // server, which checks it is free.
+    const payload = Object.assign({}, newApt);
+    delete payload.id;
+    try {
+      const res = await fetch('/api/reception/appointment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Qabul saqlanmadi. Qayta urinib ko'ring.", 'error');
+        return;
+      }
+      if (data.id) newApt.id = data.id;
+      if (data.patient_id) newApt.patient_id = data.patient_id;
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — qabul saqlanmadi.", 'error');
+      return;
+    }
+
     if (!State.data.appointments) State.data.appointments = [];
     State.data.appointments.push(newApt);
-
-    // Save to MySQL API
-    try {
-      await fetch('/api/reception/appointment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newApt)
-      });
-      await fetch('/api/patients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: newApt.patient_name,
-          phone: newApt.patient_phone,
-          is_anonymous: isAnon,
-          referral_source: 'reception_appointment',
-          status: 'outpatient'
-        })
-      });
-    } catch (e) {
-      console.warn('Offline appointment creation', e);
-    }
 
     // Mark slot as booked
     const key = State.apt.selectedDoctorId + '_' + State.apt.selectedDate;

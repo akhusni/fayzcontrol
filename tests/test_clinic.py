@@ -1050,7 +1050,7 @@ class PatientIdentity(ApiTest):
         conn = get_db()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT gender, birth_date, birth_year FROM patients WHERE id = ?",
+            cur.execute("SELECT gender, birth_date, birth_year, full_name, is_anonymous FROM patients WHERE id = ?",
                         (patient_id,))
             return cur.fetchone()
         finally:
@@ -1129,6 +1129,47 @@ class PatientIdentity(ApiTest):
             self._patients.append(booked)
         self.assertNotEqual(booked, existing,
                             'the visit was filed under an unrelated patient')
+
+    def _book(self, **fields):
+        payload = {'doctor_id': DOCTOR, 'date': '2029-05-08'}
+        payload.update(fields)
+        status, body = self.api.post('/api/reception/appointment', payload)
+        self.assertEqual(status, 201, f"appointment failed: {body}")
+        self._patients.append(body['patient_id'])
+        return body['patient_id']
+
+    def test_anonymous_visits_are_never_filed_together(self):
+        """All were 'Anonim Bemor', phone '—', so they shared one record."""
+        first = self._book(patient_name='Anonim Bemor', patient_phone='—', is_anonymous=True)
+        second = self._book(patient_name='Anonim Bemor', patient_phone='—', is_anonymous=True)
+        self.assertNotEqual(first, second, 'two anonymous strangers share one record')
+        self.assertEqual(int(self.patient_row(first)['is_anonymous']), 1)
+
+    def test_a_shared_name_alone_is_not_the_same_person(self):
+        existing = self.make_patient('Aziz Karimov Namesake')
+        booked = self._book(patient_name='Aziz Karimov Namesake')
+        self.assertNotEqual(booked, existing, 'matched a stranger on the name alone')
+
+    def test_a_shared_phone_alone_is_not_the_same_person(self):
+        existing = self.make_patient('Ona Bemor', phone='+998901112233')
+        booked = self._book(patient_name='Ogil Bemor', patient_phone='+998901112233')
+        self.assertNotEqual(booked, existing, 'a family phone merged two people')
+
+    def test_the_same_phone_and_name_is_the_same_person(self):
+        existing = self.make_patient('Qaytgan Bemor', phone='+998901112244')
+        booked = self._book(patient_name='Qaytgan Bemor', patient_phone='+998901112244')
+        self.assertEqual(booked, existing, 'a returning patient got a second record')
+
+    def test_a_case_on_a_shared_phone_does_not_rename_the_owner(self):
+        existing = self.make_patient('Telefon Egasi', phone='+998901112255')
+        status, body = self.api.post('/api/doctor/consultation-case', {
+            'patient': {'full_name': 'Boshqa Odam', 'phone': '+998901112255'},
+            'consultation_type': 'outpatient'})
+        self.assertIn(status, (200, 201), f"case did not save: {body}")
+        if body.get('patient_id') and body['patient_id'] != existing:
+            self._patients.append(body['patient_id'])
+        self.assertEqual(self.patient_row(existing)['full_name'], 'Telefon Egasi',
+                         "the phone's owner was renamed")
 
     def test_the_doctor_queue_carries_the_date_of_birth(self):
         """The handoff exists so the doctor is not retyping what the desk took."""
