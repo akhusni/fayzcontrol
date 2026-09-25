@@ -210,6 +210,18 @@
   </main>
 
   <script>
+    // Whoever reaches this page has signed out, timed out or not signed in,
+    // so the copies of patient records the doctor's page keeps in this
+    // browser go now. They stayed after logout, readable by the next person
+    // at a shared PC. All of it is on the server; identity always comes from
+    // /api/auth/session. HR, accounting and bed bookings still keep work in
+    // the browser only, so they are left until they are moved to the server.
+    try {
+      ['FMH_ANAMNESIS_STORAGE_V2', 'FMH_PRESCRIPTIONS_STORAGE_V2', 'FMH_DAILY_NOTES_STORAGE_V2',
+       'fmh_active_doctor', 'fmh_active_user', 'fmh_user']
+        .forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+
     (function () {
       'use strict';
 
@@ -270,10 +282,6 @@
           const data = await res.json().catch(() => ({}));
 
           if (res.ok) {
-            // Kept for the parts of the UI that read the active user locally.
-            try {
-              localStorage.setItem('fmh_active_user', JSON.stringify(data.user || {}));
-            } catch (e) {}
             location.replace(safeNext());
             return;
           }

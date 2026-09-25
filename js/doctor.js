@@ -789,22 +789,31 @@
       icd10_code: document.getElementById('anam-icd10').value
     };
 
+    // Saved only once the server has it. "Saved to offline storage" was never
+    // true in any useful sense: nothing sent it later, so a history the
+    // server refused lived in this browser only and the next doctor, on
+    // another PC, saw none of it.
+    try {
+      const res = await fetch('/api/doctor/anamnesis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Anamnez saqlanmadi. Qayta urinib ko'ring.", 'danger');
+        return;
+      }
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — anamnez saqlanmadi.", 'danger');
+      return;
+    }
+
     state.anamnesisMap[p.id] = data;
     localStorage.setItem(STORAGE_KEYS.ANAMNESIS, JSON.stringify(state.anamnesisMap));
 
     // Update patient allergy if edited
     p.medical_allergies = data.allergic_status;
-
-    // Send to backend API
-    try {
-      await fetch('/api/doctor/anamnesis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-    } catch (e) {
-      console.log('Saved to offline storage');
-    }
 
     showToast(`✅ <strong>${p.full_name}</strong> kasallik tarixi & anamnezi muvaffaqiyatli saqlandi!`);
     renderPatientList();
@@ -2235,6 +2244,9 @@
     // into this doctor's cabinet.
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_DOCTOR);
+    [STORAGE_KEYS.ANAMNESIS, STORAGE_KEYS.PRESCRIPTIONS, STORAGE_KEYS.DAILY_NOTES]
+      .forEach(k => localStorage.removeItem(k));
+    state.anamnesisMap = {}; state.prescriptionsMap = {}; state.dailyNotesMap = {};
     state.authenticatedDoctor = null;
     state.activeDoctorId = '';
     showDoctorAuthModal();
