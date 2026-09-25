@@ -1303,6 +1303,69 @@ class NothingClinicalIsInvented(ApiTest):
             'frequency': 'Kuniga 1 mahal', 'duration_days': 2})
         self.assertEqual(self._row('prescriptions', pid, 'doctor_id')['doctor_id'], DOCTOR)
 
+    # --- names and doctors nobody gave -------------------------------------
+
+    def test_an_admission_for_nobody_is_refused(self):
+        """
+        With no patient and no name the server registered 'Yangi Bemor' and
+        put that person in a bed, on the invoice and on the nurse's round.
+        """
+        start = _dt.date.today()
+        status, body = self.api.post('/api/admissions', {
+            'bed_id': BED_A, 'program_type': 'standard_10',
+            'start_date': start.isoformat(),
+            'planned_end_date': (start + _dt.timedelta(days=3)).isoformat()})
+        self.assertEqual(status, 400, f"a nameless admission was accepted: {body}")
+        self.assertEqual(body.get('field'), 'patient_name')
+
+    def test_an_admission_with_no_doctor_is_given_nobody(self):
+        """
+        It was handed to the first active doctor in the staff table, who then
+        found a stranger on their ward round.
+        """
+        pid = self.make_patient('No Doctor Stay')
+        start = _dt.date.today()
+        status, body = self.api.post('/api/admissions', {
+            'patient_id': pid, 'bed_id': BED_B, 'program_type': 'standard_10',
+            'start_date': start.isoformat(),
+            'planned_end_date': (start + _dt.timedelta(days=3)).isoformat()})
+        self.assertEqual(status, 201, f"admission without a doctor failed: {body}")
+        self._admissions.append(body['admission_id'])
+        row = self._row('admissions', pid, 'attending_doctor_id')
+        self.assertIsNone(row['attending_doctor_id'],
+                          'a doctor who was not chosen was made responsible')
+
+    def test_an_appointment_needs_a_person_and_a_doctor(self):
+        """The page sent 'STF-DOC-01' and the server 'Bemor' when left blank."""
+        status, body = self.api.post('/api/reception/appointment', {
+            'patient_name': 'Kimdir Bemor', 'date': '2029-05-07'})
+        self.assertEqual(status, 400, f"booked into nobody's diary: {body}")
+        self.assertEqual(body.get('field'), 'doctor_id')
+        status, body = self.api.post('/api/reception/appointment', {
+            'doctor_id': DOCTOR, 'date': '2029-05-07'})
+        self.assertEqual(status, 400, f"booked a nameless patient: {body}")
+        self.assertEqual(body.get('field'), 'patient_name')
+
+    def test_saving_a_case_keeps_the_name_and_allergy_on_file(self):
+        """
+        A case saved without the name or allergy overwrote them with 'Yangi
+        Bemor' and NULL -- wiping a recorded allergy and its warning.
+        """
+        pid = self.make_patient('Allergy Kept', medical_allergies='Penitsillin')
+        status, body = self.api.post('/api/doctor/consultation-case', {
+            'patient_id': pid, 'consultation_type': 'outpatient'})
+        self.assertIn(status, (200, 201), f"case did not save: {body}")
+        row = self._row('patients', pid, 'full_name, medical_allergies')
+        self.assertEqual(row['full_name'], 'Allergy Kept', 'the name was overwritten')
+        self.assertEqual(row['medical_allergies'], 'Penitsillin',
+                         'a recorded allergy was wiped')
+
+    def test_a_case_for_a_new_nameless_patient_is_refused(self):
+        status, body = self.api.post('/api/doctor/consultation-case', {
+            'consultation_type': 'outpatient'})
+        self.assertEqual(status, 400, f"a nameless patient was registered: {body}")
+        self.assertEqual(body.get('field'), 'full_name')
+
 
 class Operations(ApiTest):
     """

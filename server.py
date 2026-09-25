@@ -1685,7 +1685,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # 1. POST /api/admissions (Book / Admit Inpatient via Atomic db.py Workflow)
             if path == '/api/admissions':
                 patient_id = body.get('patient_id')
-                patient_name = (body.get('patient_name') or 'Yangi Bemor').strip()
+                patient_name = (body.get('patient_name') or '').strip()
                 patient_phone = body.get('patient_phone', '')
                 bed_id = body.get('bed_id')
                 start_date = (body.get('start_date') or datetime.date.today().isoformat())[:10]
@@ -1698,6 +1698,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # behind with no stay attached to it.
                 if not bed_id:
                     self._send_validation_error('Karavot tanlanmadi.', 'bed_id')
+                    return
+                # A new patient with no name was registered as 'Yangi Bemor',
+                # so the ward board, the invoice and the nurse's round all
+                # carried a person nobody could identify. An anonymous stay
+                # says so explicitly ('Anonim Bemor' from the desk); a blank
+                # is a form that was not filled in.
+                if not patient_id and not patient_name:
+                    self._send_validation_error("Bemorning ismi kiritilmagan.", 'patient_name')
                     return
                 _s, _e, _err = validate_date_range(
                     start_date, end_date,
@@ -1731,10 +1739,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                           _gender, _bdate, _byear))
                     conn.commit()
 
-                if not doc_id:
-                    cur.execute("SELECT id FROM staff WHERE role IN ('doctor', 'chief_doctor') AND is_active = 1 LIMIT 1")
-                    doc_row = cur.fetchone()
-                    doc_id = (doc_row['id'] if isinstance(doc_row, dict) or hasattr(doc_row, 'keys') else doc_row[0]) if doc_row else None
+                # No doctor chosen used to mean whichever active doctor the
+                # table returned first, so that person became responsible for
+                # a stay they were never told about and it appeared on their
+                # ward round. The stay is recorded without an attending
+                # doctor instead, which the ward board shows as a gap.
+                doc_id = doc_id or None
 
                 prog_type = body.get('program_type') or 'detox'
 
@@ -2215,12 +2225,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             elif path == '/api/reception/appointment':
                 apt_id = body.get('id') or f"APT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
-                patient_name = (body.get('patient_name') or 'Bemor').strip()
+                patient_name = (body.get('patient_name') or '').strip()
                 patient_phone = body.get('patient_phone', '')
                 doc_id = body.get('doctor_id')
                 date_str = body.get('date') or datetime.date.today().isoformat()
                 time_str = body.get('time') or '10:00'
                 srv_type = body.get('service_type', 'outpatient')
+
+                # The name defaulted to 'Bemor' and the page sent 'STF-DOC-01'
+                # when no doctor was picked, so a half-filled form booked a
+                # nameless patient into a real doctor's diary. An appointment
+                # is a slot in one doctor's day; without a doctor or a person
+                # there is nothing to book.
+                if not patient_name:
+                    self._send_validation_error("Bemorning ismi kiritilmagan.", 'patient_name')
+                    return
+                if not doc_id:
+                    self._send_validation_error("Shifokor tanlanmagan.", 'doctor_id')
+                    return
 
                 _bdate, _byear, _gender, _err = parse_birth_and_gender(body)
                 if _err:
@@ -2239,7 +2261,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     cur.execute("SELECT id FROM patients WHERE phone = ? LIMIT 1",
                                 (patient_phone.strip(),))
                     p_exist = cur.fetchone()
-                if not p_exist and patient_name and patient_name != 'Bemor':
+                if not p_exist and patient_name:
                     cur.execute("SELECT id FROM patients WHERE full_name = ? LIMIT 1",
                                 (patient_name,))
                     p_exist = cur.fetchone()
@@ -2610,7 +2632,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     pass
 
                 pt_data = body.get('patient') or {}
-                pt_name = (pt_data.get('full_name') or body.get('patient_name') or 'Yangi Bemor').strip()
+                pt_name = (pt_data.get('full_name') or body.get('patient_name') or '').strip()
                 pt_phone = pt_data.get('phone') or body.get('patient_phone') or ''
                 # These used to fall back to 'male' and 1990. On the UPDATE
                 # below that did not merely invent data for a new patient: it
@@ -2647,23 +2669,37 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if p_row:
                     patient_id = p_row['id'] if isinstance(p_row, dict) else p_row[0]
                     patient_code = p_row['patient_code'] if isinstance(p_row, dict) else p_row[1]
+                    # A field the request does not carry keeps what is on
+                    # file. The name used to become 'Yangi Bemor' and the
+                    # allergy NULL whenever they were left out, so saving a
+                    # case wiped a recorded penicillin allergy -- and the
+                    # doctor's allergy warning with it.
                     cur.execute("""
                         UPDATE patients
-                        SET full_name = ?, phone = ?, emergency_contact = ?,
+                        SET full_name = COALESCE(NULLIF(?, ''), full_name),
+                            phone = COALESCE(NULLIF(?, ''), phone),
+                            emergency_contact = COALESCE(NULLIF(?, ''), emergency_contact),
                             gender = COALESCE(?, gender),
                             birth_date = COALESCE(?, birth_date),
                             birth_year = COALESCE(?, birth_year),
-                            address = ?, medical_allergies = ?, status = 'active',
+                            address = COALESCE(NULLIF(?, ''), address),
+                            medical_allergies = COALESCE(?, medical_allergies),
+                            status = 'active',
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     """, (pt_name, pt_phone, pt_emergency, pt_gender, pt_birth_date,
                           pt_birth, pt_address, allergy, patient_id))
                 else:
+                    if not pt_name:
+                        self._send_validation_error("Bemorning ismi kiritilmagan.", 'full_name')
+                        return
                     patient_id = f"PAT-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
                     patient_code = f"FMH-2026-{patient_id[-4:]}"
+                    # chronic_conditions was the literal "Yo'q" -- none -- for
+                    # a history nobody took.
                     cur.execute("""
                         INSERT INTO patients (id, patient_code, full_name, phone, emergency_contact, gender, birth_date, birth_year, address, referral_source, is_anonymous, medical_allergies, chronic_conditions, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'doctor_consultation', 0, ?, "Yo'q", 'active')
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'doctor_consultation', 0, ?, NULL, 'active')
                     """, (patient_id, patient_code, pt_name, pt_phone, pt_emergency,
                           pt_gender, pt_birth_date, pt_birth, pt_address, allergy))
                 conn.commit()

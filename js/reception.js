@@ -1563,7 +1563,9 @@ window.FMH_Reception = (function () {
     }
 
     const program = document.getElementById('intake-program-select')?.value || 'statsionar_shared';
-    const doctorId = document.getElementById('intake-doctor-select')?.value || (State.data.doctors?.[0]?.id || 'STF-DOC-01');
+    // No doctor chosen is sent as none, not as the first doctor in the list:
+    // that person would be made responsible for a stay nobody gave them.
+    const doctorId = document.getElementById('intake-doctor-select')?.value || null;
     const days = parseInt(document.getElementById('intake-days')?.value) || 7;
     const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 720000;
     const advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
@@ -1592,7 +1594,7 @@ window.FMH_Reception = (function () {
         }
       }
 
-      const bedId = State.intake.selectedBed || 'BED-1A';
+      const bedId = State.intake.selectedBed || null;
       const startDateStr = String(startDate).slice(0, 10);
       const startDateObj = new Date(startDateStr);
       const endDateObj = new Date(startDateObj);
@@ -1600,7 +1602,7 @@ window.FMH_Reception = (function () {
       const endDateStr = endDateObj.toISOString().slice(0, 10);
 
       const payload = {
-        patient_name: isAnon ? 'Anonim Bemor' : (name || 'Yangi Bemor'),
+        patient_name: isAnon ? 'Anonim Bemor' : name,
         patient_phone: isAnon ? '' : phone,
         birth_date: birthDate,
         gender: gender,
@@ -1834,11 +1836,11 @@ window.FMH_Reception = (function () {
     const endDateStr = endDateObj.toISOString().slice(0, 10);
 
     const payload = {
-      patient_name: data.isAnon ? 'Anonim Bemor' : (data.name || 'Yangi Bemor'),
+      patient_name: data.isAnon ? 'Anonim Bemor' : (data.name || ''),
       patient_phone: data.phone || '',
       is_anonymous: data.isAnon ? 1 : 0,
-      bed_id: data.bedId || 'BED-1A',
-      attending_doctor_id: data.doctorId || (State.data.doctors?.[0]?.id || 'STF-DOC-01'),
+      bed_id: data.bedId || null,
+      attending_doctor_id: data.doctorId || null,
       program_type: data.program || 'statsionar_shared',
       start_date: startDateStr,
       end_date: endDateStr,
@@ -2053,11 +2055,12 @@ window.FMH_Reception = (function () {
     const isAnon = document.getElementById('apt-anon-check')?.checked;
 
     if (!isAnon && !name) { showToast('Bemor ismini kiriting', 'error'); return; }
+    if (!State.apt.selectedDoctorId) { showToast('Shifokorni tanlang', 'error'); return; }
 
     const aptId = randomId('APT-2026');
     const newApt = {
       id: aptId,
-      doctor_id: State.apt.selectedDoctorId || 'STF-DOC-01',
+      doctor_id: State.apt.selectedDoctorId,
       patient_name: isAnon ? 'Anonim Bemor' : name,
       patient_phone: isAnon ? '—' : phone,
       date: State.apt.selectedDate,
