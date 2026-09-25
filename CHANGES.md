@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 158 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 165 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil sentabr
 
 ---
@@ -42,6 +42,12 @@ qoplangan.
 | Shifokor sahifasi bo'sh maydonlarni **o'ylab topardi** | Bosim 120/80, puls 72, 36.6°, SpO2 98, jins "Erkak", allergiya "Yo'q", tashxis F10.2; chop etilgan kartada "tremor bor", "OIV/gepatit inkor qilinadi". Epikriz doim "sog'aydi" deb saqlanardi — endi **chiqish natijasi tanlanadi** (yangi maydon). |
 | Rasmiy hujjatlar (epikriz, qabul varaqasi, muolaja varaqasi, kvitansiya, oylik varaqasi) bo'sh joyni to'ldirardi | Soxta tashxis va hamroh kasalliklar, "Dr. Bobur Mirzayev" imzosi, 20–27 avgust sanalari, 720 000 so'm to'lov, har oylikka 1,5 mln bonus. Endi "Qayd etilmagan", "—" yoki 0. |
 | A4 blankdagi "Namuna" tugmasi haqiqiy bemor ismi yoniga **soxta qon guruhi** (A(II) Rh+), vazn, qand, tashxis va reja yozardi | Endi faqat bemor yozuvidagi haqiqiy ma'lumotlar qo'yiladi. |
+| CRM'dagi bemor tahrirlari **umuman saqlanmasdi** | Serverda bunday yo'l yo'q edi, sahifa esa "saqlandi" derdi — CRM'da yozilgan allergiya shifokorga yetib bormasdi. Endi saqlanadi. |
+| Turli odamlar **bitta bemor yozuvi**ga yozilardi | Faqat telefon yoki faqat ism bo'yicha moslashtirilardi; barcha anonim bemorlar bitta yozuvda edi. Endi telefon+ism yoki ism+tug'ilgan sana kerak; anonim tashrif har doim alohida. Har bir qabul ikkinchi (dublikat) bemor yozuvini ham yaratardi — tuzatildi. |
+| Shifokor kabineti avvalgi foydalanuvchini "eslab qolardi" | Umumiy kompyuterda keyingi odam oldingi shifokor nomidan ishlardi; admin esa haqiqiy shifokor (Dr. Bobur Mirzayev) nomidan imzolardi. Endi kim kirganini server aytadi; chiqishda brauzerdagi bemor ma'lumotlari tozalanadi. |
+| Ambulator, uyga chaqiruv va buxgalteriya qabullari xatoni yashirardi | Rad etilgan yoki internet uzilgan holatda ham "qayd etildi" derdi. Endi sababi ko'rsatiladi. |
+| Oylik varaqasi tanlanmagan xodim uchun **birinchi xodimning** varaqasini chiqarardi | Endi xodim tanlanishi shart va hisob jadvaldagi formula bilan bir xil. |
+| A4 blank "Namuna" tugmasi | Endi ro'yxatdan bemorni tanlash (ism va kod bo'yicha). |
 
 ---
 
@@ -227,7 +233,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **158 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **165 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda
