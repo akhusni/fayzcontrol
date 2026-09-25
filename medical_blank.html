@@ -1092,9 +1092,9 @@
         <span><i class="fas fa-pen-nib"></i> Qo'lda yozish rejimi</span>
       </label>
 
-      <button class="btn-action btn-secondary" onclick="loadSampleData()" title="Namuna ma'lumotlar bilan to'ldirish">
-        <i class="fas fa-magic"></i> Namuna
-      </button>
+      <select id="blank-patient-select" class="btn-action btn-secondary" onchange="loadSampleData(this.value)" title="Bemor yozuvidan to'ldirish" style="max-width: 230px;">
+        <option value="">— Bemorni tanlang —</option>
+      </select>
 
       <button class="btn-action btn-secondary" onclick="clearForm()" title="Barcha maydonlarni tozalash">
         <i class="fas fa-eraser"></i> Tozalash
@@ -1634,13 +1634,41 @@
     }
 
     // Load live patient clinical data from MySQL API
-    async function loadSampleData() {
+    // The 'Namuna' button filled the blank from patients[0] -- whoever the
+    // database happened to list first -- so the paper could carry a person
+    // nobody chose. The doctor now picks the patient by name and code.
+    async function populateBlankPatients() {
+      const sel = document.getElementById('blank-patient-select');
+      if (!sel) return;
+      try {
+        const res = await fetch('/api/patients');
+        const patients = res.ok ? await res.json() : [];
+        if (!Array.isArray(patients) || !patients.length) {
+          window.FMH_Toast("Bazada bemorlar mavjud emas (Baza toza). Yangi bemor qabul qilingach, uni shu yerdan tanlash mumkin.", 'info');
+          return;
+        }
+        patients
+          .slice()
+          .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+          .forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `${p.full_name || '—'} (${p.patient_code || p.id})`;
+            sel.appendChild(opt);
+          });
+      } catch (e) {
+        console.warn('Could not fetch patients from API', e);
+      }
+    }
+
+    async function loadSampleData(patientId) {
+      if (!patientId) return;
       try {
         const res = await fetch('/api/patients');
         if (res.ok) {
           const patients = await res.json();
-          if (Array.isArray(patients) && patients.length > 0) {
-            const p = patients[0];
+          const p = Array.isArray(patients) ? patients.find(x => String(x.id) === String(patientId)) : null;
+          if (p) {
             // Only what is on the patient's record. This used to fill the
             // rest of the official blank with invented findings -- blood group
             // A(II) Rh+, 175 cm / 78 kg, sugar 5.2, a diagnosis, a treatment
@@ -1683,8 +1711,7 @@
         console.warn('Could not fetch patients from API', e);
       }
 
-      // If no patients exist in the system (clean state)
-      window.FMH_Toast("Bazada bemorlar mavjud emas (Baza toza). Yangi bemor qabul qilingach, uning ma'lumotlari avtomatik yuklanadi.", 'info');
+      window.FMH_Toast("Bemor ma'lumotlarini yuklab bo'lmadi.", 'warning');
     }
 
     // Clear all fields
@@ -2190,6 +2217,7 @@
 
     // Initialize engine on page load
     document.addEventListener('DOMContentLoaded', () => {
+      populateBlankPatients();
       initBlankMedsEngine();
     });
     // Fallback immediate initialization
