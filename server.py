@@ -323,6 +323,36 @@ import nursery
 import consultation
 
 
+def validate_prescription_fields(rx):
+    """
+    The parts of a medication order the prescriber must state.
+
+    Returns (duration_days, None) or (None, (message, field)). Dose, route
+    and frequency decide what reaches the patient; a blank one is a question
+    for the prescriber, not something to fill in. Shared by the single-order
+    endpoint and the consultation case, which used to fill every blank with
+    400 ml by IV drip, once a day, for five days.
+    """
+    if not (rx.get('medication_name') or rx.get('name') or '').strip():
+        return None, ('Dori nomi kiritilishi shart.', 'medication_name')
+    for field, label in (('dosage', 'Doza'), ('route', 'Yuborish yo\'li'),
+                         ('frequency', 'Qabul chastotasi')):
+        if not str(rx.get(field) or '').strip():
+            return None, (f'{label} kiritilishi shart.', field)
+    days_raw = rx.get('duration_days')
+    if days_raw in (None, ''):
+        days_raw = rx.get('duration')
+    if days_raw in (None, ''):
+        return None, ('Davomiylik (kun) kiritilishi shart.', 'duration_days')
+    try:
+        duration_days = int(days_raw)
+    except (TypeError, ValueError):
+        return None, ('Davomiylik raqam bo\'lishi kerak.', 'duration_days')
+    if not (1 <= duration_days <= 365):
+        return None, ('Davomiylik 1-365 kun oralig\'ida bo\'lishi kerak.', 'duration_days')
+    return duration_days, None
+
+
 def new_record_id(cur, table, prefix):
     """
     A free id of the form PREFIX-####, probed against `table`.
@@ -2414,7 +2444,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         body.get('psychiatric_status', ''),
                         body.get('diagnosis_primary', ''),
                         body.get('diagnosis_secondary', ''),
-                        body.get('icd10_code', 'F10.2')
+                        body.get('icd10_code') or None
                     ))
                 
                 if body.get('allergic_status'):
@@ -2438,34 +2468,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 rx_id = body.get('id') or new_record_id(cur, 'prescriptions', 'RX-2026')
 
                 med = (body.get('medication_name') or '').strip()
-                if not med:
-                    self._send_validation_error('Dori nomi kiritilishi shart.',
-                                                'medication_name')
-                    return
-                # Dose and route decide what reaches the patient; a blank one
-                # is a question for the prescriber, not something to fill in.
-                for field, label in (('dosage', 'Doza'), ('route', 'Yuborish yo\'li'),
-                                     ('frequency', 'Qabul chastotasi')):
-                    if not (body.get(field) or '').strip():
-                        self._send_validation_error(
-                            f'{label} kiritilishi shart.', field)
-                        return
-
-                days_raw = body.get('duration_days')
-                if days_raw in (None, ''):
-                    self._send_validation_error('Davomiylik (kun) kiritilishi shart.',
-                                                'duration_days')
-                    return
-                try:
-                    duration_days = int(days_raw)
-                except (TypeError, ValueError):
-                    self._send_validation_error('Davomiylik raqam bo\'lishi kerak.',
-                                                'duration_days')
-                    return
-                if not (1 <= duration_days <= 365):
-                    self._send_validation_error(
-                        'Davomiylik 1-365 kun oralig\'ida bo\'lishi kerak.',
-                        'duration_days')
+                duration_days, _err = validate_prescription_fields(body)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
                     return
 
                 # Authorship is a signature on a medical order. It comes from
@@ -2681,6 +2686,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if _err:
                     self._send_validation_error(_err[0], _err[1])
                     return
+
+                # Checked before anything is written: the patient and the
+                # consultation are committed first below, so refusing an
+                # order half-way would leave a case saved without the drugs
+                # the doctor thought they had ordered.
+                rx_checked = []
+                for rx in (body.get('prescriptions') or []):
+                    if not (rx.get('medication_name') or rx.get('name') or '').strip():
+                        continue
+                    _days, _err = validate_prescription_fields(rx)
+                    if _err:
+                        _drug = (rx.get('medication_name') or rx.get('name')).strip()
+                        self._send_validation_error(f"{_drug}: {_err[0]}", _err[1])
+                        return
+                    rx_checked.append((rx, _days))
                 pt_address = pt_data.get('address') or body.get('address') or ''
                 pt_emergency = pt_data.get('emergency_contact') or body.get('emergency_contact') or ''
 
@@ -2803,7 +2823,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 psychiatric = anam_data.get('psychiatric_status') or body.get('psychiatric_status', '')
                 diag_pri = anam_data.get('diagnosis_primary') or body.get('diagnosis_primary', '')
                 diag_sec = anam_data.get('diagnosis_secondary') or body.get('diagnosis_secondary', '')
-                icd10 = anam_data.get('icd10_code') or body.get('icd10_code', 'F10.2')
+                # The ICD-10 code defaulted to F10.2 (alcohol dependence) for every
+                # case that did not state one -- a diagnosis code nobody made.
+                icd10 = anam_data.get('icd10_code') or body.get('icd10_code') or None
 
                 cur.execute("""
                     INSERT INTO medical_histories (id, patient_id, admission_id, doctor_id, complaints, anamnesis_morbi, anamnesis_vitae, allergic_status, somatic_status, psychiatric_status, diagnosis_primary, diagnosis_secondary, icd10_code)
@@ -2825,19 +2847,17 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 ))
                 conn.commit()
 
-                rx_items = body.get('prescriptions') or []
                 saved_rx = []
-                for rx in rx_items:
+                for rx, duration in rx_checked:
                     rx_id = new_record_id(cur, 'prescriptions', 'RX-2026')
-                    med_name = rx.get('medication_name') or rx.get('name', '')
-                    if not med_name:
-                        continue
-                    form = rx.get('form') or 'Infuzion flakon'
-                    dosage = rx.get('dosage') or '400 ml'
-                    route = rx.get('route') or 'V/I tomchilab (kapelnitsa)'
-                    frequency = rx.get('frequency') or 'Kuniga 1 mahal'
-                    duration = int(rx.get('duration_days') or rx.get('duration') or 5)
-                    timing = rx.get('timing') or 'Ertalab'
+                    med_name = (rx.get('medication_name') or rx.get('name')).strip()
+                    # Optional parts stay empty rather than guessed; the
+                    # required ones were checked above.
+                    form = rx.get('form') or None
+                    dosage = str(rx.get('dosage')).strip()
+                    route = str(rx.get('route')).strip()
+                    frequency = str(rx.get('frequency')).strip()
+                    timing = rx.get('timing') or None
                     instructions = rx.get('instructions') or ''
 
                     cur.execute("""

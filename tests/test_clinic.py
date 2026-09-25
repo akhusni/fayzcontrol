@@ -1360,6 +1360,38 @@ class NothingClinicalIsInvented(ApiTest):
         self.assertEqual(row['medical_allergies'], 'Penitsillin',
                          'a recorded allergy was wiped')
 
+    def test_a_case_with_a_half_written_order_saves_nothing(self):
+        """
+        The case endpoint filled a bare drug name in as 400 ml by IV drip,
+        once a day, for five days -- the same order the single-order endpoint
+        already refused. It is refused before the case itself is written.
+        """
+        pid = self.make_patient('Case Rx Bare')
+        status, body = self.api.post('/api/doctor/consultation-case', {
+            'patient_id': pid, 'consultation_type': 'outpatient',
+            'prescriptions': [{'medication_name': 'Analgin'}]})
+        self.assertEqual(status, 400, f"a half-written order was saved: {body}")
+        self.assertEqual(body.get('field'), 'dosage')
+        self.assertIn('Analgin', body.get('error', ''), 'the drug is not named')
+        self.assertIsNone(self._row('prescriptions', pid, 'id'))
+        self.assertIsNone(self._row('medical_histories', pid, 'id'),
+                          'the case was half-saved before the refusal')
+
+    def test_a_case_order_keeps_to_what_was_written(self):
+        pid = self.make_patient('Case Rx Real')
+        status, body = self.api.post('/api/doctor/consultation-case', {
+            'patient_id': pid, 'consultation_type': 'outpatient',
+            'prescriptions': [{'medication_name': 'Analgin', 'dosage': '2 ml',
+                               'route': 'M/I', 'frequency': 'Kuniga 1 mahal',
+                               'duration_days': 3}]})
+        self.assertIn(status, (200, 201), f"a complete order was refused: {body}")
+        rx = self._row('prescriptions', pid, 'dosage, route, duration_days, form, timing')
+        self.assertEqual((rx['dosage'], rx['route'], rx['duration_days']), ('2 ml', 'M/I', 3))
+        self.assertIsNone(rx['form'], 'a dosage form was invented')
+        self.assertIsNone(rx['timing'], 'a time of day was invented')
+        mh = self._row('medical_histories', pid, 'icd10_code')
+        self.assertIsNone(mh['icd10_code'], 'an ICD-10 code (F10.2) was invented')
+
     def test_a_case_for_a_new_nameless_patient_is_refused(self):
         status, body = self.api.post('/api/doctor/consultation-case', {
             'consultation_type': 'outpatient'})

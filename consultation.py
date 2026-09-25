@@ -391,7 +391,9 @@ def _mirror_to_medical_history(conn, consultation_id, patient_id, doctor_id, val
     """
     try:
         cur = conn.cursor()
-        allergies = values.get('drug_allergies') or "Yo'q"
+        # "Yo'q" (none) for an unasked question silenced the doctor page's
+        # allergy warning; unknown stays empty.
+        allergies = values.get('drug_allergies') or None
         psychiatric = ' | '.join(filter(None, [
             values.get('observed_mood'),
             values.get('observed_thought'),

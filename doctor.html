@@ -621,19 +621,19 @@
                 <div class="clinical-form-group vitals-input-grid">
                   <div>
                     <label class="clinical-label">BP (Bosim)</label>
-                    <input type="text" id="note-bp" class="clinical-input" value="120/80">
+                    <input type="text" id="note-bp" class="clinical-input" value="" placeholder="120/80">
                   </div>
                   <div>
                     <label class="clinical-label">Puls</label>
-                    <input type="number" id="note-pulse" class="clinical-input" value="74">
+                    <input type="number" id="note-pulse" class="clinical-input" value="" placeholder="74">
                   </div>
                   <div>
                     <label class="clinical-label">Harorat</label>
-                    <input type="text" id="note-temp" class="clinical-input" value="36.6">
+                    <input type="text" id="note-temp" class="clinical-input" value="" placeholder="36.6">
                   </div>
                   <div>
                     <label class="clinical-label">SpO2 %</label>
-                    <input type="number" id="note-spo2" class="clinical-input" value="99">
+                    <input type="number" id="note-spo2" class="clinical-input" value="" placeholder="98">
                   </div>
                 </div>
                 <div class="clinical-form-group full-width">
@@ -701,8 +701,18 @@
               </div>
 
               <div style="margin-bottom: 1rem; background: var(--bg-surface); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
-                <p><strong>Bemor:</strong> <span id="epicrisis-patient">Rustam A. (FMH-2026-0011)</span></p>
-                <p><strong>Klinik Tashxis:</strong> <span id="epicrisis-diag">Surunkali alkogolizm 2-bosqich. Alkogolli abstinent holat.</span></p>
+                <p><strong>Bemor:</strong> <span id="epicrisis-patient">—</span></p>
+                <p><strong>Klinik Tashxis:</strong> <span id="epicrisis-diag">—</span></p>
+                <p style="margin-top: 6px;"><strong>Chiqish natijasi *</strong>
+                  <select id="epicrisis-outcome" class="clinical-select" style="max-width: 280px; display: inline-block; margin-left: 6px;">
+                    <option value="">— tanlang —</option>
+                    <option value="recovered">Sog'aydi</option>
+                    <option value="improved">Yaxshilandi</option>
+                    <option value="unchanged">O'zgarishsiz</option>
+                    <option value="transferred">Boshqa muassasaga o'tkazildi</option>
+                    <option value="against_medical_advice">Shifokor tavsiyasiga qarshi ketdi</option>
+                  </select>
+                </p>
               </div>
 
               <div class="clinical-form-group full-width" style="margin-bottom: 1rem;">
@@ -895,6 +905,7 @@
               <div class="clinical-form-group">
                 <label class="clinical-label">Jinsi</label>
                 <select id="case-patient-gender" class="clinical-select">
+                  <option value="">— tanlang —</option>
                   <option value="Erkak">Erkak</option>
                   <option value="Ayol">Ayol</option>
                 </select>
@@ -1133,7 +1144,7 @@
 
   <!-- JavaScript Engines -->
     <script src="js/unified_print_engine.js?v=5.0"></script>
-<script src="js/doctor.js?v=12.1"></script>
+<script src="js/doctor.js?v=12.2"></script>
   <div id="print-area"></div>
 </body>
 </html>

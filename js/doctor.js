@@ -10,6 +10,17 @@
   // Default Patient Dataset (Clean empty state)
   const DEFAULT_PATIENTS = [];
 
+  // What a blank prints as. Blanks used to be filled with plausible findings
+  // -- BP 120/80, "tremor present", ICD-10 F10.2, "no allergies" -- which on
+  // a signed record cannot be told apart from something actually measured.
+  const NOT_RECORDED = 'Qayd etilmagan';
+  const genderLabel = (g) => g === 'female' ? 'Ayol' : (g === 'male' ? 'Erkak' : '—');
+  const DISCHARGE_OUTCOMES = {
+    recovered: "Sog'aydi", improved: 'Yaxshilandi', unchanged: "O'zgarishsiz",
+    transferred: "Boshqa muassasaga o'tkazildi",
+    against_medical_advice: 'Shifokor tavsiyasiga qarshi ketdi'
+  };
+
   // Clinic Doctor Profiles (display only).
   //
   // These carried each doctor's plaintext password, which meant anyone who
@@ -574,11 +585,11 @@
     dashboard.style.display = 'grid';
     
     const latestNote = notes[0];
-    const bp = latestNote.bp || '120/80';
-    const pulse = latestNote.pulse || 72;
-    const temp = latestNote.temp || 36.6;
-    const spo2 = latestNote.spo2 || 98;
-    const condition = latestNote.condition || 'satisfactory';
+    const bp = latestNote.bp || '—';
+    const pulse = latestNote.pulse || '—';
+    const temp = latestNote.temp || '—';
+    const spo2 = latestNote.spo2 || '—';
+    const condition = latestNote.condition || '';
 
     const bpEl = document.getElementById('vital-bp-val');
     const pulseEl = document.getElementById('vital-pulse-val');
@@ -598,12 +609,14 @@
         severe: 'Og\'ir',
         critical: 'Kritik'
       };
-      conditionEl.textContent = condMap[condition] || condition;
+      conditionEl.textContent = condMap[condition] || condition || '—';
     }
 
     const setClass = (el, val, type) => {
       if (!el) return;
       el.className = '';
+      // An unmeasured value gets no colour; green would read as "normal".
+      if (val === '—' || isNaN(Number(val))) return;
       if (type === 'pulse') {
         if (val > 120) el.classList.add('vital-critical');
         else if (val > 100) el.classList.add('vital-elevated');
@@ -679,8 +692,8 @@
     }
     if (nameEl) nameEl.textContent = p.full_name;
     if (metaEl) {
-      const age = p.birth_year ? `${2026 - p.birth_year} yosh` : 'N/A';
-      const gender = p.gender === 'female' ? 'Ayol' : 'Erkak';
+      const age = p.birth_year ? `${new Date().getFullYear() - p.birth_year} yosh` : 'N/A';
+      const gender = genderLabel(p.gender);
       const bed = p.active_admission ? `${p.active_admission.room_number}-xona (${p.active_admission.bed_code} karavot)` : 'Ambulator';
       const program = p.active_admission ? p.active_admission.program_type.toUpperCase() : 'STANDART';
 
@@ -737,23 +750,23 @@
       complaints: p.notes || '',
       anamnesis_morbi: '',
       anamnesis_vitae: '',
-      allergic_status: p.medical_allergies || 'Yo\'q',
+      allergic_status: p.medical_allergies || '',
       somatic_status: '',
       psychiatric_status: '',
-      diagnosis_primary: p.program_type ? `${p.program_type.toUpperCase()} davolash kursi` : '',
+      diagnosis_primary: '',
       diagnosis_secondary: '',
-      icd10_code: 'F10.2'
+      icd10_code: ''
     };
 
     document.getElementById('anam-complaints').value = anamnesis.complaints || '';
     document.getElementById('anam-morbi').value = anamnesis.anamnesis_morbi || '';
     document.getElementById('anam-vitae').value = anamnesis.anamnesis_vitae || '';
-    document.getElementById('anam-allergy').value = anamnesis.allergic_status || p.medical_allergies || 'Yo\'q';
+    document.getElementById('anam-allergy').value = anamnesis.allergic_status || p.medical_allergies || '';
     document.getElementById('anam-somatic').value = anamnesis.somatic_status || '';
     document.getElementById('anam-psychiatric').value = anamnesis.psychiatric_status || '';
     document.getElementById('anam-diagnosis-primary').value = anamnesis.diagnosis_primary || '';
     document.getElementById('anam-diagnosis-secondary').value = anamnesis.diagnosis_secondary || '';
-    document.getElementById('anam-icd10').value = anamnesis.icd10_code || 'F10.2';
+    document.getElementById('anam-icd10').value = anamnesis.icd10_code || '';
   }
 
   async function saveAnamnesis() {
@@ -1234,18 +1247,18 @@
     const rxData = {
       id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
       medication_name: med.name,
-      form: med.form || med.dosage_form || 'Tabletkalar',
-      dosage: med.default_dosage || med.strength || 'Standart doza',
-      route: med.default_route || 'Ichishga (Per os)',
-      frequency: med.default_frequency || 'Kuniga 2 mahal',
-      duration_days: med.default_duration || 5,
-      timing: med.default_timing || 'Ertalab & Kechqurun',
+      form: med.form || med.dosage_form || '',
+      dosage: med.default_dosage || med.strength || '',
+      route: med.default_route || '',
+      frequency: med.default_frequency || '',
+      duration_days: med.default_duration || null,
+      timing: med.default_timing || '',
       instructions: med.instructions || '',
       status: 'active',
       doctor_name: state.doctors.find(d => d.id === state.activeDoctorId)?.name || 'Dr. Shifokor'
     };
 
-    addPrescription(rxData);
+    if (!(await addPrescription(rxData))) return;
     closeClinicMedsModal();
     showToast(`💊 "${med.name}" muvaffaqiyatli tayinlandi!`, 'success');
   }
@@ -1289,7 +1302,7 @@
         dosage: document.getElementById('rx-dosage').value,
         route: document.getElementById('rx-route').value,
         frequency: document.getElementById('rx-frequency').value,
-        duration_days: parseInt(document.getElementById('rx-duration').value) || 5,
+        duration_days: parseInt(document.getElementById('rx-duration').value) || null,
         timing: document.getElementById('rx-timing').value,
         instructions: document.getElementById('rx-instructions').value,
         status: 'active',
@@ -1297,13 +1310,12 @@
       };
     }
 
-    if (!state.prescriptionsMap[p.id]) state.prescriptionsMap[p.id] = [];
-    state.prescriptionsMap[p.id].unshift(rxData);
-    localStorage.setItem(STORAGE_KEYS.PRESCRIPTIONS, JSON.stringify(state.prescriptionsMap));
-
-    // Send to backend
+    // The order is shown as given only once the server has stored it. The
+    // answer used to be ignored, so an order the server refused (no dose, no
+    // route) still appeared on this list with a success message -- and never
+    // reached the nurse station, which reads the database.
     try {
-      await fetch('/api/doctor/prescriptions', {
+      const res = await fetch('/api/doctor/prescriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1315,12 +1327,24 @@
           ...rxData
         })
       });
-    } catch (e) {}
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Retsept saqlanmadi. Qayta urinib ko'ring.", 'danger');
+        return false;
+      }
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — retsept saqlanmadi.", 'danger');
+      return false;
+    }
+
+    if (!state.prescriptionsMap[p.id]) state.prescriptionsMap[p.id] = [];
+    state.prescriptionsMap[p.id].unshift(rxData);
+    localStorage.setItem(STORAGE_KEYS.PRESCRIPTIONS, JSON.stringify(state.prescriptionsMap));
 
     // Reset Form
     if (!customRx) {
       document.getElementById('rx-drug-name').value = '';
-      document.getElementById('rx-dosage').value = '400 ml';
+      document.getElementById('rx-dosage').value = '';
       document.getElementById('rx-instructions').value = '';
     }
 
@@ -1328,6 +1352,7 @@
     renderPrescriptionsTab();
     updateTabBadges();
     updateKPIs();
+    return true;
   }
 
   function applyPresetProtocol(protocolType) {
@@ -1464,10 +1489,10 @@
             ${condBadge}
           </div>
           <div class="diary-vitals-box">
-            <span><strong>Qon bosimi:</strong> ${n.bp || '120/80'} mm Hg</span>
-            <span><strong>Puls:</strong> ${n.pulse || 72} ur/min</span>
-            <span><strong>Harorat:</strong> ${n.temp || 36.6} °C</span>
-            <span><strong>SpO2:</strong> ${n.spo2 || 99}%</span>
+            <span><strong>Qon bosimi:</strong> ${n.bp || '—'} mm Hg</span>
+            <span><strong>Puls:</strong> ${n.pulse || '—'} ur/min</span>
+            <span><strong>Harorat:</strong> ${n.temp || '—'} °C</span>
+            <span><strong>SpO2:</strong> ${n.spo2 ? n.spo2 + '%' : '—'}</span>
           </div>
           <div style="font-size: 0.88rem; color: var(--text-primary); margin-bottom: 6px; line-height: 1.5;">
             <strong>Dinamika va holat:</strong> ${n.dynamics}
@@ -1497,10 +1522,10 @@
       id: Date.now(),
       date: todayStr,
       condition: document.getElementById('note-condition').value,
-      bp: document.getElementById('note-bp').value || '120/80',
-      pulse: parseInt(document.getElementById('note-pulse').value) || 72,
-      temp: parseFloat(document.getElementById('note-temp').value) || 36.6,
-      spo2: parseInt(document.getElementById('note-spo2').value) || 98,
+      bp: document.getElementById('note-bp').value.trim() || null,
+      pulse: parseInt(document.getElementById('note-pulse').value) || null,
+      temp: parseFloat(document.getElementById('note-temp').value) || null,
+      spo2: parseInt(document.getElementById('note-spo2').value) || null,
       dynamics: dynamics,
       treatment: document.getElementById('note-treatment').value,
       doctor_name: state.doctors.find(d => d.id === state.activeDoctorId)?.name || 'Dr. Shifokor'
@@ -1579,10 +1604,16 @@
     const anam = state.anamnesisMap[p.id] || {};
     const rxList = state.prescriptionsMap[p.id] || [];
 
-    const diag = anam.diagnosis_primary || (p.program_type ? `${p.program_type.toUpperCase()} davolash kursi` : '—');
+    // The programme name ("DETOX davolash kursi") stood in for a diagnosis
+    // and was saved as the final diagnosis on the discharge paper.
+    const diag = anam.diagnosis_primary || '';
+    state.epicrisisDiag = diag;
     const rxSummary = rxList.map(r => `• ${r.medication_name} — ${r.dosage} (${r.route}, ${r.frequency})`).join('\n');
 
-    document.getElementById('epicrisis-diag').textContent = diag;
+    document.getElementById('epicrisis-diag').textContent = diag || '—';
+    const outcomeSel = document.getElementById('epicrisis-outcome');
+    const savedEpi = (state.epicrisisMap && state.epicrisisMap[p.id]) || {};
+    if (outcomeSel) outcomeSel.value = savedEpi.discharge_status || '';
     document.getElementById('epicrisis-patient').textContent = `${p.full_name} (${p.patient_code})`;
     document.getElementById('epicrisis-home-rx').value = rxSummary || '';
   }
@@ -1597,24 +1628,44 @@
       doctor_id: (state.authenticatedDoctor && state.authenticatedDoctor.staff_id) || state.activeDoctorId,
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
       epicrisis_date: new Date().toISOString().split('T')[0],
-      diagnosis_final: document.getElementById('epicrisis-diag')?.textContent || '',
-      icd10_code: document.getElementById('anam-icd10')?.value || 'F10.2',
-      treatment_summary: 'Detoksikatsiya va statsionar reabilitatsiya kursi muvaffaqiyatli o\'tildi.',
+      diagnosis_final: state.epicrisisDiag || '',
+      icd10_code: document.getElementById('anam-icd10')?.value || null,
+      // Was always "the course was completed successfully" with outcome
+      // 'recovered', whatever actually happened. The outcome is now chosen.
+      treatment_summary: null,
       home_prescriptions: document.getElementById('epicrisis-home-rx')?.value || '',
       psycho_recommendations: document.getElementById('epicrisis-psycho')?.value || '',
-      discharge_status: 'recovered'
+      discharge_status: document.getElementById('epicrisis-outcome')?.value || ''
     };
 
-    if (!state.epicrisisMap) state.epicrisisMap = {};
-    state.epicrisisMap[p.id] = data;
+    if (!data.diagnosis_final) {
+      showToast("Avval anamnez bo'limida asosiy tashxisni kiriting.", 'warning');
+      return;
+    }
+    if (!data.discharge_status) {
+      showToast('Chiqish natijasini tanlang.', 'warning');
+      document.getElementById('epicrisis-outcome')?.focus();
+      return;
+    }
 
     try {
-      await fetch('/api/doctor/epicrisis', {
+      const res = await fetch('/api/doctor/epicrisis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-    } catch (e) {}
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Epikriz saqlanmadi. Qayta urinib ko'ring.", 'danger');
+        return;
+      }
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — epikriz saqlanmadi.", 'danger');
+      return;
+    }
+
+    if (!state.epicrisisMap) state.epicrisisMap = {};
+    state.epicrisisMap[p.id] = data;
 
     showToast(`📋 <strong>${p.full_name}</strong> chiqarish epikrizi MySQL bazasiga saqlandi!`);
   }
@@ -1638,7 +1689,7 @@
       stayDays = diffDays;
     }
 
-    const medNames = rxList.slice(0, 5).map(r => r.medication_name).join(', ') || 'Reosorbilakt, Sibazon, Meksidol, Neyromultivit';
+    const medNames = rxList.slice(0, 5).map(r => r.medication_name).join(', ');
 
     const homeRxText = `1. Meksidol 125 mg tabletkasi — 1 tabletkadan kuniga 2 mahal (ertalab va tushlikda ovqatdan so'ng), 1 oy davomida.\n2. Neyromultivit (yoki B-kompleks) — 1 tabletkadan kuniga 1 mahal, 20 kun.\n3. Gepabene (yoki Essensiale Forte) — 1 kapsuladan kuniga 3 mahal, 1 oy.\n4. Magne B6 — 1 tabletkadan kechqurun, 15 kun.`;
 
@@ -1764,8 +1815,8 @@
     const dailyNotes = state.dailyNotesMap[p.id] || [];
     const epicrisis = (state.epicrisisMap && state.epicrisisMap[p.id]) || {};
 
-    const age = p.birth_year ? (2026 - p.birth_year) : 'N/A';
-    const genderStr = p.gender === 'female' ? 'Ayol' : 'Erkak';
+    const age = p.birth_year ? (new Date().getFullYear() - p.birth_year) : 'N/A';
+    const genderStr = genderLabel(p.gender);
     const roomStr = p.active_admission ? `${p.active_admission.room_number}-xona (${p.active_admission.bed_code})` : 'Ambulator';
     const todayStr = new Date().toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -1820,11 +1871,11 @@
     const anamnesisHtml = `
       <div class="a4-section-title"><i class="fas fa-notes-medical"></i> Bemor Shikoyatlari & Anamnezi</div>
       <div style="font-size: 12.5px; display: grid; gap: 8px; margin-bottom: 16px;">
-        <div><strong>Bemor shikoyatlari:</strong> ${document.getElementById('anam-complaints')?.value || anam.complaints || 'Patsiyent intoksikatsiya, uyqusizlik, vegetativ o\'zgarishlar va umumiy hollardan shikoyat qiladi.'}</div>
-        <div><strong>Anamnesis Morbi (Kasallik rivojlanishi):</strong> ${document.getElementById('anam-morbi')?.value || anam.anamnesis_morbi || 'Surunkali toksik/alkogolli intoksikatsiya holati. Zapoy staji 5 kun.'}</div>
-        <div><strong>Anamnesis Vitae (Hayotiy anamnez):</strong> ${document.getElementById('anam-vitae')?.value || anam.anamnesis_vitae || 'O\'tkazilgan yuqumli kasalliklar (OIV, Gepatit B/C) va travmalar inkor qilinadi.'}</div>
-        <div><strong>Somatik & Nevrologik holat:</strong> ${document.getElementById('anam-somatic')?.value || anam.somatic_status || 'Teri qoplamalari rangpar, tremori bor, arterial bosim 120/80 mm Hg, puls 74 ur/min.'}</div>
-        <div><strong>Psixik status:</strong> ${document.getElementById('anam-psychiatric')?.value || anam.psychiatric_status || 'Ongi saqlangan, zamon va makonda orientatsiyasi bor. Affektiv fon bezovta.'}</div>
+        <div><strong>Bemor shikoyatlari:</strong> ${document.getElementById('anam-complaints')?.value || anam.complaints || NOT_RECORDED}</div>
+        <div><strong>Anamnesis Morbi (Kasallik rivojlanishi):</strong> ${document.getElementById('anam-morbi')?.value || anam.anamnesis_morbi || NOT_RECORDED}</div>
+        <div><strong>Anamnesis Vitae (Hayotiy anamnez):</strong> ${document.getElementById('anam-vitae')?.value || anam.anamnesis_vitae || NOT_RECORDED}</div>
+        <div><strong>Somatik & Nevrologik holat:</strong> ${document.getElementById('anam-somatic')?.value || anam.somatic_status || NOT_RECORDED}</div>
+        <div><strong>Psixik status:</strong> ${document.getElementById('anam-psychiatric')?.value || anam.psychiatric_status || NOT_RECORDED}</div>
       </div>
     `;
 
@@ -1844,9 +1895,9 @@
           ${dailyNotes.length > 0 ? dailyNotes.map(n => `
             <tr>
               <td><strong>${n.date}</strong></td>
-              <td>Bosim: ${n.bp || '120/80'}<br>Puls: ${n.pulse || 72}<br>Temp: ${n.temp || 36.6}°C</td>
+              <td>Bosim: ${n.bp || '—'}<br>Puls: ${n.pulse || '—'}<br>Temp: ${n.temp || '—'}°C</td>
               <td>${n.dynamics}</td>
-              <td>${n.treatment || 'O\'zgarishsiz'}</td>
+              <td>${n.treatment || '—'}</td>
             </tr>
           `).join('') : '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Kundalik ko\'rik qaydlari mavjud emas.</td></tr>'}
         </tbody>
@@ -1858,15 +1909,15 @@
       <div class="a4-section-title"><i class="fas fa-file-signature"></i> Chiqarish Epikrizi & Uyga Davolanish Tavsiyalari</div>
       <div style="font-size: 12.5px; display: grid; gap: 10px; margin-bottom: 16px;">
         <div style="background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
-          <strong>Klinik Xulosa va Natija:</strong> ${epicrisis.treatment_summary || 'Bemor klinikada detoksikatsiya va statsionar reabilitatsiya kursini to\'liq o\'tdi. Holati barqarorlashdi.'}
+          <strong>Klinik Xulosa va Natija:</strong> ${epicrisis.treatment_summary || DISCHARGE_OUTCOMES[epicrisis.discharge_status] || NOT_RECORDED}
         </div>
         <div>
           <strong>Uyda Davom Ettirish Uchun Tavsiya Etilgan Farmakoterapiya:</strong>
-          <pre style="font-family: inherit; white-space: pre-wrap; margin-top: 4px; background: #fff; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">${document.getElementById('epicrisis-home-rx')?.value || epicrisis.home_prescriptions || "1. Meksidol 125mg tabletka — kuniga 2 mahal, 1 oy.\n2. Neyromultivit — kuniga 1 tabletka, 20 kun."}</pre>
+          <pre style="font-family: inherit; white-space: pre-wrap; margin-top: 4px; background: #fff; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">${document.getElementById('epicrisis-home-rx')?.value || epicrisis.home_prescriptions || NOT_RECORDED}</pre>
         </div>
         <div>
           <strong>Psixoterapevtik va Reabilitatsiya Tavsiyalari:</strong>
-          <div style="background: #fff; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">${document.getElementById('epicrisis-psycho')?.value || epicrisis.psycho_recommendations || "Psixoterapevt qabuliga haftada 1 marta qatnashish, 12 qadam dasturi bo'yicha mashg'ulotlar."}</div>
+          <div style="background: #fff; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">${document.getElementById('epicrisis-psycho')?.value || epicrisis.psycho_recommendations || NOT_RECORDED}</div>
         </div>
       </div>
     `;
@@ -1881,8 +1932,8 @@
       mainContentHtml = anamnesisHtml + rxTableHtml + dailyNotesHtml + epicrisisHtml;
     }
 
-    const primaryDiag = document.getElementById('anam-diagnosis-primary')?.value || anam.diagnosis_primary || 'Surunkali alkogolizm 2-bosqich. Abstinensiya sindromi.';
-    const icdCode = document.getElementById('anam-icd10')?.value || anam.icd10_code || 'F10.2';
+    const primaryDiag = document.getElementById('anam-diagnosis-primary')?.value || anam.diagnosis_primary || NOT_RECORDED;
+    const icdCode = document.getElementById('anam-icd10')?.value || anam.icd10_code || '—';
 
     container.innerHTML = `
       <!-- Official Clinic Header Letterhead -->
@@ -1919,7 +1970,7 @@
         <div class="a4-patient-field"><span>Joylashuvi / Xona:</span> <strong>${roomStr}</strong></div>
         <div class="a4-patient-field"><span>Asosiy Klinik Tashxis:</span> <strong>${primaryDiag}</strong></div>
         <div class="a4-patient-field"><span>XKT-10 (ICD-10) Kodi:</span> <strong>${icdCode}</strong></div>
-        <div class="a4-patient-field" style="grid-column: span 2;"><span>Dori Allergiyalari Statusi:</span> <strong style="color: ${p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' ? '#f43f5e' : '#10b981'};">${p.medical_allergies || 'Qayd etilmagan (Yo\'q)'}</strong></div>
+        <div class="a4-patient-field" style="grid-column: span 2;"><span>Dori Allergiyalari Statusi:</span> <strong style="color: ${!p.medical_allergies ? '#64748b' : (p.medical_allergies.toLowerCase() !== 'yo\'q' ? '#f43f5e' : '#10b981')};">${p.medical_allergies || NOT_RECORDED}</strong></div>
       </div>
 
       <!-- Main Clinical Content Area -->
@@ -2408,6 +2459,13 @@
       return;
     }
 
+    // The server refuses an order without these; say so here, while the
+    // doctor is still in the row, rather than after the whole case is sent.
+    if (!dosageInput?.value.trim() || !parseInt(daysInput?.value) || !notesInput?.value.trim()) {
+      showToast("Doza, kunlar soni va qabul tartibini (masalan: kuniga 1 marta) kiriting.", "warning");
+      return;
+    }
+
     const allergyText = (document.getElementById('case-allergies')?.value || '').toLowerCase();
     const dLower = drugName.toLowerCase();
     if (allergyText && allergyText !== 'yo\'q') {
@@ -2429,10 +2487,10 @@
       id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
       medication_name: drugName,
       form: routeSelect?.value.includes('tomchi') ? 'Infuzion flakon' : (routeSelect?.value.includes('per os') ? 'Tabletkalar' : 'Ampula'),
-      dosage: dosageInput?.value.trim() || 'Standart',
-      route: routeSelect?.value || 'v/i tomchilab',
-      duration_days: parseInt(daysInput?.value) || 5,
-      frequency: notesInput?.value.trim() || 'Kuniga 1 marta',
+      dosage: dosageInput?.value.trim() || '',
+      route: routeSelect?.value || '',
+      duration_days: parseInt(daysInput?.value) || null,
+      frequency: notesInput?.value.trim() || '',
       timing: 'Muolaja jadvali bo\'yicha',
       instructions: notesInput?.value.trim() || '',
       status: 'active'
@@ -2544,7 +2602,7 @@
 
     const name = document.getElementById('case-patient-name')?.value.trim();
     const dob = document.getElementById('case-patient-dob')?.value.trim();
-    const gender = document.getElementById('case-patient-gender')?.value || 'Erkak';
+    const gender = document.getElementById('case-patient-gender')?.value || '';
     const phone = document.getElementById('case-patient-phone')?.value.trim();
     const address = document.getElementById('case-patient-address')?.value.trim() || '';
     const passport = document.getElementById('case-patient-passport')?.value.trim() || '';
@@ -2553,10 +2611,16 @@
     const complaints = document.getElementById('case-complaints')?.value.trim();
     const anamnesisMorbi = document.getElementById('case-anamnesis-morbi')?.value.trim() || '';
     const anamnesisVitae = document.getElementById('case-anamnesis-vitae')?.value.trim() || '';
-    const allergies = document.getElementById('case-allergies')?.value.trim() || "Yo'q";
-    const somaticStatus = `AQB: ${document.getElementById('case-vital-bp')?.value || '120/80'}, Puls: ${document.getElementById('case-vital-pulse')?.value || '76'}, Temp: ${document.getElementById('case-vital-temp')?.value || '36.6'}, SpO2: ${document.getElementById('case-vital-spo2')?.value || '98%'}`;
+    const allergies = document.getElementById('case-allergies')?.value.trim() || '';
+    // Only the vitals actually entered; blanks used to become 120/80, 76,
+    // 36.6 and 98% in the saved somatic status.
+    const vitalVal = (id) => (document.getElementById(id)?.value || '').trim();
+    const somaticStatus = [
+      ['AQB', vitalVal('case-vital-bp')], ['Puls', vitalVal('case-vital-pulse')],
+      ['Temp', vitalVal('case-vital-temp')], ['SpO2', vitalVal('case-vital-spo2')]
+    ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
     const psychiatricStatus = document.getElementById('case-mental-status')?.value.trim() || '';
-    const icdCode = document.getElementById('case-icd-code')?.value.trim() || 'F10.2';
+    const icdCode = document.getElementById('case-icd-code')?.value.trim() || '';
     const diagnosis = document.getElementById('case-diagnosis')?.value.trim();
 
     if (!name || !dob || !phone || !complaints || !diagnosis) {
@@ -2564,7 +2628,7 @@
       return;
     }
 
-    let birthYear = 1990;
+    let birthYear = null;
     const yearMatch = dob.match(/\b(19\d\d|20\d\d)\b/);
     if (yearMatch) birthYear = parseInt(yearMatch[1]);
 
@@ -2579,7 +2643,7 @@
       doctor_name: state.authenticatedDoctor.name,
       patient_name: name,
       patient_phone: phone,
-      gender: gender.toLowerCase() === 'ayol' ? 'female' : 'male',
+      gender: gender === 'Ayol' ? 'female' : (gender === 'Erkak' ? 'male' : null),
       birth_year: birthYear,
       address: address,
       emergency_contact: relative,
