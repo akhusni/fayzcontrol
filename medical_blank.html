@@ -1672,7 +1672,7 @@
             document.getElementById('p2-phone').value = pPhone;
             document.getElementById('p2-diag').value = "F10.2 — Detoksikatsiya va tiklanish kursi";
 
-            alert(`Bemor: ${pName} ma'lumotlari muvaffaqiyatli yuklandi!`);
+            window.FMH_Toast(`Bemor: ${pName} ma'lumotlari muvaffaqiyatli yuklandi!`, 'success');
             return;
           }
         }
@@ -1681,12 +1681,12 @@
       }
 
       // If no patients exist in the system (clean state)
-      alert("Bazada bemorlar mavjud emas (Baza toza).\nYangi bemor qabul qilingach, uning ma'lumotlari avtomatik yuklanadi.");
+      window.FMH_Toast("Bazada bemorlar mavjud emas (Baza toza). Yangi bemor qabul qilingach, uning ma'lumotlari avtomatik yuklanadi.", 'info');
     }
 
     // Clear all fields
-    function clearForm() {
-      if (confirm("Haqiqatdan ham blankdagi barcha ma'lumotlarni tozalashni xohlaysizmi?")) {
+    async function clearForm() {
+      if (await window.fmhConfirm({ message: "Haqiqatdan ham blankdagi barcha ma'lumotlarni tozalashni xohlaysizmi?", confirmText: 'Ha, tozalash', type: 'warning' })) {
         document.querySelectorAll('input[type="text"], textarea').forEach(el => el.value = '');
       }
     }
@@ -1915,8 +1915,8 @@
       });
     }
 
-    function clearBlankRxTable() {
-      if (confirm("Retsept jadvalini tozalashni tasdiqlaysizmi?")) {
+    async function clearBlankRxTable() {
+      if (await window.fmhConfirm({ message: "Retsept jadvalini tozalashni tasdiqlaysizmi?", confirmText: 'Ha, tozalash', type: 'warning' })) {
         const tbody = document.getElementById('rx-table-body');
         if (tbody) {
           tbody.innerHTML = '';
@@ -1983,8 +1983,8 @@
       });
     }
 
-    function clearBlankMuolajaTable() {
-      if (confirm("Muolaja jadvalini tozalashni tasdiqlaysizmi?")) {
+    async function clearBlankMuolajaTable() {
+      if (await window.fmhConfirm({ message: "Muolaja jadvalini tozalashni tasdiqlaysizmi?", confirmText: 'Ha, tozalash', type: 'warning' })) {
         const tbody = document.getElementById('muolaja-table-body');
         if (tbody) {
           tbody.innerHTML = '';

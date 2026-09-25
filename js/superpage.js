@@ -1122,7 +1122,7 @@
     const notes = document.getElementById('modal-booking-notes').value.trim();
 
     if (!patientName || !bedId || !startDate || !endDate) {
-      alert("Iltimos, barcha majburiy maydonlarni to'ldiring!");
+      window.FMH_Toast("Iltimos, barcha majburiy maydonlarni to'ldiring!", 'warning');
       return;
     }
 
@@ -1215,7 +1215,7 @@
     const method = document.getElementById('payment-method').value;
 
     if (!patient || !amount) {
-      alert("Iltimos, barcha maydonlarni to'ldiring!");
+      window.FMH_Toast("Iltimos, barcha maydonlarni to'ldiring!", 'warning');
       return;
     }
 
@@ -1309,7 +1309,7 @@
 
   function exportBedsToExcel() {
     if (!window.XLSX) {
-      alert("Excel kutubxonasi yuklanmoqda...");
+      window.FMH_Toast("Excel kutubxonasi yuklanmoqda...", 'info');
       return;
     }
 

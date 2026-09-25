@@ -1919,7 +1919,7 @@
 
   function exportBedsToExcel() {
     if (!window.XLSX) {
-      alert("Excel kutubxonasi yuklanmoqda...");
+      window.FMH_Toast("Excel kutubxonasi yuklanmoqda...", 'info');
       return;
     }
 
