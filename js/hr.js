@@ -2348,13 +2348,20 @@
       const modalStaffId = document.getElementById('payslip-modal')?._currentStaffId;
       if (modalStaffId) staff = (State.staff || []).find(s => s.id === modalStaffId);
     }
+    // No employee chosen used to print the first person on the staff list --
+    // or Dr. Bobur Mirzayev when the list was empty -- and every payslip
+    // carried a 12,000,000 base, 1,500,000 duty pay and an 800,000 bonus for
+    // non-doctors that the payroll table does not pay. The printout now uses
+    // the table's own formula.
     if (!staff) {
-      staff = (State.staff && State.staff[0]) || { id: 'STF-DOC-01', full_name: 'Dr. Bobur Mirzayev', specialty: 'Bosh Shifokor' };
+      showToast("Avval xodimni tanlang.", 'warning');
+      return;
     }
 
-    const base = staff.base_salary || staff.salary_base || 12000000;
-    const dutyEarnings = staff.monthly_duty_earnings || 1500000;
-    const inpatientBonus = (staff.role === 'doctor' || staff.role === 'chief_doctor') ? 2600000 : 800000;
+    const base = staff.base_salary || staff.salary_base || 0;
+    const dutyEarnings = staff.monthly_duty_earnings || 0;
+    const inpatientBonus = ((staff.role === 'doctor' || staff.role === 'chief_doctor') ? 2600000 : 0)
+      + (staff.detox_procedure_fee || 0) * 6;
 
     if (window.FMH_Print) {
       window.FMH_Print.employeePayslip(staff, {
