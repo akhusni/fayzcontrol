@@ -1564,7 +1564,7 @@
         body: JSON.stringify({
           patient_name: name,
           patient_phone: phone,
-          bed_id: bedId || 'BED-1A',
+          bed_id: bedId || null,
           daily_price: pkg.rate,
           program_type: pkgKey,
           start_date: getTodayISO(),
@@ -1572,7 +1572,13 @@
           notes: `Buxgalteriya orqali qabul qilindi`
         })
       });
-      const resJson = await res.json();
+      const resJson = await res.json().catch(() => ({}));
+      // A refused admission (no bed chosen -- it used to fall back to
+      // BED-1A -- or the bed is taken) was still announced as a new invoice.
+      if (!res.ok) {
+        showToast(resJson.error || "Qabul saqlanmadi.", 'error');
+        return;
+      }
       if (resJson.invoice_id && advancePaid > 0) {
         await fetch('/api/payments', {
           method: 'POST',
@@ -1587,7 +1593,10 @@
           })
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — qabul saqlanmadi.", 'error');
+      return;
+    }
 
     await syncWithLedgerAndBackend();
     closeAllModals();

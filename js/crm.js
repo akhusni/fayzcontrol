@@ -408,6 +408,7 @@
           <label class="crm-form-label">Jinsi & Tug'ilgan Yili</label>
           <div style="display: flex; gap: 8px;">
             <select id="edit-patient-gender" class="crm-form-control" style="flex: 1;">
+              <option value="" ${!p.gender ? 'selected' : ''}>—</option>
               <option value="male" ${p.gender === 'male' ? 'selected' : ''}>Erkak</option>
               <option value="female" ${p.gender === 'female' ? 'selected' : ''}>Ayol</option>
             </select>
@@ -674,14 +675,23 @@
       chronic_conditions: document.getElementById('edit-patient-chronic').value.trim() || null
     };
 
+    // Shown as saved only once the server has it. There was no server route
+    // for this and the 404 was ignored, so every edit -- allergies included --
+    // lived in this page alone.
     try {
-      await fetch(`/api/crm/patients/${patientId}`, {
+      const res = await fetch(`/api/crm/patients/${encodeURIComponent(patientId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedData)
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "O'zgarishlar saqlanmadi.", 'error');
+        return;
+      }
     } catch (e) {
-      console.log('Local save:', e);
+      showToast("Server bilan aloqa yo'q — o'zgarishlar saqlanmadi.", 'error');
+      return;
     }
 
     Object.assign(p, updatedData);
@@ -737,14 +747,12 @@
       return;
     }
 
-    const newCode = `FMH-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newId = `PAT-${Math.floor(100 + Math.random() * 900)}`;
-
+    // The id and code come from the server, which checks they are free; this
+    // drew the id from 900 values and sent it unchecked. A missing phone
+    // stays empty rather than becoming +998 (90) 000-00-00.
     const newPatient = {
-      id: newId,
-      patient_code: newCode,
       full_name: name,
-      phone: document.getElementById('new-patient-phone').value.trim() || '+998 (90) 000-00-00',
+      phone: document.getElementById('new-patient-phone').value.trim() || '',
       emergency_contact: document.getElementById('new-patient-emergency').value.trim() || '',
       gender: document.getElementById('new-patient-gender').value,
       birth_year: parseInt(document.getElementById('new-patient-birthyear').value, 10) || null,
@@ -762,20 +770,28 @@
     };
 
     try {
-      await fetch('/api/crm/patients', {
+      const res = await fetch('/api/crm/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPatient)
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Bemor ro'yxatga olinmadi.", 'error');
+        return;
+      }
+      newPatient.id = data.id;
+      newPatient.patient_code = data.patient_code;
     } catch (e) {
-      console.log('Local creation:', e);
+      showToast("Server bilan aloqa yo'q — bemor ro'yxatga olinmadi.", 'error');
+      return;
     }
 
     state.patients.unshift(newPatient);
     closeNewPatientModal();
     applyFilters();
     renderStats();
-    showToast(`Yangi bemor ro'yxatga olindi: ${newCode}`, 'success');
+    showToast(`Yangi bemor ro'yxatga olindi: ${newPatient.patient_code}`, 'success');
   }
 
   // Quick Payment Modal

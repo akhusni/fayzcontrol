@@ -1171,6 +1171,35 @@ class PatientIdentity(ApiTest):
         self.assertEqual(self.patient_row(existing)['full_name'], 'Telefon Egasi',
                          "the phone's owner was renamed")
 
+    def test_a_crm_edit_reaches_the_record(self):
+        """
+        There was no PUT route: the CRM's edits got a 404 the page ignored,
+        so an allergy entered there never reached the doctor's warning.
+        """
+        pid = self.make_patient('CRM Edit Bemor', gender='female')
+        status, body = self.api.call('PUT', f'/api/crm/patients/{pid}', {
+            'medical_allergies': 'Penitsillin', 'gender': '', 'phone': '+998901112266'})
+        self.assertEqual(status, 200, f"the CRM edit was not stored: {body}")
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT medical_allergies, phone, gender, full_name FROM patients WHERE id = ?", (pid,))
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row['medical_allergies'], 'Penitsillin')
+        self.assertEqual(row['phone'], '+998901112266')
+        self.assertEqual(row['gender'], 'female', 'a blank gender overwrote a known one')
+        self.assertEqual(row['full_name'], 'CRM Edit Bemor', 'an absent field was changed')
+
+    def test_a_crm_edit_cannot_blank_the_name(self):
+        pid = self.make_patient('CRM Name Kept')
+        status, body = self.api.call('PUT', f'/api/crm/patients/{pid}', {'full_name': '  '})
+        self.assertEqual(status, 400, f"a blank name was stored: {body}")
+        self.assertEqual(body.get('field'), 'full_name')
+
     def test_the_doctor_queue_carries_the_date_of_birth(self):
         """The handoff exists so the doctor is not retyping what the desk took."""
         status, body = self.api.post('/api/reception/appointment', {

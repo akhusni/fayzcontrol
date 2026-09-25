@@ -1267,9 +1267,9 @@
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
     };
 
+    // addPrescription announces the result itself.
     if (!(await addPrescription(rxData))) return;
     closeClinicMedsModal();
-    showToast(`💊 "${med.name}" muvaffaqiyatli tayinlandi!`, 'success');
   }
 
   async function addPrescription(customRx = null) {

@@ -1910,16 +1910,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path == '/api/payments' or path == '/api/crm/payments':
                 # Same bounded random space as patient ids: probe for a free id so a
                 # collision cannot reject a real payment.
-                pay_id = body.get('id')
-                if not pay_id:
-                    for _ in range(200):
-                        candidate = f"PAY-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
-                        cur.execute("SELECT 1 FROM payments WHERE id = ? LIMIT 1", (candidate,))
-                        if not cur.fetchone():
-                            pay_id = candidate
-                            break
-                    if not pay_id:
-                        pay_id = f"PAY-2026-{int(datetime.datetime.now().timestamp() * 1000)}"
+                pay_id = body.get('id') or new_record_id(cur, 'payments', 'PAY-2026')
                 inv_id = body.get('invoice_id')
                 amount = float(body.get('amount', 0))
 
@@ -2507,9 +2498,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     rx_doctor,
                     med,
                     (body.get('form') or '').strip() or None,
-                    body.get('dosage').strip(),
-                    body.get('route').strip(),
-                    body.get('frequency').strip(),
+                    str(body.get('dosage')).strip(),
+                    str(body.get('route')).strip(),
+                    str(body.get('frequency')).strip(),
                     duration_days,
                     (body.get('timing') or '').strip() or None,
                     (body.get('instructions') or '').strip() or None,
@@ -3522,6 +3513,47 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.commit()
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': 'Prescription status updated', 'status': new_status}).encode('utf-8'))
+
+            # PUT /api/crm/patients/<id> -- the CRM edit form.
+            #
+            # There was no such route: the CRM sent its edits here, got a 404,
+            # ignored it and said "saved". An allergy recorded in the CRM
+            # therefore never reached the record the doctor's warning reads.
+            # Only the fields the request carries change.
+            elif path.startswith('/api/crm/patients/') or path.startswith('/api/patients/'):
+                pid = urllib.parse.unquote(path.rstrip('/').rsplit('/', 1)[-1])
+                cur.execute("SELECT id FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
+                row = cur.fetchone()
+                if not row:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Bemor topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                patient_id = row['id'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+                if 'full_name' in body and not str(body.get('full_name') or '').strip():
+                    self._send_validation_error("Bemorning ismi kiritilmagan.", 'full_name')
+                    return
+                bdate, byear, gender, _err = parse_birth_and_gender(body)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
+                    return
+                sets, params = [], []
+                # Blank text clears to unknown (NULL); an absent key is left alone.
+                for col in ('full_name', 'phone', 'emergency_contact', 'address',
+                            'referral_source', 'medical_allergies', 'chronic_conditions'):
+                    if col in body:
+                        val = body.get(col)
+                        sets.append(f"{col} = ?")
+                        params.append(None if val is None else (str(val).strip() or None))
+                for col, val in (('gender', gender), ('birth_date', bdate), ('birth_year', byear)):
+                    if val is not None:
+                        sets.append(f"{col} = ?")
+                        params.append(val)
+                if sets:
+                    cur.execute(f"UPDATE patients SET {', '.join(sets)} WHERE id = ?",
+                                tuple(params) + (patient_id,))
+                    conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'message': 'Patient updated', 'id': patient_id}, ensure_ascii=False).encode('utf-8'))
 
             # PUT /api/admissions/<id>/discharge
             elif '/discharge' in path:

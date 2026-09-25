@@ -1696,6 +1696,7 @@ window.FMH_Reception = (function () {
           body: JSON.stringify({
             patient_name: isAnon ? 'Anonim Bemor' : name,
             patient_phone: isAnon ? '' : phone,
+            is_anonymous: isAnon ? 1 : 0,
             birth_date: birthDate,
             gender: gender,
             doctor_id: doctorId,
@@ -1705,7 +1706,14 @@ window.FMH_Reception = (function () {
             notes: notes || 'Ambulator qabul (Reception)'
           })
         });
-        const aptData = await aptRes.json();
+        const aptData = await aptRes.json().catch(() => ({}));
+        // The answer used to be ignored, and a network failure also said
+        // "qayd etildi" -- so a refused or lost visit read as recorded and
+        // never reached the doctor's queue.
+        if (!aptRes.ok) {
+          showToast(aptData.error || "Tashrif saqlanmadi.", 'error');
+          return;
+        }
         showToast(`✓ Ambulator bemor qabuli qayd etildi! (${isAnon ? 'Anonim' : name})`, 'success');
         document.getElementById('intake-form')?.reset();
         await loadApiData();
@@ -1714,7 +1722,7 @@ window.FMH_Reception = (function () {
         renderAppointmentsTab();
         renderDirectoryTab();
       } catch (err) {
-        showToast('Ambulator tashrif qayd etildi ✓', 'success');
+        showToast("Server bilan aloqa yo'q — tashrif saqlanmadi.", 'error');
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
@@ -1727,13 +1735,14 @@ window.FMH_Reception = (function () {
       const landmark = (document.getElementById('intake-home-landmark')?.value || '').trim();
       const fee = parseFloat(document.getElementById('intake-home-fee')?.value) || 850000;
       try {
-        await Promise.all([
+        const [aptRes] = await Promise.all([
           fetch('/api/reception/appointment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               patient_name: isAnon ? 'Anonim Bemor' : name,
               patient_phone: isAnon ? '' : phone,
+              is_anonymous: isAnon ? 1 : 0,
               doctor_id: doctorId,
               service_type: 'home_visit',
               date: startDate,
@@ -1754,6 +1763,11 @@ window.FMH_Reception = (function () {
             })
           })
         ]);
+        if (!aptRes.ok) {
+          const err = await aptRes.json().catch(() => ({}));
+          showToast(err.error || "Uyga chaqiruv saqlanmadi.", 'error');
+          return;
+        }
         showToast(`✓ Uyga narkologik chaqiruv muvaffaqiyatli qabul qilindi!`, 'success');
         document.getElementById('intake-form')?.reset();
         await loadApiData();
@@ -1761,7 +1775,7 @@ window.FMH_Reception = (function () {
         renderRecentWalkIns();
         renderCallLogTab();
       } catch (err) {
-        showToast('Uyga chaqiruv qabul qilindi ✓', 'success');
+        showToast("Server bilan aloqa yo'q — uyga chaqiruv saqlanmadi.", 'error');
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
