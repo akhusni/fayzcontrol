@@ -125,7 +125,10 @@ window.FMH_Reception = (function () {
 
   function programName(id) {
     if (!State.data) return id;
-    const p = State.data.program_types.find(x => x.id === id);
+    // program_types is desk configuration the API may not send. Reading
+    // .find on the missing key threw a TypeError out of the admissions
+    // table, the call list and every export that names a programme.
+    const p = (State.data.program_types || []).find(x => x.id === id);
     return p ? p.name_uz : id;
   }
 
@@ -255,13 +258,38 @@ window.FMH_Reception = (function () {
     }
   }
 
+  // The API owns the live tables (appointments, calls, staff) and says
+  // nothing about the desk configuration it does not store. Assigning the
+  // response straight over State.data therefore deleted whole keys:
+  // program_types vanished, renderIntakeProgramOptions built a <select>
+  // with no <option>, and clicking "VIP Solo" in the rich picker set
+  // sel.value to a value the select did not contain. A <select> resolves
+  // that to the empty string, so the change handler found no option, gave
+  // up early, and the daily rate stayed on the 720 000 written into the
+  // HTML. The full-room tariff was impossible to charge. Merging keeps
+  // every default the response leaves out.
+  function mergeReceptionData(fetched) {
+    const merged = JSON.parse(JSON.stringify(DEFAULT_RECEPTION_DATA));
+    Object.keys(fetched || {}).forEach(key => {
+      const value = fetched[key];
+      if (value === null || value === undefined) return;
+      // An empty list from the server is real data for the tables it owns,
+      // but for the desk lists it only means "not configured here", and
+      // blanking a dropdown is worse than showing the built-in tariffs.
+      if (Array.isArray(value) && !value.length &&
+          Array.isArray(merged[key]) && merged[key].length) return;
+      merged[key] = value;
+    });
+    return merged;
+  }
+
   async function loadReceptionData() {
     try {
       const r = await fetch('/api/reception/data');
       if (r.ok) {
         const fetched = await r.json();
         if (fetched) {
-          State.data = fetched;
+          State.data = mergeReceptionData(fetched);
           indexBookedSlots();
         }
       }
@@ -289,7 +317,7 @@ window.FMH_Reception = (function () {
       if (recRes.ok) {
         const recData = await recRes.json();
         if (recData) {
-          State.data = recData;
+          State.data = mergeReceptionData(recData);
         }
       }
       if (staffRes.ok) {
@@ -592,11 +620,28 @@ window.FMH_Reception = (function () {
           if (rateInput) rateInput.value = 850000;
           State.intake.selectedBed = null;
         } else if (State.intake.serviceType === 'inpatient') {
-          const isLux = document.getElementById('intake-tariff-lux')?.checked;
+          // This read a checkbox, #intake-tariff-lux, that is not in
+          // reception.html, so isLux was always undefined: clicking the
+          // Statsionar card threw away a chosen full-room tariff and forced
+          // the rate back to 720 000 every time. The programme the desk has
+          // already picked is kept, and the rate is taken from that option
+          // rather than from a hard-coded pair of numbers.
           if (sel) {
-            sel.value = isLux ? 'statsionar_full_room' : 'statsionar_shared';
+            const current = sel.value || '';
+            const currentOpt = Array.from(sel.options).find(o => o.value === current);
+            const isInpatient = currentOpt &&
+              (currentOpt.dataset.type || 'inpatient') === 'inpatient';
+            if (!isInpatient) {
+              const firstInpatient = Array.from(sel.options).find(
+                o => (o.dataset.type || 'inpatient') === 'inpatient');
+              if (firstInpatient) sel.value = firstInpatient.value;
+            }
+            sel.dispatchEvent(new CustomEvent('externalUpdate'));
+            const opt = sel.options[sel.selectedIndex];
+            if (rateInput && opt && Number(opt.dataset.rate) > 0) {
+              rateInput.value = Number(opt.dataset.rate);
+            }
           }
-          if (rateInput) rateInput.value = isLux ? 1100000 : 720000;
         } else if (State.intake.serviceType === 'anonymous') {
           // Keep current selection or default to statsionar
         }
@@ -1569,6 +1614,10 @@ window.FMH_Reception = (function () {
     const days = parseInt(document.getElementById('intake-days')?.value) || 7;
     const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 720000;
     const advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
+    // The discount was displayed in the cost preview and then dropped on
+    // the floor: it was never read here, so the invoice always billed the
+    // full amount and the price the desk had agreed was lost.
+    const discount = parseFloat(document.getElementById('intake-discount')?.value) || 0;
     const payMethod = document.getElementById('intake-pay-method')?.value || 'cash';
     const notes = (document.getElementById('intake-notes')?.value || '').trim();
     const referral = document.getElementById('intake-referral-select')?.value || 'hotline';
@@ -1613,6 +1662,7 @@ window.FMH_Reception = (function () {
         start_date: startDateStr,
         end_date: endDateStr,
         daily_price: rate,
+        discount_percent: discount,
         notes: notes,
         referral_source: referral,
       };
@@ -2505,9 +2555,67 @@ window.FMH_Reception = (function () {
     }
   }
 
+  // Reads what the desk has actually entered on the intake form. Returns
+  // null when the form is still untouched, because an empty sheet is a
+  // legitimate thing to print for the counter. Nothing is invented: a
+  // field the desk left alone comes back empty and prints as a ruled line.
+  function collectIntakeForPrint() {
+    const val = id => (document.getElementById(id)?.value || '').trim();
+    const label = id => {
+      const sel = document.getElementById(id);
+      if (!sel || sel.selectedIndex < 0) return '';
+      const opt = sel.options[sel.selectedIndex];
+      return opt && opt.value ? (opt.textContent || '').trim() : '';
+    };
+
+    const isAnon = Boolean(document.getElementById('intake-anon-check')?.checked);
+    const days = parseInt(val('intake-days'), 10) || 0;
+    const startDate = val('intake-start-date');
+    let endDate = '';
+    if (startDate && days > 0) {
+      try {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + days);
+        endDate = formatDate(d.toISOString().slice(0, 10));
+      } catch (e) { endDate = ''; }
+    }
+
+    const data = {
+      patient_name: isAnon ? 'ANONIM BEMOR' : val('intake-patient-name'),
+      patient_phone: isAnon ? '' : val('intake-patient-phone'),
+      birth_date: isAnon ? '' : val('intake-patient-birthdate'),
+      is_anonymous: isAnon,
+      address: val('intake-home-address'),
+      service_type: State.intake.serviceType,
+      program_label: label('intake-program-select'),
+      doctor_name: label('intake-doctor-select'),
+      referral_label: label('intake-referral-select'),
+      pay_method_label: label('intake-pay-method'),
+      bed_id: State.intake.selectedBed || '',
+      start_date: startDate ? formatDate(startDate) : '',
+      end_date: endDate,
+      days: days,
+      daily_rate: parseFloat(val('intake-daily-rate')) || 0,
+      discount_percent: parseFloat(val('intake-discount')) || 0,
+      advance: parseFloat(val('intake-advance')) || 0,
+      notes: val('intake-notes')
+    };
+
+    const touched = Boolean(
+      val('intake-patient-name') || val('intake-patient-phone') ||
+      isAnon || State.intake.selectedBed || data.advance > 0 ||
+      data.discount_percent > 0 || data.notes
+    );
+    return touched ? data : null;
+  }
+
   function printBlankIntakeForm() {
     if (window.FMH_Print) {
-      window.FMH_Print.blankIntakeForm();
+      // This printed an empty template even when the intake form was fully
+      // filled in, so the sheet the patient signs carried neither their
+      // details nor the money. The form state is handed over now; an
+      // untouched form still prints the empty version for the counter.
+      window.FMH_Print.blankIntakeForm(collectIntakeForPrint());
     } else {
       window.print();
     }
@@ -2517,12 +2625,16 @@ window.FMH_Reception = (function () {
     const patient = (State.patients || []).find(p => p.id === patientId) || { id: patientId, full_name: 'Anonim Bemor' };
     const admission = (State.admissions || []).find(a => a.patient_id === patientId) || {};
     if (window.FMH_Print) {
+      // These fell back to 720 000 when the stay had no figures yet, so an
+      // unpaid patient was handed a receipt saying 720 000 had been paid.
+      // A receipt may only state what the invoice actually holds; a missing
+      // figure prints as zero.
       window.FMH_Print.patientReceipt(patient, {
-        total_amount: admission.total_billed || admission.daily_price * (admission.total_days || 7) || 720000,
-        paid_amount: admission.total_paid || 720000,
+        total_amount: Number(admission.total_billed) || 0,
+        paid_amount: Number(admission.total_paid) || 0,
       }, {
         id: `RCP-${Date.now().toString().slice(-4)}`,
-        amount: admission.total_paid || 720000,
+        amount: Number(admission.total_paid) || 0,
         payment_method: 'cash',
         notes: 'Statsionar qabul to`lovi'
       });

@@ -302,7 +302,82 @@ window.FMH_Print = (function() {
   /**
    * 2. RECEPTION: Blank Intake Form (Toza Bemor Anketa Blanki)
    */
-  function blankIntakeForm() {
+  function blankIntakeForm(data) {
+    // Reception called this with no argument, so after filling the intake
+    // form in on screen the desk printed a completely empty sheet: none of
+    // the patient's details and none of the money reached the paper the
+    // patient is asked to sign. Passing the desk's form state fills the
+    // same template in; called with nothing it still prints the empty
+    // version, which is what stocks the counter.
+    const d = data || {};
+    const isFilled = Boolean(data);
+    const esc = v => String(v === 0 || v ? v : '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // A value that was entered is printed; anything the intake form does
+    // not ask for keeps its ruled line so it can be written in by hand.
+    // Nothing is substituted for a missing answer.
+    const fill = v => {
+      const s = esc(v).trim();
+      return s ? `<span class="val">${s}</span>` : '<div class="fmh-line-fill"></div>';
+    };
+    const tick = on => (isFilled ? (on ? '\u2611' : '\u2610')
+                                 : '<span class="fmh-box-sq"></span>');
+
+    const days = Number(d.days) || 0;
+    const rate = Number(d.daily_rate) || 0;
+    const gross = days * rate;
+    const discountPct = Number(d.discount_percent) || 0;
+    const discountAmount = gross * (discountPct / 100);
+    const net = gross - discountAmount;
+    const advance = Number(d.advance) || 0;
+    const balance = Math.max(0, net - advance);
+
+    const moneyBlock = !isFilled ? '' : `
+      <div class="fmh-section-title"><i class="fas fa-calculator"></i> 4. To\u2018lov Hisob-Kitobi</div>
+      <table class="fmh-data-table">
+        <thead>
+          <tr>
+            <th>Hisob-kitob bandi</th>
+            <th class="text-center">Miqdor</th>
+            <th class="text-right">Summa (so\u2018m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Kunlik tarif</td>
+            <td class="text-center font-mono">${days} kun</td>
+            <td class="text-right font-mono">${formatUZS(rate)}</td>
+          </tr>
+          <tr>
+            <td>Jami (brutto)</td>
+            <td class="text-center">\u2014</td>
+            <td class="text-right font-mono">${formatUZS(gross)}</td>
+          </tr>
+          <tr>
+            <td>Chegirma${discountPct ? ` (${discountPct}%)` : ''}</td>
+            <td class="text-center">\u2014</td>
+            <td class="text-right font-mono">${discountAmount ? '-' + formatUZS(discountAmount) : formatUZS(0)}</td>
+          </tr>
+          <tr>
+            <td><strong>To\u2018lanishi kerak (netto)</strong></td>
+            <td class="text-center">\u2014</td>
+            <td class="text-right font-mono"><strong>${formatUZS(net)}</strong></td>
+          </tr>
+          <tr>
+            <td>Avans to\u2018lov (qabul qilindi)</td>
+            <td class="text-center">${esc(d.pay_method_label || '')}</td>
+            <td class="text-right font-mono" style="color:#059669;">${formatUZS(advance)}</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="text-right">Qoldiq qarz:</td>
+            <td class="text-right font-mono" style="color:${balance > 0 ? '#dc2626' : '#059669'};">${formatUZS(balance)}</td>
+          </tr>
+        </tfoot>
+      </table>`;
+
     const html = `
       ${getCommonHeader("BEMOR QABUL & ANKETA BLANKI", "FMH-BLANK-A4", "BIRLAMCHI REGISTRATURA")}
       
@@ -310,26 +385,26 @@ window.FMH_Print = (function() {
       <div class="fmh-meta-grid fmh-meta-grid-2">
         <div class="fmh-meta-item">
           <span class="lbl">F.I.Sh. (Familiya Ism Sharif):</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(d.patient_name)}
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Tug'ilgan Sana / Yil:</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(d.birth_date)}
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Telefon Raqami:</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(d.patient_phone)}
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Anonim Rejim:</span>
           <div class="fmh-check-group" style="margin-top:2px;">
-            <span class="fmh-check-item"><span class="fmh-box-sq"></span> Ha (100% Maxfiy)</span>
-            <span class="fmh-check-item"><span class="fmh-box-sq"></span> Yo'q (Ochiq)</span>
+            <span class="fmh-check-item">${tick(d.is_anonymous)} Ha (100% Maxfiy)</span>
+            <span class="fmh-check-item">${tick(isFilled && !d.is_anonymous)} Yo'q (Ochiq)</span>
           </div>
         </div>
         <div class="fmh-meta-item" style="grid-column: span 2;">
           <span class="lbl">Yashash Manzili (Viloyat, Tuman, Ko'cha):</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(d.address)}
         </div>
       </div>
 
@@ -355,24 +430,51 @@ window.FMH_Print = (function() {
       <div class="fmh-section-title"><i class="fas fa-bed"></i> 3. Belgilangan Qabul va Joylashtirish Rejasi</div>
       <div class="fmh-meta-grid fmh-meta-grid-4">
         <div class="fmh-meta-item">
+          <span class="lbl">Dastur / Tarif:</span>
+          ${fill(d.program_label)}
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Kelish Sanasi:</span>
+          ${fill(d.start_date)}
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Ketish Sanasi (Reja):</span>
+          ${fill(d.end_date)}
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Qanday Topdi (Manba):</span>
+          ${fill(d.referral_label)}
+        </div>
+      </div>
+      <div class="fmh-meta-grid fmh-meta-grid-4">
+        <div class="fmh-meta-item">
           <span class="lbl">Xizmat Turi:</span>
-          <span class="val">☐ Statsionar ☐ Ambulator</span>
+          <span class="val">${tick(d.service_type === 'inpatient')} Statsionar ${tick(d.service_type === 'outpatient')} Ambulator</span>
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Karavot / Palata:</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(d.bed_id)}
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Mas'ul Shifokor:</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(d.doctor_name)}
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Avans To'lov (so'm):</span>
-          <div class="fmh-line-fill"></div>
+          ${fill(isFilled ? formatUZS(advance) : '')}
         </div>
       </div>
 
-      <div class="fmh-section-title"><i class="fas fa-file-contract"></i> 4. Shaxsiy Rozilik va Majburiyat</div>
+      <div class="fmh-meta-grid">
+        <div class="fmh-meta-item">
+          <span class="lbl">Qabulxona Izohi:</span>
+          ${fill(d.notes)}
+        </div>
+      </div>
+
+      ${moneyBlock}
+
+      <div class="fmh-section-title"><i class="fas fa-file-contract"></i> ${isFilled ? '5' : '4'}. Shaxsiy Rozilik va Majburiyat</div>
       <div class="fmh-callout-box">
         Men, yuqorida ko'rsatilgan bemor (yoki uning qonuniy vakili), «Fayz Medical House» klinikasida davolanishga va shifokor ko'riklariga ixtiyoriy rozilik beraman. Barcha tibbiy ma'lumotlar maxfiy saqlanishi ma'lum qilindi.
       </div>

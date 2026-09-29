@@ -1382,6 +1382,29 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("SELECT id, name, unit_price, category FROM services_catalog WHERE is_active = 1")
                 services = [dict(r) for r in cur.fetchall()]
 
+                # The desk needs the tariff list and the referral sources
+                # to render its intake form, and neither was ever in this
+                # payload. reception.js assigns the response straight over
+                # its own state, so both lists were deleted on every load:
+                # the programme <select> was left with no <option> at all,
+                # the rich picker could not select the full-room tariff,
+                # and the daily rate stayed on the 720 000 written into
+                # the HTML however the desk chose. The prices are read from
+                # the same pricing_config.json the accounting page edits,
+                # so the desk and the invoice cannot drift apart.
+                pricing_file = os.path.join(BASE_DIR, 'data', 'pricing_config.json')
+                packages = (read_json_file(pricing_file, {}) or {}).get('packages') or {}
+                program_types = []
+                for _pid, _pkg in packages.items():
+                    _pkg = _pkg or {}
+                    program_types.append({
+                        "id": _pid,
+                        "name_uz": _pkg.get('name_uz') or _pid,
+                        "default_rate": _pkg.get('daily_rate') or 0,
+                        "default_days": _pkg.get('default_days') or 10,
+                        "package_type": 'outpatient' if str(_pid).startswith('ambulator') else 'inpatient',
+                    })
+
                 rec_data = {
                     "facility_info": {
                         "name": "FAYZ MEDICAL HOUSE",
@@ -1391,7 +1414,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "appointments": appointments,
                     "call_logs": call_logs,
                     "doctors": doctors,
-                    "service_types": services,
+                    "program_types": program_types,
+                    # The billable services catalogue is not the same thing
+                    # as the desk's four intake modes, which is what
+                    # service_types means to reception.js. Sending the
+                    # catalogue under that name replaced them with rows that
+                    # have no name_uz, icon or colour.
+                    "services": services,
                     "walk_ins": [a for a in appointments if a.get('service_type') in ('outpatient', 'home_visit')]
                 }
                 self._set_json_headers(200)
@@ -1787,6 +1816,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_validation_error(_err, 'daily_price')
                     return
 
+                # The desk types a discount percentage and the intake form
+                # showed it in the cost preview, but it was never sent and
+                # never stored, so every stay was invoiced at the full rate
+                # and the figure the patient had agreed to existed nowhere.
+                # It is taken as a percentage and turned into money here,
+                # not trusted as an amount from the browser: the invoice
+                # triggers are the only authority on what a stay costs.
+                try:
+                    discount_pct = float(body.get('discount_percent') or 0)
+                except (TypeError, ValueError):
+                    self._send_validation_error(
+                        "Chegirma foizi noto'g'ri kiritilgan.", 'discount_percent')
+                    return
+                if discount_pct < 0 or discount_pct > 100:
+                    self._send_validation_error(
+                        "Chegirma 0 va 100 foiz orasida bo'lishi kerak.", 'discount_percent')
+                    return
+
                 if not patient_id:
                     # No patient given: register one from the details supplied.
                     # Date of birth and gender come from the desk now; they were
@@ -1825,6 +1872,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': str(res_data)}, ensure_ascii=False).encode('utf-8'))
                     return
 
+                # admit_patient has inserted the bed-stay line, and the
+                # invoice_items trigger has already rebalanced total_billed,
+                # so the discount can be taken off a real figure. Writing
+                # discount_amount is enough: trg_invoices_before_update
+                # recomputes net_amount, balance_due and payment_status.
+                discount_amount = 0.0
+                if discount_pct > 0 and res_data.get('invoice_id'):
+                    cur.execute('SELECT total_billed FROM invoices WHERE id = ?',
+                                (res_data.get('invoice_id'),))
+                    _row = cur.fetchone()
+                    _billed = float((_row or {}).get('total_billed') or 0)
+                    if _billed > 0:
+                        discount_amount = round(_billed * discount_pct / 100.0, 2)
+                        cur.execute(
+                            'UPDATE invoices SET discount_amount = ? WHERE id = ?',
+                            (discount_amount, res_data.get('invoice_id')))
+                        conn.commit()
+
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
                     'message': 'Admission created successfully',
@@ -1833,7 +1898,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'invoice_id': res_data.get('invoice_id'),
                     'patient_id': patient_id,
                     'days': res_data.get('days'),
-                    'bed_code': res_data.get('bed_code')
+                    'bed_code': res_data.get('bed_code'),
+                    'discount_percent': discount_pct,
+                    'discount_amount': discount_amount
                 }, ensure_ascii=False).encode('utf-8'))
 
             # 1b. POST /api/admissions/<id>/discharge or /api/admissions/discharge
