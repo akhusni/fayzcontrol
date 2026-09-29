@@ -985,6 +985,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     SELECT p.*,
                            (SELECT COUNT(*) FROM admissions a WHERE a.patient_id = p.id) AS total_admissions_count,
                            (SELECT COALESCE(SUM(inv.net_amount), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_billed,
+                           (SELECT COALESCE(SUM(inv.total_billed), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_gross,
+                           (SELECT COALESCE(SUM(inv.discount_amount), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_discount,
                            (SELECT COALESCE(SUM(inv.total_paid), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_paid,
                            (SELECT COALESCE(SUM(inv.balance_due), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS balance_due
                     FROM patients p
@@ -1094,6 +1096,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     # Financial summary
                     cur.execute("""
                         SELECT COALESCE(SUM(inv.net_amount), 0.0) AS total_billed,
+                               COALESCE(SUM(inv.total_billed), 0.0) AS total_gross,
+                               COALESCE(SUM(inv.discount_amount), 0.0) AS total_discount,
                                COALESCE(SUM(inv.total_paid), 0.0) AS total_paid,
                                COALESCE(SUM(inv.balance_due), 0.0) AS balance_due
                         FROM admissions a

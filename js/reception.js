@@ -1864,7 +1864,13 @@ window.FMH_Reception = (function () {
   function openAdmissionConfirmModal(data) {
     const modal = document.getElementById('modal-admission-confirm');
     if (!modal) return;
-    const net = data.days * data.rate - 0;
+    // The '- 0' here was where the discount belonged: the last screen the
+    // desk sees before confirming showed the gross as the net, so a patient
+    // was read back a figure higher than the one they had agreed to.
+    const gross = data.days * data.rate;
+    const discountPct = Number(data.discount) || 0;
+    const discountAmount = gross * (discountPct / 100);
+    const net = gross - discountAmount;
     const balance = Math.max(0, net - data.advance);
     modal.querySelector('#confirm-patient-name').textContent = data.isAnon ? 'Anonim Bemor' : (data.name || '—');
     modal.querySelector('#confirm-bed-id').textContent = data.bedId || '—';
@@ -1874,6 +1880,14 @@ window.FMH_Reception = (function () {
     modal.querySelector('#confirm-program').textContent = programName(data.program);
     modal.querySelector('#confirm-days').textContent = data.days + ' kun';
     modal.querySelector('#confirm-rate').textContent = formatUZS(data.rate) + '/kun';
+    if (modal.querySelector('#confirm-gross')) {
+      modal.querySelector('#confirm-gross').textContent = formatUZS(gross);
+    }
+    if (modal.querySelector('#confirm-discount')) {
+      modal.querySelector('#confirm-discount').textContent = discountAmount
+        ? `-${formatUZS(discountAmount)} (${discountPct}%)`
+        : formatUZS(0);
+    }
     modal.querySelector('#confirm-net').textContent = formatUZS(net);
     modal.querySelector('#confirm-advance').textContent = formatUZS(data.advance);
     modal.querySelector('#confirm-balance').textContent = formatUZS(balance);
@@ -2630,7 +2644,12 @@ window.FMH_Reception = (function () {
       // A receipt may only state what the invoice actually holds; a missing
       // figure prints as zero.
       window.FMH_Print.patientReceipt(patient, {
-        total_amount: Number(admission.total_billed) || 0,
+        // net_amount is the figure after the reception discount;
+        // total_billed is before it. Printing the gross as the total made
+        // the receipt disagree with what the patient was asked to pay.
+        total_amount: Number(admission.net_amount) || Number(admission.total_billed) || 0,
+        gross_amount: Number(admission.total_billed) || 0,
+        discount_amount: Number(admission.discount_amount) || 0,
         paid_amount: Number(admission.total_paid) || 0,
       }, {
         id: `RCP-${Date.now().toString().slice(-4)}`,

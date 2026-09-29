@@ -237,6 +237,8 @@
               end_date: row.end_date || getOffsetDateStr(10),
               days_count: row.total_days || 10,
               daily_rate: row.daily_price || 720000,
+              gross_due: Number(row.total_billed) || 0,
+              discount_amount: Number(row.discount_amount) || 0,
               total_due: row.net_amount || row.total_billed,
               paid_cash: row.paid_cash || 0,
               paid_terminal: row.paid_terminal || 0,
@@ -1126,8 +1128,17 @@
         </table>
 
         <div class="inv-total-box">
+          ${Number(bill.discount_amount) > 0 ? `
           <div class="inv-total-row">
-            <span>Hisoblangan Jami Summa:</span>
+            <span>Hisoblangan Summa (chegirmagacha):</span>
+            <span style="font-weight: 700;">${formatUZS(bill.gross_due || bill.total_due)}</span>
+          </div>
+          <div class="inv-total-row">
+            <span>Chegirma${bill.gross_due ? ` (${Math.round(bill.discount_amount / bill.gross_due * 100)}%)` : ''}:</span>
+            <span style="font-weight: 700; color: #dc2626;">-${formatUZS(bill.discount_amount)}</span>
+          </div>` : ''}
+          <div class="inv-total-row">
+            <span>${Number(bill.discount_amount) > 0 ? "To'lanishi kerak (chegirmadan keyin):" : 'Hisoblangan Jami Summa:'}</span>
             <span style="font-weight: 700;">${formatUZS(bill.total_due)}</span>
           </div>
           <div class="inv-total-row">
@@ -1235,7 +1246,12 @@
 
     document.getElementById('pay-bill-id').value = bill.id;
     document.getElementById('pay-patient-name').value = bill.patient_name;
-    document.getElementById('pay-total-due').value = formatUZS(bill.total_due);
+    // The cashier was shown only the net, with nothing to say a discount had
+    // been applied at reception, so the sum looked wrong against the tariff.
+    const payDiscount = Number(bill.discount_amount) || 0;
+    document.getElementById('pay-total-due').value = payDiscount > 0
+      ? `${formatUZS(bill.total_due)}  (${formatUZS(bill.gross_due)} - ${formatUZS(payDiscount)} chegirma)`
+      : formatUZS(bill.total_due);
     document.getElementById('pay-already-paid').value = formatUZS(bill.total_paid);
     document.getElementById('pay-debt-remaining').value = refundMode 
       ? `-${formatUZS(Math.abs(bill.debt_remaining))} (Qaytarish kerak)` 
@@ -1748,6 +1764,8 @@
       "Chiqish Sanasi": b.end_date,
       "Yotgan Kunlari": b.days_count,
       "Kunlik Narx (so'm)": b.daily_rate,
+      "Hisoblangan (chegirmagacha, so'm)": b.gross_due || b.total_due,
+      "Chegirma (so'm)": b.discount_amount || 0,
       "Jami Summa (so'm)": b.total_due,
       "Naqd Pul To'landi (so'm)": b.paid_cash,
       "Terminal To'landi (so'm)": b.paid_terminal,
@@ -1876,6 +1894,8 @@
       "Qo'shimcha Dorilar": (b.extra_services || []).map(s => `${s.name} (${s.qty}x)`).join(', ') || 'Yo\'q',
       "Shifokor": b.doctor,
       "Kunlar": b.days_count,
+      "Hisoblangan (chegirmagacha)": b.gross_due || b.total_due,
+      "Chegirma": b.discount_amount || 0,
       "Jami Summa": b.total_due,
       "To'langan": b.total_paid,
       "Qarz": b.debt_remaining,
@@ -2404,16 +2424,24 @@
   function printInvoiceFromModal() {
     const billId = document.getElementById('pay-bill-id')?.value;
     const patientName = document.getElementById('pay-patient-name')?.value || 'Bemor';
-    const amountStr = document.getElementById('pay-amount-input')?.value || '720000';
-    const amount = parseFloat(amountStr) || 720000;
+    // An empty amount box used to print a receipt for 720 000 so'm that
+    // nobody had paid. A receipt states what was actually taken, so an empty
+    // box is zero and the real invoice figures come from the bill itself.
+    const amount = parseFloat(document.getElementById('pay-amount-input')?.value) || 0;
+    const bill = accountingData.patients_billing.find(b => b.id === billId) || {};
 
     if (window.FMH_Print) {
       window.FMH_Print.patientReceipt({
         full_name: patientName,
         patient_code: billId || 'FMH-2026'
       }, {
-        total_amount: amount,
-        paid_amount: amount
+        // The whole invoice, not just this payment: the receipt used to claim
+        // the bill equalled the amount handed over, which hid the balance and
+        // any discount reception had given.
+        total_amount: Number(bill.total_due) || amount,
+        gross_amount: Number(bill.gross_due) || 0,
+        discount_amount: Number(bill.discount_amount) || 0,
+        paid_amount: (Number(bill.total_paid) || 0) + amount
       }, {
         id: `RCP-${Date.now().toString().slice(-4)}`,
         amount: amount,

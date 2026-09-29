@@ -657,6 +657,8 @@ window.FMH_Print = (function() {
     const pCode = patient?.patient_code || "—";
     const amount = Number(payment.amount || invoice.paid_amount || invoice.amount || 0);
     const totalBilled = Number(invoice.total_amount || amount);
+    const discount = Number(invoice.discount_amount) || 0;
+    const grossBilled = Number(invoice.gross_amount) || (totalBilled + discount);
     const balance = Math.max(0, totalBilled - amount);
     const payId = payment.id || invoice.id || '—';
 
@@ -704,6 +706,15 @@ window.FMH_Print = (function() {
           </tr>
         </tbody>
         <tfoot>
+          ${discount > 0 ? `
+          <tr>
+            <td colspan="3" class="text-right">Hisoblangan summa (chegirmagacha):</td>
+            <td class="text-right font-mono">${formatUZS(grossBilled)}</td>
+          </tr>
+          <tr>
+            <td colspan="3" class="text-right">Chegirma:</td>
+            <td class="text-right font-mono" style="color:#dc2626;">-${formatUZS(discount)}</td>
+          </tr>` : ''}
           <tr>
             <td colspan="3" class="text-right">Qolgan Balans (Qarz/Ortiqcha):</td>
             <td class="text-right font-mono" style="color:${balance > 0 ? '#dc2626' : '#059669'};">${formatUZS(balance)}</td>

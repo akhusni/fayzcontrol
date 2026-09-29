@@ -516,6 +516,10 @@
     if (!pane) return;
 
     const totalBilled = p.total_billed || 0;
+    // total_billed is already net of discounts. The gross and the discount
+    // are shown beside it so the file explains its own figure.
+    const totalDiscount = p.total_discount || 0;
+    const totalGross = p.total_gross || 0;
     const totalPaid = p.total_paid || 0;
     const balanceDue = p.balance_due || 0;
 
@@ -524,6 +528,7 @@
         <div style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
           <span style="font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase;">Jami Hisoblangan</span>
           <div style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 800; color: var(--text-primary); margin-top: 4px;">${formatMoney(totalBilled)}</div>
+          ${totalDiscount > 0 ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">${formatMoney(totalGross)} &minus; ${formatMoney(totalDiscount)} chegirma</div>` : ''}
         </div>
         <div style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
           <span style="font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase;">To'langan Summa</span>
