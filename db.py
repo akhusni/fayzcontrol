@@ -740,6 +740,52 @@ def ensure_ward_round_schema(conn):
         print(f"[!] Could not add the ward-round unique key: {e}")
 
 
+_medication_purchases_checked = False
+
+
+def ensure_medication_purchases(conn):
+    """
+    Create medication_purchases table if it does not exist yet.
+    Allows recording clinic medication purchases and linking them directly
+    to accounting expenses and inventory stock.
+    """
+    global _medication_purchases_checked
+    if _medication_purchases_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS medication_purchases (
+                id VARCHAR(64) PRIMARY KEY,
+                purchase_date DATE NOT NULL,
+                medication_id VARCHAR(64),
+                medication_name VARCHAR(255) NOT NULL,
+                category VARCHAR(128),
+                form VARCHAR(64),
+                quantity DECIMAL(10,2) NOT NULL CHECK(quantity > 0),
+                unit_price DECIMAL(14,2) NOT NULL CHECK(unit_price >= 0),
+                total_price DECIMAL(14,2) NOT NULL CHECK(total_price >= 0),
+                payment_method VARCHAR(32) NOT NULL DEFAULT 'cash' CHECK(payment_method IN (
+                    'cash', 'cash_register', 'terminal', 'card_transfer', 'payme_click', 'bank_wire'
+                )),
+                supplier_name VARCHAR(255),
+                invoice_number VARCHAR(128),
+                notes TEXT,
+                accounting_transaction_id VARCHAR(128),
+                recorded_by_staff_id VARCHAR(64),
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (medication_id) REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE SET NULL,
+                FOREIGN KEY (accounting_transaction_id) REFERENCES accounting_transactions(id) ON UPDATE CASCADE ON DELETE SET NULL,
+                FOREIGN KEY (recorded_by_staff_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL,
+                INDEX idx_med_purchase_date (purchase_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        _medication_purchases_checked = True
+    except Exception as e:
+        print(f"[!] Could not create medication_purchases table: {e}")
+
+
 def list_room_availability(conn, start_date, end_date):
     """
     The occupancy board for one date range, room by room.

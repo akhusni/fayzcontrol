@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>24/7 Navbatchilik Jadvali | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House 24/7 navbatchilik jadvali, sanitarkalar, hamshiralar va shifokorlar smena taqsimoti.">
+
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Unified Enterprise Stylesheets -->
+  <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/duty_schedule.css?v=1.2">
+
+  <!-- Core Theme & Dialog Layer -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.3"></script>
+</head>
+<body class="duty-page-body">
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER (LOCKED 3-ZONE GRID)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: BRAND LOGO -->
+      <a href="duty_schedule.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">24/7 NAVBATCHILIK JADVALI</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="duty_schedule.html" class="portal-nav-pill pill-super active" title="Navbatchilik Jadvali">
+            <i class="fas fa-calendar-check"></i> <span>Navbatchilik</span>
+          </a>
+          <a href="ward.html" class="portal-nav-pill pill-doctor" title="Statsionar ko'rigi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="nurse.html" class="portal-nav-pill pill-nurse" title="Hamshiralar Posti">
+            <i class="fas fa-syringe"></i> <span>Hamshira Posti</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar & Smenalar">
+            <i class="fas fa-users-cog"></i> <span>HR Bo'limi</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <!-- Direct Excel Download -->
+        <a href="/FMH_Xodimlar_Royxati_2026.xlsx" download class="btn-duty-action btn-duty-excel" title="16 nafar xodim to'ldirilgan rasmiy Excel faylini yuklab olish">
+          <i class="fas fa-file-excel"></i> <span>Xodimlar Excel (.xlsx)</span>
+        </a>
+
+        <!-- Official Print -->
+        <button type="button" class="btn-duty-action btn-duty-outline" onclick="window.print()" title="A4 formatda chop etish">
+          <i class="fas fa-print"></i> <span>Chop Etish</span>
+        </button>
+
+        <!-- Day / Night Shift Theme Toggle -->
+        <button id="theme-toggle-btn" class="btn-unified-theme-toggle" title="Kunduzgi / Tungi smena rejimini almashtirish">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN PORTAL CONTAINER
+       ========================================================================== -->
+  <main class="duty-container">
+
+    <!-- 1. LIVE HERO CARD: TODAY 24/7 POST -->
+    <section class="duty-hero-card">
+      <div class="duty-hero-top">
+        <div class="duty-hero-title-group">
+          <div class="duty-hero-badge"><i class="fas fa-clock-rotate-left"></i></div>
+          <div>
+            <h1 class="duty-hero-title">Bugungi 24/7 Navbatchilik Posti</h1>
+            <div class="duty-hero-subtitle">Statsionar va Poliklinika uzluksiz navbatchilik brigadasi</div>
+          </div>
+        </div>
+
+        <div class="duty-live-badge">
+          <span class="pulse-dot"></span>
+          <span id="hero-today-date">Bugun</span>
+        </div>
+      </div>
+
+      <!-- 3-Role Today Grid -->
+      <div class="duty-posts-grid">
+        <!-- Sanitarka Card -->
+        <div class="duty-post-card role-sanitar">
+          <div class="duty-post-avatar avatar-sanitar"><i class="fas fa-broom"></i></div>
+          <div class="duty-post-content">
+            <div class="duty-post-role">
+              <span>Navbatchi Sanitarka (1 Sutka)</span>
+              <span style="color:#fbbf24; font-size:0.68rem; font-weight:800;">24h POST</span>
+            </div>
+            <div class="duty-post-name" id="hero-sanitar-name">Donoboyeva Laylo</div>
+            <div class="duty-post-badge-time">
+              <i class="fas fa-clock"></i> <span>08:00 – ertasi 08:00</span>
+            </div>
+            <div class="duty-post-tariff">Tarif: 300 000 so'm / smena</div>
+          </div>
+        </div>
+
+        <!-- Nurse Card -->
+        <div class="duty-post-card role-nurse">
+          <div class="duty-post-avatar avatar-nurse"><i class="fas fa-syringe"></i></div>
+          <div class="duty-post-content">
+            <div class="duty-post-role">
+              <span>Navbatchi Hamshira (Butun Bino)</span>
+              <span style="color:#34d399; font-size:0.68rem; font-weight:800;">1 & 2-QAVAT</span>
+            </div>
+            <div class="duty-post-name" id="hero-nurse-name">Hamshira smenada</div>
+            <div class="duty-post-badge-time">
+              <i class="fas fa-clock"></i> <span>08:00 – ertasi 08:00</span>
+            </div>
+            <div class="duty-post-tariff">Tarif: 400 000 so'm / smena</div>
+          </div>
+        </div>
+
+        <!-- Doctor Card -->
+        <div class="duty-post-card role-doctor">
+          <div class="duty-post-avatar avatar-doctor"><i class="fas fa-user-md"></i></div>
+          <div class="duty-post-content">
+            <div class="duty-post-role">
+              <span>Navbatchi Shifokor (Tungi)</span>
+              <span style="color:#c084fc; font-size:0.68rem; font-weight:800;">TUNGI SMENA</span>
+            </div>
+            <div class="duty-post-name" id="hero-doctor-name">Dr. Umarov Xusan</div>
+            <div class="duty-post-badge-time">
+              <i class="fas fa-moon"></i> <span>20:00 – 08:00</span>
+            </div>
+            <div class="duty-post-tariff">Tarif: 350 000 so'm / smena</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. SANITARKA SELECTOR & FILTER SECTION -->
+    <section class="duty-filter-card">
+      <div class="duty-filter-top">
+        <div class="duty-filter-title">
+          <i class="fas fa-user-check" style="color: #f59e0b;"></i>
+          <span>O'z navbatchilik jadvalingizni ko'rish uchun ismingizni tanlang:</span>
+        </div>
+        <div class="duty-filter-tariff-note">
+          <i class="fas fa-info-circle"></i> Sanitarka 24h = 300 000 so'm | 1 sutka ish, 5 sutka dam
+        </div>
+      </div>
+
+      <!-- Quick Filter Pills -->
+      <div class="sanitar-pills-wrap" id="sanitar-pills-list">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Personal KPI Banner (Shown when a staff member is selected) -->
+      <div class="personal-kpi-grid" id="personal-kpi-container" style="display: none;">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- 3. CONTROLS TOOLBAR (MONTH STEPPER + VIEW PILLS + ACTIONS) -->
+    <section class="duty-toolbar">
+      <!-- Month Stepper -->
+      <div class="duty-month-stepper">
+        <button type="button" class="btn-step-arrow" id="btn-prev-month" title="Oldingi oy">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <div class="duty-month-display" id="month-display-text">
+          Oktabr 2026
+        </div>
+        <button type="button" class="btn-step-arrow" id="btn-next-month" title="Keyingi oy">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+        <button type="button" class="btn-step-today" id="btn-today-step" title="Bugungi kunga o'tish">
+          Bugun
+        </button>
+      </div>
+
+      <!-- View Switcher -->
+      <div class="duty-view-pills">
+        <button type="button" class="duty-view-pill-btn active" data-view="calendar">
+          <i class="fas fa-calendar-alt"></i> <span>Oylik Kalendar</span>
+        </button>
+        <button type="button" class="duty-view-pill-btn" data-view="table">
+          <i class="fas fa-table-list"></i> <span>Batafsil Jadval</span>
+        </button>
+        <button type="button" class="duty-view-pill-btn" data-view="personal">
+          <i class="fas fa-id-badge"></i> <span>Mening Smenalarim</span>
+        </button>
+      </div>
+
+      <!-- Action Cluster -->
+      <div class="duty-action-cluster">
+        <button type="button" class="btn-duty-action btn-duty-swap" onclick="window.FMH_DutySchedule.openSwapModal()" title="Smenani boshqa xodim bilan almashtirish">
+          <i class="fas fa-exchange-alt"></i> <span>Smena Almashtirish</span>
+        </button>
+        <button type="button" class="btn-duty-action btn-duty-telegram" onclick="window.FMH_DutySchedule.copyTelegramRoster()" title="Telegram guruh uchun formatlangan jadvalni nusxalash">
+          <i class="fab fa-telegram-plane"></i> <span>Telegram Nusxa</span>
+        </button>
+        <button type="button" class="btn-duty-action btn-duty-primary" onclick="window.FMH_DutySchedule.printDutySchedule()" title="Jadvalni A4 formatda chop etish">
+          <i class="fas fa-print"></i> <span>Chop Etish</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 4. VIEW 1: 7-DAY MONTHLY CALENDAR GRID -->
+    <section id="view-calendar-panel" class="cal-grid-panel">
+      <!-- Weekday Headers -->
+      <div class="cal-weekdays-row">
+        <div>Dushanba</div>
+        <div>Seshanba</div>
+        <div>Chorshanba</div>
+        <div>Payshanba</div>
+        <div>Juma</div>
+        <div class="weekend-day">Shanba</div>
+        <div class="weekend-day">Yakshanba</div>
+      </div>
+
+      <!-- Days Matrix -->
+      <div class="cal-cells-matrix" id="calendar-cells-matrix">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- 5. VIEW 2: DETAILED TABLE ROSTER -->
+    <section id="view-table-panel" class="duty-table-panel" style="display: none;">
+      <div class="duty-table-search-bar">
+        <div class="duty-search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" id="duty-search-input" class="duty-search-input" placeholder="Sana, kun yoki xodim bo'yicha qidirish...">
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">
+          <i class="fas fa-database"></i> 24/7 Barcha Postlar
+        </div>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="duty-data-table">
+          <thead>
+            <tr>
+              <th>Sana & Hafta kuni</th>
+              <th>Navbatchi Sanitarka (24 soat)</th>
+              <th>Navbatchi Hamshira (24 soat)</th>
+              <th>Navbatchi Shifokor (Tungi)</th>
+              <th>Smena Tartibi</th>
+              <th style="text-align: center;">Holat</th>
+            </tr>
+          </thead>
+          <tbody id="duty-table-body">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 6. VIEW 3: PERSONAL TIMELINE CARDS -->
+    <section id="view-personal-panel" style="display: none;">
+      <div class="timeline-cards-grid" id="timeline-cards-grid">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- DEDICATED OFFICIAL A4 CLINICAL PRINT DOCUMENT (ZERO OVERFLOW, 1-PAGE PERFECTION) -->
+  </main>
+
+  <div class="official-duty-print-sheet" id="official-duty-print-sheet">
+    <!-- Rendered dynamically by updatePrintSheet() in js/duty_schedule.js -->
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 1: DAY DETAILS MODAL
+       ========================================================================== -->
+  <div class="duty-modal-backdrop" id="day-modal">
+    <div class="duty-modal-card" role="dialog" aria-modal="true">
+      <div class="duty-modal-header">
+        <div class="duty-modal-title">
+          <i class="fas fa-calendar-day" style="color: #38bdf8;"></i>
+          <span id="modal-day-title">Smena Tafsilotlari</span>
+        </div>
+        <button type="button" class="btn-modal-close" onclick="window.FMH_DutySchedule.closeDayModal()">&times;</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.72rem; color: #fbbf24; font-weight: 700; text-transform: uppercase;">Navbatchi Sanitarka (1-Post)</div>
+          <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-sanitar-name">—</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Vaqti: 08:00 – ertasi 08:00 (24 soat) | Tarif: 300 000 so'm</div>
+        </div>
+
+        <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.72rem; color: #fbbf24; font-weight: 700; text-transform: uppercase;">Zaxira Sanitarka (2-Post)</div>
+          <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-sanitar-2">—</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Zaxira va tozalik nazorati</div>
+        </div>
+
+        <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.72rem; color: #34d399; font-weight: 700; text-transform: uppercase;">Navbatchi Hamshira</div>
+          <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-nurse-name">—</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Butun bino (1 & 2-qavat statsionar 14 karavot) | Tarif: 400 000 so'm</div>
+        </div>
+
+        <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.72rem; color: #c084fc; font-weight: 700; text-transform: uppercase;">Navbatchi Shifokor (Tungi)</div>
+          <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-doc-name">—</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Tungi smena (20:00 – 08:00) | Tarif: 350 000 so'm</div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn-duty-action btn-duty-outline" onclick="window.FMH_DutySchedule.closeDayModal()">
+          Yopish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: SHIFT SWAP MODAL
+       ========================================================================== -->
+  <div class="duty-modal-backdrop" id="swap-modal">
+    <div class="duty-modal-card" role="dialog" aria-modal="true">
+      <div class="duty-modal-header">
+        <div class="duty-modal-title">
+          <i class="fas fa-exchange-alt" style="color: #f59e0b;"></i>
+          <span>Smena Almashtirish So'rovi</span>
+        </div>
+        <button type="button" class="btn-modal-close" onclick="window.FMH_DutySchedule.closeSwapModal()">&times;</button>
+      </div>
+
+      <form id="swap-shift-form" onsubmit="event.preventDefault();">
+        <div class="form-group">
+          <label class="form-label" for="swap-from-date">1. Almashtiriladigan Smena Sanasi:</label>
+          <select id="swap-from-date" class="form-select">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="swap-target-staff">2. Kim bilan almashmoqchisiz?</label>
+          <select id="swap-target-staff" class="form-select">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="swap-to-date">3. Sherigingizning qaysi sanadagi smenasiga?</label>
+          <select id="swap-to-date" class="form-select">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+
+        <div style="background: rgba(56, 189, 248, 0.08); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.2); font-size: 0.8rem; color: #7dd3fc; margin-bottom: 18px;">
+          <i class="fas fa-info-circle"></i> Smena almashtirilganda ikkala xodimning ham kunlik hisob-kitobi va grafikasi avtomatik ravishda yangilanadi.
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn-duty-action btn-duty-outline" onclick="window.FMH_DutySchedule.closeSwapModal()">
+            Bekor Qilish
+          </button>
+          <button type="button" class="btn-duty-action btn-duty-primary" id="btn-confirm-swap">
+            <i class="fas fa-check"></i> Almashtirishni Saqlash
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Controller Script -->
+  <script src="js/duty_schedule.js?v=1.2"></script>
+</body>
+</html>

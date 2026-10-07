@@ -29,26 +29,26 @@
   // show; the password is typed and verified server-side against its hash.
   const CLINIC_DOCTORS = [
     {
-      username: 'dr_bobur',
+      username: 'dr_xusan',
       staff_id: 'STF-DOC-01',
-      name: 'Dr. Bobur Mirzayev',
+      name: 'Dr. Umarov Xusan Payziboyevich',
       role: 'Bosh Shifokor / Narkolog-Psixiatr',
       specialty: 'Narkologiya va Psixiatriya',
       avatar: '👨‍⚕️'
     },
     {
-      username: 'dr_jasur',
+      username: 'dr_farida',
       staff_id: 'STF-DOC-02',
-      name: 'Dr. Jasur Aliyev',
-      role: 'Shifokor Narkolog',
-      specialty: 'Narkologiya va Reanimatologiya',
-      avatar: '👨‍⚕️'
+      name: 'Dr. Shermuxamedova Farida Miraxatovna',
+      role: 'Davolovchi Shifokor-Narkolog',
+      specialty: 'Narkologiya',
+      avatar: '👩‍⚕️'
     },
     {
-      username: 'dr_dilnoza',
+      username: 'dr_yuliya',
       staff_id: 'STF-DOC-03',
-      name: 'Dr. Dilnoza Rahimova',
-      role: 'Psixiatr-Psixoterapevt',
+      name: 'Dr. Vasina Yuliya Aleksandrovna',
+      role: 'Davolovchi Shifokor-Psixiatr',
       specialty: 'Psixiatriya va Psixoterapiya',
       avatar: '👩‍⚕️'
     }
@@ -185,7 +185,7 @@
       if (res.ok) {
         const staffList = await res.json();
         const docs = staffList.filter(s => 
-          (s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || s.full_name.toLowerCase().includes('dr'))
+          s.role === 'doctor' || s.role === 'chief_doctor'
         ).map(s => ({
           id: s.id,
           name: s.full_name,
@@ -247,15 +247,17 @@
     });
 
     const options = [];
+    const seen = new Set();
     sorted.forEach(m => {
+      const canonicalName = m.name || m.trade_name_uz || 'Dori';
+      const key = canonicalName.trim().toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
       const numPrefix = m.fayz_house_num ? `[№${m.fayz_house_num}] ` : '';
-      const badge = m.prescription_type === 'Rx_Strict_Psychotropic' ? ' ⚠️ (Psixotrop)' : '';
-      options.push(`<option value="${m.name}">${numPrefix}${m.inn ? m.inn + ' • ' : ''}${m.form || ''}${badge}</option>`);
-      if (m.paper_name && m.paper_name !== m.name) {
-        options.push(`<option value="${m.paper_name}">${numPrefix}${m.name} • ${m.form || ''}${badge}</option>`);
-      }
+      options.push(`<option value="${canonicalName}">${numPrefix}${canonicalName}</option>`);
     });
     datalist.innerHTML = options.join('');
+    setupDrugAutocomplete();
   }
 
   async function loadPatientDatabase() {
@@ -316,6 +318,7 @@
     // Update dynamic count badges on filter pills
     const allCount = state.patients.length;
     const inpatientsCount = state.patients.filter(p => p.status === 'active' && p.active_admission).length;
+    const consultCount = state.patients.filter(p => p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation') || (!p.active_admission && p.referral_source === 'reception')).length;
     const outpatientsCount = state.patients.filter(p => p.status !== 'active' || !p.active_admission).length;
     const allergyCount = state.patients.filter(p => p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '').length;
 
@@ -331,11 +334,13 @@
     const elAll = document.getElementById('cnt-all');
     const elIn = document.getElementById('cnt-inpatient');
     const elMy = document.getElementById('cnt-my');
+    const elConsult = document.getElementById('cnt-consultation');
     const elAllergy = document.getElementById('cnt-allergy');
     const elOut = document.getElementById('cnt-outpatient');
     if (elAll) elAll.textContent = allCount;
     if (elIn) elIn.textContent = inpatientsCount;
     if (elMy) elMy.textContent = myCount;
+    if (elConsult) elConsult.textContent = consultCount;
     if (elAllergy) elAllergy.textContent = allergyCount;
     if (elOut) elOut.textContent = outpatientsCount;
 
@@ -349,6 +354,8 @@
 
     if (filterType === 'inpatient') {
       list = list.filter(p => p.status === 'active' && p.active_admission);
+    } else if (filterType === 'consultation') {
+      list = list.filter(p => p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation') || (!p.active_admission && p.referral_source === 'reception'));
     } else if (filterType === 'outpatient') {
       list = list.filter(p => p.status !== 'active' || !p.active_admission);
     } else if (filterType === 'my_patients') {
@@ -420,7 +427,8 @@
 
     container.innerHTML = state.filteredPatients.map(p => {
       const isSelected = state.selectedPatient && state.selectedPatient.id === p.id;
-      const bedStr = p.active_admission ? `${p.active_admission.room_number}-xona ${p.active_admission.bed_code}` : 'Ambulator';
+      const isConsultation = p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation');
+      const bedStr = p.active_admission ? `${p.active_admission.room_number}-xona ${p.active_admission.bed_code}` : (isConsultation ? `<span style="color:#0284c7; font-weight:700;"><i class="fas fa-stethoscope"></i> Konsultatsiya</span>` : 'Ambulator');
       const hasAllergy = p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '';
 
       const bp = p.latest_vitals ? `${p.latest_vitals.vital_bp_systolic}/${p.latest_vitals.vital_bp_diastolic}` : '120/80';
@@ -694,8 +702,9 @@
     if (metaEl) {
       const age = p.birth_year ? `${new Date().getFullYear() - p.birth_year} yosh` : 'N/A';
       const gender = genderLabel(p.gender);
-      const bed = p.active_admission ? `${p.active_admission.room_number}-xona (${p.active_admission.bed_code} karavot)` : 'Ambulator';
-      const program = p.active_admission ? p.active_admission.program_type.toUpperCase() : 'STANDART';
+      const isConsultation = p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation');
+      const bed = p.active_admission ? `${p.active_admission.room_number}-xona (${p.active_admission.bed_code} karavot)` : (isConsultation ? 'Konsultatsiya qabuli' : 'Ambulator');
+      const program = p.active_admission ? p.active_admission.program_type.toUpperCase() : (isConsultation ? 'KONSULTATSIYA' : 'STANDART');
 
       let dayCounterStr = '';
       if (p.active_admission && p.active_admission.admission_date) {
@@ -769,30 +778,27 @@
     document.getElementById('anam-icd10').value = anamnesis.icd10_code || '';
   }
 
-  async function saveAnamnesis() {
+  async function saveAnamnesis(silent = false) {
     const p = state.selectedPatient;
-    if (!p) return;
+    if (!p) return false;
 
     const data = {
       patient_id: p.id,
       admission_id: p.active_admission ? p.active_admission.admission_id : null,
       doctor_id: (state.authenticatedDoctor && state.authenticatedDoctor.staff_id) || state.activeDoctorId,
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
-      complaints: document.getElementById('anam-complaints').value,
-      anamnesis_morbi: document.getElementById('anam-morbi').value,
-      anamnesis_vitae: document.getElementById('anam-vitae').value,
-      allergic_status: document.getElementById('anam-allergy').value,
-      somatic_status: document.getElementById('anam-somatic').value,
-      psychiatric_status: document.getElementById('anam-psychiatric').value,
-      diagnosis_primary: document.getElementById('anam-diagnosis-primary').value,
-      diagnosis_secondary: document.getElementById('anam-diagnosis-secondary').value,
-      icd10_code: document.getElementById('anam-icd10').value
+      complaints: document.getElementById('anam-complaints')?.value || '',
+      anamnesis_morbi: document.getElementById('anam-morbi')?.value || '',
+      anamnesis_vitae: document.getElementById('anam-vitae')?.value || '',
+      allergic_status: document.getElementById('anam-allergy')?.value || '',
+      somatic_status: document.getElementById('anam-somatic')?.value || '',
+      psychiatric_status: document.getElementById('anam-psychiatric')?.value || '',
+      diagnosis_primary: document.getElementById('anam-diagnosis-primary')?.value || '',
+      diagnosis_secondary: document.getElementById('anam-diagnosis-secondary')?.value || '',
+      icd10_code: document.getElementById('anam-icd10')?.value || ''
     };
 
-    // Saved only once the server has it. "Saved to offline storage" was never
-    // true in any useful sense: nothing sent it later, so a history the
-    // server refused lived in this browser only and the next doctor, on
-    // another PC, saw none of it.
+    // Saved only once the server has it.
     try {
       const res = await fetch('/api/doctor/anamnesis', {
         method: 'POST',
@@ -801,12 +807,12 @@
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showToast(err.error || "Anamnez saqlanmadi. Qayta urinib ko'ring.", 'danger');
-        return;
+        if (!silent) showToast(err.error || "Anamnez saqlanmadi. Qayta urinib ko'ring.", 'danger');
+        return false;
       }
     } catch (e) {
-      showToast("Server bilan aloqa yo'q — anamnez saqlanmadi.", 'danger');
-      return;
+      if (!silent) showToast("Server bilan aloqa yo'q — anamnez saqlanmadi.", 'danger');
+      return false;
     }
 
     state.anamnesisMap[p.id] = data;
@@ -814,10 +820,50 @@
 
     // Update patient allergy if edited
     p.medical_allergies = data.allergic_status;
+    if (data.diagnosis_primary) p.diagnosis = data.diagnosis_primary;
+    if (data.icd10_code) p.icd10_code = data.icd10_code;
 
-    showToast(`✅ <strong>${p.full_name}</strong> kasallik tarixi & anamnezi muvaffaqiyatli saqlandi!`);
+    if (!silent) {
+      showToast(`✅ <strong>${p.full_name}</strong> konsultatsiyasi va kasallik tarixi muvaffaqiyatli saqlandi!`);
+    }
     renderPatientList();
     renderWorkstation();
+    return true;
+  }
+
+  async function goToPrescriptionMenu() {
+    const p = state.selectedPatient;
+    if (!p) {
+      showToast("Iltimos, avval bemorni tanlang!", "warning");
+      return;
+    }
+
+    // Auto-save consultation intake
+    await saveAnamnesis(true);
+
+    // Switch to Prescriptions tab (Tab 2)
+    switchTab('prescriptions');
+    showToast("✅ Konsultatsiya xulosasi saqlandi. Endi retsept va dori-darmonlarni tayinlang.", "success");
+
+    setTimeout(() => {
+      const rxDrug = document.getElementById('rx-drug-name');
+      if (rxDrug) {
+        rxDrug.focus();
+        rxDrug.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 150);
+  }
+
+  async function finalizeConsultation() {
+    const p = state.selectedPatient;
+    if (!p) {
+      showToast("Iltimos, avval bemorni tanlang!", "warning");
+      return;
+    }
+
+    await saveAnamnesis(true);
+    const rxList = state.prescriptionsMap[p.id] || [];
+    showToast(`🎉 <strong>${p.full_name}</strong> konsultatsiyasi va ${rxList.length} ta dori tayinlovi yakunlandi!`, "success");
   }
 
   // Smart Clinical Templates for Anamnesis
@@ -951,6 +997,9 @@
 
   function findMedication(query) {
     if (!query) return null;
+    if (window.FMH_MedSearch) {
+      return window.FMH_MedSearch.findBestMatch(state.pharmacology, query);
+    }
     const q = query.trim().toLowerCase();
     return state.pharmacology.find(m => 
       (m.name && m.name.toLowerCase() === q) ||
@@ -964,28 +1013,213 @@
     ) || null;
   }
 
-  function onDrugNameInput(value) {
-    const match = findMedication(value);
-    if (match) {
-      if (match.form) document.getElementById('rx-form').value = match.form;
-      if (match.default_dosage) document.getElementById('rx-dosage').value = match.default_dosage;
-      if (match.default_route) document.getElementById('rx-route').value = match.default_route;
-      if (match.default_frequency) document.getElementById('rx-frequency').value = match.default_frequency;
-      if (match.default_timing) document.getElementById('rx-timing').value = match.default_timing;
-      if (match.default_duration) document.getElementById('rx-duration').value = match.default_duration;
-      if (match.instructions) document.getElementById('rx-instructions').value = match.instructions;
+  function applyMedicationToRxForm(med) {
+    if (!med) return;
+    const input = document.getElementById('rx-drug-name');
+    if (input) {
+      input.value = med.name || med.paper_name;
+      const clearBtn = input.closest('.fmh-med-search-wrapper')?.querySelector('.fmh-med-clear-btn');
+      if (clearBtn) clearBtn.style.display = 'flex';
+    }
+    if (med.form || med.dosage_form) {
+      const f = med.form || med.dosage_form;
+      const formEl = document.getElementById('rx-form');
+      if (formEl) {
+        // Match existing option or add
+        let found = false;
+        for (let i = 0; i < formEl.options.length; i++) {
+          if (formEl.options[i].value.toLowerCase().includes(f.toLowerCase())) {
+            formEl.selectedIndex = i;
+            found = true;
+            break;
+          }
+        }
+        if (!found) formEl.value = f;
+      }
+    }
+    if (med.default_dosage) {
+      const el = document.getElementById('rx-dosage');
+      if (el) el.value = med.default_dosage;
+    }
+    if (med.default_route) {
+      const el = document.getElementById('rx-route');
+      if (el) {
+        let found = false;
+        for (let i = 0; i < el.options.length; i++) {
+          if (el.options[i].value.toLowerCase().includes(med.default_route.toLowerCase())) {
+            el.selectedIndex = i;
+            found = true;
+            break;
+          }
+        }
+        if (!found) el.value = med.default_route;
+      }
+    }
+    if (med.default_frequency) {
+      const el = document.getElementById('rx-frequency');
+      if (el) {
+        let found = false;
+        for (let i = 0; i < el.options.length; i++) {
+          if (el.options[i].value.toLowerCase().includes(med.default_frequency.toLowerCase())) {
+            el.selectedIndex = i;
+            found = true;
+            break;
+          }
+        }
+        if (!found) el.value = med.default_frequency;
+      }
+    }
+    if (med.default_timing) {
+      const el = document.getElementById('rx-timing');
+      if (el) {
+        let found = false;
+        for (let i = 0; i < el.options.length; i++) {
+          if (el.options[i].value.toLowerCase().includes(med.default_timing.toLowerCase())) {
+            el.selectedIndex = i;
+            found = true;
+            break;
+          }
+        }
+        if (!found) el.value = med.default_timing;
+      }
+    }
+    if (med.default_duration) {
+      const el = document.getElementById('rx-duration');
+      if (el) el.value = med.default_duration;
+    }
+    if (med.instructions) {
+      const el = document.getElementById('rx-instructions');
+      if (el) el.value = med.instructions;
     }
 
-    // Allergy check on input
+    updateDrugDetailsBanner(med);
+  }
+
+  function quickSelectMed(nameOrNum) {
+    const med = findMedication(String(nameOrNum));
+    if (med) {
+      applyMedicationToRxForm(med);
+      showToast(`⚡ "${med.name}" formaga tezkor yuklandi!`, 'success');
+    } else {
+      showToast(`Dori topilmadi: "${nameOrNum}"`, 'warning');
+    }
+  }
+
+  function updateDrugDetailsBanner(med) {
+    const banner = document.getElementById('rx-active-drug-card');
+    if (!banner || !med) return;
+
     const p = state.selectedPatient;
+    let allergyAlertHTML = '';
+    const numBadge = med.fayz_house_num ? `<span style="display:inline-flex; align-items:center; justify-content:center; padding:2px 7px; background:#0b3b60; color:#fff; border-radius:4px; font-weight:800; font-size:0.75rem;">№${med.fayz_house_num}</span>` : '';
+    const isPsychotropic = med.prescription_type === 'Rx_Strict_Psychotropic';
+    const badgeHTML = isPsychotropic
+      ? `<span style="padding:2px 8px; border-radius:5px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:700; font-size:0.72rem;"><i class="fas fa-exclamation-triangle"></i> Qat'iy Psixotrop (Nazoratda)</span>`
+      : (med.prescription_type === 'Rx_Standard'
+        ? `<span style="padding:2px 8px; border-radius:5px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-weight:700; font-size:0.72rem;"><i class="fas fa-file-prescription"></i> Retseptli (Rx)</span>`
+        : `<span style="padding:2px 8px; border-radius:5px; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; font-weight:700; font-size:0.72rem;"><i class="fas fa-check-circle"></i> Retseptsiz (OTC)</span>`);
+
+    // Allergen check
     if (p && p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q') {
       const allergy = p.medical_allergies.toLowerCase();
-      const val = value.toLowerCase();
-      if ((val.includes('novo') && allergy.includes('novo')) || 
-          (val.includes('peni') && allergy.includes('peni')) ||
-          (val.includes('sulfa') && allergy.includes('sulfa'))) {
+      const medText = `${med.name} ${med.paper_name || ''} ${med.inn || ''} ${med.trade_name_ru || ''}`.toLowerCase();
+      const isDangerous = (medText.includes('novo') && allergy.includes('novo')) ||
+                          (medText.includes('peni') && allergy.includes('peni')) ||
+                          (medText.includes('sulfa') && allergy.includes('sulfa')) ||
+                          (medText.includes('aspirin') && allergy.includes('aspirin')) ||
+                          (allergy.split(/[,;\s]+/).some(token => token.length > 3 && medText.includes(token)));
+
+      if (isDangerous) {
+        allergyAlertHTML = `
+          <div style="margin-top:8px; padding:8px 12px; background:#fef2f2; border:1px solid #f87171; border-radius:6px; color:#b91c1c; font-size:0.78rem; font-weight:700; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-exclamation-circle" style="font-size:1.1rem; color:#ef4444;"></i>
+            <span>⚠️ DIQQAT! Ushbu bemorda allergik xavf aniqlandi: <u>"${escapeHtml(p.medical_allergies)}"</u>!</span>
+          </div>
+        `;
         showToast(`⚠️ <strong>DIQQAT:</strong> Bemor allergiyasi mavjud: "${p.medical_allergies}"!`, 'danger');
+      } else {
+        allergyAlertHTML = `
+          <div style="margin-top:6px; font-size:0.74rem; color:#16a34a; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-shield-alt"></i> Allergik qarshi ko'rsatma aniqlanmadi (Bemorda: "${escapeHtml(p.medical_allergies)}")
+          </div>
+        `;
       }
+    }
+
+    const paperDisplay = med.paper_name && med.paper_name !== med.name ? `<span style="color:#0284c7; font-weight:600;">• Qog'ozda: ${escapeHtml(med.paper_name)}</span>` : '';
+    const innDisplay = med.inn ? `<span style="color:#64748b;">• МНН: ${escapeHtml(med.inn)}</span>` : '';
+
+    banner.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          ${numBadge}
+          <strong style="color:var(--heading-color, #0f172a); font-size:0.96rem;">${escapeHtml(med.name)}</strong>
+          ${paperDisplay}
+          ${innDisplay}
+          ${badgeHTML}
+        </div>
+        <button type="button" onclick="window.FMH_Doctor.clearDrugDetailsBanner()" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:0.85rem;" title="Yopish">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div style="display:flex; gap:12px; font-size:0.76rem; color:var(--text-muted, #64748b); margin-top:5px; flex-wrap:wrap;">
+        <span><i class="fas fa-pills" style="color:#0d9488;"></i> <b>Shakli:</b> ${escapeHtml(med.form || med.dosage_form || '—')}</span>
+        <span><i class="fas fa-syringe" style="color:#0d9488;"></i> <b>Standart:</b> ${escapeHtml(med.default_dosage || '—')} (${escapeHtml(med.default_route || '—')})</span>
+        <span><i class="fas fa-clock" style="color:#0d9488;"></i> <b>Qabul:</b> ${escapeHtml(med.default_frequency || '—')} • ${escapeHtml(med.default_timing || '—')}</span>
+      </div>
+      ${allergyAlertHTML}
+    `;
+    banner.style.display = 'block';
+  }
+
+  function clearDrugDetailsBanner() {
+    const banner = document.getElementById('rx-active-drug-card');
+    if (banner) {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+    }
+  }
+
+  function onDrugNameInput(value) {
+    if (!value || !value.trim()) {
+      clearDrugDetailsBanner();
+      return;
+    }
+    // DO NOT OVERWRITE input.value or auto-populate form while user is actively typing!
+    // Autocomplete dropdown handles display and suggestions.
+  }
+
+  function onDrugNameChange(value) {
+    if (!value || !value.trim()) {
+      clearDrugDetailsBanner();
+      return;
+    }
+    const val = value.trim();
+    // Only resolve on change if it is an explicit clinic number (e.g. 18 or №18)
+    const isNum = /^[№#\s]*\d+$/.test(val);
+    if (isNum) {
+      const match = findMedication(val);
+      if (match) {
+        applyMedicationToRxForm(match);
+        return;
+      }
+    }
+
+    // Or if it is an exact match (or exact transliterated match) with a known drug:
+    const valLow = val.toLowerCase();
+    const exact = state.pharmacology.find(m => {
+      const n = (m.name || '').toLowerCase();
+      const p = (m.paper_name || '').toLowerCase();
+      if (n === valLow || p === valLow) return true;
+      if (window.FMH_MedSearch) {
+        if (window.FMH_MedSearch.cyrToLat(valLow) === n || window.FMH_MedSearch.latToCyr(n) === valLow) return true;
+        if (p && (window.FMH_MedSearch.cyrToLat(valLow) === p || window.FMH_MedSearch.latToCyr(p) === valLow)) return true;
+      }
+      return false;
+    });
+
+    if (exact) {
+      applyMedicationToRxForm(exact);
     }
   }
 
@@ -1033,11 +1267,17 @@
 
         <!-- Toolbar & Filter -->
         <div style="padding: 0.85rem 1.4rem; border-bottom: 1px solid var(--border-color, #e2e8f0); display: flex; flex-direction: column; gap: 10px; background: var(--bg-card, #f8fafc);">
-          <div style="position: relative;">
+          <div style="position: relative; display: flex; align-items: center;">
             <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;"></i>
-            <input type="text" id="clinic-meds-search" placeholder="Dori nomi, INN, qog'ozdagi raqami yoki kasallik bo'yicha qidiruv (masalan: Verzepam, 18, Haloperidol, Qusish)..." 
-              style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; outline: none;"
+            <input type="text" id="clinic-meds-search" placeholder="Dori nomi, raqami yoki MNN (Lotin yoki Кирилл: masalan: Verzepam, 18, Димедрол, Ольфрекс, Haloperidol)..." 
+              style="width: 100%; padding: 8px 130px 8px 36px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; outline: none;"
               oninput="window.FMH_Doctor.onClinicMedsFilter(this.value)">
+            <button type="button" id="clinic-meds-clear-btn" style="position: absolute; right: 100px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(148, 163, 184, 0.25); color: #64748b; display: none; align-items: center; justify-content: center; font-size: 0.72rem; cursor: pointer;" onclick="window.FMH_Doctor.clearClinicMedsSearch()">
+              <i class="fas fa-times"></i>
+            </button>
+            <span id="clinic-meds-script-badge" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(13, 148, 136, 0.12); color: #0d9488; border: 1px solid rgba(13, 148, 136, 0.25); pointer-events: none; white-space: nowrap;">
+              🔤 Lotin ⇄ Кирилл
+            </span>
           </div>
 
           <!-- Category Pills -->
@@ -1120,8 +1360,33 @@
     renderClinicMedsList();
   }
 
+  function clearClinicMedsSearch() {
+    const inp = document.getElementById('clinic-meds-search');
+    if (inp) {
+      inp.value = '';
+      onClinicMedsFilter('');
+      inp.focus();
+    }
+  }
+
   function onClinicMedsFilter(query) {
-    clinicMedsFilterQuery = query.trim().toLowerCase();
+    clinicMedsFilterQuery = (query || '').trim();
+    const clearBtn = document.getElementById('clinic-meds-clear-btn');
+    const badge = document.getElementById('clinic-meds-script-badge');
+    if (clearBtn) clearBtn.style.display = clinicMedsFilterQuery ? 'flex' : 'none';
+    if (badge && window.FMH_MedSearch) {
+      const s = window.FMH_MedSearch.detectScript(clinicMedsFilterQuery);
+      if (s === 'cyrillic') {
+        badge.innerHTML = '🇷🇺 Кирилл ➔ Lotin';
+        badge.style.color = '#0284c7';
+      } else if (s === 'latin') {
+        badge.innerHTML = '🇺🇿 Lotin ➔ Кирилл';
+        badge.style.color = '#9333ea';
+      } else {
+        badge.innerHTML = '🔤 Lotin ⇄ Кирилл';
+        badge.style.color = '#0d9488';
+      }
+    }
     renderClinicMedsList();
   }
 
@@ -1136,19 +1401,23 @@
     const q = clinicMedsFilterQuery;
     const cat = activeClinicCat;
 
-    const filtered = clinicMeds.filter(m => {
-      if (cat !== 'all' && m.category !== cat) return false;
-      if (!q) return true;
-      const numMatch = String(m.fayz_house_num || '') === q;
-      const nameMatch = (m.name || '').toLowerCase().includes(q) ||
-                        (m.paper_name || '').toLowerCase().includes(q) ||
-                        (m.trade_name_uz || '').toLowerCase().includes(q) ||
-                        (m.trade_name_ru || '').toLowerCase().includes(q) ||
-                        (m.inn || '').toLowerCase().includes(q) ||
-                        (m.inn_uz || '').toLowerCase().includes(q) ||
-                        (m.category_name_uz || '').toLowerCase().includes(q);
-      return numMatch || nameMatch;
-    });
+    let filtered = [];
+    if (window.FMH_MedSearch) {
+      filtered = window.FMH_MedSearch.search(clinicMeds, q, cat);
+    } else {
+      filtered = clinicMeds.filter(m => {
+        if (cat !== 'all' && m.category !== cat) return false;
+        if (!q) return true;
+        const qLow = q.toLowerCase();
+        const numMatch = String(m.fayz_house_num || '') === q;
+        const nameMatch = (m.name || '').toLowerCase().includes(qLow) ||
+                          (m.paper_name || '').toLowerCase().includes(qLow) ||
+                          (m.trade_name_uz || '').toLowerCase().includes(qLow) ||
+                          (m.trade_name_ru || '').toLowerCase().includes(qLow) ||
+                          (m.inn || '').toLowerCase().includes(qLow);
+        return numMatch || nameMatch;
+      });
+    }
 
     const countEl = document.getElementById('clinic-meds-shown-count');
     if (countEl) countEl.innerText = filtered.length;
@@ -1158,6 +1427,7 @@
         <div style="text-align: center; padding: 2.5rem; color: #94a3b8;">
           <i class="fas fa-search" style="font-size: 2rem; margin-bottom: 8px;"></i>
           <div>Kiritilgan so'rov bo'yicha hech qanday dori topilmadi.</div>
+          <div style="font-size: 0.8rem; margin-top: 4px; color: #64748b;">Kirill yoki Lotin alifbosida yozib ko'ring (masalan: <em>mexidol / мексидол / 18</em>)</div>
         </div>
       `;
       return;
@@ -1169,6 +1439,10 @@
                           (m.prescription_type === 'Rx_Standard' ? 'background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;' : 'background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;');
       const badgeText = isPsychotropic ? "⚠️ Qat'iy Psixotrop" : (m.prescription_type === 'Rx_Standard' ? "Rx (Retseptli)" : "OTC (Retseptsiz)");
 
+      const displayName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(m.name, q) : (m.name || '');
+      const paperName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(m.paper_name || '', q) : (m.paper_name || '');
+      const innName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(m.inn || m.trade_name_uz || '', q) : (m.inn || m.trade_name_uz || '');
+
       return `
         <div class="clinic-med-card">
           <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
@@ -1177,14 +1451,14 @@
             </div>
             <div>
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <strong style="font-size: 0.95rem; color: #0f172a;">${m.name}</strong>
+                <strong style="font-size: 0.95rem; color: #0f172a;">${displayName}</strong>
                 <span style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; ${badgeClass}">
                   ${badgeText}
                 </span>
               </div>
               <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px;">
-                <span style="color: #0284c7; font-weight: 600;">Qog'ozdagi yozilishi:</span> ${m.paper_name} &nbsp;•&nbsp; 
-                <span style="color: #64748b;">МНН: ${m.inn || m.trade_name_uz}</span> &nbsp;•&nbsp;
+                <span style="color: #0284c7; font-weight: 600;">Qog'ozdagi yozilishi:</span> ${paperName} &nbsp;•&nbsp; 
+                <span style="color: #64748b;">МНН: ${innName}</span> &nbsp;•&nbsp;
                 <span style="color: #0d9488; font-weight: 600;">${m.form}</span>
               </div>
               <div style="font-size: 0.74rem; color: #475569; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
@@ -1304,9 +1578,12 @@
         }
       }
 
+      const matchedCanonical = findMedication(drugName);
+      const canonicalName = matchedCanonical ? matchedCanonical.name : drugName;
+
       rxData = {
         id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
-        medication_name: drugName,
+        medication_name: canonicalName,
         form: document.getElementById('rx-form').value,
         dosage: document.getElementById('rx-dosage').value,
         route: document.getElementById('rx-route').value,
@@ -1315,7 +1592,7 @@
         timing: document.getElementById('rx-timing').value,
         instructions: document.getElementById('rx-instructions').value,
         status: 'active',
-        doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
+        doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
       };
     }
 
@@ -1352,9 +1629,15 @@
 
     // Reset Form
     if (!customRx) {
-      document.getElementById('rx-drug-name').value = '';
+      const rxDrugInput = document.getElementById('rx-drug-name');
+      if (rxDrugInput) {
+        rxDrugInput.value = '';
+        const clearBtn = rxDrugInput.closest('.fmh-med-search-wrapper')?.querySelector('.fmh-med-clear-btn');
+        if (clearBtn) clearBtn.style.display = 'none';
+      }
       document.getElementById('rx-dosage').value = '';
       document.getElementById('rx-instructions').value = '';
+      clearDrugDetailsBanner();
     }
 
     showToast(`💊 <strong>${rxData.medication_name}</strong> retsept varaqasiga muvaffaqiyatli qo'shildi!`);
@@ -2037,6 +2320,74 @@
     });
   }
 
+  function setupDrugAutocomplete() {
+    const rxInput = document.getElementById('rx-drug-name');
+    if (rxInput && window.FMH_MedSearch) {
+      rxInput.removeAttribute('list');
+      window.FMH_MedSearch.attachAutocomplete({
+        input: rxInput,
+        getMedications: () => state.pharmacology,
+        onSelect: (med) => {
+          applyMedicationToRxForm(med);
+        },
+        onInput: (val) => {
+          onDrugNameInput(val);
+        },
+        onClear: () => {
+          clearDrugDetailsBanner();
+        }
+      });
+    }
+
+    const modalRxInput = document.getElementById('modal-rx-drug-name');
+    if (modalRxInput && window.FMH_MedSearch) {
+      modalRxInput.removeAttribute('list');
+      window.FMH_MedSearch.attachAutocomplete({
+        input: modalRxInput,
+        getMedications: () => state.pharmacology,
+        onSelect: (med) => {
+          if (med) {
+            modalRxInput.value = med.name;
+            if (med.default_dosage) {
+              const el = document.getElementById('modal-rx-dosage');
+              if (el) el.value = med.default_dosage;
+            }
+            if (med.default_route) {
+              const rEl = document.getElementById('modal-rx-route');
+              if (rEl) {
+                for (let i = 0; i < rEl.options.length; i++) {
+                  if (rEl.options[i].value.toLowerCase().includes(med.default_route.toLowerCase())) {
+                    rEl.selectedIndex = i;
+                    break;
+                  }
+                }
+              }
+            }
+            if (med.default_frequency) {
+              const fEl = document.getElementById('modal-rx-frequency');
+              if (fEl) {
+                for (let i = 0; i < fEl.options.length; i++) {
+                  if (fEl.options[i].value.toLowerCase().includes(med.default_frequency.toLowerCase())) {
+                    fEl.selectedIndex = i;
+                    break;
+                  }
+                }
+              }
+            }
+            if (med.default_duration) {
+              const dEl = document.getElementById('modal-rx-days');
+              if (dEl) dEl.value = med.default_duration;
+            }
+            if (med.instructions) {
+              const nEl = document.getElementById('modal-rx-notes');
+              if (nEl) nEl.value = med.instructions;
+            }
+          }
+        }
+      });
+    }
+  }
+
   // Event Listeners setup
   function setupEventListeners() {
     const searchInput = document.getElementById('doctor-patient-search');
@@ -2047,10 +2398,7 @@
       });
     }
 
-    const drugNameInput = document.getElementById('rx-drug-name');
-    if (drugNameInput) {
-      drugNameInput.addEventListener('input', (e) => onDrugNameInput(e.target.value));
-    }
+    setupDrugAutocomplete();
   }
 
   async function deleteCurrentPatient() {
@@ -2439,7 +2787,14 @@
     const btnSubmit = document.getElementById('btn-case-submit');
 
     if (btnPrev) btnPrev.style.display = step > 1 ? 'inline-flex' : 'none';
-    if (btnNext) btnNext.style.display = step < 3 ? 'inline-flex' : 'none';
+    if (btnNext) {
+      btnNext.style.display = step < 3 ? 'inline-flex' : 'none';
+      if (step === 2) {
+        btnNext.innerHTML = 'Keyingisi: Retsept va Dori Tayinlash <i class="fas fa-arrow-right"></i>';
+      } else {
+        btnNext.innerHTML = 'Davom Etish <i class="fas fa-arrow-right"></i>';
+      }
+    }
     if (btnSubmit) btnSubmit.style.display = step === 3 ? 'inline-flex' : 'none';
   }
 
@@ -2455,6 +2810,7 @@
     const drugNameInput = document.getElementById('modal-rx-drug-name');
     const dosageInput = document.getElementById('modal-rx-dosage');
     const routeSelect = document.getElementById('modal-rx-route');
+    const freqSelect = document.getElementById('modal-rx-frequency');
     const daysInput = document.getElementById('modal-rx-days');
     const notesInput = document.getElementById('modal-rx-notes');
 
@@ -2464,10 +2820,14 @@
       return;
     }
 
-    // The server refuses an order without these; say so here, while the
-    // doctor is still in the row, rather than after the whole case is sent.
-    if (!dosageInput?.value.trim() || !parseInt(daysInput?.value) || !notesInput?.value.trim()) {
-      showToast("Doza, kunlar soni va qabul tartibini (masalan: kuniga 1 marta) kiriting.", "warning");
+    const dosage = (dosageInput?.value || '').trim();
+    const durationDays = parseInt(daysInput?.value) || 5;
+    const frequency = freqSelect?.value || 'Kuniga 2 mahal';
+    const notes = (notesInput?.value || '').trim();
+    const fullInstructions = notes ? `${frequency} (${notes})` : frequency;
+
+    if (!dosage) {
+      showToast("Iltimos, bir martalik dozani kiriting (masalan: 400 ml, 1 tab, 2 ml).", "warning");
       return;
     }
 
@@ -2492,12 +2852,12 @@
       id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
       medication_name: drugName,
       form: routeSelect?.value.includes('tomchi') ? 'Infuzion flakon' : (routeSelect?.value.includes('per os') ? 'Tabletkalar' : 'Ampula'),
-      dosage: dosageInput?.value.trim() || '',
+      dosage: dosage,
       route: routeSelect?.value || '',
-      duration_days: parseInt(daysInput?.value) || null,
-      frequency: notesInput?.value.trim() || '',
+      duration_days: durationDays,
+      frequency: frequency,
       timing: 'Muolaja jadvali bo\'yicha',
-      instructions: notesInput?.value.trim() || '',
+      instructions: fullInstructions,
       status: 'active'
     };
 
@@ -2789,6 +3149,8 @@
     clearSearch,
     quickJump,
     switchTab,
+    goToPrescriptionMenu,
+    finalizeConsultation,
     saveAnamnesis,
     saveEpicrisis,
     applyAnamnesisTemplate,
@@ -2808,9 +3170,15 @@
     appendHomeRx,
     setPsychoRec,
     onDrugNameInput,
+    onDrugNameChange,
+    quickSelectMed,
+    clearDrugDetailsBanner,
+    applyMedicationToRxForm,
+    findMedication,
     openClinicMedsModal,
     closeClinicMedsModal,
     onClinicMedsFilter,
+    clearClinicMedsSearch,
     setClinicCat,
     fillFormWithMed,
     prescribeClinicMed,

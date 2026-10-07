@@ -162,7 +162,7 @@
         <div>
           <div class="kpi-label">Bugun Qabullar</div>
           <div class="kpi-value" id="kpi-today-walkins">—</div>
-          <div class="kpi-sub">Statsionar + Uyga</div>
+          <div class="kpi-sub">Statsionar + Konsultatsiya</div>
         </div>
       </div>
       <div class="kpi-card kpi-purple">
@@ -215,7 +215,7 @@
               <div class="rec-card-title"><i class="fas fa-clipboard-list" style="color:var(--primary-light);"></i> Qabul Turi</div>
             </div>
             <div class="rec-card-body" style="padding-bottom: 1rem;">
-              <div class="service-type-grid">
+              <div class="service-type-grid" style="grid-template-columns: repeat(3, 1fr);">
                 <div class="service-type-card" data-service="inpatient">
                   <div class="service-type-icon" style="background: rgba(56,189,248,0.12); color: #38bdf8;">
                     <i class="fas fa-bed"></i>
@@ -228,21 +228,14 @@
                     <i class="fas fa-stethoscope"></i>
                   </div>
                   <div class="service-type-label">Ambulator</div>
-                  <div class="service-type-sub">Shifokor ko'rigi</div>
+                  <div class="service-type-sub">Muolaja kursi</div>
                 </div>
-                <div class="service-type-card" data-service="home_visit">
-                  <div class="service-type-icon" style="background: rgba(245,158,11,0.12); color: #f59e0b;">
-                    <i class="fas fa-house-medical"></i>
+                <div class="service-type-card selected" data-service="consultation">
+                  <div class="service-type-icon" style="background: rgba(99,102,241,0.15); color: #818cf8;">
+                    <i class="fas fa-user-doctor"></i>
                   </div>
-                  <div class="service-type-label">Uyga Chaqiruv</div>
-                  <div class="service-type-sub">Narkolog uyga boradi</div>
-                </div>
-                <div class="service-type-card" data-service="anonymous">
-                  <div class="service-type-icon" style="background: rgba(168,85,247,0.12); color: #a855f7;">
-                    <i class="fas fa-user-secret"></i>
-                  </div>
-                  <div class="service-type-label">Anonim Qabul</div>
-                  <div class="service-type-sub">100% maxfiy, ro'yxatsiz</div>
+                  <div class="service-type-label">Konsultatsiya</div>
+                  <div class="service-type-sub">Shifokor ko'rigi & retsept</div>
                 </div>
               </div>
             </div>
@@ -252,16 +245,8 @@
           <div class="rec-card">
             <div class="rec-card-header">
               <div class="rec-card-title"><i class="fas fa-id-card" style="color:var(--primary-light);"></i> Bemor Ma'lumotlari</div>
-              <div class="form-checkbox-row">
-                <input type="checkbox" id="intake-anon-check">
-                <span><i class="fas fa-user-secret" style="color:#a855f7;"></i> Anonim rejim</span>
-              </div>
             </div>
             <div class="rec-card-body">
-              <div id="intake-anon-banner" class="anon-banner" style="display:none;">
-                <i class="fas fa-shield-alt"></i>
-                <span><strong>Anonim Qabul Faol:</strong> Bemor nomi, telefoni va hech qanday shaxsiy ma'lumoti saqlanmaydi. Faqat klinik kod beriladi.</span>
-              </div>
 
               <form id="intake-form" onsubmit="window.FMH_Reception.submitIntakeForm(event)">
                 <div class="form-grid-2" style="margin-bottom:1rem;">
@@ -380,43 +365,35 @@
                   </div>
                 </div>
 
-                <!-- HOME VISIT SECTION -->
-                <div id="intake-home-section" style="display:none;">
+                <!-- CONSULTATION SECTION -->
+                <div id="intake-consultation-section">
                   <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
-                  <div class="modal-section-title"><i class="fas fa-map-marker-alt"></i> Uyga Chaqiruv Ma'lumotlari</div>
+                  <div class="modal-section-title"><i class="fas fa-user-doctor"></i> Shifokor Konsultatsiyasi</div>
                   <div class="form-grid-2">
-                    <div class="form-group full-width">
-                      <label class="form-label">To'liq Manzil <span class="req">*</span></label>
-                      <input type="text" id="intake-home-address" class="form-input" placeholder="Tuman, ko'cha, uy raqami">
-                    </div>
-                    <div class="form-group full-width">
-                      <label class="form-label">Mo'ljal (landmark)</label>
-                      <input type="text" id="intake-home-landmark" class="form-input" placeholder="Yaqin joylashgan bino, mahalla...">
+                    <div class="form-group">
+                      <label class="form-label">Konsultatsiya Narxi (so'm) <span class="req">*</span></label>
+                      <input type="number" id="intake-consultation-fee" class="form-input" value="250000" min="0" step="10000">
+                      <div class="form-hint">Standart shifokor konsultatsiyasi: 250 000 so'm</div>
                     </div>
                     <div class="form-group">
-                      <label class="form-label">Xizmat Narxi</label>
-                      <input type="number" id="intake-home-fee" class="form-input" value="800000" min="0">
-                      <div class="form-hint">Narkologik blokada xizmati: 800 000 so'm</div>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Ketish Vaqti</label>
-                      <input type="time" id="intake-home-time" class="form-input" value="09:00">
+                      <label class="form-label">Konsultatsiya Vaqti</label>
+                      <input type="time" id="intake-consultation-time" class="form-input" value="10:00">
                     </div>
                   </div>
-                  <div class="home-visit-map-placeholder">
-                    <i class="fas fa-map-marked-alt"></i>
-                    <span>Manzilni belgilash uchun kartani oching (ixtiyoriy)</span>
+                  <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius-md);padding:0.75rem 1rem;margin-top:0.6rem;font-size:0.8rem;color:var(--text-secondary);">
+                    <i class="fas fa-info-circle" style="color:#818cf8;"></i>
+                    Bemor ma'lumotlari kiritilib, mas'ul shifokorga biriktiriladi. Shifokor postida ushbu bemor uchun <strong>Konsultatsiya Menyusi</strong> (kasallik tarixi, shikoyat, alomatlar, xulosa) va <strong>Retsept & Dori Tayinlash Menyusi</strong> ochiladi.
                   </div>
                 </div>
 
-                <!-- OUTPATIENT: quick note only -->
+                <!-- OUTPATIENT: Ambulator muolaja -->
                 <div id="intake-apt-section" style="display:none;">
                   <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
-                  <div class="modal-section-title"><i class="fas fa-stethoscope"></i> Ambulator Ko'rik</div>
-                  <p style="font-size:0.82rem;color:var(--text-secondary);">Shifokor jadvali uchun <strong style="color:var(--primary-light);">"Shifokor Jadvali"</strong> tabini oching. Bu yerda faqat to'langan ambulator konsultatsiya qayd etiladi.</p>
-                  <div class="form-group" style="margin-top:1rem;">
-                    <label class="form-label">Konsultatsiya To'lovi</label>
-                      <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                  <div class="modal-section-title"><i class="fas fa-stethoscope"></i> Ambulator Muolaja Kursi</div>
+                  <p style="font-size:0.82rem;color:var(--text-secondary);">Klinikaga qatnab o'tkaziladigan kunlik kapelnitsa va inyeksiya muolajalari.</p>
+                  <div class="form-group" style="margin-top:0.8rem;">
+                    <label class="form-label">Kunlik To'lov (so'm)</label>
+                    <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
                   </div>
                 </div>
 
@@ -779,10 +756,6 @@
             <div class="form-group">
               <label class="form-label">Eslatma</label>
               <textarea id="apt-notes" class="form-textarea" placeholder="Qo'shimcha ma'lumot..." style="min-height:60px;"></textarea>
-            </div>
-            <div class="form-checkbox-row">
-              <input type="checkbox" id="apt-anon-check">
-              <span><i class="fas fa-user-secret" style="color:#a855f7;"></i> Anonim yozish</span>
             </div>
           </div>
         </form>

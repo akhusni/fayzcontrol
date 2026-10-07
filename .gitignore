@@ -26,6 +26,9 @@ pymysql.broken.vendored/
 # --- Generated PDFs / exports ---
 *.pdf
 !assets/**/*.pdf
+*.xlsx
+*.xls
+data/reports/
 # Backups of the credential file are credential files too.
 db_config.json.*
 db_config.*.bak

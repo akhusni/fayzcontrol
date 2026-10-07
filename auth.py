@@ -100,6 +100,7 @@ STATIC_ASSET_SUFFIXES = (
     '.css', '.js', '.mjs', '.map',
     '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
     '.woff', '.woff2', '.ttf', '.eot',
+    '.xlsx',
 )
 
 # Reference data the portals fetch by name: the ward layout and the two drug
@@ -108,6 +109,7 @@ SERVABLE_DATA_FILES = {
     '/data/clinic_rooms.json',
     '/data/pharmacology_db.json',
     '/data/fayz_house_meds.json',
+    '/FMH_Xodimlar_Royxati_2026.xlsx',
 }
 
 ROOT_PUBLIC_FILES = {'/favicon.ico', '/robots.txt'}

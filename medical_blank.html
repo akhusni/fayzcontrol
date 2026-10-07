@@ -15,6 +15,7 @@
   <script src="js/theme_engine.js"></script>
   <script src="js/fmh_dialogs.js?v=1.3"></script>
   <script src="js/pharmacology_db.js"></script>
+  <script src="js/med_search_engine.js?v=4.0"></script>
   
   <style>
     /* ==========================================================================
@@ -1771,17 +1772,15 @@
       const datalist = document.getElementById('blank-rx-medications-datalist');
       if (!datalist) return;
 
+      const seen = new Set();
       const options = [];
       blankMedsState.medications.forEach(m => {
+        const canonicalName = m.name || m.trade_name_uz || 'Dori';
+        const key = canonicalName.trim().toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
         const numTag = m.fayz_house_num ? `[№${m.fayz_house_num}] ` : '';
-        const badge = m.prescription_type === 'Rx_Strict_Psychotropic' ? ' ⚠️ (Psixotrop)' : '';
-        options.push(`<option value="${m.name}">${numTag}${m.inn ? m.inn + ' • ' : ''}${m.dosage_form || m.form || ''}${badge}</option>`);
-        if (m.paper_name && m.paper_name !== m.name) {
-          options.push(`<option value="${m.paper_name}">${numTag}${m.name}${badge}</option>`);
-        }
-        if (m.fayz_house_num) {
-          options.push(`<option value="№${m.fayz_house_num}. ${m.name}">${m.paper_name || m.name}</option>`);
-        }
+        options.push(`<option value="${canonicalName}">${numTag}${canonicalName}</option>`);
       });
       datalist.innerHTML = options.join('');
     }
@@ -1798,6 +1797,11 @@
         const num = parseInt(numMatch[1], 10);
         const byNum = blankMedsState.medications.find(m => m.fayz_house_num === num);
         if (byNum && (clean.length < 4 || query.includes('№'))) return byNum;
+      }
+
+      if (window.FMH_MedSearch) {
+        const found = window.FMH_MedSearch.findBestMatch(blankMedsState.medications, query);
+        if (found) return found;
       }
 
       // Match exact or startsWith
@@ -2090,7 +2094,7 @@
 
     function filterBlankModalMeds() {
       const searchInput = document.getElementById('blank-modal-search');
-      blankMedsState.searchQuery = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      blankMedsState.searchQuery = searchInput ? searchInput.value.trim() : '';
       renderBlankModalDrugs();
     }
 
@@ -2101,25 +2105,30 @@
       const q = blankMedsState.searchQuery;
       const cat = blankMedsState.activeCategory;
 
-      const filtered = blankMedsState.medications.filter(m => {
-        if (cat !== 'all' && m.category !== cat) return false;
-        if (!q) return true;
-
-        const numStr = String(m.fayz_house_num || '');
-        const matchNum = numStr === q || q === `№${numStr}`;
-        const matchName = (m.name && m.name.toLowerCase().includes(q));
-        const matchPaper = (m.paper_name && m.paper_name.toLowerCase().includes(q));
-        const matchTrade = (m.trade_name && m.trade_name.toLowerCase().includes(q));
-        const matchInn = (m.inn && m.inn.toLowerCase().includes(q));
-        const matchLatin = (m.rp_latin && m.rp_latin.toLowerCase().includes(q));
-
-        return matchNum || matchName || matchPaper || matchTrade || matchInn || matchLatin;
-      });
+      let filtered = [];
+      if (window.FMH_MedSearch) {
+        filtered = window.FMH_MedSearch.search(blankMedsState.medications, q, cat);
+      } else {
+        filtered = blankMedsState.medications.filter(m => {
+          if (cat !== 'all' && m.category !== cat) return false;
+          if (!q) return true;
+          const qLow = q.toLowerCase();
+          const numStr = String(m.fayz_house_num || '');
+          const matchNum = numStr === qLow || qLow === `№${numStr}`;
+          const matchName = (m.name && m.name.toLowerCase().includes(qLow));
+          const matchPaper = (m.paper_name && m.paper_name.toLowerCase().includes(qLow));
+          const matchTrade = (m.trade_name && m.trade_name.toLowerCase().includes(qLow));
+          const matchInn = (m.inn && m.inn.toLowerCase().includes(qLow));
+          const matchLatin = (m.rp_latin && m.rp_latin.toLowerCase().includes(qLow));
+          return matchNum || matchName || matchPaper || matchTrade || matchInn || matchLatin;
+        });
+      }
 
       if (filtered.length === 0) {
         container.innerHTML = `<div style="text-align:center; padding: 30px 10px; color: #64748b; font-size: 9.5pt;">
           <i class="fas fa-search" style="font-size: 24px; color: #cbd5e1; margin-bottom: 8px; display:block;"></i>
           Ushbu qidiruv bo'yicha hech qanday dori vositasi topilmadi.
+          <div style="font-size: 8pt; margin-top: 4px; color: #94a3b8;">Kirill yoki Lotin alifbosida yozib ko'ring (masalan: <em>mexidol / мексидол / 18</em>)</div>
         </div>`;
         return;
       }
@@ -2130,15 +2139,18 @@
         const psychotropicBadge = m.prescription_type === 'Rx_Strict_Psychotropic' ? '<span class="badge-psychotropic">⚠️ Psixotrop (Rx-Strict)</span>' : '';
         const latinRpFirstLine = m.rp_latin ? m.rp_latin.split('\n')[0] : `Rp.: ${m.name}`;
 
+        const displayName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(m.paper_name || m.name, q) : (m.paper_name || m.name);
+        const latinDisplay = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(latinRpFirstLine, q) : latinRpFirstLine;
+
         html += `
           <div class="blank-drug-item">
             <div class="blank-drug-info">
               <div class="blank-drug-title">
                 ${numBadge}
-                <span>${m.paper_name || m.name}</span>
+                <span>${displayName}</span>
                 ${psychotropicBadge}
               </div>
-              <div class="blank-drug-latin">${latinRpFirstLine}</div>
+              <div class="blank-drug-latin">${latinDisplay}</div>
               <div class="blank-drug-sub">
                 <b>Shakli:</b> ${m.dosage_form || m.form || '—'} &bull;
                 <b>Standart:</b> ${m.default_dosage || '—'} &bull;

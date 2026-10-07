@@ -228,7 +228,8 @@
           <i class="fas fa-chart-pie"></i> Moliya Analitikasi & Dinamika
         </button>
         <button class="tab-btn" data-tab="pharmacy">
-          <i class="fas fa-pills"></i> Farmakologiya & Omborxona
+          <i class="fas fa-pills"></i> Farmakologiya & Dori Xarajatlari
+          <span class="tab-badge" id="badge-pharmacy-count">—</span>
         </button>
       </div>
 
@@ -316,6 +317,9 @@
           <button class="btn-portal btn-danger-portal" onclick="window.FMH_Accounting.openNewTxnModal('expense')">
             <i class="fas fa-minus"></i> Yangi Chiqim
           </button>
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1);" title="Dori-darmon xaridini kiritish va xarajatga yozish">
+            <i class="fas fa-pills"></i> Dori Xaridi (Chiqim)
+          </button>
           <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.openIncassoModal()" style="border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
             <i class="fas fa-university"></i> Bankka Inkassatsiya
           </button>
@@ -396,88 +400,127 @@
          TAB 5: PHARMACY & INVENTORY VALUATION
          ========================================================================== -->
     <section class="tab-panel" id="tab-panel-pharmacy">
-      <div class="section-toolbar-card" style="margin-bottom: 1rem;">
+      <div class="section-toolbar-card" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem;">
         <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
-          <i class="fas fa-pills" style="color: var(--primary);"></i> Farmakologiya & Omborxona Moliyaviy Bahosi
+          <i class="fas fa-pills" style="color: var(--primary);"></i> Farmakologiya, Dori-Darmon Xarajatlari & Omborxona
         </div>
-        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportPharmacyToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
-          <i class="fas fa-file-excel"></i> Dorixona Qoldig'ini Excelga Yuklash (.xlsx)
-        </button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1);">
+            <i class="fas fa-plus-circle"></i> Yangi Dori Xaridini Kiritish (Chiqim)
+          </button>
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportMedPurchasesToExcel()" style="border-color: rgba(244, 63, 94, 0.4); color: var(--rose);">
+            <i class="fas fa-file-invoice-dollar"></i> Xaridlar Tarixini Excelga (.xlsx)
+          </button>
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportPharmacyToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
+            <i class="fas fa-file-excel"></i> Dorixona Qoldig'ini Excelga (.xlsx)
+          </button>
+        </div>
       </div>
 
-      <div class="financial-kpi-grid" style="margin-bottom: 1rem;">
+      <div class="financial-kpi-grid" style="margin-bottom: 1.25rem;">
         <div class="kpi-card kpi-revenue">
-          <div class="kpi-header"><span class="kpi-label">Ombordagi Dorilar Soni</span><div class="kpi-icon"><i class="fas fa-pills"></i></div></div>
-          <div class="kpi-value">206 nomdagi</div>
-          <div class="kpi-sub">Detoks, sedativ, neyro va gepatoprotektorlar</div>
+          <div class="kpi-header"><span class="kpi-label">Ombordagi Dorilar Turi</span><div class="kpi-icon"><i class="fas fa-pills"></i></div></div>
+          <div class="kpi-value" id="pharm-total-meds">—</div>
+          <div class="kpi-sub">Klinika farmakologiya katalogi</div>
         </div>
         <div class="kpi-card kpi-profit">
           <div class="kpi-header"><span class="kpi-label">Omborxona Umumiy Qiymati</span><div class="kpi-icon"><i class="fas fa-boxes"></i></div></div>
-          <div class="kpi-value">48 650 000 so'm</div>
-          <div class="kpi-sub">Barcha dori qoldiqlari tannarxi</div>
+          <div class="kpi-value" id="pharm-total-valuation">—</div>
+          <div class="kpi-sub">Barcha dorilar qoldiq tannarxi</div>
+        </div>
+        <div class="kpi-card kpi-expense">
+          <div class="kpi-header"><span class="kpi-label">Dori Xarajatlari (Chiqim)</span><div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div></div>
+          <div class="kpi-value" id="pharm-period-expense" style="color: var(--rose);">—</div>
+          <div class="kpi-sub" id="pharm-expense-sub">Tanlangan davr bo'yicha jami chiqim</div>
         </div>
         <div class="kpi-card kpi-cash">
-          <div class="kpi-header"><span class="kpi-label">Oylik Dori Xarajati</span><div class="kpi-icon"><i class="fas fa-prescription-bottle-alt"></i></div></div>
-          <div class="kpi-value">18 420 000 so'm</div>
-          <div class="kpi-sub">Bemorlar davolanishida ishlatilgan</div>
+          <div class="kpi-header"><span class="kpi-label">Xarid Partiyalari Soni</span><div class="kpi-icon"><i class="fas fa-receipt"></i></div></div>
+          <div class="kpi-value" id="pharm-total-purchases">—</div>
+          <div class="kpi-sub">Qayd etilgan dori partiyalari</div>
         </div>
       </div>
 
-      <div class="table-responsive-wrapper">
-        <table class="finance-table">
-          <thead>
-            <tr>
-              <th>Dori Nomi & Dozasi</th>
-              <th>Farmakologik Guruhi</th>
-              <th>Ombordagi Qoldiq</th>
-              <th>Birligi Narxi</th>
-              <th>Jami Qiymati</th>
-              <th>Holat</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Reamberin eritmasi (400ml)</strong><br><small style="color: var(--text-muted);">Detoksikatsion eritma</small></td>
-              <td>Detoksikatsiya / Antioksidant</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--primary);">85 flakon</td>
-              <td class="mono-val">38 000 so'm</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">3 230 000 so'm</td>
-              <td><span class="badge-status badge-paid">Yetarli</span></td>
-            </tr>
-            <tr>
-              <td><strong>Gemodez-N eritmasi (200ml)</strong><br><small style="color: var(--text-muted);">Plazma o'rnini bosuvchi</small></td>
-              <td>Detoksikatsiya</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--primary);">120 flakon</td>
-              <td class="mono-val">25 000 so'm</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">3 000 000 so'm</td>
-              <td><span class="badge-status badge-paid">Yetarli</span></td>
-            </tr>
-            <tr>
-              <td><strong>Meksidol inyeksiyasi (5ml №5)</strong><br><small style="color: var(--text-muted);">Antihipoksant</small></td>
-              <td>Neyroprotektor</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--primary);">45 quti</td>
-              <td class="mono-val">82 000 so'm</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">3 690 000 so'm</td>
-              <td><span class="badge-status badge-paid">Yetarli</span></td>
-            </tr>
-            <tr>
-              <td><strong>Essensiale Forte N (ampula №5)</strong><br><small style="color: var(--text-muted);">Gepatoprotektor</small></td>
-              <td>Gepatoprotektor</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--primary);">30 quti</td>
-              <td class="mono-val">115 000 so'm</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">3 450 000 so'm</td>
-              <td><span class="badge-status badge-paid">Yetarli</span></td>
-            </tr>
-            <tr>
-              <td><strong>Relanium / Diazepam (2ml №10)</strong><br><small style="color: var(--text-muted);">Trankvilizator</small></td>
-              <td>Sedativ / Anksiolitik</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--warning);">12 quti</td>
-              <td class="mono-val">65 000 so'm</td>
-              <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">780 000 so'm</td>
-              <td><span class="badge-status badge-partial">Kam qolgan</span></td>
-            </tr>
-          </tbody>
-        </table>
+      <!-- BLOCK 1: MEDICATIONS BOUGHT (PURCHASE EXPENSES) -->
+      <div class="chart-box-card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-cart-arrow-down" style="color: var(--rose);"></i>
+              Sotib Olingan Dori-Darmonlar Ro'yxati (Klinika Xarajatlari)
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+              Sotib olingan dorilar, miqdori va tannarxi — buxgalteriyaning chiqimlar daftari (Accounting Expense) ga avtomatik yoziladi
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="toolbar-search" style="margin: 0;">
+              <i class="fas fa-search" style="color: var(--text-muted);"></i>
+              <input type="text" id="search-med-purchases-input" placeholder="Dori, yetkazib beruvchi, chek..." style="width: 220px;" oninput="window.FMH_Accounting.filterMedPurchases()">
+            </div>
+            <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="padding: 6px 12px; font-size: 0.82rem; background: linear-gradient(135deg, #0284c7, #0369a1);">
+              <i class="fas fa-plus"></i> Yangi Dori Xaridi
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive-wrapper">
+          <table class="finance-table" id="med-purchases-table">
+            <thead>
+              <tr>
+                <th>Sana</th>
+                <th>Dori Nomi & Guruhi</th>
+                <th>Miqdori</th>
+                <th>Donasi Narxi (Qanchadan)</th>
+                <th>Jami Chiqim (Xarajat)</th>
+                <th>To'lov Shakli</th>
+                <th>Yetkazib Beruvchi & Chek</th>
+                <th>Kassir / Mas'ul</th>
+                <th>Amallar</th>
+              </tr>
+            </thead>
+            <tbody id="med-purchases-tbody">
+              <!-- Rendered dynamically by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BLOCK 2: PHARMACY CURRENT INVENTORY & VALUATION -->
+      <div class="chart-box-card" style="padding: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-boxes" style="color: var(--emerald);"></i>
+              Dorixona Ombordagi Joriy Qoldiq va Tannarxi
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+              Klinika omboridagi mavjud dorilar qoldig'i, birlik narxi va umumiy zaxira qiymati
+            </div>
+          </div>
+          <div class="toolbar-search" style="margin: 0;">
+            <i class="fas fa-search" style="color: var(--text-muted);"></i>
+            <input type="text" id="search-pharmacy-stock-input" placeholder="Ombordagi dorini qidirish..." style="width: 220px;" oninput="window.FMH_Accounting.filterPharmacyStock()">
+          </div>
+        </div>
+
+        <div class="table-responsive-wrapper">
+          <table class="finance-table" id="pharmacy-stock-table">
+            <thead>
+              <tr>
+                <th>Dori Nomi & Dozasi</th>
+                <th>Farmakologik Guruhi</th>
+                <th>Ombordagi Qoldiq</th>
+                <th>Birligi Narxi</th>
+                <th>Jami Qiymati</th>
+                <th>Holat</th>
+                <th>Amal</th>
+              </tr>
+            </thead>
+            <tbody id="pharmacy-stock-tbody">
+              <!-- Rendered dynamically by JS -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -878,9 +921,105 @@
     </div>
   </div>
 
+  <!-- ==========================================================================
+       MODAL 8: MEDICATION PURCHASE & RESTOCK (DORI-DARMON XARIDI VA KLINIKA CHIQIMI)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="medication-purchase-modal">
+    <div class="modal-dialog modal-lg" style="max-width: 860px;">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-pills" style="color: #38bdf8;"></i> Yangi Dori-Darmon Xaridini Qayd Etish (Klinika Xarajati)</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="medication-purchase-form">
+        <div class="modal-body">
+          <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-info-circle" style="color: #38bdf8; font-size: 1.2rem;"></i>
+            <span style="font-size: 0.82rem; color: var(--text-secondary);">
+              Ushbu bo'limda sotib olingan dorilar ro'yxati, miqdori va tannarxi kiritiladi. Hisoblangan umumiy summa avtomatik ravishda klinikaning buxgalteriya <strong>chiqimlariga (xarajat)</strong> yoziladi va ombordagi dori qoldig'ini oshiradi.
+            </span>
+          </div>
+
+          <div class="form-grid-2" style="margin-bottom: 1rem;">
+            <div>
+              <label class="form-label" for="medpur-date-input">Xarid Sanasi *</label>
+              <input type="date" id="medpur-date-input" class="form-input" required>
+            </div>
+            <div>
+              <label class="form-label" for="medpur-method-select">To'lov Shakli (Kassa / Bank) *</label>
+              <select id="medpur-method-select" class="form-select">
+                <option value="cash">💵 Naqd Pul (Kassa Chiqimi)</option>
+                <option value="bank">🏦 Bank O'tkazmasi (Hisob raqamdan)</option>
+                <option value="terminal">💳 Korporativ Karta / Terminal</option>
+                <option value="online">📱 Click / Payme</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" for="medpur-supplier-input">Yetkazib Beruvchi (Dorixona / Distribyutor)</label>
+              <input type="text" id="medpur-supplier-input" class="form-input" placeholder="Masalan: Grand Pharm, Dori-Darmon AK...">
+            </div>
+            <div>
+              <label class="form-label" for="medpur-invoice-input">Chek / Faktura / Nakladnaya №</label>
+              <input type="text" id="medpur-invoice-input" class="form-input" placeholder="Masalan: FAK-2026-4012...">
+            </div>
+          </div>
+
+          <!-- MEDICATIONS ITEMS LIST -->
+          <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <label class="form-label" style="margin: 0; font-weight: 700;">
+              <i class="fas fa-list-ul" style="color: var(--primary);"></i> Sotib Olingan Dorilar va Tannarxi *
+            </label>
+            <button type="button" class="btn-portal btn-outline-portal" id="btn-add-medpur-row" style="padding: 4px 10px; font-size: 0.78rem;">
+              <i class="fas fa-plus"></i> + Yana Dori Qo'shish
+            </button>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; margin-bottom: 1rem; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;" id="medpur-items-table">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); text-align: left;">
+                  <th style="padding: 6px 8px; width: 34%;">Dori Nomi *</th>
+                  <th style="padding: 6px 8px; width: 18%;">Guruhi</th>
+                  <th style="padding: 6px 8px; width: 12%;">Miqdori *</th>
+                  <th style="padding: 6px 8px; width: 16%;">Donasi Narxi (so'm) *</th>
+                  <th style="padding: 6px 8px; width: 16%;">Jami Summa</th>
+                  <th style="padding: 6px 4px; width: 4%;"></th>
+                </tr>
+              </thead>
+              <tbody id="medpur-items-tbody">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- TOTAL & NOTES -->
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 1rem;">
+            <span style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+              <i class="fas fa-calculator" style="color: var(--rose);"></i> Jami Xarajat Summasi (Chiqim):
+            </span>
+            <span id="medpur-grand-total-disp" style="font-family: var(--font-mono); font-size: 1.35rem; font-weight: 800; color: var(--rose);">
+              0 so'm
+            </span>
+          </div>
+
+          <div>
+            <label class="form-label" for="medpur-notes-input">Qo'shimcha Izoh</label>
+            <input type="text" id="medpur-notes-input" class="form-input" placeholder="Partiya muddati, saqlash sharoiti yoki boshqa izoh...">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-danger-portal" style="background: linear-gradient(135deg, #e11d48, #be123c);">
+            <i class="fas fa-check-circle"></i> Xaridni Saqlash & Xarajatga Yozish
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="js/xlsx.full.min.js"></script>
-    <script src="js/unified_print_engine.js?v=5.3"></script>
-<script src="js/accounting.js?v=9.3"></script>
+  <script src="js/unified_print_engine.js?v=5.3"></script>
+  <script src="js/accounting.js?v=9.4"></script>
   <div id="print-area"></div>
 </body>
 </html>

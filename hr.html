@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HR & Kadrlar Boshqaruvi | Fayz Medical House</title>
-  <meta name="description" content="Fayz Medical House xususiy klinikasining inson resurslari, 24/7 smenalar, davomat tabeli, shifokorlar oylik maoshi va tibbiy litsenziyalar boshqaruv portali.">
+  <meta name="description" content="Fayz Medical House xususiy klinikasining inson resurslari, 24/7 smenalar, davomat tabeli va xodimlar oylik maoshi boshqaruv portali.">
 
   <!-- Google Fonts & Font Awesome -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,6 +57,9 @@
           <a href="hr.html" class="portal-nav-pill pill-hr active" title="Kadrlar, Smenalar va Davomat">
             <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
           </a>
+          <a href="duty_schedule.html" class="portal-nav-pill pill-hr" title="24/7 Navbatchilik Jadvali">
+            <i class="fas fa-calendar-check"></i> <span>Navbatchilik</span>
+          </a>
           <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
             <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
           </a>
@@ -105,11 +108,6 @@
           <span>Ishda:</span>
           <span class="val" id="chip-duty-count">—</span>
         </div>
-        <div class="header-stat-chip" title="Ochiq Ish O'rinlari (Vakansiyalar)">
-          <i class="fas fa-briefcase" style="color: var(--primary);"></i>
-          <span>Vakansiyalar:</span>
-          <span class="val" id="chip-vac-count">—</span>
-        </div>
       </div>
 
       <div style="font-size: 0.8rem; color: var(--indigo); font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
@@ -128,7 +126,7 @@
         </div>
         <div class="kpi-value" id="stat-total-staff">—</div>
         <div class="kpi-sub">
-          <span class="highlight-cyan"><i class="fas fa-check-circle"></i> 100% akkreditatsiyadan o'tgan</span>
+          <span class="highlight-cyan"><i class="fas fa-check-circle"></i> Barcha faol xodimlar</span>
         </div>
       </div>
 
@@ -144,18 +142,6 @@
         </div>
       </div>
 
-      <!-- On Leave / Vacation -->
-      <div class="kpi-card kpi-leave" onclick="window.FMH_HR.switchTab('leaves')">
-        <div class="kpi-header">
-          <span class="kpi-label">Ta'tilda / Kasallikda</span>
-          <div class="kpi-icon"><i class="fas fa-umbrella-beach"></i></div>
-        </div>
-        <div class="kpi-value" id="stat-on-leave">—</div>
-        <div class="kpi-sub">
-          <span class="highlight-amber"><i class="fas fa-calendar-alt"></i> Rejaviy mehnat ta'tili</span>
-        </div>
-      </div>
-
       <!-- Monthly Payroll Budget -->
       <div class="kpi-card kpi-payroll" onclick="window.FMH_HR.switchTab('payroll')">
         <div class="kpi-header">
@@ -164,31 +150,7 @@
         </div>
         <div class="kpi-value" id="stat-payroll-budget">—</div>
         <div class="kpi-sub">
-          <span class="highlight-purple"><i class="fas fa-hand-holding-usd"></i> Oklad + Bemorlar gonorari</span>
-        </div>
-      </div>
-
-      <!-- Open Vacancies -->
-      <div class="kpi-card kpi-vacancy" onclick="window.FMH_HR.switchTab('recruitment')">
-        <div class="kpi-header">
-          <span class="kpi-label">Ochiq Vakansiyalar</span>
-          <div class="kpi-icon"><i class="fas fa-user-plus"></i></div>
-        </div>
-        <div class="kpi-value" id="stat-open-vacancies">—</div>
-        <div class="kpi-sub">
-          <span class="highlight-cyan"><i class="fas fa-inbox"></i> 0 ta yangi rezyume</span>
-        </div>
-      </div>
-
-      <!-- License Expiry Alerts -->
-      <div class="kpi-card kpi-license" onclick="window.FMH_HR.switchTab('licenses')">
-        <div class="kpi-header">
-          <span class="kpi-label">Litsenziya Nazorati</span>
-          <div class="kpi-icon"><i class="fas fa-id-card-alt"></i></div>
-        </div>
-        <div class="kpi-value" id="stat-expiring-licenses">—</div>
-        <div class="kpi-sub">
-          <span class="highlight-rose"><i class="fas fa-exclamation-circle"></i> Barcha litsenziyalar faol</span>
+          <span class="highlight-purple"><i class="fas fa-hand-holding-usd"></i> Oklad + Smena hisoblari</span>
         </div>
       </div>
     </section>
@@ -230,16 +192,6 @@
         <button class="tab-btn" data-tab="payroll">
           <i class="fas fa-money-check-alt"></i> Oylik Maosh & Gonorar
         </button>
-        <button class="tab-btn" data-tab="leaves">
-          <i class="fas fa-plane-departure"></i> Ta'tillar & Kasallik
-          <span class="tab-badge" id="badge-leaves-count">—</span>
-        </button>
-        <button class="tab-btn" data-tab="licenses">
-          <i class="fas fa-award"></i> Litsenziyalar & Sertifikatlar
-        </button>
-        <button class="tab-btn" data-tab="recruitment">
-          <i class="fas fa-briefcase"></i> Vakansiyalar & HR Voronka
-        </button>
       </div>
 
       <div class="tab-actions">
@@ -272,7 +224,6 @@
           <select id="filter-staff-status" class="select-filter">
             <option value="all">Barcha Holatlar</option>
             <option value="active">🟢 Faol Xodimlar</option>
-            <option value="leave">🟡 Ta'tildagilar</option>
             <option value="inactive">⚪ Noaktiv</option>
           </select>
         </div>
@@ -389,83 +340,6 @@
           <div style="font-size: 0.76rem; color: var(--text-muted); text-transform: uppercase;">Jami Sof To'lanadigan (Net)</div>
           <div id="payroll-total-net" style="font-family: var(--font-mono); font-size: 1.35rem; font-weight: 800; color: var(--emerald);">0 so'm</div>
         </div>
-      </div>
-    </section>
-
-    <!-- ==========================================================================
-         TAB 5: LEAVE & VACATIONS
-         ========================================================================== -->
-    <section class="tab-panel" id="tab-panel-leaves">
-      <div class="section-toolbar-card">
-        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
-          <i class="fas fa-umbrella-beach" style="color: var(--amber);"></i> Mehnat Ta'tillari va Kasallik Varaqalari Nazorati
-        </div>
-      </div>
-
-      <div class="table-responsive-wrapper">
-        <table class="hr-table">
-          <thead>
-            <tr>
-              <th>Ariza №</th>
-              <th>Xodim</th>
-              <th>Ta'til Turi</th>
-              <th>Sana Oralig'i</th>
-              <th>Davomiyligi</th>
-              <th>Sabab & Izoh</th>
-              <th>Holat</th>
-              <th style="text-align: center;">Qaror</th>
-            </tr>
-          </thead>
-          <tbody id="leaves-tbody">
-            <!-- Rendered by JS -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- ==========================================================================
-         TAB 6: MEDICAL CREDENTIALS & LICENSES
-         ========================================================================== -->
-    <section class="tab-panel" id="tab-panel-licenses">
-      <div class="section-toolbar-card">
-        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
-          <i class="fas fa-id-card" style="color: var(--primary);"></i> Shifokorlar va Hamshiralar Tibbiy Litsenziyalari & Attestatsiya Muddatlari
-        </div>
-      </div>
-
-      <div class="table-responsive-wrapper">
-        <table class="hr-table">
-          <thead>
-            <tr>
-              <th>Xodim</th>
-              <th>Litsenziya №</th>
-              <th>Toifasi</th>
-              <th>Amal Qilish Muddati</th>
-              <th>Qolgan Vaqt</th>
-              <th>Litsenziya Holati</th>
-              <th>BLS/CPR Sertifikati</th>
-              <th style="text-align: center;">Amallar</th>
-            </tr>
-          </thead>
-          <tbody id="licenses-tbody">
-            <!-- Rendered by JS -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- ==========================================================================
-         TAB 7: RECRUITMENT PIPELINE & KANBAN
-         ========================================================================== -->
-    <section class="tab-panel" id="tab-panel-recruitment">
-      <div class="section-toolbar-card">
-        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
-          <i class="fas fa-briefcase" style="color: var(--primary);"></i> Kadrlar Qabuli & Nomzodlar Voronkasi (Recruitment Pipeline)
-        </div>
-      </div>
-
-      <div class="recruitment-kanban" id="recruitment-kanban-container">
-        <!-- Rendered by JS -->
       </div>
     </section>
 
@@ -586,7 +460,7 @@
           <!-- CLINICAL & MEDICAL SECTION (SMART CONDITIONAL: VISIBLE FOR DOCTORS/NURSES) -->
           <div class="staff-form-card conditional-block" id="clinical-details-section">
             <div class="staff-form-card-title">
-              <span><i class="fas fa-stethoscope" style="color: #34d399;"></i> Tibbiy Malaka & Litsenziya</span>
+              <span><i class="fas fa-stethoscope" style="color: #34d399;"></i> Tibbiy Malaka & Ixtisoslik</span>
               <span class="staff-card-badge badge-clinical">Klinik Xodimlar</span>
             </div>
 
@@ -606,25 +480,10 @@
                 </select>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Tibbiy Litsenziya Raqami</label>
-                <input type="text" name="license_number" id="staff-input-license" class="form-input" placeholder="LNZ-UZ-2026-XXXX">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Litsenziya Muddati</label>
-                <input type="date" name="license_expiry" id="staff-input-license-exp" class="form-input">
-              </div>
-
-              <div class="form-group">
+              <div class="form-group" style="grid-column: span 2;">
                 <label class="form-label">Detox Muolaja Bonusi (so'm)</label>
                 <input type="number" name="detox_procedure_fee" id="staff-input-detox" class="form-input" placeholder="150000" step="10000">
                 <span class="form-hint">Har bir muvaffaqiyatli o'tkazilgan infuzion detoks uchun bonus</span>
-              </div>
-
-              <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 1.4rem;">
-                <input type="checkbox" id="bls_cpr" name="bls_cpr_certified" checked style="width: 18px; height: 18px; cursor: pointer;">
-                <label for="bls_cpr" class="form-label" style="margin: 0; cursor: pointer;">Reanimatsiya & CPR/BLS Sertifikatiga ega</label>
               </div>
             </div>
           </div>
@@ -749,7 +608,6 @@
               <option value="present">🟢 Keldi (O'z vaqtida)</option>
               <option value="late">🟡 Kechikib keldi</option>
               <option value="scheduled_night">🔵 Tungi smenaga rejalashtirilgan</option>
-              <option value="leave">✈️ Mehnat ta'tilida</option>
               <option value="absent">🔴 Kelmadi (Sababsiz)</option>
             </select>
           </div>

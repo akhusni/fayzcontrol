@@ -43,6 +43,7 @@ MODULES = {
     'crm':        "Bemorlar kartotekasi va kasallik tarixi",
     'accounting': "Kassa, to'lovlar va moliya",
     'hr':         "Kadrlar, smenalar va maosh",
+    'duty':       "24/7 Navbatchilik jadvali va smenalar",
     'kitchen':    "Parhez va oshxona",
     'admin':      "Foydalanuvchilar, rollar va sozlamalar",
 }
@@ -66,7 +67,7 @@ ROLES = {
     'admin': {
         'label': 'Administrator',
         'permissions': ['reception', 'doctors', 'nursery', 'admissions', 'facility',
-                        'pharmacy', 'crm', 'accounting', 'hr', 'kitchen', 'admin:read'],
+                        'pharmacy', 'crm', 'accounting', 'hr', 'kitchen', 'admin:read', 'duty'],
         'home': '/superpage.html',
     },
 
@@ -74,14 +75,14 @@ ROLES = {
     'chief_doctor': {
         'label': 'Bosh shifokor',
         'permissions': ['doctors', 'crm', 'pharmacy', 'admissions', 'facility', 'nursery',
-                        'reception:read', 'accounting:read', 'hr:read'],
+                        'reception:read', 'accounting:read', 'hr:read', 'duty:read'],
         'home': '/doctor.html',
     },
 
     # Consultations, check-ups, prescriptions.
     'doctor': {
         'label': 'Shifokor',
-        'permissions': ['doctors', 'crm', 'pharmacy:read', 'admissions:read', 'facility:read'],
+        'permissions': ['doctors', 'crm', 'pharmacy:read', 'admissions:read', 'facility:read', 'duty:read'],
         'home': '/doctor.html',
     },
 
@@ -89,7 +90,7 @@ ROLES = {
     'nurse': {
         'label': 'Hamshira',
         'permissions': ['nursery', 'kitchen', 'crm:read', 'admissions:read',
-                        'facility:read', 'pharmacy:read', 'doctors:read'],
+                        'facility:read', 'pharmacy:read', 'doctors:read', 'duty:read'],
         # The nurse station now exists, so a nurse lands on her own round
         # rather than on the patient list. This still said /crm.html from
         # when nurse.html was only planned.
@@ -113,7 +114,7 @@ ROLES = {
     # Staff records, rosters, payroll. No clinical or patient access.
     'hr_manager': {
         'label': 'Kadrlar bo\'limi',
-        'permissions': ['hr'],
+        'permissions': ['hr', 'duty'],
         'home': '/hr.html',
     },
 
@@ -128,7 +129,7 @@ ROLES = {
     # Ward supervision: beds, transfers, sanitation.
     'ward_manager': {
         'label': 'Statsionar menejeri',
-        'permissions': ['facility', 'admissions', 'nursery:read', 'crm:read', 'kitchen'],
+        'permissions': ['facility', 'admissions', 'nursery:read', 'crm:read', 'kitchen', 'duty:read'],
         'home': '/building_management.html',
     },
 
@@ -137,6 +138,13 @@ ROLES = {
         'label': 'Oshxona xodimi',
         'permissions': ['kitchen', 'facility:read'],
         'home': '/building_management.html',
+    },
+
+    # 24/7 Ward sanitation & shift duty roster view.
+    'sanitar': {
+        'label': 'Sanitarka (Navbatchilik)',
+        'permissions': ['duty'],
+        'home': '/duty_schedule.html',
     },
 }
 
@@ -211,6 +219,7 @@ API_RULES = [
     ('/api/reception/data',           'reception',  'read'),
 
     # --- money ------------------------------------------------------------
+    ('/api/accounting/medication-purchases', 'accounting', None),
     ('/api/accounting/transaction',   'accounting', None),
     ('/api/accounting/data',          'accounting', 'read'),
     ('/api/financial-ledger',         'accounting', 'read'),
@@ -223,7 +232,9 @@ API_RULES = [
     ('/api/hr/staff',                 'hr',         None),
     ('/api/hr/data',                  'hr',         'read'),
     ('/api/hr',                       'hr',         None),
+    ('/api/duty-schedule',            'duty',       None),
     ('/api/staff',                    'hr',         None),
+    ('/api/doctors',                  'doctors',    None),
 
     # --- user administration ---------------------------------------------
     ('/api/users',                    'admin',      None),
@@ -236,7 +247,9 @@ API_RULES = [
 API_READ_EXEMPT = {
     '/api/settings/pricing',
     '/api/staff',
+    '/api/doctors',
     '/api/hr/data',
+    '/api/duty-schedule',
 }
 
 # A treatment plan is an instruction other people carry out, so reading one is
@@ -263,6 +276,7 @@ PAGE_RULES = {
     # clinical screens rather than read-only.
     '/ward.html':                 ('doctors',    'write'),
     '/nurse.html':                ('nursery',    'read'),
+    '/duty_schedule.html':        ('duty',       'read'),
     '/building_management.html':  ('facility',   'read'),
     '/crm.html':                  ('crm',        'read'),
     '/accounting.html':           ('accounting', 'read'),

@@ -1,0 +1,1617 @@
+/* ==========================================================================
+   FAYZ MEDICAL HOUSE — 24/7 DUTY SCHEDULE & SANITARKA PORTAL STYLES
+   Harmonized with Unified Master Design System Tokens (Day & Night Shifts)
+   ========================================================================== */
+
+/* Page ground & container */
+.duty-page-body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-main, 'Outfit', sans-serif);
+  background: var(--bg-main, #060d1d);
+  color: var(--text-primary, #f8fafc);
+  min-height: 100vh;
+  padding-bottom: 70px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.duty-container {
+  max-width: 1540px;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem 1.25rem;
+}
+
+/* ==========================================================================
+   1. HERO CARD: LIVE TODAY 24/7 POST
+   ========================================================================== */
+.duty-hero-card {
+  background: linear-gradient(135deg, var(--bg-card, #0c1830) 0%, var(--bg-panel, #0a1b33) 100%);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.duty-hero-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #38bdf8 0%, #10b981 50%, #f59e0b 100%);
+}
+
+.duty-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+}
+
+.duty-hero-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.duty-hero-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--primary-bg, rgba(2, 132, 199, 0.18));
+  border: 1px solid var(--border-color, rgba(56, 189, 248, 0.25));
+  color: var(--primary, #38bdf8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+.duty-hero-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.duty-hero-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.duty-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bg-surface, #0a1528);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse-ring 2s infinite ease-out;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(0.95); opacity: 1; }
+}
+
+/* 3-Column Today Post Grid */
+.duty-posts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1.25rem;
+}
+
+.duty-post-card {
+  background: var(--bg-surface, #0a1528);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 1.25rem;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  position: relative;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.duty-post-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Role Specific Accents */
+.duty-post-card.role-sanitar {
+  border-left: 4px solid #f59e0b;
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.04) 0%, var(--bg-surface, #0a1528) 100%);
+}
+
+.duty-post-card.role-nurse {
+  border-left: 4px solid #10b981;
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.04) 0%, var(--bg-surface, #0a1528) 100%);
+}
+
+.duty-post-card.role-doctor {
+  border-left: 4px solid #8b5cf6;
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.04) 0%, var(--bg-surface, #0a1528) 100%);
+}
+
+.duty-post-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.avatar-sanitar { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+.avatar-nurse { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.avatar-doctor { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+
+.duty-post-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.duty-post-role {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.duty-post-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary, #f8fafc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+.duty-post-badge-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--primary, #38bdf8);
+}
+
+.duty-post-tariff {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim, #64748b);
+  margin-top: 5px;
+}
+
+/* ==========================================================================
+   2. FILTER & PERSONAL DASHBOARD
+   ========================================================================== */
+.duty-filter-card {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.duty-filter-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1rem;
+}
+
+.duty-filter-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.duty-filter-tariff-note {
+  font-size: 0.78rem;
+  font-family: var(--font-mono, monospace);
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.sanitar-pills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sanitar-pill-btn {
+  background: var(--bg-surface, #0a1528);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-secondary, #cbd5e1);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sanitar-pill-btn:hover {
+  background: var(--bg-card-hover, #122448);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.sanitar-pill-btn.active {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-color: #f59e0b;
+  color: #040914;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+}
+
+/* Personal Summary Stat Grid (Shown when specific staff member is picked) */
+.personal-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.personal-kpi-card {
+  background: var(--bg-surface, #0a1528);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.personal-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 4px;
+}
+
+.personal-kpi-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  font-family: var(--font-mono, monospace);
+}
+
+.personal-kpi-sub {
+  font-size: 0.75rem;
+  color: var(--text-dim, #64748b);
+  margin-top: 3px;
+}
+
+/* ==========================================================================
+   3. TOOLBAR CONTROLS (MONTH STEPPER + VIEW TABS + ACTIONS)
+   ========================================================================== */
+.duty-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 1.25rem;
+}
+
+/* Month Stepper Controls */
+.duty-month-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  border-radius: 12px;
+  padding: 4px 8px;
+}
+
+.btn-step-arrow {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: var(--bg-surface, #0a1528);
+  color: var(--text-secondary, #cbd5e1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.15s ease;
+}
+
+.btn-step-arrow:hover {
+  background: var(--bg-card-hover, #122448);
+  border-color: var(--primary, #38bdf8);
+  color: var(--primary, #38bdf8);
+}
+
+.duty-month-display {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  padding: 0 10px;
+  min-width: 170px;
+  text-align: center;
+}
+
+.btn-step-today {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(2, 132, 199, 0.15);
+  color: var(--primary, #38bdf8);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-step-today:hover {
+  background: var(--primary-dark, #0284c7);
+  color: #ffffff;
+}
+
+/* View Mode Pills */
+.duty-view-pills {
+  display: inline-flex;
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.duty-view-pill-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.15s ease;
+}
+
+.duty-view-pill-btn:hover {
+  color: var(--text-primary, #f8fafc);
+}
+
+.duty-view-pill-btn.active {
+  background: var(--primary-dark, #0284c7);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+}
+
+/* Action Cluster */
+.duty-action-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-duty-action {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-duty-primary {
+  background: var(--primary-dark, #0284c7);
+  color: #ffffff;
+  border: 1px solid var(--primary, #38bdf8);
+}
+.btn-duty-primary:hover {
+  background: var(--primary, #38bdf8);
+  color: #040914;
+}
+
+.btn-duty-outline {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  color: var(--text-secondary, #cbd5e1);
+}
+.btn-duty-outline:hover {
+  background: var(--bg-card-hover, #122448);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.btn-duty-telegram {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+.btn-duty-telegram:hover {
+  background: #38bdf8;
+  color: #040914;
+}
+
+.btn-duty-excel {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+.btn-duty-excel:hover {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.btn-duty-swap {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+.btn-duty-swap:hover {
+  background: #f59e0b;
+  color: #040914;
+}
+
+/* ==========================================================================
+   4. VIEW 1: MONTHLY CALENDAR GRID
+   ========================================================================== */
+.cal-grid-panel {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 1.25rem;
+  overflow-x: auto;
+}
+
+.cal-weekdays-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(136px, 1fr));
+  gap: 8px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #94a3b8);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  margin-bottom: 8px;
+}
+
+.cal-weekdays-row .weekend-day {
+  color: var(--danger, #fb7185);
+}
+
+.cal-cells-matrix {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(136px, 1fr));
+  gap: 8px;
+}
+
+.cal-cell {
+  background: var(--bg-surface, #0a1528);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+  border-radius: 12px;
+  padding: 9px;
+  min-height: 130px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.15s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+.cal-cell:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.cal-cell.is-empty {
+  opacity: 0.15;
+  background: transparent;
+  border-style: dashed;
+  cursor: default;
+  pointer-events: none;
+}
+
+.cal-cell.is-today {
+  border: 2px solid var(--primary, #38bdf8);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, var(--bg-surface, #0a1528) 100%);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.18);
+}
+
+.cal-cell.is-my-shift {
+  border: 2px solid #f59e0b;
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, var(--bg-surface, #0a1528) 100%);
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.25);
+}
+
+.cal-cell.is-dimmed {
+  opacity: 0.35;
+}
+
+.cal-cell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.cal-cell-day-num {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  font-family: var(--font-mono, monospace);
+}
+
+.cal-today-tag {
+  background: var(--primary, #38bdf8);
+  color: #040914;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.cal-myshift-tag {
+  background: #f59e0b;
+  color: #040914;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.cal-mini-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 4px 7px;
+  border-radius: 7px;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.3;
+  transition: all 0.15s ease;
+}
+
+.cal-mini-badge .badge-icon {
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.cal-mini-badge .badge-role-tag {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.cal-mini-badge .badge-name {
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   DAY MODE (LIGHT THEME) — CRISP, HIGH-CONTRAST MEDICAL PALETTE (WCAG AAA)
+   ========================================================================== */
+body.day-mode .badge-sanitar,
+[data-theme="day"] body .badge-sanitar {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #78350f; /* Deep espresso amber, maximum contrast */
+}
+body.day-mode .badge-sanitar .badge-icon,
+[data-theme="day"] body .badge-sanitar .badge-icon {
+  color: #d97706;
+}
+body.day-mode .badge-sanitar .badge-role-tag,
+[data-theme="day"] body .badge-sanitar .badge-role-tag {
+  color: #92400e;
+}
+
+body.day-mode .badge-nurse,
+[data-theme="day"] body .badge-nurse {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #064e3b; /* Deep rich pine emerald green */
+}
+body.day-mode .badge-nurse .badge-icon,
+[data-theme="day"] body .badge-nurse .badge-icon {
+  color: #059669;
+}
+body.day-mode .badge-nurse .badge-role-tag,
+[data-theme="day"] body .badge-nurse .badge-role-tag {
+  color: #166534;
+}
+
+body.day-mode .badge-doctor,
+[data-theme="day"] body .badge-doctor {
+  background: #f5f3ff;
+  border: 1px solid #c4b5fd;
+  color: #3b0764; /* Deep royal indigo/violet */
+}
+body.day-mode .badge-doctor .badge-icon,
+[data-theme="day"] body .badge-doctor .badge-icon {
+  color: #7c3aed;
+}
+body.day-mode .badge-doctor .badge-role-tag,
+[data-theme="day"] body .badge-doctor .badge-role-tag {
+  color: #5b21b6;
+}
+
+/* Day Mode Calendar Cells & Today Accent */
+body.day-mode .cal-cell,
+[data-theme="day"] body .cal-cell {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+body.day-mode .cal-cell:hover,
+[data-theme="day"] body .cal-cell:hover {
+  background: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 6px 18px rgba(2, 132, 199, 0.12);
+}
+
+body.day-mode .cal-cell.is-today,
+[data-theme="day"] body .cal-cell.is-today {
+  border: 2px solid #0284c7;
+  background: #f8fafc;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
+}
+
+body.day-mode .cal-today-tag,
+[data-theme="day"] body .cal-today-tag {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+body.day-mode .cal-cell.is-my-shift,
+[data-theme="day"] body .cal-cell.is-my-shift {
+  border: 2px solid #d97706;
+  background: #fffbeb;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+}
+
+body.day-mode .cal-myshift-tag,
+[data-theme="day"] body .cal-myshift-tag {
+  background: #d97706;
+  color: #ffffff;
+}
+
+body.day-mode .cal-cell-day-num,
+[data-theme="day"] body .cal-cell-day-num {
+  color: #0f172a;
+}
+
+/* ==========================================================================
+   NIGHT MODE (DARK THEME) — LUMINESCENT, CRISP CONTRAST
+   ========================================================================== */
+body.night-mode .badge-sanitar,
+[data-theme="night"] body .badge-sanitar,
+:root .badge-sanitar {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #ffffff;
+}
+body.night-mode .badge-sanitar .badge-icon,
+[data-theme="night"] body .badge-sanitar .badge-icon,
+:root .badge-sanitar .badge-icon {
+  color: #fbbf24;
+}
+body.night-mode .badge-sanitar .badge-role-tag,
+[data-theme="night"] body .badge-sanitar .badge-role-tag,
+:root .badge-sanitar .badge-role-tag {
+  color: #fcd34d;
+}
+
+body.night-mode .badge-nurse,
+[data-theme="night"] body .badge-nurse,
+:root .badge-nurse {
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #ffffff;
+}
+body.night-mode .badge-nurse .badge-icon,
+[data-theme="night"] body .badge-nurse .badge-icon,
+:root .badge-nurse .badge-icon {
+  color: #34d399;
+}
+body.night-mode .badge-nurse .badge-role-tag,
+[data-theme="night"] body .badge-nurse .badge-role-tag,
+:root .badge-nurse .badge-role-tag {
+  color: #6ee7b7;
+}
+
+body.night-mode .badge-doctor,
+[data-theme="night"] body .badge-doctor,
+:root .badge-doctor {
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #ffffff;
+}
+body.night-mode .badge-doctor .badge-icon,
+[data-theme="night"] body .badge-doctor .badge-icon,
+:root .badge-doctor .badge-icon {
+  color: #a78bfa;
+}
+body.night-mode .badge-doctor .badge-role-tag,
+[data-theme="night"] body .badge-doctor .badge-role-tag,
+:root .badge-doctor .badge-role-tag {
+  color: #c4b5fd;
+}
+
+/* ==========================================================================
+   5. VIEW 2: DETAILED TABLE ROSTER
+   ========================================================================== */
+.duty-table-panel {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.duty-table-search-bar {
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.duty-search-input-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 360px;
+}
+
+.duty-search-input-wrap i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.85rem;
+}
+
+.duty-search-input {
+  width: 100%;
+  padding: 9px 12px 9px 36px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-input, #060e1f);
+  color: var(--text-primary, #f8fafc);
+  font-family: inherit;
+  font-size: 0.88rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.duty-search-input:focus {
+  border-color: var(--primary, #38bdf8);
+}
+
+.duty-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.duty-data-table th {
+  background: var(--table-th-bg, #081429);
+  padding: 13px 16px;
+  font-weight: 700;
+  color: var(--table-th-color, #cbd5e1);
+  border-bottom: 1px solid var(--table-border, rgba(255, 255, 255, 0.07));
+  white-space: nowrap;
+}
+
+.duty-data-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--table-border, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary, #f8fafc);
+  vertical-align: middle;
+}
+
+.duty-data-table tr:hover {
+  background: var(--table-tr-hover, rgba(56, 189, 248, 0.05));
+}
+
+.duty-data-table tr.is-today-row {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.duty-data-table tr.is-my-row {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 3px solid #f59e0b;
+}
+
+/* ==========================================================================
+   6. VIEW 3: PERSONAL TIMELINE CARDS
+   ========================================================================== */
+.timeline-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.timeline-shift-card {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 1.25rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.timeline-shift-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.timeline-shift-card.card-today {
+  border: 2px solid var(--primary, #38bdf8);
+}
+
+.timeline-card-date {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.timeline-card-duty-info {
+  background: var(--bg-surface, #0a1528);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+/* ==========================================================================
+   7. MODALS (DAY DETAILS & SHIFT SWAP)
+   ========================================================================== */
+.duty-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.duty-modal-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.duty-modal-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--modal-bg, #0a162d);
+  border: 1px solid var(--modal-border, rgba(56, 189, 248, 0.25));
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  position: relative;
+  transform: translateY(15px);
+  transition: transform 0.2s ease;
+}
+
+.duty-modal-backdrop.active .duty-modal-card {
+  transform: translateY(0);
+}
+
+.duty-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.duty-modal-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--heading-color, #ffffff);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.btn-modal-close:hover {
+  color: #ffffff;
+}
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 6px;
+}
+
+.form-select,
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-input, #060e1f);
+  color: var(--text-primary, #f8fafc);
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.form-select:focus,
+.form-input:focus {
+  border-color: var(--primary, #38bdf8);
+}
+
+/* ==========================================================================
+   COMPREHENSIVE DAY MODE (LIGHT THEME) OVERRIDES & ENHANCEMENTS (WCAG AAA)
+   ========================================================================== */
+body.day-mode,
+[data-theme="day"] body {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-input: #ffffff;
+  --border-color: #e2e8f0;
+  --border-subtle: #edf2f7;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --heading-color: #0f172a;
+}
+
+body.day-mode .duty-hero-card,
+[data-theme="day"] body .duty-hero-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+body.day-mode .duty-live-badge,
+[data-theme="day"] body .duty-live-badge {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+body.day-mode .duty-post-card,
+[data-theme="day"] body .duty-post-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+body.day-mode .duty-post-card.role-sanitar,
+[data-theme="day"] body .duty-post-card.role-sanitar {
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+  border-left-color: #d97706;
+}
+
+body.day-mode .duty-post-card.role-nurse,
+[data-theme="day"] body .duty-post-card.role-nurse {
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+  border-left-color: #059669;
+}
+
+body.day-mode .duty-post-card.role-doctor,
+[data-theme="day"] body .duty-post-card.role-doctor {
+  background: linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%);
+  border-left-color: #7c3aed;
+}
+
+body.day-mode .avatar-sanitar,
+[data-theme="day"] body .avatar-sanitar {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+body.day-mode .avatar-nurse,
+[data-theme="day"] body .avatar-nurse {
+  background: #d1fae5;
+  color: #047857;
+}
+
+body.day-mode .avatar-doctor,
+[data-theme="day"] body .avatar-doctor {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+body.day-mode .duty-post-name,
+[data-theme="day"] body .duty-post-name {
+  color: #0f172a;
+}
+
+body.day-mode .duty-post-badge-time,
+[data-theme="day"] body .duty-post-badge-time {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #0369a1;
+}
+
+body.day-mode .duty-filter-card,
+[data-theme="day"] body .duty-filter-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+}
+
+body.day-mode .duty-filter-tariff-note,
+[data-theme="day"] body .duty-filter-tariff-note {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+body.day-mode .sanitar-pill-btn,
+[data-theme="day"] body .sanitar-pill-btn {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+body.day-mode .sanitar-pill-btn:hover,
+[data-theme="day"] body .sanitar-pill-btn:hover {
+  background: #f1f5f9;
+  border-color: #d97706;
+  color: #b45309;
+}
+
+body.day-mode .sanitar-pill-btn.active,
+[data-theme="day"] body .sanitar-pill-btn.active {
+  background: #d97706;
+  border-color: #b45309;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+}
+
+body.day-mode .personal-kpi-card,
+[data-theme="day"] body .personal-kpi-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+body.day-mode .personal-kpi-value,
+[data-theme="day"] body .personal-kpi-value {
+  color: #0f172a;
+}
+
+body.day-mode .duty-month-stepper,
+[data-theme="day"] body .duty-month-stepper {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+}
+
+body.day-mode .btn-step-arrow,
+[data-theme="day"] body .btn-step-arrow {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+body.day-mode .btn-step-arrow:hover,
+[data-theme="day"] body .btn-step-arrow:hover {
+  background: #f1f5f9;
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
+body.day-mode .duty-month-display,
+[data-theme="day"] body .duty-month-display {
+  color: #0f172a;
+}
+
+body.day-mode .duty-view-pills,
+[data-theme="day"] body .duty-view-pills {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+}
+
+body.day-mode .duty-view-pill-btn,
+[data-theme="day"] body .duty-view-pill-btn {
+  color: #64748b;
+}
+
+body.day-mode .duty-view-pill-btn.active,
+[data-theme="day"] body .duty-view-pill-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+body.day-mode .btn-duty-outline,
+[data-theme="day"] body .btn-duty-outline {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+body.day-mode .btn-duty-outline:hover,
+[data-theme="day"] body .btn-duty-outline:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+body.day-mode .btn-duty-telegram,
+[data-theme="day"] body .btn-duty-telegram {
+  background: #e0f2fe;
+  border-color: #bae6fd;
+  color: #0284c7;
+}
+
+body.day-mode .btn-duty-telegram:hover,
+[data-theme="day"] body .btn-duty-telegram:hover {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+body.day-mode .btn-duty-excel,
+[data-theme="day"] body .btn-duty-excel {
+  background: #d1fae5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+body.day-mode .btn-duty-excel:hover,
+[data-theme="day"] body .btn-duty-excel:hover {
+  background: #059669;
+  color: #ffffff;
+}
+
+body.day-mode .btn-duty-swap,
+[data-theme="day"] body .btn-duty-swap {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+body.day-mode .btn-duty-swap:hover,
+[data-theme="day"] body .btn-duty-swap:hover {
+  background: #d97706;
+  color: #ffffff;
+}
+
+body.day-mode .cal-grid-panel,
+[data-theme="day"] body .cal-grid-panel {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+}
+
+body.day-mode .cal-weekdays-row,
+[data-theme="day"] body .cal-weekdays-row {
+  color: #475569;
+  border-bottom-color: #e2e8f0;
+}
+
+body.day-mode .cal-weekdays-row .weekend-day,
+[data-theme="day"] body .cal-weekdays-row .weekend-day {
+  color: #e11d48;
+}
+
+body.day-mode .duty-table-panel,
+[data-theme="day"] body .duty-table-panel {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+
+body.day-mode .duty-data-table th,
+[data-theme="day"] body .duty-data-table th {
+  background: #f8fafc;
+  color: #475569;
+  border-bottom-color: #e2e8f0;
+}
+
+body.day-mode .duty-data-table td,
+[data-theme="day"] body .duty-data-table td {
+  color: #0f172a;
+  border-bottom-color: #f1f5f9;
+}
+
+body.day-mode .duty-data-table tr:hover,
+[data-theme="day"] body .duty-data-table tr:hover {
+  background: #f8fafc;
+}
+
+body.day-mode .duty-data-table tr.is-today-row,
+[data-theme="day"] body .duty-data-table tr.is-today-row {
+  background: #f0f9ff;
+}
+
+body.day-mode .timeline-shift-card,
+[data-theme="day"] body .timeline-shift-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+body.day-mode .timeline-card-date,
+[data-theme="day"] body .timeline-card-date {
+  color: #0f172a;
+}
+
+body.day-mode .timeline-card-duty-info,
+[data-theme="day"] body .timeline-card-duty-info {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+body.day-mode .duty-modal-card,
+[data-theme="day"] body .duty-modal-card {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15);
+}
+
+body.day-mode .duty-modal-title,
+[data-theme="day"] body .duty-modal-title {
+  color: #0f172a;
+}
+
+body.day-mode .form-label,
+[data-theme="day"] body .form-label {
+  color: #475569;
+}
+
+body.day-mode .form-select,
+body.day-mode .form-input,
+[data-theme="day"] body .form-select,
+[data-theme="day"] body .form-input {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+/* ==========================================================================
+   8. OFFICIAL A4 CLINICAL DOCUMENT PRINT STYLES (SINGLE-SHEET ZERO-OVERFLOW)
+   ========================================================================== */
+.official-duty-print-sheet {
+  display: none;
+}
+
+@media print {
+  html, body.duty-page-body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-family: 'Plus Jakarta Sans', 'Outfit', Arial, sans-serif !important;
+    font-size: 8pt !important;
+    line-height: 1.25 !important;
+  }
+
+  /* Hide the entire web application interface */
+  .portal-header,
+  .duty-container,
+  .duty-modal-backdrop,
+  #theme-toggle-btn,
+  .screen-controls,
+  #fmh-toast-container,
+  #fmh-theme-toast-container {
+    display: none !important;
+  }
+
+  /* Show ONLY the dedicated A4 Clinical Sheet */
+  .official-duty-print-sheet {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm 8mm 10mm;
+  }
+
+  .print-header-grid {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #0f766e;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+  }
+
+  .print-brand-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .print-crest-box {
+    width: 38px;
+    height: 38px;
+    background: #0f766e;
+    color: #ffffff;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-brand-title {
+    font-size: 13pt;
+    font-weight: 800;
+    color: #0f766e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    line-height: 1.1;
+  }
+
+  .print-brand-sub {
+    font-size: 7.2pt;
+    color: #334155;
+    margin-top: 2px;
+  }
+
+  .print-stamp-box {
+    text-align: right;
+    font-size: 7.2pt;
+    color: #1e293b;
+    line-height: 1.35;
+  }
+
+  .print-stamp-box strong {
+    font-size: 8pt;
+    text-transform: uppercase;
+  }
+
+  .print-doc-title-block {
+    text-align: center;
+    margin: 6px 0 8px 0;
+  }
+
+  .print-doc-title-block h2 {
+    font-size: 10.5pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin: 0;
+    color: #0f172a;
+    letter-spacing: 0.3px;
+  }
+
+  .print-doc-meta {
+    font-size: 7.2pt;
+    color: #475569;
+    margin-top: 2px;
+  }
+
+  /* Dual Table Layout (Days 1-16 on left, Days 17-31 on right) */
+  .print-dual-table-wrap {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .print-sub-table {
+    flex: 1;
+    width: 50%;
+    border-collapse: collapse;
+    font-size: 7.2pt;
+  }
+
+  .print-sub-table th {
+    background: #f1f5f9 !important;
+    border: 1px solid #94a3b8 !important;
+    color: #0f172a !important;
+    font-weight: 800;
+    padding: 3px 5px;
+    text-align: left;
+    white-space: nowrap;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-sub-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 2.5px 5px;
+    color: #000000 !important;
+    vertical-align: middle;
+  }
+
+  .print-sub-table tr.weekend-row {
+    background: #fff1f2 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-sub-table tr.today-print-row {
+    background: #e0f2fe !important;
+    font-weight: 700;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Single Full Table for Personal Schedule */
+  .print-single-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8pt;
+    margin-bottom: 10px;
+  }
+
+  .print-single-table th {
+    background: #f1f5f9 !important;
+    border: 1px solid #94a3b8 !important;
+    color: #0f172a !important;
+    font-weight: 800;
+    padding: 5px 8px;
+    text-align: left;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-single-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 4px 8px;
+    color: #000000 !important;
+    vertical-align: middle;
+  }
+
+  .print-total-summary-box {
+    display: flex;
+    justify-content: space-between;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 8pt;
+    font-weight: 700;
+    margin-bottom: 10px;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-signatures-grid {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 10px;
+    padding-top: 6px;
+    border-top: 1px solid #94a3b8;
+    font-size: 7.2pt;
+    color: #0f172a;
+  }
+
+  .print-sig-col {
+    flex: 1;
+    text-align: left;
+  }
+
+  .print-sig-col.center {
+    text-align: center;
+  }
+
+  .print-sig-col.right {
+    text-align: right;
+  }
+
+  .print-sig-line {
+    margin-top: 18px;
+    border-bottom: 1px solid #000000;
+    width: 85%;
+    display: inline-block;
+  }
+}

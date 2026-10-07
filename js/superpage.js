@@ -782,35 +782,90 @@
   /* =========================================================================
      DEPARTMENT 4: PHARMACOLOGY (206 DRUGS)
      ========================================================================= */
-  function renderPharmacyDepartment(filterCat = 'all', query = '') {
+  let currentPharmacyCategory = 'all';
+  let currentPharmacyQuery = '';
+
+  function renderPharmacyDepartment(filterCat = currentPharmacyCategory, query = currentPharmacyQuery) {
     const grid = document.getElementById('pharmacy-drugs-grid');
     if (!grid || !pharmacologyData || !pharmacologyData.medications) return;
 
+    currentPharmacyCategory = filterCat;
+    currentPharmacyQuery = query;
+
     let list = pharmacologyData.medications;
-    if (filterCat !== 'all') {
-      list = list.filter(m => m.category && m.category.toLowerCase().includes(filterCat.toLowerCase()));
-    }
-    if (query) {
-      const q = query.toLowerCase();
-      list = list.filter(m => m.name.toLowerCase().includes(q) || (m.inn && m.inn.toLowerCase().includes(q)));
+    if (window.FMH_MedSearch) {
+      list = window.FMH_MedSearch.search(list, query, filterCat);
+    } else {
+      if (filterCat !== 'all') {
+        list = list.filter(m => m.category && m.category.toLowerCase().includes(filterCat.toLowerCase()));
+      }
+      if (query) {
+        const q = query.toLowerCase();
+        list = list.filter(m => (m.name || '').toLowerCase().includes(q) || (m.inn && m.inn.toLowerCase().includes(q)));
+      }
     }
 
-    grid.innerHTML = list.slice(0, 48).map(d => `
-      <div class="pharmacy-drug-card">
-        <div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-            <strong style="color: var(--heading-color); font-size: 0.95rem;">${d.name}</strong>
-            <span class="pill-status pill-available" style="font-size: 0.65rem;">Mavjud</span>
+    if (list.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 2.5rem; color: #94a3b8;">
+          <i class="fas fa-search" style="font-size: 2rem; margin-bottom: 8px;"></i>
+          <div>Kiritilgan so'rov bo'yicha dori topilmadi.</div>
+          <div style="font-size: 0.8rem; margin-top: 4px; color: #64748b;">Kirill yoki Lotin alifbosida yozib ko'ring (masalan: <em>mexidol / мексидол / 18</em>)</div>
+        </div>
+      `;
+      return;
+    }
+
+    grid.innerHTML = list.slice(0, 48).map(d => {
+      const displayName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(d.name, query) : (d.name || '');
+      const numBadge = d.fayz_house_num ? `<span style="display:inline-block; font-size:0.7rem; font-weight:800; color:#0b3b60; background:#f1f5f9; padding:1px 5px; border-radius:4px; margin-right:4px; border:1px solid #cbd5e1;">№${d.fayz_house_num}</span>` : '';
+      return `
+        <div class="pharmacy-drug-card">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+              <strong style="color: var(--heading-color); font-size: 0.95rem;">${numBadge}${displayName}</strong>
+              <span class="pill-status pill-available" style="font-size: 0.65rem;">Mavjud</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--primary); font-weight: 700; margin-bottom: 4px;">${d.inn || d.category || 'MNN'}</div>
+            <div style="font-size: 0.74rem; color: var(--text-muted); line-height: 1.3;">${d.form || d.dosage_form || 'Ampula / Flakon'} • Doza: ${d.dosage || d.default_dosage || 'Standart'}</div>
           </div>
-          <div style="font-size: 0.75rem; color: var(--primary); font-weight: 700; margin-bottom: 4px;">${d.inn || d.category}</div>
-          <div style="font-size: 0.74rem; color: var(--text-muted); line-height: 1.3;">${d.form || 'Ampula / Flakon'} • Doza: ${d.dosage || 'Standart'}</div>
+          <div style="border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-family: var(--font-mono); font-weight: 700; color: var(--success); font-size: 0.88rem;">${formatUZS(d.price || 45000)}</span>
+            <button class="btn-super btn-super-primary" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.prescribeDrug('${d.name}')">+ Retsept</button>
+          </div>
         </div>
-        <div style="border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--success); font-size: 0.88rem;">${formatUZS(d.price || 45000)}</span>
-          <button class="btn-super btn-super-primary" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.prescribeDrug('${d.name}')">+ Retsept</button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+  }
+
+  function onPharmacySearch(val) {
+    currentPharmacyQuery = (val || '').trim();
+    const clearBtn = document.getElementById('pharmacy-search-clear');
+    const badge = document.getElementById('pharmacy-search-script-badge');
+    if (clearBtn) clearBtn.style.display = currentPharmacyQuery ? 'flex' : 'none';
+    if (badge && window.FMH_MedSearch) {
+      const s = window.FMH_MedSearch.detectScript(currentPharmacyQuery);
+      if (s === 'cyrillic') {
+        badge.innerHTML = '🇷🇺 Кирилл ➔ Lotin';
+        badge.style.color = '#0284c7';
+      } else if (s === 'latin') {
+        badge.innerHTML = '🇺🇿 Lotin ➔ Кирилл';
+        badge.style.color = '#9333ea';
+      } else {
+        badge.innerHTML = '🔤 Lotin ⇄ Кирилл';
+        badge.style.color = '#0d9488';
+      }
+    }
+    renderPharmacyDepartment(currentPharmacyCategory, currentPharmacyQuery);
+  }
+
+  function clearPharmacySearch() {
+    const inp = document.getElementById('pharmacy-search-input');
+    if (inp) {
+      inp.value = '';
+      onPharmacySearch('');
+      inp.focus();
+    }
   }
 
   function filterPharmacyCategory(cat, btn) {
@@ -818,7 +873,7 @@
       document.querySelectorAll('#pharmacy-category-filters .super-filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     }
-    renderPharmacyDepartment(cat);
+    renderPharmacyDepartment(cat, currentPharmacyQuery);
   }
 
   /* =========================================================================
@@ -1047,8 +1102,8 @@
 
     // Dynamically load doctors from /api/staff
     fetch('/api/staff').then(res => res.json()).then(staffList => {
-      if (Array.isArray(staffList)) {
-        const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || s.full_name.toLowerCase().includes('dr'));
+        // Sanitarlar va hamshiralar davolash va konsultatsiya ko'rsatmaydi, faqat shifokorlar
+        const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor');
         const docSelect = document.getElementById('modal-doctor-select');
         if (docSelect) {
           if (docStaff.length > 0) {
@@ -1061,7 +1116,6 @@
             if (booking && booking.doctor) docSelect.value = booking.doctor;
           }
         }
-      }
     }).catch(() => {});
 
     if (bookingId) {
@@ -1898,6 +1952,8 @@
     prescribeDrug,
     prescribeDrugForPatient,
     filterPharmacyCategory,
+    onPharmacySearch,
+    clearPharmacySearch,
     filterTransactions,
     toggleMeal,
     toggleTheme,

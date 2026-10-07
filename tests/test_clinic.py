@@ -2801,6 +2801,95 @@ class PdfExport(ApiTest):
             self.skipTest(f"reportlab not installed: {e}")
 
 
+class MedicationPurchases(ApiTest):
+    def test_medication_purchase_records_expense_and_restocks(self):
+        """
+        Buying medications must record an expense transaction in accounting,
+        appear in medication_purchases, and update catalog inventory stock.
+        """
+        today_str = _dt.date.today().isoformat()
+        st, res = self.api.post('/api/accounting/medication-purchases', {
+            'purchase_date': today_str,
+            'payment_method': 'cash',
+            'supplier_name': 'Grand Pharm Test',
+            'invoice_number': 'CHK-TEST-001',
+            'notes': 'Test batch purchase',
+            'items': [
+                {
+                    'medication_name': 'Reamberin 1.5% 400ml',
+                    'category': 'Detoksikatsiya',
+                    'form': 'flakon',
+                    'quantity': 10,
+                    'unit_price': 40000
+                }
+            ]
+        })
+        self.assertEqual(st, 201, f"medication purchase failed: {res}")
+        trx_id = res['transaction_id']
+        pur_ids = res['purchase_ids']
+        self.assertEqual(res['amount'], 400000.0)
+
+        # 1. Verify accounting ledger and data
+        st_data, acc_data = self.api.get('/api/accounting/data')
+        self.assertEqual(st_data, 200)
+        self.assertIn('medication_purchases', acc_data)
+
+        # Check transaction in accounting_transactions
+        txn = next((t for t in acc_data['transactions'] if t['id'] == trx_id), None)
+        self.assertIsNotNone(txn, "transaction not found in accounting transactions")
+        self.assertEqual(txn['type'], 'expense')
+        self.assertEqual(txn['category'], 'medication_purchase')
+        self.assertEqual(float(txn['amount']), 400000.0)
+
+        # Check medication_purchases list
+        pur = next((p for p in acc_data['medication_purchases'] if p['id'] in pur_ids), None)
+        self.assertIsNotNone(pur, "purchase not found in medication purchases list")
+        self.assertEqual(pur['medication_name'], 'Reamberin 1.5% 400ml')
+        self.assertEqual(float(pur['total_price']), 400000.0)
+
+        # 2. Verify dedicated GET endpoint
+        st_list, pur_list = self.api.get('/api/accounting/medication-purchases')
+        self.assertEqual(st_list, 200)
+        self.assertTrue(any(p['id'] == pur_ids[0] for p in pur_list))
+
+        # 3. Clean up by deleting the test purchase
+        st_del, del_res = self.api.delete(f'/api/accounting/medication-purchases/{pur_ids[0]}')
+        self.assertEqual(st_del, 200, f"delete purchase failed: {del_res}")
+
+    def test_medication_purchase_validation_rejects_empty_or_negative(self):
+        """Refuse zero or negative quantities and empty item lists."""
+        st, res = self.api.post('/api/accounting/medication-purchases', {
+            'items': []
+        })
+        self.assertEqual(st, 400)
+
+        st, res = self.api.post('/api/accounting/medication-purchases', {
+            'items': [
+                {'medication_name': 'Test Med', 'quantity': -5, 'unit_price': 10000}
+            ]
+        })
+        self.assertEqual(st, 400)
+
+    def test_unauthorized_staff_cannot_create_medication_purchase(self):
+        """Only accounting-authorized roles may record clinic purchases."""
+        nurse_user = f'suite_med_nurse_{os.getpid()}'
+        self.api.delete('/api/users/' + nurse_user)
+        st, created = self.api.post('/api/users', {
+            'username': nurse_user, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite Nurse', 'role': 'nurse'
+        })
+        self.assertEqual(st, 201)
+        try:
+            nurse = Client()
+            self.assertEqual(nurse.login(nurse_user, 'Suite-Probe-2026')[0], 200)
+            res_code, _ = nurse.post('/api/accounting/medication-purchases', {
+                'items': [{'medication_name': 'Test', 'quantity': 1, 'unit_price': 1000}]
+            })
+            self.assertEqual(res_code, 403)
+        finally:
+            self.api.delete('/api/users/' + nurse_user)
+
+
 PROBE_PREFIXES = ('suite_', 'concurrent_probe_', 'pwpolicy_probe')
 
 

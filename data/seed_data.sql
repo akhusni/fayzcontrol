@@ -72,12 +72,22 @@ INSERT IGNORE INTO beds (id, room_id, bed_code, bed_type, default_daily_rate, st
 -- 3. MEDICAL & CLINICAL STAFF
 -- ----------------------------------------------------------------------------
 INSERT IGNORE INTO staff (id, full_name, role, specialty, phone, salary_base, is_active) VALUES
-('STF-DOC-01', 'Dr. Bobur Mirzayev',   'chief_doctor', 'Bosh Shifokor / Narkolog-Psixiatr', '+998901001122', 15000000.0, 1),
-('STF-DOC-02', 'Dr. Jasur Aliyev',     'doctor',       'Shifokor-Narkolog',                 '+998902003344', 12000000.0, 1),
-('STF-DOC-03', 'Dr. Dilnoza Rahimova', 'doctor',       'Psixoterapevt / Psixiatr',          '+998903005566', 10000000.0, 1),
-('STF-NRS-01', 'Nilufar Karimova',    'nurse',        'Katta Hamshira',                    '+998904007788', 6000000.0,  1),
-('STF-NRS-02', 'Shahnoza Qodirova',   'nurse',        'Post Hamshirasi',                   '+998905009900', 5000000.0,  1),
-('STF-REC-01', 'Malika Usmonova',     'receptionist', 'Qabulxona Administratori',           '+998906001133', 4500000.0,  1);
+('STF-DOC-01', 'Umarov Xusan Payziboyevich',         'chief_doctor', 'Bosh Shifokor / Narkolog-Psixiatr', '+998 90 000-01-01', 15000000.0, 1),
+('STF-DOC-02', 'Shermuxamedova Farida Miraxatovna',  'doctor',       'Davolovchi Shifokor-Narkolog',     '+998 90 000-01-02', 12000000.0, 1),
+('STF-DOC-03', 'Vasina Yuliya Aleksandrovna',        'doctor',       'Davolovchi Shifokor-Psixiatr',     '+998 90 000-01-03', 12000000.0, 1),
+('STF-NRS-01', 'Abdukarimova Ra\'no Xudayberganovna','nurse',        'Hamshiralik ishi',                 '+998 90 000-02-01', 6000000.0,  1),
+('STF-NRS-02', 'Atametova Tursunoy Xudayberganovna', 'nurse',        'Hamshiralik ishi',                 '+998 90 000-02-02', 6000000.0,  1),
+('STF-NRS-03', 'G\'aniyeva Saygul Shodmon qizi',     'nurse',        'Hamshiralik ishi',                 '+998 90 000-02-03', 6000000.0,  1),
+('STF-NRS-04', 'Safarova Shaxnoza Abdumannapovna',   'nurse',        'Hamshiralik ishi',                 '+998 90 000-02-04', 6000000.0,  1),
+('STF-NRS-05', 'Saydaminova Ziyeda Umar qizi',       'nurse',        'Hamshiralik ishi',                 '+998 90 000-02-05', 6000000.0,  1),
+('STF-NRS-06', 'Xoltoyeva Shaxlo Sobitjonovna',      'nurse',        'Hamshiralik ishi',                 '+998 90 000-02-06', 6000000.0,  1),
+('STF-SPC-01', 'Ibragimova Nodira Batirovna',        'support',      'Tibbiy massaj / Fizioterapiya',    '+998 90 000-03-01', 5000000.0,  1),
+('STF-SAN-01', 'Donoboyeva Laylo Donoboyevna',       'sanitar',      'Sanitariya & Gigiyena',            '+998 90 000-04-01', 3800000.0,  1),
+('STF-SAN-02', 'Egamqulova Xilola Xoshimqulovna',    'sanitar',      'Sanitariya & Gigiyena',            '+998 90 000-04-02', 3800000.0,  1),
+('STF-SAN-03', 'Karabaeva Muxayyo Toshpo\'latovna',  'sanitar',      'Sanitariya & Gigiyena',            '+998 90 000-04-03', 3800000.0,  1),
+('STF-SAN-04', 'Karakulova Xurshida Mirzakim qizi',  'sanitar',      'Sanitariya & Gigiyena',            '+998 90 000-04-04', 3800000.0,  1),
+('STF-SAN-05', 'Maxkamova Umida Muminovna',          'sanitar',      'Sanitariya & Gigiyena',            '+998 90 000-04-05', 3800000.0,  1),
+('STF-SAN-06', 'Musaxanova Fotima Danabayevna',      'sanitar',      'Sanitariya & Gigiyena',            '+998 90 000-04-06', 3800000.0,  1);
 
 -- ----------------------------------------------------------------------------
 -- 4. MASTER SERVICES PRICING CATALOG

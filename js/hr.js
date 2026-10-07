@@ -55,9 +55,6 @@
     brigades: DEFAULT_BRIGADES,
     monthlySchedule: [],
     attendance: [],
-    leaves: [],
-    vacancies: [],
-    candidates: [],
     activeTab: 'staff',
     staffFilterDept: 'all',
     staffFilterStatus: 'all',
@@ -101,41 +98,20 @@
     if (inpEnd) inpEnd.value = `${lastDay.getFullYear()}-${pad(lastDay.getMonth() + 1)}-${pad(lastDay.getDate())}`;
 
     try {
-      const [res, staffApiRes] = await Promise.all([
-        fetch('/api/hr/data'),
-        fetch('/api/staff')
-      ]);
-      if (res.ok) {
+      let res = await fetch('/api/hr/data').catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch('data/hr_db.json').catch(() => null);
+      }
+      if (res && res.ok) {
         const data = await res.json();
         populateState(data);
+        ensureMonthlySchedule();
+        saveToLocalStorage();
+        renderAll();
+        return;
       }
-      if (staffApiRes.ok) {
-        const apiStaff = await staffApiRes.json();
-        if (Array.isArray(apiStaff) && apiStaff.length > 0) {
-          apiStaff.forEach(s => {
-            const exists = State.staff.find(st => st.id === s.id);
-            if (!exists) {
-              State.staff.push({
-                id: s.id,
-                full_name: s.full_name,
-                role: s.role,
-                role_label_uz: s.role === 'chief_doctor' ? 'Bosh Shifokor' : (s.role === 'doctor' ? 'Shifokor Narkolog' : (s.role === 'nurse' ? 'Hamshira' : 'Administrator')),
-                department: s.role === 'nurse' ? 'Hamshiralar Posti' : (s.role === 'receptionist' ? 'Qabulxona' : 'Shifokorlar Bo\'limi'),
-                specialty: s.specialty || '',
-                phone: s.phone || '',
-                status: s.is_active ? 'active' : 'inactive',
-                employment_type: 'full_time'
-              });
-            }
-          });
-        }
-      }
-      ensureMonthlySchedule();
-      saveToLocalStorage();
-      renderAll();
-      return;
     } catch (e) {
-      console.warn('API fetch failed, checking local storage...', e);
+      console.warn('API and static fetch failed, checking local storage...', e);
     }
 
     const localData = localStorage.getItem(STORAGE_KEY);
@@ -170,9 +146,6 @@
     State.brigades = (data.brigades && data.brigades[0].nurse_id) ? data.brigades : DEFAULT_BRIGADES;
     State.monthlySchedule = data.monthly_duty_schedule || [];
     State.attendance = data.attendance_records || [];
-    State.leaves = data.leaves || [];
-    State.vacancies = data.vacancies || [];
-    State.candidates = data.candidates || [];
   }
 
   function saveToLocalStorage() {
@@ -182,10 +155,7 @@
       brigades: State.brigades,
       staff: State.staff,
       monthly_duty_schedule: State.monthlySchedule,
-      attendance_records: State.attendance,
-      leaves: State.leaves,
-      vacancies: State.vacancies,
-      candidates: State.candidates
+      attendance_records: State.attendance
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }
@@ -937,12 +907,6 @@
         }
       }
 
-      const onLeave = State.leaves.find(l => l.staff_id === staff.id && l.status === 'approved');
-      if (onLeave) {
-        isRestRecommended = false;
-        conflictReason = 'Ushbu sanada tasdiqlangan mehnat ta\'tilida!';
-      }
-
       const cardClass = conflictReason ? 'smart-picker-card conflict' : isRestRecommended ? 'smart-picker-card recommended' : 'smart-picker-card';
 
       return `
@@ -1058,8 +1022,8 @@
 
     container.innerHTML = filtered.map(staff => {
       const initials = staff.full_name ? staff.full_name.split(' ').map(n => n[0]).join('').substring(0, 2) : 'ST';
-      const statusClass = staff.status === 'active' ? 'active' : staff.status === 'leave' ? 'leave' : 'inactive';
-      const statusLabel = staff.status === 'active' ? 'Faol' : staff.status === 'leave' ? 'Ta\'tilda' : 'Noaktiv';
+      const statusClass = staff.status === 'active' ? 'active' : 'inactive';
+      const statusLabel = staff.status === 'active' ? 'Faol' : 'Noaktiv';
 
       let dutyRateLabel = '—';
       if (staff.duty_rate_type === 'doctor_night') dutyRateLabel = '350 000 so\'m/tun';
@@ -1113,7 +1077,7 @@
   }
 
   // ==========================================================================
-  // TAB 3: ATTENDANCE, TAB 4: PAYROLL, TAB 5: LEAVES, TAB 6: LICENSES, TAB 7: RECRUITMENT
+  // TAB 3: ATTENDANCE, TAB 4: PAYROLL
   // ==========================================================================
 
   function renderAttendanceSheet() {
@@ -1140,8 +1104,6 @@
         badgeHtml = '<span class="status-badge badge-shift"><i class="fas fa-moon"></i> Tungi smena</span>';
       } else if (att.status === 'rest') {
         badgeHtml = '<span class="status-badge badge-info"><i class="fas fa-bed"></i> Dam olishda</span>';
-      } else if (att.status === 'leave') {
-        badgeHtml = '<span class="status-badge badge-warning"><i class="fas fa-plane-departure"></i> Ta\'tilda</span>';
       } else if (att.status === 'absent') {
         badgeHtml = '<span class="status-badge badge-danger"><i class="fas fa-times"></i> Kelmadi</span>';
       }
@@ -1231,143 +1193,6 @@
     if (elGrandTaxes) elGrandTaxes.textContent = formatUZS(grandTaxes);
     const elGrandNet = document.getElementById('payroll-total-net');
     if (elGrandNet) elGrandNet.textContent = formatUZS(grandNet);
-  }
-
-  function renderLeaveRequests() {
-    const tbody = document.getElementById('leaves-tbody');
-    if (!tbody) return;
-
-    const badge = document.getElementById('badge-leaves-count');
-    if (badge) badge.textContent = State.leaves.length;
-
-    tbody.innerHTML = State.leaves.map(leave => {
-      let statusBadge = '<span class="status-badge badge-pending"><i class="fas fa-hourglass-half"></i> Kutilmoqda</span>';
-      if (leave.status === 'approved') statusBadge = '<span class="status-badge badge-active"><i class="fas fa-check"></i> Tasdiqlandi</span>';
-      if (leave.status === 'rejected') statusBadge = '<span class="status-badge badge-danger"><i class="fas fa-ban"></i> Rad etildi</span>';
-
-      return `
-        <tr>
-          <td><span style="font-family: var(--font-mono); font-weight: 700; color: var(--text-muted);">${leave.id}</span></td>
-          <td>
-            <div style="font-weight: 700; color: #ffffff;">${leave.staff_name}</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted);">${leave.staff_id}</div>
-          </td>
-          <td><span class="staff-meta-chip"><i class="fas fa-umbrella-beach"></i> ${leave.leave_type_uz || leave.leave_type}</span></td>
-          <td><span style="font-family: var(--font-mono);">${formatDate(leave.start_date)} — ${formatDate(leave.end_date)}</span></td>
-          <td><span style="font-weight: 700; color: #38bdf8;">${leave.total_days} kun</span></td>
-          <td><span style="font-size: 0.8rem; color: var(--text-secondary);">${leave.reason || '—'}</span></td>
-          <td>${statusBadge}</td>
-          <td style="text-align: center;">
-            ${leave.status === 'pending' ? `
-              <div style="display: flex; gap: 4px; justify-content: center;">
-                <button class="btn-portal btn-success-portal" style="padding: 4px 8px; font-size: 0.72rem;" onclick="window.FMH_HR.approveLeave('${leave.id}')"><i class="fas fa-check"></i></button>
-                <button class="btn-portal btn-danger-portal" style="padding: 4px 8px; font-size: 0.72rem;" onclick="window.FMH_HR.rejectLeave('${leave.id}')"><i class="fas fa-times"></i></button>
-              </div>
-            ` : `<span style="font-size: 0.75rem; color: var(--text-muted);"><i class="fas fa-lock"></i> Yakunlangan</span>`}
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  function renderLicensesTable() {
-    const tbody = document.getElementById('licenses-tbody');
-    if (!tbody) return;
-
-    const now = new Date('2026-08-15');
-
-    tbody.innerHTML = State.staff.map(staff => {
-      let licenseStatus = '<span class="status-badge badge-active"><i class="fas fa-shield-alt"></i> Amal qiladi</span>';
-      let daysLeft = '—';
-
-      if (staff.license_expiry) {
-        const exp = new Date(staff.license_expiry);
-        const diff = Math.round((exp - now) / (1000 * 60 * 60 * 24));
-        daysLeft = `${diff} kun qoldi`;
-
-        if (diff <= 0) {
-          licenseStatus = '<span class="status-badge badge-danger"><i class="fas fa-exclamation-triangle"></i> Muddati o\'tgan</span>';
-        } else if (diff <= 60) {
-          licenseStatus = '<span class="status-badge badge-late"><i class="fas fa-clock"></i> Tugash arafasida</span>';
-        }
-      }
-
-      return `
-        <tr>
-          <td>
-            <div style="font-weight: 700; color: #ffffff;">${staff.full_name}</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted);">${staff.id}</div>
-          </td>
-          <td><span style="font-family: var(--font-mono); color: #38bdf8; font-weight: 700;">${staff.license_number || 'Mavjud emas'}</span></td>
-          <td><span class="staff-meta-chip"><i class="fas fa-award"></i> ${staff.category || 'Mutaxassis'}</span></td>
-          <td><span style="font-family: var(--font-mono);">${formatDate(staff.license_expiry)}</span></td>
-          <td><span style="font-family: var(--font-mono); font-size: 0.78rem;">${daysLeft}</span></td>
-          <td>${licenseStatus}</td>
-          <td>
-            ${staff.bls_cpr_certified ? 
-              `<span class="status-badge badge-active" title="Amal qilish: ${formatDate(staff.bls_cpr_expiry)}"><i class="fas fa-heartbeat"></i> CPR/BLS Bor</span>` : 
-              `<span class="status-badge badge-absent"><i class="fas fa-times"></i> Yo'q</span>`
-            }
-          </td>
-          <td style="text-align: center;">
-            <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.74rem;" onclick="window.FMH_HR.openRenewLicenseModal('${staff.id}')">
-              <i class="fas fa-sync-alt"></i> Uzaytirish
-            </button>
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  function renderRecruitmentKanban() {
-    const container = document.getElementById('recruitment-kanban-container');
-    if (!container) return;
-
-    const stages = [
-      { key: 'applied', title: 'Yangi Arizalar', icon: 'fas fa-inbox', color: '#38bdf8' },
-      { key: 'interview', title: 'Suhbat Belgilangan', icon: 'fas fa-comments', color: '#fbbf24' },
-      { key: 'trial', title: 'Sinov Muddati', icon: 'fas fa-user-clock', color: '#c084fc' },
-      { key: 'hired', title: 'Ishga Qabul Qilindi', icon: 'fas fa-user-check', color: '#34d399' }
-    ];
-
-    container.innerHTML = stages.map(stg => {
-      const candidates = State.candidates.filter(c => c.status === stg.key);
-
-      return `
-        <div class="kanban-col">
-          <div class="kanban-header">
-            <div class="kanban-title" style="color: ${stg.color};">
-              <i class="${stg.icon}"></i> ${stg.title}
-            </div>
-            <div class="kanban-count">${candidates.length}</div>
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            ${candidates.map(cand => {
-              const vac = State.vacancies.find(v => v.id === cand.vacancy_id);
-              return `
-                <div class="candidate-card">
-                  <div class="candidate-name">${cand.full_name}</div>
-                  <div class="candidate-vacancy"><i class="fas fa-briefcase"></i> ${vac ? vac.title : 'Vakansiya'}</div>
-                  <div style="font-size: 0.76rem; color: var(--text-secondary);"><i class="fas fa-phone"></i> ${cand.phone}</div>
-                  <div style="font-size: 0.74rem; color: var(--text-muted);"><i class="fas fa-history"></i> ${cand.experience}</div>
-                  <div style="font-size: 0.74rem; color: #fbbf24;"><i class="fas fa-star"></i> Baholash: ${cand.rating || 5.0}</div>
-                  
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-subtle);">
-                    <select class="form-select" style="padding: 2px 6px; font-size: 0.72rem; width: auto;" onchange="window.FMH_HR.changeCandidateStage('${cand.id}', this.value)">
-                      <option value="applied" ${cand.status === 'applied' ? 'selected' : ''}>Yangi</option>
-                      <option value="interview" ${cand.status === 'interview' ? 'selected' : ''}>Suhbat</option>
-                      <option value="trial" ${cand.status === 'trial' ? 'selected' : ''}>Sinov</option>
-                      <option value="hired" ${cand.status === 'hired' ? 'selected' : ''}>Qabul</option>
-                    </select>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-    }).join('');
   }
 
   // ==========================================================================
@@ -1546,12 +1371,8 @@
           <div style="font-weight: 600; color: #ffffff;">${staff.phone} (${staff.telegram || '—'})</div>
         </div>
         <div class="form-group">
-          <label class="form-label">Tibbiy Litsenziya</label>
-          <div style="font-weight: 600; color: #ffffff;">${staff.category} (${staff.license_number || '—'})</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Yillik Ta'til Qoldig'i</label>
-          <div style="font-weight: 700; color: #fbbf24;">${staff.vacation_balance_days || 24} ish kuni</div>
+          <label class="form-label">Tibbiy Toifasi</label>
+          <div style="font-weight: 600; color: #ffffff;">${staff.category || 'Mutaxassis'}</div>
         </div>
         <div class="form-group">
           <label class="form-label">KPI Reyting</label>
@@ -1834,13 +1655,6 @@
     const hireDateInp = document.getElementById('staff-input-hire-date');
     if (hireDateInp) hireDateInp.value = todayStr;
 
-    const licenseExpInp = document.getElementById('staff-input-license-exp');
-    if (licenseExpInp) {
-      const expDate = new Date();
-      expDate.setFullYear(expDate.getFullYear() + 3);
-      licenseExpInp.value = expDate.toISOString().split('T')[0];
-    }
-
     // Default preset and quick mode
     applyStaffPreset('doctor');
     switchStaffFormMode('quick');
@@ -1890,8 +1704,6 @@
     if (form.department) form.department.value = staff.department || 'doctors';
     if (form.specialty) form.specialty.value = staff.specialty || '';
     if (form.category) form.category.value = staff.category || 'Oliy toifa';
-    if (form.license_number) form.license_number.value = staff.license_number || '';
-    if (form.license_expiry) form.license_expiry.value = staff.license_expiry || '';
     if (form.base_salary) {
       form.base_salary.value = staff.base_salary || staff.salary_base || 10000000;
       updateSalaryPreview(staff.base_salary || staff.salary_base || 10000000);
@@ -1899,7 +1711,6 @@
     if (form.detox_procedure_fee) form.detox_procedure_fee.value = staff.detox_procedure_fee || 0;
     if (form.shift_type) form.shift_type.value = staff.shift_type || 'day_standard';
     if (form.assigned_floor) form.assigned_floor.value = staff.assigned_floor || 'all';
-    if (form.bls_cpr_certified) form.bls_cpr_certified.checked = staff.bls_cpr_certified !== false;
     if (form.email) form.email.value = staff.email || '';
     if (form.telegram) form.telegram.value = staff.telegram || '';
     if (form.passport_pinfl) form.passport_pinfl.value = staff.passport_pinfl || '';
@@ -1958,10 +1769,6 @@
       hire_date: (form.hire_date && form.hire_date.value) ? form.hire_date.value : (existingStaff?.hire_date || new Date().toISOString().split('T')[0]),
       experience_years: form.experience_years ? (parseInt(form.experience_years.value) || 1) : (existingStaff?.experience_years || 5),
       category: form.category ? form.category.value : (existingStaff?.category || 'Oliy toifa'),
-      license_number: (form.license_number && form.license_number.value.trim()) ? form.license_number.value.trim() : (existingStaff?.license_number || 'LNZ-UZ-2026-XXXX'),
-      license_expiry: (form.license_expiry && form.license_expiry.value) ? form.license_expiry.value : (existingStaff?.license_expiry || '2028-05-20'),
-      bls_cpr_certified: form.bls_cpr_certified ? form.bls_cpr_certified.checked : true,
-      bls_cpr_expiry: '2027-01-01',
       shift_type: form.shift_type ? form.shift_type.value : (existingStaff?.shift_type || 'day_standard'),
       assigned_floor: form.assigned_floor ? form.assigned_floor.value : (existingStaff?.assigned_floor || 'all'),
       base_salary: form.base_salary ? (parseFloat(form.base_salary.value) || 10000000) : 10000000,
@@ -1970,7 +1777,6 @@
       monthly_duty_earnings: existingStaff?.monthly_duty_earnings || 0,
       detox_procedure_fee: form.detox_procedure_fee ? (parseFloat(form.detox_procedure_fee.value) || 0) : (existingStaff?.detox_procedure_fee || 0),
       kpi_rating: existingStaff?.kpi_rating || 5.0,
-      vacation_balance_days: existingStaff?.vacation_balance_days || 24,
       status: existingStaff?.status || 'active',
       avatar_color: existingStaff?.avatar_color || (roleVal === 'doctor' ? '#0284c7' : (roleVal === 'nurse' ? '#10b981' : '#6366f1'))
     };
@@ -2046,41 +1852,6 @@
     showToast('Davomat muvaffaqiyatli saqlandi!', 'success');
   }
 
-  function approveLeave(leaveId) {
-    const leave = State.leaves.find(l => l.id === leaveId);
-    if (!leave) return;
-    leave.status = 'approved';
-    leave.approved_by = 'Mohira Aliyeva';
-
-    const staff = State.staff.find(s => s.id === leave.staff_id);
-    if (staff && staff.vacation_balance_days) {
-      staff.vacation_balance_days = Math.max(0, staff.vacation_balance_days - leave.total_days);
-    }
-
-    saveToLocalStorage();
-    renderLeaveRequests();
-    updateKPIs();
-    showToast(`${leave.staff_name} uchun ta'til tasdiqlandi!`, 'success');
-  }
-
-  function rejectLeave(leaveId) {
-    const leave = State.leaves.find(l => l.id === leaveId);
-    if (!leave) return;
-    leave.status = 'rejected';
-    saveToLocalStorage();
-    renderLeaveRequests();
-    showToast(`Ta'til arizasi rad etildi`, 'danger');
-  }
-
-  function changeCandidateStage(candId, newStage) {
-    const cand = State.candidates.find(c => c.id === candId);
-    if (!cand) return;
-    cand.status = newStage;
-    saveToLocalStorage();
-    renderRecruitmentKanban();
-    showToast(`${cand.full_name} bosqichi o'zgartirildi!`, 'success');
-  }
-
   function exportAllToExcel() {
     if (typeof XLSX === 'undefined') {
       showToast('Excel moduli yuklanmoqda...', 'danger');
@@ -2151,7 +1922,6 @@
   function updateKPIs() {
     const totalStaff = State.staff.length;
     const todayAtt = State.attendance.filter(a => a.status === 'present' || a.status === 'late');
-    const onLeave = State.leaves.filter(l => l.status === 'approved').length;
 
     let totalPayroll = 0;
     State.staff.forEach(s => {
@@ -2167,49 +1937,24 @@
       totalPayroll += net;
     });
 
-    const openVacancies = State.vacancies.filter(v => v.status === 'active').length;
-
-    let expiringCount = 0;
-    const now = new Date('2026-08-15');
-    State.staff.forEach(s => {
-      if (s.license_expiry) {
-        const exp = new Date(s.license_expiry);
-        const diffDays = Math.round((exp - now) / (1000 * 60 * 60 * 24));
-        if (diffDays <= 90) expiringCount++;
-      }
-    });
-
     const elTotal = document.getElementById('stat-total-staff');
     if (elTotal) elTotal.textContent = `${totalStaff} nafar`;
 
     const elDuty = document.getElementById('stat-on-duty');
     if (elDuty) elDuty.textContent = `${todayAtt.length} nafar`;
 
-    const elLeave = document.getElementById('stat-on-leave');
-    if (elLeave) elLeave.textContent = `${onLeave} nafar`;
-
     const elPayroll = document.getElementById('stat-payroll-budget');
     if (elPayroll) elPayroll.textContent = formatUZS(totalPayroll);
-
-    const elVac = document.getElementById('stat-open-vacancies');
-    if (elVac) elVac.textContent = `${openVacancies} ta ochiq`;
-
-    const elLic = document.getElementById('stat-expiring-licenses');
-    if (elLic) elLic.textContent = `${expiringCount} ta nazoratda`;
 
     const chipStaff = document.getElementById('chip-staff-count');
     if (chipStaff) chipStaff.textContent = totalStaff;
     const chipDuty = document.getElementById('chip-duty-count');
     if (chipDuty) chipDuty.textContent = todayAtt.length;
-    const chipVac = document.getElementById('chip-vac-count');
-    if (chipVac) chipVac.textContent = openVacancies;
 
     const bStaff = document.getElementById('badge-staff-count');
     if (bStaff) bStaff.textContent = totalStaff;
     const bAtt = document.getElementById('badge-att-count');
     if (bAtt) bAtt.textContent = todayAtt.length;
-    const bLeaves = document.getElementById('badge-leaves-count');
-    if (bLeaves) bLeaves.textContent = onLeave;
   }
 
   function renderAll() {
@@ -2218,9 +1963,6 @@
     renderShiftRoster();
     renderAttendanceSheet();
     renderPayrollTable();
-    renderLeaveRequests();
-    renderLicensesTable();
-    renderRecruitmentKanban();
   }
 
   function setupEventListeners() {
@@ -2401,15 +2143,11 @@
       applyBrigadesToMonth('brigade_1_3');
       showToast('1/3 Rejimi bo\'yicha 4 ta brigada butun oyga avtomatik tatbiq etildi!', 'success');
     },
-    approveLeave,
-    rejectLeave,
-    changeCandidateStage,
     exportAllToExcel,
     closeAllModals,
     switchTab,
     deleteStaff,
     editStaff: (id) => openEditStaffModal(id),
-    openRenewLicenseModal: (id) => showToast(`Tibbiy litsenziyani uzaytirish arizasi yaratildi`, 'success'),
     printPayslip,
     toggleTheme: () => window.FMH_Theme ? window.FMH_Theme.toggle() : null,
     applyTheme: (t) => window.FMH_Theme ? window.FMH_Theme.set(t) : null

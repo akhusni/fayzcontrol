@@ -18,6 +18,7 @@ import decimal as _dec
 import traceback
 import threading
 import tempfile
+import time
 
 
 def json_default(obj):
@@ -56,6 +57,11 @@ try:
 except Exception as e:
     generate_patient_pdf = None
     generate_round_pdf = None
+
+try:
+    import telegram_service
+except Exception as _e_tg:
+    telegram_service = None
 
 # ----------------------------------------------------------------------------
 # Shared-state safety for the threaded server.
@@ -313,6 +319,7 @@ from db import (
     ensure_patient_columns,
     ensure_ward_round_schema,
     ensure_appointment_requests,
+    ensure_medication_purchases,
     load_config
 )
 
@@ -1012,7 +1019,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                     # Also fetch consulting doctor from latest medical history
                     cur.execute("""
-                        SELECT mh.doctor_id, s.full_name AS doctor_name
+                        SELECT mh.doctor_id, s.full_name AS doctor_name, mh.diagnosis_primary, mh.icd10_code
                         FROM medical_histories mh
                         LEFT JOIN staff s ON mh.doctor_id = s.id
                         WHERE mh.patient_id = ?
@@ -1022,12 +1029,63 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if doc_mh:
                         pt['consulting_doctor_id'] = doc_mh['doctor_id'] if isinstance(doc_mh, dict) else doc_mh[0]
                         pt['consulting_doctor_name'] = doc_mh['doctor_name'] if isinstance(doc_mh, dict) else doc_mh[1]
+                        pt['diagnosis'] = pt.get('diagnosis') or (doc_mh['diagnosis_primary'] if isinstance(doc_mh, dict) else doc_mh[2])
+                        pt['icd10_code'] = pt.get('icd10_code') or (doc_mh['icd10_code'] if isinstance(doc_mh, dict) else doc_mh[3])
                     else:
                         pt['consulting_doctor_id'] = None
                         pt['consulting_doctor_name'] = None
 
-                    pt['doctor_id'] = (pt.get('active_admission') and pt['active_admission'].get('doctor_id')) or pt.get('consulting_doctor_id')
-                    pt['doctor_name'] = (pt.get('active_admission') and pt['active_admission'].get('doctor_name')) or pt.get('consulting_doctor_name')
+                    # Also fetch latest appointment (e.g. reception consultation)
+                    cur.execute("""
+                        SELECT ap.id AS appointment_id, ap.doctor_id, s.full_name AS doctor_name,
+                               ap.service_type, ap.appointment_date, ap.appointment_time, ap.status AS appointment_status,
+                               ap.notes AS appointment_notes
+                        FROM appointments ap
+                        LEFT JOIN staff s ON ap.doctor_id = s.id
+                        WHERE ap.patient_id = ?
+                        ORDER BY ap.appointment_date DESC, ap.created_at DESC LIMIT 1
+                    """, (pt['id'],))
+                    apt_row = cur.fetchone()
+                    pt['latest_appointment'] = dict(apt_row) if apt_row else None
+
+                    # Also fetch latest consultation
+                    cur.execute("""
+                        SELECT c.id AS consultation_id, c.doctor_id, s.full_name AS doctor_name,
+                               c.primary_complaint, c.working_diagnosis, c.icd10_code, c.consultation_date
+                        FROM consultations c
+                        LEFT JOIN staff s ON c.doctor_id = s.id
+                        WHERE c.patient_id = ?
+                        ORDER BY c.consultation_date DESC LIMIT 1
+                    """, (pt['id'],))
+                    c_row = cur.fetchone()
+                    pt['latest_consultation'] = dict(c_row) if c_row else None
+
+                    pt['doctor_id'] = (
+                        (pt.get('active_admission') and pt['active_admission'].get('doctor_id'))
+                        or pt.get('consulting_doctor_id')
+                        or (pt.get('latest_consultation') and pt['latest_consultation'].get('doctor_id'))
+                        or (pt.get('latest_appointment') and pt['latest_appointment'].get('doctor_id'))
+                    )
+                    pt['doctor_name'] = (
+                        (pt.get('active_admission') and pt['active_admission'].get('doctor_name'))
+                        or pt.get('consulting_doctor_name')
+                        or (pt.get('latest_consultation') and pt['latest_consultation'].get('doctor_name'))
+                        or (pt.get('latest_appointment') and pt['latest_appointment'].get('doctor_name'))
+                    )
+
+                    if pt.get('latest_consultation'):
+                        pt['diagnosis'] = pt.get('diagnosis') or pt['latest_consultation'].get('working_diagnosis')
+                        pt['icd10_code'] = pt.get('icd10_code') or pt['latest_consultation'].get('icd10_code')
+
+                    # Determine service_type
+                    if pt.get('active_admission'):
+                        pt['service_type'] = 'inpatient'
+                    elif pt.get('latest_appointment') and pt['latest_appointment'].get('service_type'):
+                        pt['service_type'] = pt['latest_appointment']['service_type']
+                    elif pt.get('latest_consultation'):
+                        pt['service_type'] = 'consultation'
+                    else:
+                        pt['service_type'] = 'consultation' if pt.get('referral_source') in ('reception', 'consultation') else 'outpatient'
 
                     cur.execute("""
                         SELECT dl.vital_bp_systolic, dl.vital_bp_diastolic, dl.vital_pulse, dl.vital_temp, dl.vital_spo2, dl.log_date, dl.nurse_notes
@@ -1110,9 +1168,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._set_json_headers(200)
                     self.wfile.write(json.dumps(pt_dict, ensure_ascii=False).encode('utf-8'))
 
-            # 4. /api/staff -> List doctors & medical staff
+            # 4. /api/staff -> List staff | /api/doctors -> Only doctors for consultation and treatment
+            elif path == '/api/doctors':
+                cur.execute("SELECT * FROM staff WHERE role IN ('doctor', 'chief_doctor') AND is_active = 1 ORDER BY role, full_name")
+                rows = [dict(r) for r in cur.fetchall()]
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
+
             elif path == '/api/staff' or path == '/api/hr/staff':
-                cur.execute("SELECT * FROM staff WHERE is_active = 1 ORDER BY role, full_name")
+                req_role = query.get('role', [None])[0]
+                if req_role == 'doctor':
+                    cur.execute("SELECT * FROM staff WHERE role IN ('doctor', 'chief_doctor') AND is_active = 1 ORDER BY role, full_name")
+                elif req_role:
+                    cur.execute("SELECT * FROM staff WHERE role = ? AND is_active = 1 ORDER BY full_name", (req_role,))
+                else:
+                    cur.execute("SELECT * FROM staff WHERE is_active = 1 ORDER BY role, full_name")
                 rows = [dict(r) for r in cur.fetchall()]
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
@@ -1299,6 +1369,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 """)
                 doctors_payroll = [dict(r) for r in cur.fetchall()]
 
+                # Medication purchases (clinic restock & expenses)
+                ensure_medication_purchases(conn)
+                cur.execute("""
+                    SELECT mp.id, mp.purchase_date, mp.medication_id, mp.medication_name,
+                           mp.category, mp.form, mp.quantity, mp.unit_price, mp.total_price,
+                           mp.payment_method, mp.supplier_name, mp.invoice_number, mp.notes,
+                           mp.accounting_transaction_id, mp.recorded_by_staff_id, mp.created_at,
+                           COALESCE(s.full_name, 'Buxgalter') AS recorded_by_name
+                    FROM medication_purchases mp
+                    LEFT JOIN staff s ON mp.recorded_by_staff_id = s.id
+                    ORDER BY mp.purchase_date DESC, mp.created_at DESC
+                """)
+                medication_purchases = [dict(r) for r in cur.fetchall()]
+
                 acc_data = {
                     "clinic_info": {
                         "name": "FAYZ MEDICAL HOUSE",
@@ -1316,6 +1400,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "patients_billing": patients_billing,
                     "transactions": transactions,
                     "doctors_payroll": doctors_payroll,
+                    "medication_purchases": medication_purchases,
                     "expense_categories": [
                         {"id": "medication_purchase", "name_uz": "Dori-darmon xaridi (Ombor)"},
                         {"id": "salary", "name_uz": "Xodimlar va Shifokorlar maoshi"},
@@ -1329,10 +1414,30 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(acc_data, ensure_ascii=False).encode('utf-8'))
 
+            # 7b. /api/accounting/medication-purchases -> List all medication purchases
+            elif path == '/api/accounting/medication-purchases' or path.startswith('/api/accounting/medication-purchases?'):
+                ensure_medication_purchases(conn)
+                cur.execute("""
+                    SELECT mp.id, mp.purchase_date, mp.medication_id, mp.medication_name,
+                           mp.category, mp.form, mp.quantity, mp.unit_price, mp.total_price,
+                           mp.payment_method, mp.supplier_name, mp.invoice_number, mp.notes,
+                           mp.accounting_transaction_id, mp.recorded_by_staff_id, mp.created_at,
+                           COALESCE(s.full_name, 'Buxgalter') AS recorded_by_name
+                    FROM medication_purchases mp
+                    LEFT JOIN staff s ON mp.recorded_by_staff_id = s.id
+                    ORDER BY mp.purchase_date DESC, mp.created_at DESC
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
+
             # 8. /api/hr/data -> 100% Dynamic MySQL-Powered HR Dataset
             elif path == '/api/hr/data' or path.startswith('/api/hr'):
+                hr_file = os.path.join(BASE_DIR, 'data', 'hr_db.json')
+                hr_data = read_json_file(hr_file, default=None) or {}
+
                 cur.execute("SELECT * FROM staff ORDER BY role, full_name")
-                staff_list = [dict(r) for r in cur.fetchall()]
+                raw_staff_list = [dict(r) for r in cur.fetchall()]
 
                 cur.execute("""
                     SELECT sa.*, s.full_name AS staff_name, s.role, s.specialty
@@ -1342,24 +1447,137 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 """)
                 attendance = [dict(r) for r in cur.fetchall()]
 
-                hr_data = {
-                    "facility_info": {
+                dept_map = {
+                    'chief_doctor': 'doctors',
+                    'doctor': 'doctors',
+                    'nurse': 'nurses',
+                    'receptionist': 'administration',
+                    'admin': 'administration',
+                    'accountant': 'administration',
+                    'pharmacist': 'diagnostics',
+                    'sanitar': 'support',
+                    'support': 'support'
+                }
+                role_title_map = {
+                    'chief_doctor': 'chief_doctor',
+                    'doctor': 'doctor',
+                    'nurse': 'nurse',
+                    'receptionist': 'receptionist'
+                }
+
+                json_staff_by_id = {s.get('id'): s for s in hr_data.get('staff', []) if 'id' in s}
+                staff_list = []
+                for s in raw_staff_list:
+                    sid = s.get('id')
+                    merged = dict(json_staff_by_id.get(sid, {}))
+                    merged.update(s)
+                    merged['status'] = 'active' if s.get('is_active', 1) else 'inactive'
+                    merged['base_salary'] = float(s.get('salary_base') or 0.0)
+                    merged['salary_base'] = float(s.get('salary_base') or 0.0)
+                    merged['department'] = merged.get('department') or dept_map.get(s.get('role'), 'doctors')
+                    merged['role_title_uz'] = merged.get('role_title_uz') or role_title_map.get(s.get('role'), s.get('role'))
+                    merged['category'] = merged.get('category') or 'Mutaxassis'
+                    merged['kpi_rating'] = float(merged.get('kpi_rating') or 5.0)
+                    if s.get('role') == 'chief_doctor':
+                        merged['avatar_color'] = '#2563eb'
+                    elif s.get('role') == 'doctor' and sid == 'STF-DOC-03':
+                        merged['avatar_color'] = '#4f46e5'
+                    elif s.get('role') == 'doctor':
+                        merged['avatar_color'] = '#3b82f6'
+                    elif s.get('role') == 'nurse' and sid == 'STF-NRS-01':
+                        merged['avatar_color'] = '#6366f1'
+                    elif s.get('role') == 'nurse':
+                        merged['avatar_color'] = '#4f46e5'
+                    else:
+                        merged['avatar_color'] = '#6366f1'
+                    staff_list.append(merged)
+
+                if not staff_list and hr_data.get('staff'):
+                    staff_list = hr_data['staff']
+
+                hr_response = {
+                    "facility_info": hr_data.get("facility_info", {
                         "name": "FAYZ MEDICAL HOUSE",
                         "total_floors": 2,
                         "total_beds": 14,
                         "operating_mode": "24/7 Statsionar & Poliklinika"
-                    },
-                    "duty_tariffs": {
+                    }),
+                    "duty_tariffs": hr_data.get("duty_tariffs", {
                         "doctor_night": 350000,
                         "nurse_24h": 400000,
                         "sanitar_24h": 300000
-                    },
+                    }),
                     "staff": staff_list,
                     "total_staff_count": len(staff_list),
-                    "attendance_records": attendance
+                    "attendance_records": attendance,
+                    "monthly_duty_schedule": hr_data.get("monthly_duty_schedule", []),
+                    "brigades": hr_data.get("brigades", [])
                 }
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps(hr_data, ensure_ascii=False).encode('utf-8'))
+                self.wfile.write(json.dumps(hr_response, ensure_ascii=False).encode('utf-8'))
+
+            # 8b. /api/duty-schedule -> 24/7 Duty Roster (Doctors, Nurses, Sanitarkas)
+            elif path == '/api/duty-schedule':
+                conn.close()
+                ds_file = os.path.join(BASE_DIR, 'data', 'duty_schedule.json')
+                ds_data = read_json_file(ds_file, default=None)
+                if not ds_data:
+                    now = datetime.datetime.now()
+                    sanitarkas = []
+                    nurses = [
+                        {"id": "NRS-01", "name": "Nilufar Karimova (Katta hamshira)", "role": "nurse", "phone": "+998904007788"},
+                        {"id": "NRS-02", "name": "Shahnoza Qodirova (Post hamshirasi)", "role": "nurse", "phone": "+998905009900"}
+                    ]
+                    doctors = [
+                        {"id": "DOC-01", "name": "Dr. Bobur Mirzayev (Bosh shifokor)", "role": "chief_doctor", "phone": "+998901001122"},
+                        {"id": "DOC-02", "name": "Dr. Jasur Aliyev", "role": "doctor", "phone": "+998902003344"},
+                        {"id": "DOC-03", "name": "Dr. Dilnoza Rahimova", "role": "doctor", "phone": "+998903005566"}
+                    ]
+                    days_list = []
+                    start_date = datetime.date(now.year, now.month, 1)
+                    weekdays_uz = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
+                    for day_idx in range(62):
+                        cur_dt = start_date + datetime.timedelta(days=day_idx)
+                        san1 = sanitarkas[day_idx % len(sanitarkas)]
+                        san2 = sanitarkas[(day_idx + 3) % len(sanitarkas)]
+                        nrs1 = nurses[day_idx % len(nurses)]
+                        doc1 = doctors[day_idx % len(doctors)]
+                        days_list.append({
+                            "date": cur_dt.strftime("%Y-%m-%d"),
+                            "day": cur_dt.day,
+                            "month": cur_dt.month,
+                            "year": cur_dt.year,
+                            "weekday": weekdays_uz[cur_dt.weekday()],
+                            "is_weekend": cur_dt.weekday() >= 5,
+                            "sanitar_primary": san1["name"],
+                            "sanitar_primary_id": san1["id"],
+                            "sanitar_secondary": san2["name"],
+                            "sanitar_secondary_id": san2["id"],
+                            "sanitar_shift_time": "24 soat (08:00 - ertasi 08:00)",
+                            "nurse_name": nrs1["name"],
+                            "nurse_id": nrs1["id"],
+                            "nurse_shift_time": "24 soat (08:00 - ertasi 08:00)",
+                            "doctor_name": doc1["name"],
+                            "doctor_id": doc1["id"],
+                            "doctor_shift_time": "Tungi smena (20:00 - 08:00)",
+                        })
+                    ds_data = {
+                        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+                        "hospital": "Fayz Medical House",
+                        "operating_mode": "24/7 Statsionar & Poliklinika",
+                        "sanitarkas": sanitarkas,
+                        "nurses": nurses,
+                        "doctors": doctors,
+                        "shifts": days_list,
+                        "tariffs": {
+                            "sanitar_24h": 300000,
+                            "nurse_24h": 400000,
+                            "doctor_night": 350000
+                        }
+                    }
+                    write_json_atomic(ds_file, ds_data)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(ds_data, ensure_ascii=False).encode('utf-8'))
 
             # 9. /api/reception/* -> Dynamic Reception Portal Data
             elif path == '/api/reception/data' or path == '/api/reception':
@@ -1618,6 +1836,62 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     cur.execute("SELECT * FROM medical_histories WHERE patient_id = ? ORDER BY updated_at DESC LIMIT 1", (actual_id,))
                     mh_row = cur.fetchone()
                     patient['anamnesis'] = dict(mh_row) if mh_row else None
+
+                    # Consultation
+                    cur.execute("""
+                        SELECT c.*, s.full_name AS doctor_name 
+                        FROM consultations c 
+                        LEFT JOIN staff s ON c.doctor_id = s.id 
+                        WHERE c.patient_id = ? 
+                        ORDER BY c.consultation_date DESC LIMIT 1
+                    """, (actual_id,))
+                    c_row = cur.fetchone()
+                    patient['consultation'] = dict(c_row) if c_row else None
+
+                    # Latest Appointment
+                    cur.execute("""
+                        SELECT ap.*, s.full_name AS doctor_name 
+                        FROM appointments ap 
+                        LEFT JOIN staff s ON ap.doctor_id = s.id 
+                        WHERE ap.patient_id = ? 
+                        ORDER BY ap.appointment_date DESC, ap.created_at DESC LIMIT 1
+                    """, (actual_id,))
+                    apt_row = cur.fetchone()
+                    patient['latest_appointment'] = dict(apt_row) if apt_row else None
+
+                    # If no medical_history recorded yet, synthesize from consultation or appointment
+                    if not patient.get('anamnesis'):
+                        if patient.get('consultation'):
+                            c_dict = patient['consultation']
+                            patient['anamnesis'] = {
+                                'id': c_dict.get('id'),
+                                'patient_id': actual_id,
+                                'doctor_id': c_dict.get('doctor_id'),
+                                'complaints': c_dict.get('primary_complaint') or '',
+                                'anamnesis_morbi': c_dict.get('onset_note') or c_dict.get('triggers') or '',
+                                'anamnesis_vitae': c_dict.get('living_situation') or '',
+                                'allergic_status': c_dict.get('drug_allergies') or patient.get('medical_allergies') or '',
+                                'somatic_status': c_dict.get('other_medical') or '',
+                                'psychiatric_status': c_dict.get('observed_mood') or c_dict.get('observed_thought') or '',
+                                'diagnosis_primary': c_dict.get('working_diagnosis') or '',
+                                'diagnosis_secondary': '',
+                                'icd10_code': c_dict.get('icd10_code') or ''
+                            }
+                        elif patient.get('latest_appointment') and patient['latest_appointment'].get('notes'):
+                            patient['anamnesis'] = {
+                                'id': None,
+                                'patient_id': actual_id,
+                                'doctor_id': patient['latest_appointment'].get('doctor_id'),
+                                'complaints': patient['latest_appointment'].get('notes') or '',
+                                'anamnesis_morbi': '',
+                                'anamnesis_vitae': '',
+                                'allergic_status': patient.get('medical_allergies') or '',
+                                'somatic_status': '',
+                                'psychiatric_status': '',
+                                'diagnosis_primary': '',
+                                'diagnosis_secondary': '',
+                                'icd10_code': ''
+                            }
 
                     # Prescriptions
                     cur.execute("SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC", (actual_id,))
@@ -2041,6 +2315,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 ))
 
                 conn.commit()
+                if telegram_service:
+                    try:
+                        telegram_service.notify_payment_entered_async({
+                            'id': pay_id,
+                            'invoice_id': inv_id,
+                            'amount': amount,
+                            'payment_method': method,
+                            'account_destination': acc,
+                            'transaction_ref': body.get('transaction_ref', f"CHK-{pay_id[-4:]}"),
+                            'payment_date': pay_date,
+                            'notes': body.get('notes', ''),
+                            'staff_id': self._actor_staff_id(body, 'received_by_staff_id')
+                        })
+                    except Exception as _e_notify:
+                        print(f"[Telegram Notify Error] {_e_notify}")
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
                     'message': 'Payment recorded successfully',
@@ -2056,26 +2345,271 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 amount = float(body.get('amount', 0))
                 txn_type = body.get('type', 'expense')
                 category = body.get('category', 'operational_expense')
-                method = body.get('payment_method', 'cash')
+                raw_method = body.get('payment_method', 'cash')
+                method_map = {
+                    'cash': 'cash',
+                    'cash_register': 'cash_register',
+                    'terminal': 'terminal',
+                    'card_transfer': 'card_transfer',
+                    'online': 'payme_click',
+                    'click': 'payme_click',
+                    'payme': 'payme_click',
+                    'payme_click': 'payme_click',
+                    'bank': 'bank_wire',
+                    'bank_wire': 'bank_wire',
+                }
+                method = method_map.get(raw_method, 'cash')
+                account_source = 'kassa' if method in ('cash', 'cash_register') else ('terminal_bank' if method == 'terminal' else 'main_bank_account')
                 date_str = (body.get('date') or datetime.date.today().isoformat())[:10]
                 desc = body.get('title') or body.get('description') or 'Kassa operatsiyasi'
 
                 cur.execute("""
                     INSERT INTO accounting_transactions (id, transaction_type, category, amount, payment_method, account_source, description, transaction_date)
-                    VALUES (?, ?, ?, ?, ?, 'kassa', ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     trx_id,
                     txn_type,
                     category,
                     amount,
                     method,
+                    account_source,
                     desc,
                     date_str
                 ))
                 conn.commit()
+                if telegram_service:
+                    try:
+                        telegram_service.notify_accounting_transaction_entered_async({
+                            'id': trx_id,
+                            'transaction_type': txn_type,
+                            'category': category,
+                            'amount': amount,
+                            'payment_method': method,
+                            'description': desc,
+                            'date': date_str,
+                            'recorded_by_staff_id': self._actor_staff_id(body, 'recorded_by_staff_id')
+                        })
+                    except Exception as _e_notify:
+                        print(f"[Telegram Notify Error] {_e_notify}")
                 conn.close()
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({'message': 'Transaction saved', 'id': trx_id}, ensure_ascii=False).encode('utf-8'))
+
+            # 3a. POST /api/accounting/medication-purchases (Record Medication Purchase Expense & Restock)
+            elif path == '/api/accounting/medication-purchases':
+                ensure_medication_purchases(conn)
+                purchase_date = (body.get('purchase_date') or datetime.date.today().isoformat())[:10]
+                raw_method = body.get('payment_method', 'cash')
+                method_map = {
+                    'cash': 'cash',
+                    'cash_register': 'cash_register',
+                    'terminal': 'terminal',
+                    'card_transfer': 'card_transfer',
+                    'online': 'payme_click',
+                    'click': 'payme_click',
+                    'payme': 'payme_click',
+                    'payme_click': 'payme_click',
+                    'bank': 'bank_wire',
+                    'bank_wire': 'bank_wire',
+                }
+                payment_method = method_map.get(raw_method, 'cash')
+                account_source = 'kassa' if payment_method in ('cash', 'cash_register') else ('terminal_bank' if payment_method == 'terminal' else 'main_bank_account')
+                supplier_name = (body.get('supplier_name') or '').strip()
+                invoice_number = (body.get('invoice_number') or '').strip()
+                notes = (body.get('notes') or '').strip()
+
+                items = body.get('items')
+                if not items or not isinstance(items, list):
+                    if body.get('medication_name'):
+                        items = [{
+                            'medication_id': body.get('medication_id'),
+                            'medication_name': body.get('medication_name'),
+                            'category': body.get('category'),
+                            'form': body.get('form'),
+                            'quantity': body.get('quantity'),
+                            'unit_price': body.get('unit_price')
+                        }]
+                    else:
+                        conn.close()
+                        self._set_json_headers(400)
+                        self.wfile.write(json.dumps({'error': "Xarid qilingan dorilar ro'yxati kiritilishi shart"}, ensure_ascii=False).encode('utf-8'))
+                        return
+
+                validated_items = []
+                grand_total = 0.0
+                item_summaries = []
+
+                for it in items:
+                    med_name = (it.get('medication_name') or it.get('name') or '').strip()
+                    if not med_name:
+                        continue
+                    try:
+                        qty = float(it.get('quantity', 0))
+                        unit_p = float(it.get('unit_price', 0))
+                    except (ValueError, TypeError):
+                        conn.close()
+                        self._set_json_headers(400)
+                        self.wfile.write(json.dumps({'error': f"'{med_name}' dori miqdori yoki narxi noto'g'ri"}, ensure_ascii=False).encode('utf-8'))
+                        return
+
+                    if qty <= 0 or unit_p < 0:
+                        conn.close()
+                        self._set_json_headers(400)
+                        self.wfile.write(json.dumps({'error': f"'{med_name}' dori miqdori musbat va narxi 0 dan kam bo'lmasligi kerak"}, ensure_ascii=False).encode('utf-8'))
+                        return
+
+                    total_p = round(qty * unit_p, 2)
+                    grand_total += total_p
+                    category = (it.get('category') or it.get('group') or 'Dori-darmon').strip()
+                    form = (it.get('form') or it.get('unit') or 'dona').strip()
+                    med_id = it.get('medication_id') or it.get('id')
+                    validated_items.append({
+                        'medication_id': med_id,
+                        'medication_name': med_name,
+                        'category': category,
+                        'form': form,
+                        'quantity': qty,
+                        'unit_price': unit_p,
+                        'total_price': total_p
+                    })
+                    item_summaries.append(f"{med_name} ({qty:g} {form} x {unit_p:,.0f} so'm)")
+
+                if not validated_items:
+                    conn.close()
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps({'error': 'Kamida bitta dori kiritilishi shart'}, ensure_ascii=False).encode('utf-8'))
+                    return
+
+                actor_sid = self._actor_staff_id(body, 'recorded_by_staff_id')
+                trx_id = new_record_id(cur, 'accounting_transactions', 'TRX-MED-2026')
+
+                desc_parts = [f"Dori xaridi: {', '.join(item_summaries)}"]
+                if supplier_name:
+                    desc_parts.append(f"Yetkazib beruvchi: {supplier_name}")
+                if invoice_number:
+                    desc_parts.append(f"Chek №: {invoice_number}")
+                if notes:
+                    desc_parts.append(f"Izoh: {notes}")
+                trx_desc = ". ".join(desc_parts)
+                if len(trx_desc) > 500:
+                    trx_desc = trx_desc[:497] + "..."
+
+                # 1. Insert into accounting_transactions as EXPENSE
+                cur.execute("""
+                    INSERT INTO accounting_transactions (
+                        id, transaction_type, category, amount, payment_method,
+                        account_source, description, transaction_date, recorded_by_staff_id
+                    ) VALUES (?, 'expense', 'medication_purchase', ?, ?, ?, ?, ?, ?)
+                """, (
+                    trx_id,
+                    grand_total,
+                    payment_method,
+                    account_source,
+                    trx_desc,
+                    purchase_date,
+                    actor_sid
+                ))
+
+                # 2. Insert into medication_purchases and update medications_catalog
+                created_purchases = []
+                for it in validated_items:
+                    pur_id = new_record_id(cur, 'medication_purchases', 'PUR-MED-2026')
+                    target_med_id = it['medication_id']
+
+                    if target_med_id:
+                        cur.execute("SELECT id FROM medications_catalog WHERE id = ?", (target_med_id,))
+                        if not cur.fetchone():
+                            target_med_id = None
+
+                    if not target_med_id:
+                        cur.execute("SELECT id FROM medications_catalog WHERE LOWER(name) = LOWER(?) LIMIT 1", (it['medication_name'],))
+                        existing_med = cur.fetchone()
+                        if existing_med:
+                            target_med_id = existing_med['id']
+
+                    if target_med_id:
+                        cur.execute("""
+                            UPDATE medications_catalog
+                            SET stock_quantity = stock_quantity + ?,
+                                unit_price = ?
+                            WHERE id = ?
+                        """, (int(it['quantity']), it['unit_price'], target_med_id))
+                    else:
+                        target_med_id = new_record_id(cur, 'medications_catalog', 'MED')
+                        cur.execute("""
+                            INSERT INTO medications_catalog (
+                                id, name, category, form, standard_dosage,
+                                unit_price, stock_quantity, min_stock_level, is_active
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 10, 1)
+                        """, (
+                            target_med_id,
+                            it['medication_name'],
+                            it['category'],
+                            it['form'],
+                            it['form'],
+                            it['unit_price'],
+                            int(it['quantity'])
+                        ))
+
+                    cur.execute("""
+                        INSERT INTO medication_purchases (
+                            id, purchase_date, medication_id, medication_name,
+                            category, form, quantity, unit_price, total_price,
+                            payment_method, supplier_name, invoice_number, notes,
+                            accounting_transaction_id, recorded_by_staff_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        pur_id,
+                        purchase_date,
+                        target_med_id,
+                        it['medication_name'],
+                        it['category'],
+                        it['form'],
+                        it['quantity'],
+                        it['unit_price'],
+                        it['total_price'],
+                        payment_method,
+                        supplier_name or None,
+                        invoice_number or None,
+                        notes or None,
+                        trx_id,
+                        actor_sid
+                    ))
+                    created_purchases.append(pur_id)
+
+                conn.commit()
+
+                if telegram_service:
+                    try:
+                        telegram_service.notify_accounting_transaction_entered_async({
+                            'id': trx_id,
+                            'transaction_type': 'expense',
+                            'category': 'medication_purchase',
+                            'amount': grand_total,
+                            'payment_method': payment_method,
+                            'description': trx_desc,
+                            'date': purchase_date,
+                            'recorded_by_staff_id': actor_sid
+                        })
+                    except Exception as _e_notify:
+                        print(f"[Telegram Notify Error] {_e_notify}")
+
+                conn.close()
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'message': "Dori xaridi muvaffaqiyatli saqlandi va kassa xarajatiga yozildi",
+                    'transaction_id': trx_id,
+                    'purchase_ids': created_purchases,
+                    'amount': grand_total
+                }, ensure_ascii=False).encode('utf-8'))
+
+            # 3b. POST /api/duty-schedule (Update Duty Schedule / Shifts)
+            elif path == '/api/duty-schedule':
+                conn.close()
+                ds_file = os.path.join(BASE_DIR, 'data', 'duty_schedule.json')
+                write_json_atomic(ds_file, body)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'message': 'Navbatchilik jadvali muvaffaqiyatli saqlandi'}, ensure_ascii=False).encode('utf-8'))
 
             # 4. POST /api/staff or POST /api/hr/staff (Create / Update Staff & Doctor)
             elif path == '/api/staff' or path == '/api/hr/staff':
@@ -2527,6 +3061,50 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 
                 if body.get('allergic_status'):
                     cur.execute("UPDATE patients SET medical_allergies = ? WHERE id = ? OR patient_code = ?", (body.get('allergic_status'), pid, pid))
+
+                # Also mirror into consultations table
+                try:
+                    cur.execute("SELECT id FROM consultations WHERE patient_id = ? ORDER BY consultation_date DESC LIMIT 1", (pid,))
+                    c_exist = cur.fetchone()
+                    if c_exist:
+                        cur.execute("""
+                            UPDATE consultations
+                            SET primary_complaint = COALESCE(?, primary_complaint),
+                                onset_note = COALESCE(?, onset_note),
+                                observed_mood = COALESCE(?, observed_mood),
+                                working_diagnosis = COALESCE(?, working_diagnosis),
+                                icd10_code = COALESCE(?, icd10_code),
+                                drug_allergies = COALESCE(?, drug_allergies),
+                                doctor_id = COALESCE(?, doctor_id)
+                            WHERE id = ?
+                        """, (
+                            body.get('complaints'),
+                            body.get('anamnesis_morbi'),
+                            body.get('psychiatric_status') or body.get('somatic_status'),
+                            body.get('diagnosis_primary'),
+                            body.get('icd10_code'),
+                            body.get('allergic_status'),
+                            body.get('doctor_id'),
+                            c_exist[0]
+                        ))
+                    else:
+                        c_id = new_record_id(cur, 'consultations', 'CONS-2026')
+                        cur.execute("""
+                            INSERT INTO consultations (id, patient_id, doctor_id, primary_complaint, onset_note, observed_mood, working_diagnosis, icd10_code, drug_allergies, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'final')
+                        """, (
+                            c_id,
+                            pid,
+                            body.get('doctor_id'),
+                            body.get('complaints', ''),
+                            body.get('anamnesis_morbi', ''),
+                            body.get('psychiatric_status') or body.get('somatic_status', ''),
+                            body.get('diagnosis_primary', ''),
+                            body.get('icd10_code') or None,
+                            body.get('allergic_status', '')
+                        ))
+                except Exception as _e_cons:
+                    print("Mirroring to consultations:", _e_cons)
 
                 conn.commit()
                 conn.close()
@@ -3941,6 +4519,39 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': f"Foydalanuvchi muvaffaqiyatli o'chirildi"}).encode('utf-8'))
 
+            elif path.startswith('/api/accounting/medication-purchases/'):
+                pur_id = urllib.parse.unquote(path.replace('/api/accounting/medication-purchases/', ''))
+                cur.execute("SELECT * FROM medication_purchases WHERE id = ?", (pur_id,))
+                pur = cur.fetchone()
+                if not pur:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Xarid yozuvi topilmadi'}).encode('utf-8'))
+                    return
+
+                # Deduct stock in catalog
+                if pur.get('medication_id'):
+                    cur.execute("""
+                        UPDATE medications_catalog
+                        SET stock_quantity = GREATEST(0, stock_quantity - ?)
+                        WHERE id = ?
+                    """, (int(pur['quantity']), pur['medication_id']))
+
+                # Clean up or adjust accounting transaction
+                trx_id = pur.get('accounting_transaction_id')
+                if trx_id:
+                    cur.execute("SELECT COUNT(*) AS c FROM medication_purchases WHERE accounting_transaction_id = ? AND id != ?", (trx_id, pur_id))
+                    row_c = cur.fetchone()
+                    other_count = (row_c['c'] if isinstance(row_c, dict) or hasattr(row_c, 'keys') else row_c[0])
+                    if other_count == 0:
+                        cur.execute("DELETE FROM accounting_transactions WHERE id = ?", (trx_id,))
+                    else:
+                        cur.execute("UPDATE accounting_transactions SET amount = GREATEST(0.01, amount - ?) WHERE id = ?", (float(pur['total_price']), trx_id))
+
+                cur.execute("DELETE FROM medication_purchases WHERE id = ?", (pur_id,))
+                conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'message': 'Dori xaridi bekor qilindi va ombor qayta hisoblandi'}).encode('utf-8'))
+
             else:
                 self._set_json_headers(404)
                 self.wfile.write(json.dumps({'error': 'Delete endpoint not found'}).encode('utf-8'))
@@ -3978,6 +4589,8 @@ def run_server():
             ensure_ward_round_schema(_c)
             # Where the public website's enquiries land.
             ensure_appointment_requests(_c)
+            # Table for clinic medication purchases and restock expenses.
+            ensure_medication_purchases(_c)
         finally:
             _c.close()
     except Exception as _e:
@@ -4012,11 +4625,30 @@ def run_server():
         except Exception as e:
             print(f"[i] Port 80 not bound ({e}), running on port {PORT}.")
 
-    with http.server.ThreadingHTTPServer((bind_host, PORT), ClinicRequestHandler) as httpd:
+    if telegram_service:
         try:
-            httpd.serve_forever()
+            telegram_service.start_transaction_watchdog()
+            telegram_service.start_daily_closing_scheduler()
+            print("🤖 Telegram 21:00 Kassa Scheduleri va Tranzaksiya Watchdog faollashtirildi.")
+        except Exception as _e_sched:
+            print(f"[!] Telegram scheduler ishga tushmadi: {_e_sched}")
+
+    while True:
+        try:
+            with http.server.ThreadingHTTPServer((bind_host, PORT), ClinicRequestHandler) as httpd:
+                try:
+                    httpd.serve_forever()
+                except KeyboardInterrupt:
+                    print("\nStopping server...")
+                    break
+                except Exception as e:
+                    traceback.print_exc()
+                    time.sleep(1)
         except KeyboardInterrupt:
-            print("\nStopping server...")
+            break
+        except Exception as e:
+            traceback.print_exc()
+            time.sleep(1)
 
 if __name__ == '__main__':
     run_server()

@@ -84,11 +84,30 @@
   "doctors": [
     {
       "id": "STF-DOC-01",
-      "full_name": "Maxkamova Nodira Sanjarovna",
-      "specialty": "Psixologiya, Psixiatriya",
-      "phone": "+998946386764",
-      "room": "Xona 1-02",
-      "color": "#0284c7"
+      "full_name": "Dr. Umarov Xusan Payziboyevich",
+      "specialty": "Bosh Shifokor / Narkolog-Psixiatr",
+      "specialty_short": "Bosh Shifokor",
+      "phone": "+998 90 000-01-01",
+      "room": "1-Kabinet",
+      "color": "#2563eb"
+    },
+    {
+      "id": "STF-DOC-02",
+      "full_name": "Dr. Shermuxamedova Farida Miraxatovna",
+      "specialty": "Davolovchi Shifokor-Narkolog",
+      "specialty_short": "Shifokor",
+      "phone": "+998 90 000-01-02",
+      "room": "2-Kabinet",
+      "color": "#4f46e5"
+    },
+    {
+      "id": "STF-DOC-03",
+      "full_name": "Dr. Vasina Yuliya Aleksandrovna",
+      "specialty": "Davolovchi Shifokor-Psixiatr",
+      "specialty_short": "Shifokor",
+      "phone": "+998 90 000-01-03",
+      "room": "3-Kabinet",
+      "color": "#3b82f6"
     }
   ],
   "appointments": [],

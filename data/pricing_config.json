@@ -19,6 +19,10 @@
     "ambulator_2": {
       "daily_rate": 500000,
       "name_uz": "Ambulator (2 mahal)"
+    },
+    "consultation": {
+      "daily_rate": 250000,
+      "name_uz": "Shifokor Konsultatsiyasi (Birlamchi ko'rik)"
     }
   },
   "additional_services": [

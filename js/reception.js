@@ -162,9 +162,8 @@ window.FMH_Reception = (function () {
   const DEFAULT_RECEPTION_DATA = {
     service_types: [
       { id: 'inpatient', name_uz: 'Statsionar Yotqizish', icon: 'fa-bed', color: '#38bdf8' },
-      { id: 'outpatient', name_uz: 'Ambulator Konsultatsiya', icon: 'fa-stethoscope', color: '#34d399' },
-      { id: 'home_visit', name_uz: 'Uyga Narkologik Yordam', icon: 'fa-house-medical', color: '#f59e0b' },
-      { id: 'anonymous', name_uz: '100% Anonim Qabul', icon: 'fa-user-secret', color: '#a855f7' }
+      { id: 'outpatient', name_uz: 'Ambulator Muolaja', icon: 'fa-stethoscope', color: '#34d399' },
+      { id: 'consultation', name_uz: 'Shifokor Konsultatsiyasi', icon: 'fa-user-doctor', color: '#818cf8' }
     ],
     program_types: [
       { id: 'statsionar_shared', name_uz: "Statsionar (1 karavot / 2 kishilik xona)", default_days: 10, default_rate: 720000, package_type: 'inpatient' },
@@ -323,7 +322,8 @@ window.FMH_Reception = (function () {
       if (staffRes.ok) {
         const staffList = await staffRes.json();
         if (Array.isArray(staffList)) {
-          const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || s.full_name.toLowerCase().includes('dr'));
+          // Sanitarlar va hamshiralar davolash va konsultatsiya ko'rsatmaydi, faqat shifokorlar (doctor, chief_doctor)
+          const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor');
           State.data.doctors = docStaff.map((d, i) => ({
             id: d.id,
             full_name: d.full_name,
@@ -606,7 +606,9 @@ window.FMH_Reception = (function () {
         const sel = document.getElementById('intake-program-select');
         const rateInput = document.getElementById('intake-daily-rate');
 
-        if (State.intake.serviceType === 'outpatient') {
+        if (State.intake.serviceType === 'consultation') {
+          State.intake.selectedBed = null;
+        } else if (State.intake.serviceType === 'outpatient') {
           // Switch dropdown to ambulator
           if (sel) {
             const ambOpt = Array.from(sel.options).find(o => o.value.includes('ambulator'));
@@ -616,16 +618,7 @@ window.FMH_Reception = (function () {
             }
           }
           State.intake.selectedBed = null;
-        } else if (State.intake.serviceType === 'home_visit') {
-          if (rateInput) rateInput.value = 850000;
-          State.intake.selectedBed = null;
         } else if (State.intake.serviceType === 'inpatient') {
-          // This read a checkbox, #intake-tariff-lux, that is not in
-          // reception.html, so isLux was always undefined: clicking the
-          // Statsionar card threw away a chosen full-room tariff and forced
-          // the rate back to 720 000 every time. The programme the desk has
-          // already picked is kept, and the rate is taken from that option
-          // rather than from a hard-coded pair of numbers.
           if (sel) {
             const current = sel.value || '';
             const currentOpt = Array.from(sel.options).find(o => o.value === current);
@@ -642,8 +635,6 @@ window.FMH_Reception = (function () {
               rateInput.value = Number(opt.dataset.rate);
             }
           }
-        } else if (State.intake.serviceType === 'anonymous') {
-          // Keep current selection or default to statsionar
         }
 
         renderIntakeSections();
@@ -651,57 +642,53 @@ window.FMH_Reception = (function () {
         updateCostPreview();
       });
     });
-    // Default select first
-    const first = document.querySelector('.service-type-card[data-service="inpatient"]');
-    if (first) first.classList.add('selected');
+    // Default select consultation or inpatient
+    const defaultCard = document.querySelector('.service-type-card[data-service="consultation"]') || document.querySelector('.service-type-card[data-service="inpatient"]');
+    if (defaultCard) {
+      document.querySelectorAll('.service-type-card').forEach(c => c.classList.remove('selected'));
+      defaultCard.classList.add('selected');
+      State.intake.serviceType = defaultCard.dataset.service;
+    }
     renderIntakeSections();
   }
 
   function setupIntakeAnonToggle() {
-    const cb = document.getElementById('intake-anon-check');
-    if (!cb) return;
-    cb.addEventListener('change', () => {
-      State.intake.isAnonymous = cb.checked;
-      renderIntakeAnonBanner();
-      renderIntakePatientFields();
-    });
+    // Legacy stub - anonymous toggle removed per requirements
   }
 
   function renderIntakeAnonBanner() {
-    const banner = document.getElementById('intake-anon-banner');
-    if (!banner) return;
-    banner.style.display = State.intake.isAnonymous ? 'flex' : 'none';
+    // Legacy stub
   }
 
   function renderIntakePatientFields() {
     const nameField = document.getElementById('intake-patient-name');
     const phoneField = document.getElementById('intake-patient-phone');
     if (nameField) {
-      nameField.placeholder = State.intake.isAnonymous ? 'Nom kiritish shart emas (ixtiyoriy)' : 'Familiya Ism Sharif *';
-      nameField.required = !State.intake.isAnonymous;
+      nameField.placeholder = 'Familiya Ism Sharif *';
+      nameField.required = true;
     }
     if (phoneField) {
-      phoneField.placeholder = State.intake.isAnonymous ? 'Raqam kiritish shart emas' : '+998 90 123 45 67 *';
-      phoneField.required = !State.intake.isAnonymous;
+      phoneField.placeholder = '+998 90 123 45 67 *';
+      phoneField.required = true;
     }
   }
 
   function renderIntakeSections() {
-    const type = State.intake.serviceType;
+    const type = State.intake.serviceType || 'consultation';
     const progVal = document.getElementById('intake-program-select')?.value || '';
     const isAmbProg = progVal.includes('ambulator');
-    const isHomeProg = progVal.includes('home');
     
     const bedSection = document.getElementById('intake-bed-section');
-    const homeSection = document.getElementById('intake-home-section');
+    const consultSection = document.getElementById('intake-consultation-section');
     const aptSection = document.getElementById('intake-apt-section');
 
-    // ONLY SHOW BED SECTION FOR STATSIONAR!
-    const showBed = (type === 'inpatient' || (type === 'anonymous' && !isAmbProg && !isHomeProg)) && !isAmbProg && !isHomeProg;
+    const showBed = type === 'inpatient' && !isAmbProg;
+    const showConsultation = type === 'consultation';
+    const showOutpatient = type === 'outpatient' || (type !== 'consultation' && isAmbProg);
 
     if (bedSection) bedSection.style.display = showBed ? 'block' : 'none';
-    if (homeSection) homeSection.style.display = (type === 'home_visit' || isHomeProg) ? 'block' : 'none';
-    if (aptSection) aptSection.style.display = (type === 'outpatient' || isAmbProg) ? 'block' : 'none';
+    if (consultSection) consultSection.style.display = showConsultation ? 'block' : 'none';
+    if (aptSection) aptSection.style.display = showOutpatient ? 'block' : 'none';
     
     updateCostPreview();
   }
@@ -1497,7 +1484,7 @@ window.FMH_Reception = (function () {
   }
 
   function setupCostListeners() {
-    ['intake-start-date', 'intake-days', 'intake-daily-rate', 'intake-advance', 'intake-discount'].forEach(id => {
+    ['intake-start-date', 'intake-days', 'intake-daily-rate', 'intake-advance', 'intake-discount', 'intake-consultation-fee', 'intake-outpatient-fee'].forEach(id => {
       const el = document.getElementById(id);
       if (el) {
         el.addEventListener('input', () => {
@@ -1517,16 +1504,24 @@ window.FMH_Reception = (function () {
   }
 
   function updateCostPreview() {
-    const days = parseInt(document.getElementById('intake-days')?.value) || 0;
-    const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 0;
+    const type = State.intake.serviceType || 'consultation';
+    let days = parseInt(document.getElementById('intake-days')?.value) || 0;
+    let rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 0;
     const advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
     const discount = parseFloat(document.getElementById('intake-discount')?.value) || 0;
     const startDateInput = document.getElementById('intake-start-date')?.value;
 
+    if (type === 'consultation') {
+      rate = parseFloat(document.getElementById('intake-consultation-fee')?.value) || 250000;
+      days = 1;
+    } else if (type === 'outpatient') {
+      rate = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || 310000;
+    }
+
     if (startDateInput) {
       const startD = new Date(startDateInput);
       const endD = new Date(startD);
-      endD.setDate(endD.getDate() + days);
+      endD.setDate(endD.getDate() + (type === 'consultation' ? 0 : days));
       setValue('preview-start-date', formatDate(startDateInput));
       setValue('preview-end-date', formatDate(endD.toISOString().slice(0, 10)));
     } else {
@@ -1534,13 +1529,13 @@ window.FMH_Reception = (function () {
       setValue('preview-end-date', '—');
     }
 
-    const gross = days * rate;
+    const gross = type === 'consultation' ? rate : (days * rate);
     const discountAmount = gross * (discount / 100);
     const net = gross - discountAmount;
     const balance = Math.max(0, net - advance);
 
-    setValue('preview-days', days + ' kun');
-    setValue('preview-rate', formatUZS(rate) + '/kun');
+    setValue('preview-days', type === 'consultation' ? '1 qabul' : (days + ' kun'));
+    setValue('preview-rate', type === 'consultation' ? (formatUZS(rate) + ' (bir martalik)') : (formatUZS(rate) + '/kun'));
     setValue('preview-gross', formatUZS(gross));
     setValue('preview-discount', discount ? `-${formatUZS(discountAmount)} (${discount}%)` : '0 so\'m');
     setValue('preview-net', formatUZS(net));
@@ -1588,14 +1583,13 @@ window.FMH_Reception = (function () {
       e.preventDefault();
       e.stopPropagation();
     }
-    const type = State.intake.serviceType || 'inpatient';
-    const isAnon = State.intake.isAnonymous;
+    const type = State.intake.serviceType || 'consultation';
     const nameInput = document.getElementById('intake-patient-name');
     const phoneInput = document.getElementById('intake-patient-phone');
     const name = (nameInput?.value || '').trim();
     const phone = (phoneInput?.value || '').trim();
 
-    if (!isAnon && !name) {
+    if (!name) {
       showToast('Iltimos, bemor ismini kiriting', 'error');
       nameInput?.focus();
       return;
@@ -1607,67 +1601,57 @@ window.FMH_Reception = (function () {
       submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Qabul qilinmoqda...';
     }
 
-    const program = document.getElementById('intake-program-select')?.value || 'statsionar_shared';
-    // No doctor chosen is sent as none, not as the first doctor in the list:
-    // that person would be made responsible for a stay nobody gave them.
-    const doctorId = document.getElementById('intake-doctor-select')?.value || null;
-    const days = parseInt(document.getElementById('intake-days')?.value) || 7;
-    const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 720000;
-    const advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
-    // The discount was displayed in the cost preview and then dropped on
-    // the floor: it was never read here, so the invoice always billed the
-    // full amount and the price the desk had agreed was lost.
-    const discount = parseFloat(document.getElementById('intake-discount')?.value) || 0;
-    const payMethod = document.getElementById('intake-pay-method')?.value || 'cash';
-    const notes = (document.getElementById('intake-notes')?.value || '').trim();
-    const referral = document.getElementById('intake-referral-select')?.value || 'hotline';
-    const startDate = document.getElementById('intake-start-date')?.value || todayStr();
-    // Anonymous intake deliberately keeps neither: the point of that mode is
-    // that nothing identifying is stored.
-    const birthDate = isAnon ? '' : (document.getElementById('intake-patient-birthdate')?.value || '');
-    const gender = isAnon ? '' : (document.getElementById('intake-patient-gender')?.value || '');
+    try {
+      const isAnon = Boolean(document.getElementById('intake-anon-check')?.checked || State.intake?.isAnonymous);
+      const program = document.getElementById('intake-program-select')?.value || 'statsionar_shared';
+      const doctorId = document.getElementById('intake-doctor-select')?.value || null;
+      const days = parseInt(document.getElementById('intake-days')?.value) || 7;
+      const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 720000;
+      const advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
+      const discount = parseFloat(document.getElementById('intake-discount')?.value) || 0;
+      const payMethod = document.getElementById('intake-pay-method')?.value || 'cash';
+      const notes = (document.getElementById('intake-notes')?.value || '').trim();
+      const referral = document.getElementById('intake-referral-select')?.value || 'hotline';
+      const startDate = document.getElementById('intake-start-date')?.value || todayStr();
+      const birthDate = document.getElementById('intake-patient-birthdate')?.value || '';
+      const gender = document.getElementById('intake-patient-gender')?.value || '';
 
-    if (type === 'inpatient' || type === 'anonymous') {
-      // Auto-select first available bed if none clicked
-      if (!State.intake.selectedBed) {
-        const avail = (State.beds || []).find(b => (b.system_bed_status || b.status) === 'available');
-        if (avail) {
-          selectBed(avail.bed_id, avail.default_daily_rate || rate);
-        } else {
-          showToast('Hozirda bo\'sh karavotlar mavjud emas', 'error');
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';
+      if (type === 'inpatient') {
+        // Auto-select first available bed if none clicked
+        if (!State.intake.selectedBed) {
+          const avail = (State.beds || []).find(b => (b.system_bed_status || b.status) === 'available');
+          if (avail) {
+            selectBed(avail.bed_id, avail.default_daily_rate || rate);
+          } else {
+            showToast('Hozirda bo\'sh karavotlar mavjud emas', 'error');
+            return;
           }
-          return;
         }
-      }
 
-      const bedId = State.intake.selectedBed || null;
-      const startDateStr = String(startDate).slice(0, 10);
-      const startDateObj = new Date(startDateStr);
-      const endDateObj = new Date(startDateObj);
-      endDateObj.setDate(endDateObj.getDate() + days);
-      const endDateStr = endDateObj.toISOString().slice(0, 10);
+        const bedId = State.intake.selectedBed || null;
+        const startDateStr = String(startDate).slice(0, 10);
+        const startDateObj = new Date(startDateStr);
+        const endDateObj = new Date(startDateObj);
+        endDateObj.setDate(endDateObj.getDate() + days);
+        const endDateStr = endDateObj.toISOString().slice(0, 10);
 
-      const payload = {
-        patient_name: isAnon ? 'Anonim Bemor' : name,
-        patient_phone: isAnon ? '' : phone,
-        birth_date: birthDate,
-        gender: gender,
-        is_anonymous: isAnon ? 1 : 0,
-        bed_id: bedId,
-        attending_doctor_id: doctorId,
-        program_type: program,
-        start_date: startDateStr,
-        end_date: endDateStr,
-        daily_price: rate,
-        discount_percent: discount,
-        notes: notes,
-        referral_source: referral,
-      };
+        const payload = {
+          patient_name: isAnon ? 'Anonim Bemor' : name,
+          patient_phone: isAnon ? '' : phone,
+          birth_date: birthDate,
+          gender: gender,
+          is_anonymous: isAnon ? 1 : 0,
+          bed_id: bedId,
+          attending_doctor_id: doctorId,
+          program_type: program,
+          start_date: startDateStr,
+          end_date: endDateStr,
+          daily_price: rate,
+          discount_percent: discount,
+          notes: notes,
+          referral_source: referral,
+        };
 
-      try {
         const res = await fetch('/api/admissions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1727,112 +1711,131 @@ window.FMH_Reception = (function () {
           }, json.id);
         }, 500);
 
-      } catch (err) {
-        console.error('Admission submit error:', err);
-        showToast(`Qabul qilishda xatolik: ${err.message}`, 'error');
-      } finally {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';
-        }
-      }
-
-    } else if (type === 'outpatient') {
-      const fee = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || 310000;
-      try {
+      } else if (type === 'outpatient') {
+        const fee = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || 310000;
         const aptRes = await fetch('/api/reception/appointment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            patient_name: isAnon ? 'Anonim Bemor' : name,
-            patient_phone: isAnon ? '' : phone,
-            is_anonymous: isAnon ? 1 : 0,
+            patient_name: name,
+            patient_phone: phone,
+            is_anonymous: 0,
             birth_date: birthDate,
             gender: gender,
             doctor_id: doctorId,
             service_type: 'outpatient',
             date: startDate,
             time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-            notes: notes || 'Ambulator qabul (Reception)'
+            notes: notes || 'Ambulator muolaja (Reception)'
           })
         });
         const aptData = await aptRes.json().catch(() => ({}));
-        // The answer used to be ignored, and a network failure also said
-        // "qayd etildi" -- so a refused or lost visit read as recorded and
-        // never reached the doctor's queue.
         if (!aptRes.ok) {
           showToast(aptData.error || "Tashrif saqlanmadi.", 'error');
           return;
         }
-        showToast(`✓ Ambulator bemor qabuli qayd etildi! (${isAnon ? 'Anonim' : name})`, 'success');
+        showToast(`✓ Ambulator bemor qabuli qayd etildi! (${name})`, 'success');
         document.getElementById('intake-form')?.reset();
         await loadApiData();
         renderKPIs();
         renderRecentWalkIns();
         renderAppointmentsTab();
         renderDirectoryTab();
-      } catch (err) {
-        showToast("Server bilan aloqa yo'q — tashrif saqlanmadi.", 'error');
-      } finally {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';
-        }
-      }
 
-    } else if (type === 'home_visit') {
-      const address = (document.getElementById('intake-home-address')?.value || '').trim();
-      const landmark = (document.getElementById('intake-home-landmark')?.value || '').trim();
-      const fee = parseFloat(document.getElementById('intake-home-fee')?.value) || 850000;
-      try {
-        const [aptRes] = await Promise.all([
-          fetch('/api/reception/appointment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              patient_name: isAnon ? 'Anonim Bemor' : name,
-              patient_phone: isAnon ? '' : phone,
-              is_anonymous: isAnon ? 1 : 0,
-              doctor_id: doctorId,
-              service_type: 'home_visit',
-              date: startDate,
-              time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-              notes: `Uyga chaqiruv. Manzil: ${address} (Mo'ljal: ${landmark}). ${notes}`
-            })
-          }),
-          fetch('/api/reception/call-log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              caller_name: isAnon ? 'Anonim Bemor' : name,
-              caller_phone: phone,
-              source: 'hotline',
-              category: 'Uyga chaqiruv',
-              priority: 'high',
-              notes: `Manzil: ${address} (Mo'ljal: ${landmark})`
-            })
-          })
-        ]);
-        if (!aptRes.ok) {
-          const err = await aptRes.json().catch(() => ({}));
-          showToast(err.error || "Uyga chaqiruv saqlanmadi.", 'error');
+      } else if (type === 'consultation') {
+        if (!doctorId) {
+          showToast("Iltimos, konsultatsiya uchun mas'ul shifokorni tanlang!", 'warning');
+          document.getElementById('intake-doctor-select')?.focus();
           return;
         }
-        showToast(`✓ Uyga narkologik chaqiruv muvaffaqiyatli qabul qilindi!`, 'success');
+        const fee = parseFloat(document.getElementById('intake-consultation-fee')?.value) || 250000;
+        const consultTime = document.getElementById('intake-consultation-time')?.value || new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+        const aptRes = await fetch('/api/reception/appointment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patient_name: name,
+            patient_phone: phone,
+            is_anonymous: 0,
+            birth_date: birthDate,
+            gender: gender,
+            doctor_id: doctorId,
+            service_type: 'consultation',
+            consultation_fee: fee,
+            date: startDate,
+            time: consultTime,
+            notes: notes || 'Shifokor konsultatsiyasi (Qabulxona)'
+          })
+        });
+        const aptData = await aptRes.json().catch(() => ({}));
+        if (!aptRes.ok) {
+          showToast(aptData.error || "Konsultatsiya qayd etilmadi.", 'error');
+          return;
+        }
+        showToast(`✓ Konsultatsiya muvaffaqiyatli rasmiylashtirildi! Bemor shifokor kabinetiga biriktirildi (${name}).`, 'success');
         document.getElementById('intake-form')?.reset();
         await loadApiData();
         renderKPIs();
         renderRecentWalkIns();
-        renderCallLogTab();
-      } catch (err) {
-        showToast("Server bilan aloqa yo'q — uyga chaqiruv saqlanmadi.", 'error');
-      } finally {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';
-        }
+        renderAppointmentsTab();
+        renderDirectoryTab();
+
+        // Print consultation voucher
+        setTimeout(() => {
+          printConsultationSlip({
+            name,
+            phone,
+            doctorId,
+            date: startDate,
+            time: consultTime,
+            fee,
+            notes
+          }, aptData.id);
+        }, 400);
+      }
+    } catch (err) {
+      console.error('Admission submit error:', err);
+      showToast(`Qabul qilishda xatolik: ${err.message}`, 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';
       }
     }
+  }
+
+  function printConsultationSlip(data, aptId) {
+    const doctorObj = (State.data.doctors || []).find(d => d.id === data.doctorId) || { full_name: 'Mas\'ul Shifokor' };
+    const printArea = document.getElementById('print-area');
+    if (!printArea) return;
+    printArea.innerHTML = `
+      <div class="print-sheet-a4" style="max-width: 600px; margin: 0 auto; padding: 25px; font-family: sans-serif; border: 1px solid #ddd; background: #fff; color: #000;">
+        <div style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px;">
+          <h2 style="margin: 0; font-size: 1.4rem;">FAYZ MEDICAL HOUSE</h2>
+          <div style="font-size: 0.85rem; color: #555;">XUSUSIY NARKOLOGIYA VA PSIXIATRIYA KLINIKASI</div>
+          <div style="font-size: 0.85rem; font-weight: bold; margin-top: 5px; color: #4338ca;">SHIFOKOR KONSULTATSIYASI YO'LLANMASI & KVITANSIYASI</div>
+        </div>
+        <table style="width: 100%; font-size: 0.92rem; line-height: 1.9; border-collapse: collapse;">
+          <tr><td style="color:#666; width: 42%;">Bemor F.I.Sh.:</td><td><strong>${data.name}</strong></td></tr>
+          <tr><td style="color:#666;">Telefon Raqami:</td><td><strong>${data.phone || '—'}</strong></td></tr>
+          <tr><td style="color:#666;">Biriktirilgan Shifokor:</td><td><strong style="color: #4338ca;">${doctorObj.full_name}</strong></td></tr>
+          <tr><td style="color:#666;">Qabul Sanasi & Vaqti:</td><td>${data.date} (soat ${data.time})</td></tr>
+          <tr><td style="color:#666;">Xizmat Turi:</td><td>Shifokor Konsultatsiyasi</td></tr>
+          <tr><td style="color:#666;">Konsultatsiya To'lovi:</td><td><strong>${formatUZS(data.fee)}</strong></td></tr>
+          ${data.notes ? `<tr><td style="color:#666;">Dastlabki Eslatma:</td><td>${data.notes}</td></tr>` : ''}
+        </table>
+        <div style="margin-top: 15px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8rem; color: #475569;">
+          Eslatma: Ushbu bemor shifokor qabulida bo'lgach, shifokor kabinetida konsultatsiya xulosasi va retsept rasmiylashtiriladi.
+        </div>
+        <div style="margin-top: 25px; padding-top: 15px; border-top: 1px dashed #999; font-size: 0.75rem; color: #666; display: flex; justify-content: space-between;">
+          <div>Qabulxona (Reception) Imzosi: _________</div>
+          <div>Sana: ${new Date().toLocaleDateString('uz-UZ')}</div>
+        </div>
+      </div>
+    `;
+    setTimeout(() => {
+      window.print();
+    }, 200);
   }
 
   function startDirectIntake(options = {}) {

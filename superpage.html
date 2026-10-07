@@ -70,6 +70,9 @@
           <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
             <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
           </a>
+          <a href="duty_schedule.html" class="portal-nav-pill pill-hr" title="24/7 Navbatchilik Jadvali">
+            <i class="fas fa-calendar-check"></i> <span>Navbatchilik</span>
+          </a>
           <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
             <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
           </a>
@@ -590,6 +593,20 @@
               <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Sedativ & Nooproplar', this)">Sedativ & Nooproplar</button>
               <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Infuzion eritmalar', this)">Infuzion Eritmalar</button>
               <button class="super-filter-btn" onclick="window.FMH_Super.filterPharmacyCategory('Vitaminlar & Minerallar', this)">Vitaminlar</button>
+            </div>
+
+            <!-- Pharmacy Fast Search Bar -->
+            <div style="position: relative; margin-bottom: 14px; display: flex; align-items: center;">
+              <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;"></i>
+              <input type="text" id="pharmacy-search-input" placeholder="Dori nomi, MNN, raqami yoki ta'siri (Lotin yoki Кирилл: masalan: mexidol, димедрол, 18, диазепам)..."
+                style="width: 100%; padding: 8px 130px 8px 36px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-panel); color: var(--text-primary); font-size: 0.88rem; outline: none;"
+                oninput="window.FMH_Super.onPharmacySearch(this.value)">
+              <button type="button" id="pharmacy-search-clear" style="position: absolute; right: 100px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(148, 163, 184, 0.25); color: #64748b; display: none; align-items: center; justify-content: center; font-size: 0.72rem; cursor: pointer;" onclick="window.FMH_Super.clearPharmacySearch()">
+                <i class="fas fa-times"></i>
+              </button>
+              <span id="pharmacy-search-script-badge" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(13, 148, 136, 0.12); color: #0d9488; border: 1px solid rgba(13, 148, 136, 0.25); pointer-events: none; white-space: nowrap;">
+                🔤 Lotin ⇄ Кирилл
+              </span>
             </div>
 
             <div id="pharmacy-drugs-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
@@ -1429,6 +1446,7 @@
   <!-- Scripts -->
   <script src="js/xlsx.full.min.js"></script>
     <script src="js/unified_print_engine.js?v=5.3"></script>
+    <script src="js/med_search_engine.js?v=4.0"></script>
 <script src="js/superpage.js?v=8.2"></script>
   <div id="print-area"></div>
 </body>

@@ -47,8 +47,17 @@ class PharmacologyEngine {
      * @param {string} [lang] Language ('uz', 'ru', 'en')
      */
     search(query = '', category = 'all', prescriptionType = 'all', lang = 'uz') {
-        const q = query.trim().toLowerCase();
+        const q = (query || '').trim();
         
+        if (typeof window !== 'undefined' && window.FMH_MedSearch) {
+            let list = window.FMH_MedSearch.search(this.medications, q, category);
+            if (prescriptionType && prescriptionType !== 'all') {
+                list = list.filter(med => med.prescription_type === prescriptionType);
+            }
+            return list;
+        }
+
+        const qLow = q.toLowerCase();
         return this.medications.filter(med => {
             // Category filter
             if (category && category !== 'all' && med.category !== category) {
@@ -60,7 +69,7 @@ class PharmacologyEngine {
                 return false;
             }
 
-            if (!q) return true;
+            if (!qLow) return true;
 
             const nameMatch = (med.name || '').toLowerCase().includes(q) ||
                               (med.paper_name || '').toLowerCase().includes(q);

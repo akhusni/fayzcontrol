@@ -90,6 +90,16 @@
     return amount.toString();
   }
 
+  function esc(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // Toast notification helper
   // Delegates to the shared toast in js/fmh_dialogs.js: that one announces
   // messages via aria-live, keeps errors on screen long enough to read,
@@ -129,8 +139,13 @@
           patients_billing: [],
           transactions: [],
           doctors_payroll: [],
-          pharmacy_stock: []
+          pharmacy_stock: [],
+          medication_purchases: []
         };
+      }
+
+      if (!accountingData.medication_purchases || !Array.isArray(accountingData.medication_purchases)) {
+        accountingData.medication_purchases = [];
       }
 
       // Ensure pharmacy_stock exists
@@ -198,8 +213,24 @@
         if (liveAcc.transactions && Array.isArray(liveAcc.transactions)) {
           accountingData.transactions = liveAcc.transactions;
         }
+        if (liveAcc.medication_purchases && Array.isArray(liveAcc.medication_purchases)) {
+          accountingData.medication_purchases = liveAcc.medication_purchases;
+        }
         if (liveAcc.pharmacy_stock && Array.isArray(liveAcc.pharmacy_stock)) {
-          accountingData.pharmacy_stock = liveAcc.pharmacy_stock;
+          accountingData.pharmacy_stock = liveAcc.pharmacy_stock.map(m => ({
+            id: m.id,
+            name: m.name,
+            group: m.category || m.group || 'Dori-darmon',
+            category: m.category || m.group || 'Dori-darmon',
+            stock: m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0),
+            stock_quantity: m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0),
+            unit: m.unit || m.form || 'dona',
+            form: m.form || m.unit || 'dona',
+            unit_price: Number(m.unit_price) || 0,
+            standard_dosage: m.standard_dosage || '',
+            min_stock_level: Number(m.min_stock_level) || 10,
+            status: (m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0)) <= (Number(m.min_stock_level) || 15) ? 'low' : 'adequate'
+          }));
         }
       }
 
@@ -551,6 +582,8 @@
     // Update tab badges
     document.getElementById('badge-patients-count').textContent = accountingData.patients_billing.length;
     document.getElementById('badge-txns-count').textContent = accountingData.transactions.length;
+    const bPharm = document.getElementById('badge-pharmacy-count');
+    if (bPharm) bPharm.textContent = (accountingData.medication_purchases || []).length;
   }
 
   // ==========================================================================
@@ -846,28 +879,208 @@
   }
 
   // ==========================================================================
-  // RENDER TAB: PHARMACY INVENTORY (DYNAMIC FROM DB)
+  // RENDER TAB: PHARMACY & MEDICATION EXPENSES (DYNAMIC FROM DB)
   // ==========================================================================
 
-  function renderPharmacyInventory() {
-    const tbody = document.querySelector('#tab-panel-pharmacy table tbody');
-    if (!tbody || !accountingData || !accountingData.pharmacy_stock) return;
+  let medPurchasesSearchQuery = '';
+  let pharmacyStockSearchQuery = '';
 
-    tbody.innerHTML = accountingData.pharmacy_stock.map((item, idx) => {
-      const totalVal = item.stock * item.unit_price;
-      const isLow = item.stock <= 15;
+  function filterMedPurchases() {
+    const input = document.getElementById('search-med-purchases-input');
+    medPurchasesSearchQuery = input ? input.value.trim().toLowerCase() : '';
+    renderMedicationPurchases();
+  }
+
+  function filterPharmacyStock() {
+    const input = document.getElementById('search-pharmacy-stock-input');
+    pharmacyStockSearchQuery = input ? input.value.trim().toLowerCase() : '';
+    renderPharmacyInventory();
+  }
+
+  function renderMedicationPurchases() {
+    const tbody = document.getElementById('med-purchases-tbody');
+    if (!tbody || !accountingData) return;
+
+    let list = Array.isArray(accountingData.medication_purchases) ? [...accountingData.medication_purchases] : [];
+
+    // Filter by date range preset
+    list = list.filter(p => isDateInRange(p.purchase_date || p.created_at));
+
+    // Dynamic period totals for Tab 5 KPI cards
+    const periodExpense = list.reduce((sum, p) => sum + (Number(p.total_price) || 0), 0);
+    const periodPurchasesCount = list.length;
+
+    // Filter by search query
+    if (medPurchasesSearchQuery) {
+      const q = medPurchasesSearchQuery;
+      list = list.filter(p =>
+        (p.medication_name && p.medication_name.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q)) ||
+        (p.supplier_name && p.supplier_name.toLowerCase().includes(q)) ||
+        (p.invoice_number && p.invoice_number.toLowerCase().includes(q)) ||
+        (p.notes && p.notes.toLowerCase().includes(q))
+      );
+    }
+
+    // Sort newest date first
+    list.sort((a, b) => new Date(b.purchase_date || b.created_at) - new Date(a.purchase_date || a.created_at));
+
+    // Update KPI card elements
+    const kpiPeriodExp = document.getElementById('pharm-period-expense');
+    if (kpiPeriodExp) kpiPeriodExp.textContent = formatUZS(periodExpense);
+
+    const kpiPurchasesCount = document.getElementById('pharm-total-purchases');
+    if (kpiPurchasesCount) kpiPurchasesCount.textContent = `${periodPurchasesCount} ta partiya`;
+
+    const kpiExpenseSub = document.getElementById('pharm-expense-sub');
+    if (kpiExpenseSub) {
+      kpiExpenseSub.textContent = dateRangePreset === 'all' ? "Barcha davrlar bo'yicha jami xarajat" : "Tanlangan oraliq bo'yicha dori xarajatlari";
+    }
+
+    const badgeCount = document.getElementById('badge-pharmacy-count');
+    if (badgeCount) badgeCount.textContent = (accountingData.medication_purchases || []).length;
+
+    if (list.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="9" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+            <i class="fas fa-pills" style="font-size: 1.8rem; margin-bottom: 0.5rem; display: block; opacity: 0.5; color: var(--primary);"></i>
+            ${medPurchasesSearchQuery ? "Qidiruv shartlariga mos dori xaridlari topilmadi." : "Ushbu davrda dori xaridi qayd etilmagan."}<br>
+            <button class="btn-portal btn-primary-portal" style="margin-top: 0.75rem; padding: 5px 14px; font-size: 0.8rem;" onclick="window.FMH_Accounting.openMedPurchaseModal()">
+              <i class="fas fa-plus"></i> + Dori Xaridini Kiritish
+            </button>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const methodLabels = {
+      "cash": '<i class="fas fa-money-bill-wave" style="color: var(--emerald);"></i> Naqd Pul',
+      "cash_register": '<i class="fas fa-cash-register" style="color: var(--emerald);"></i> Kassa',
+      "terminal": '<i class="fas fa-credit-card" style="color: var(--primary);"></i> Terminal',
+      "card_transfer": '<i class="fas fa-credit-card" style="color: var(--primary);"></i> Karta',
+      "payme_click": '<i class="fas fa-mobile-alt" style="color: var(--purple);"></i> Click/Payme',
+      "online": '<i class="fas fa-mobile-alt" style="color: var(--purple);"></i> Online',
+      "bank": '<i class="fas fa-university" style="color: var(--warning);"></i> Bank',
+      "bank_wire": '<i class="fas fa-university" style="color: var(--warning);"></i> Bank O\'tkazma'
+    };
+
+    tbody.innerHTML = list.map(p => {
+      const formattedDate = (p.purchase_date || '').slice(0, 10);
+      const unitPriceDisp = formatUZS(p.unit_price);
+      const totalPriceDisp = formatUZS(p.total_price);
+      const qtyDisp = `${p.quantity} ${p.form || 'dona'}`;
+
+      let supplierInfo = esc(p.supplier_name || '—');
+      if (p.invoice_number) {
+        supplierInfo += `<br><small class="mono-val" style="color: var(--text-muted);"><i class="fas fa-receipt"></i> ${esc(p.invoice_number)}</small>`;
+      }
+
+      const receiptBtn = p.accounting_transaction_id
+        ? `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem;" onclick="window.FMH_Accounting.printTxnReceipt('${p.accounting_transaction_id}')" title="Kassa Cheki">
+             <i class="fas fa-receipt"></i> Chek
+           </button>`
+        : '';
+
+      const deleteBtn = `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" onclick="window.FMH_Accounting.deleteMedPurchase('${p.id}')" title="Xaridni bekor qilish">
+                           <i class="fas fa-trash-alt"></i>
+                         </button>`;
+
+      return `
+        <tr>
+          <td class="mono-val" style="font-size: 0.8rem; color: var(--text-secondary);">${formattedDate}</td>
+          <td>
+            <strong>${esc(p.medication_name)}</strong>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${esc(p.category || 'Dori-darmon')} • ${esc(p.form || 'dona')}</div>
+          </td>
+          <td class="mono-val" style="font-weight: 700; color: var(--primary);">${qtyDisp}</td>
+          <td class="mono-val" style="color: var(--text-secondary);">${unitPriceDisp}</td>
+          <td class="mono-val" style="font-weight: 800; color: var(--rose); font-size: 0.95rem;">-${totalPriceDisp}</td>
+          <td><span class="badge-method">${methodLabels[p.payment_method] || p.payment_method}</span></td>
+          <td>${supplierInfo}</td>
+          <td><span style="font-size: 0.78rem; color: var(--text-secondary);"><i class="fas fa-user-check"></i> ${esc(p.recorded_by_name || 'Buxgalter')}</span></td>
+          <td>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              ${receiptBtn}
+              ${deleteBtn}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function renderPharmacyInventory() {
+    const tbody = document.getElementById('pharmacy-stock-tbody');
+    if (!tbody || !accountingData) return;
+
+    let stockList = Array.isArray(accountingData.pharmacy_stock) ? [...accountingData.pharmacy_stock] : [];
+
+    // Filter by stock search
+    if (pharmacyStockSearchQuery) {
+      const q = pharmacyStockSearchQuery;
+      stockList = stockList.filter(m =>
+        (m.name && m.name.toLowerCase().includes(q)) ||
+        ((m.group || m.category) && (m.group || m.category).toLowerCase().includes(q))
+      );
+    }
+
+    // Calculate total inventory valuation
+    const allStock = Array.isArray(accountingData.pharmacy_stock) ? accountingData.pharmacy_stock : [];
+    let totalValuation = 0;
+    allStock.forEach(m => {
+      const st = m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0);
+      const pr = Number(m.unit_price) || 0;
+      totalValuation += st * pr;
+    });
+
+    const kpiMedsCount = document.getElementById('pharm-total-meds');
+    if (kpiMedsCount) kpiMedsCount.textContent = `${allStock.length} nomdagi`;
+
+    const kpiValuation = document.getElementById('pharm-total-valuation');
+    if (kpiValuation) kpiValuation.textContent = formatUZS(totalValuation);
+
+    if (stockList.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            Dorilar omborida mos dori vositalari topilmadi.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = stockList.map(item => {
+      const stock = item.stock !== undefined ? Number(item.stock) : Number(item.stock_quantity || 0);
+      const unitPrice = Number(item.unit_price) || 0;
+      const totalVal = stock * unitPrice;
+      const minStock = Number(item.min_stock_level) || 15;
+      const isLow = stock <= minStock;
       const badge = isLow
         ? `<span class="badge-status badge-unpaid"><i class="fas fa-exclamation-triangle"></i> Kam qolgan</span>`
         : `<span class="badge-status badge-paid"><i class="fas fa-check-circle"></i> Yetarli</span>`;
 
+      const unitName = item.unit || item.form || 'dona';
+      const groupName = item.group || item.category || 'Dori-darmon';
+
       return `
         <tr>
-          <td><strong>${item.name}</strong></td>
-          <td>${item.group}</td>
-          <td class="mono-val" style="font-weight: 700; color: ${isLow ? 'var(--rose)' : 'var(--primary)'};">${item.stock} ${item.unit}</td>
-          <td class="mono-val">${formatUZS(item.unit_price)}</td>
+          <td>
+            <strong>${esc(item.name)}</strong>
+            ${item.standard_dosage ? `<br><small style="color: var(--text-muted);">${esc(item.standard_dosage)}</small>` : ''}
+          </td>
+          <td>${esc(groupName)}</td>
+          <td class="mono-val" style="font-weight: 700; color: ${isLow ? 'var(--rose)' : 'var(--primary)'};">${stock} ${esc(unitName)}</td>
+          <td class="mono-val">${formatUZS(unitPrice)}</td>
           <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">${formatUZS(totalVal)}</td>
           <td>${badge}</td>
+          <td>
+            <button class="btn-portal btn-outline-portal" style="padding: 2px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openMedPurchaseModal('${item.id}')" title="Ushbu dorini xarid qilish (Kirim)">
+              <i class="fas fa-plus"></i> Xarid
+            </button>
+          </td>
         </tr>
       `;
     }).join('');
@@ -1734,6 +1947,264 @@
   }
 
   // ==========================================================================
+  // MODAL 8: MEDICATION PURCHASE & RESTOCK (DORI XARIDI VA KLINIKA CHIQIMI)
+  // ==========================================================================
+
+  let medPurchaseRowCount = 0;
+
+  function openMedPurchaseModal(prefillMedId = null) {
+    const modal = document.getElementById('medication-purchase-modal');
+    if (!modal) return;
+
+    const dateInput = document.getElementById('medpur-date-input');
+    if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+    const methodSelect = document.getElementById('medpur-method-select');
+    if (methodSelect) methodSelect.value = 'cash';
+    const supplierInput = document.getElementById('medpur-supplier-input');
+    if (supplierInput) supplierInput.value = '';
+    const invoiceInput = document.getElementById('medpur-invoice-input');
+    if (invoiceInput) invoiceInput.value = '';
+    const notesInput = document.getElementById('medpur-notes-input');
+    if (notesInput) notesInput.value = '';
+
+    const tbody = document.getElementById('medpur-items-tbody');
+    if (tbody) tbody.innerHTML = '';
+    medPurchaseRowCount = 0;
+
+    let prefill = null;
+    if (prefillMedId && accountingData && Array.isArray(accountingData.pharmacy_stock)) {
+      prefill = accountingData.pharmacy_stock.find(m => m.id === prefillMedId);
+    }
+
+    addMedPurchaseRow(prefill);
+    updateMedPurchaseTotals();
+    modal.classList.add('active');
+  }
+
+  function addMedPurchaseRow(initialData = null) {
+    const tbody = document.getElementById('medpur-items-tbody');
+    if (!tbody) return;
+
+    medPurchaseRowCount++;
+    const rowId = `medpur-row-${medPurchaseRowCount}`;
+    const tr = document.createElement('tr');
+    tr.id = rowId;
+    tr.style.borderBottom = '1px solid var(--border-color)';
+
+    const catalog = (accountingData && Array.isArray(accountingData.pharmacy_stock)) ? accountingData.pharmacy_stock : [];
+    const datalistId = `datalist-meds-${medPurchaseRowCount}`;
+
+    tr.innerHTML = `
+      <td style="padding: 6px 8px;">
+        <input type="text" class="form-input medpur-item-name" list="${datalistId}" required placeholder="Dori nomini tanlang yoki yozing..." style="font-size: 0.85rem;" value="${initialData ? esc(initialData.name) : ''}">
+        <datalist id="${datalistId}">
+          ${catalog.map(m => `<option value="${esc(m.name)}" data-id="${m.id}" data-category="${esc(m.group || m.category || '')}" data-form="${esc(m.unit || m.form || '')}" data-price="${m.unit_price || 0}"></option>`).join('')}
+        </datalist>
+        <input type="hidden" class="medpur-item-id" value="${initialData ? initialData.id : ''}">
+      </td>
+      <td style="padding: 6px 8px;">
+        <input type="text" class="form-input medpur-item-cat" placeholder="Guruhi" style="font-size: 0.82rem;" value="${initialData ? esc(initialData.group || initialData.category || '') : ''}">
+      </td>
+      <td style="padding: 6px 8px;">
+        <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
+      </td>
+      <td style="padding: 6px 8px;">
+        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="Narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="${initialData ? (initialData.unit_price || 0) : ''}">
+      </td>
+      <td style="padding: 6px 8px;" class="mono-val medpur-item-total" style="font-weight: 700; color: var(--rose);">
+        0 so'm
+      </td>
+      <td style="padding: 6px 4px; text-align: center;">
+        <button type="button" class="btn-portal btn-outline-portal btn-remove-medpur-row" style="padding: 2px 6px; font-size: 0.75rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" title="Qatorni o'chirish">
+          &times;
+        </button>
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+
+    const nameInput = tr.querySelector('.medpur-item-name');
+    const catInput = tr.querySelector('.medpur-item-cat');
+    const idInput = tr.querySelector('.medpur-item-id');
+    const qtyInput = tr.querySelector('.medpur-item-qty');
+    const priceInput = tr.querySelector('.medpur-item-price');
+    const removeBtn = tr.querySelector('.btn-remove-medpur-row');
+
+    nameInput.addEventListener('change', () => {
+      const val = nameInput.value.trim().toLowerCase();
+      const match = catalog.find(m => (m.name || '').toLowerCase() === val);
+      if (match) {
+        idInput.value = match.id;
+        if (!catInput.value) catInput.value = match.group || match.category || '';
+        if (!priceInput.value || Number(priceInput.value) === 0) priceInput.value = match.unit_price || '';
+      }
+      updateMedPurchaseTotals();
+    });
+
+    qtyInput.addEventListener('input', updateMedPurchaseTotals);
+    priceInput.addEventListener('input', updateMedPurchaseTotals);
+
+    removeBtn.addEventListener('click', () => {
+      if (tbody.querySelectorAll('tr').length > 1) {
+        tr.remove();
+        updateMedPurchaseTotals();
+      } else {
+        showToast("Kamida bitta dori bo'lishi kerak", 'warning');
+      }
+    });
+
+    updateMedPurchaseTotals();
+  }
+
+  function updateMedPurchaseTotals() {
+    let grandTotal = 0;
+    const rows = document.querySelectorAll('#medpur-items-tbody tr');
+    rows.forEach(tr => {
+      const qty = parseFloat(tr.querySelector('.medpur-item-qty')?.value) || 0;
+      const price = parseFloat(tr.querySelector('.medpur-item-price')?.value) || 0;
+      const total = Math.max(0, qty * price);
+      grandTotal += total;
+      const totalCell = tr.querySelector('.medpur-item-total');
+      if (totalCell) totalCell.textContent = formatUZS(total);
+    });
+
+    const grandDisp = document.getElementById('medpur-grand-total-disp');
+    if (grandDisp) grandDisp.textContent = formatUZS(grandTotal);
+  }
+
+  async function handleMedPurchaseSubmit(e) {
+    e.preventDefault();
+
+    const date = document.getElementById('medpur-date-input').value;
+    const method = document.getElementById('medpur-method-select').value;
+    const supplier = document.getElementById('medpur-supplier-input').value.trim();
+    const invoice = document.getElementById('medpur-invoice-input').value.trim();
+    const notes = document.getElementById('medpur-notes-input').value.trim();
+
+    const rows = document.querySelectorAll('#medpur-items-tbody tr');
+    const items = [];
+
+    rows.forEach(tr => {
+      const name = tr.querySelector('.medpur-item-name')?.value.trim();
+      const cat = tr.querySelector('.medpur-item-cat')?.value.trim() || 'Dori-darmon';
+      const medId = tr.querySelector('.medpur-item-id')?.value || null;
+      const qty = parseFloat(tr.querySelector('.medpur-item-qty')?.value) || 0;
+      const price = parseFloat(tr.querySelector('.medpur-item-price')?.value) || 0;
+
+      if (name && qty > 0 && price >= 0) {
+        items.push({
+          medication_id: medId,
+          medication_name: name,
+          category: cat,
+          form: 'dona',
+          quantity: qty,
+          unit_price: price
+        });
+      }
+    });
+
+    if (items.length === 0) {
+      showToast("Iltimos, kamida bitta dori vositasi va uning narxini kiriting!", 'warning');
+      return;
+    }
+
+    const payload = {
+      purchase_date: date,
+      payment_method: method,
+      supplier_name: supplier,
+      invoice_number: invoice,
+      notes: notes,
+      items: items
+    };
+
+    try {
+      const res = await fetch('/api/accounting/medication-purchases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xaridni saqlashda xatolik yuz berdi", 'warning');
+        return;
+      }
+
+      const resData = await res.json();
+      const totalAmount = resData.amount || items.reduce((s, it) => s + (it.quantity * it.unit_price), 0);
+
+      // Instantly refresh from server
+      await syncWithLedgerAndBackend(false);
+      closeAllModals();
+      renderAll();
+      showToast(`✅ Dori xaridi (${formatUZS(totalAmount)}) buxgalteriya xarajatlariga yozildi va ombor yangilandi!`, 'success');
+    } catch (err) {
+      console.error("Medication purchase submit error:", err);
+      showToast("Server bilan aloqada xatolik", 'warning');
+    }
+  }
+
+  async function deleteMedPurchase(purchaseId) {
+    const p = (accountingData.medication_purchases || []).find(x => x.id === purchaseId);
+    const medName = p ? p.medication_name : 'Ushbu dori xaridi';
+
+    const confirmed = await fmhConfirm({
+      title: "Dori Xaridini Bekor Qilish",
+      message: `<strong>${esc(medName)}</strong> bo'yicha xarid yozuvi o'chirilsinmi? Kassa chiqimi bekor qilinadi va ombor qoldig'i kamaytiriladi.`,
+      confirmText: "O'chirish",
+      cancelText: "Bekor qilish",
+      type: 'danger'
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/accounting/medication-purchases/${encodeURIComponent(purchaseId)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await syncWithLedgerAndBackend(false);
+        renderAll();
+        showToast("✅ Dori xaridi muvaffaqiyatli bekor qilindi", 'info');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "O'chirishda xatolik yuz berdi", 'warning');
+      }
+    } catch (e) {
+      showToast("Server bilan aloqada xatolik", 'warning');
+    }
+  }
+
+  function exportMedPurchasesToExcel() {
+    if (!window.XLSX || !accountingData || !accountingData.medication_purchases) {
+      showToast("Eksport uchun ma'lumotlar yetarli emas", 'warning');
+      return;
+    }
+
+    const list = [...accountingData.medication_purchases].filter(p => isDateInRange(p.purchase_date || p.created_at));
+    const rows = list.map((p, idx) => ({
+      "№": idx + 1,
+      "Sana": p.purchase_date,
+      "Dori Nomi": p.medication_name,
+      "Guruhi": p.category || '',
+      "Shakli": p.form || '',
+      "Miqdori": p.quantity,
+      "Donasi Narxi (UZS)": p.unit_price,
+      "Jami Xarajat (UZS)": p.total_price,
+      "To'lov Shakli": p.payment_method,
+      "Yetkazib Beruvchi": p.supplier_name || '',
+      "Chek / Nakladnaya": p.invoice_number || '',
+      "Kassir / Mas'ul": p.recorded_by_name || 'Buxgalter',
+      "Izoh": p.notes || ''
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Dori Xarajatlari");
+    XLSX.writeFile(wb, `FMH_Dori_Xarajatlari_${getFormattedDate()}.xlsx`);
+    showToast("✅ Dori xarajatlari Excel fayli yuklab olindi!");
+  }
+
+  // ==========================================================================
   // EXCEL (.XLSX) EXPORT ENGINES PER PAGE / TAB (MATCHING ACTIVE DATE RANGE)
   // ==========================================================================
 
@@ -1941,6 +2412,25 @@
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pharmRows), "Dorixona Ombor");
 
+    // Sheet 5: Medication Purchases
+    if (accountingData.medication_purchases && accountingData.medication_purchases.length > 0) {
+      const medPurchRows = accountingData.medication_purchases.filter(p => isDateInRange(p.purchase_date || p.created_at)).map((p, index) => ({
+        "№": index + 1,
+        "Sana": p.purchase_date,
+        "Dori Nomi": p.medication_name,
+        "Guruhi": p.category || '',
+        "Shakli": p.form || '',
+        "Miqdori": p.quantity,
+        "Donasi Narxi": p.unit_price,
+        "Jami Xarajat": p.total_price,
+        "To'lov Shakli": p.payment_method,
+        "Yetkazib Beruvchi": p.supplier_name || '',
+        "Chek / Nakladnaya": p.invoice_number || '',
+        "Kassir / Mas'ul": p.recorded_by_name || 'Buxgalter'
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(medPurchRows), "Dori Xarajatlari");
+    }
+
     const fileName = `FMH_Kompleks_Buxgalteriya_Hisoboti_${getFormattedDate()}.xlsx`;
     XLSX.writeFile(wb, fileName);
     showToast(`📗 <strong>${fileName}</strong> (barcha varaqlar bilan) yuklab olindi!`);
@@ -2036,6 +2526,7 @@
     if (tabId === 'analytics') {
       setTimeout(renderAnalytics, 50);
     } else if (tabId === 'pharmacy') {
+      renderMedicationPurchases();
       renderPharmacyInventory();
     }
   }
@@ -2165,6 +2656,13 @@
     // Incasso Form Listener
     const incassoForm = document.getElementById('incasso-form');
     if (incassoForm) incassoForm.addEventListener('submit', handleIncassoSubmit);
+
+    // Medication Purchase Form & Row Button Listeners
+    const medPurForm = document.getElementById('medication-purchase-form');
+    if (medPurForm) medPurForm.addEventListener('submit', handleMedPurchaseSubmit);
+
+    const btnAddMedRow = document.getElementById('btn-add-medpur-row');
+    if (btnAddMedRow) btnAddMedRow.addEventListener('click', () => addMedPurchaseRow());
 
     // Window resize for canvas
     window.addEventListener('resize', () => {
@@ -2381,6 +2879,7 @@
     renderPatientsBillingTable();
     renderTransactionsTable();
     renderDoctorsPayroll();
+    renderMedicationPurchases();
     renderPharmacyInventory();
     if (currentTab === 'analytics') renderAnalytics();
   }
@@ -2497,6 +2996,12 @@
     openIncassoModal,
     openNewTxnModal,
     openNewBillModal,
+    openMedPurchaseModal,
+    addMedPurchaseRow,
+    deleteMedPurchase,
+    filterMedPurchases,
+    filterPharmacyStock,
+    exportMedPurchasesToExcel,
     payoutDoctorSalary,
     exportToCSV: exportAllToExcel,
     exportAllToExcel,
