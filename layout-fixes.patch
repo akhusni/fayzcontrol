@@ -1,0 +1,587 @@
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/css/unified_header.css	2026-09-15 21:49:02
++++ css/unified_header.css	2026-09-16 11:58:15
+@@ -1091,5 +1091,287 @@
+ [data-theme="day"] .fmh-confirm-btn-cancel:hover, body.day-mode .fmh-confirm-btn-cancel:hover {
+   background: #f1f5f9 !important;
+   color: #0f172a !important;
++}
++
++
++/* ==========================================================================
++   KEYBOARD FOCUS VISIBILITY
++   --------------------------------------------------------------------------
++   Every portal stylesheet sets `outline: none` on its controls, and the only
++   :focus rules that existed covered text fields and two dialog buttons. That
++   left navigation pills, header buttons and filter pills with no focus
++   indicator at all, so tabbing through a portal gave no sign of position.
++
++   These rules use :focus-visible, which the browser applies for keyboard
++   navigation but NOT for mouse clicks — so the appearance during normal
++   pointer use is unchanged. Colours come from the existing --primary token,
++   so the ring follows the active day/night theme automatically.
++   ========================================================================== */
++
++.portal-nav-pill:focus-visible,
++.portal-brand:focus-visible,
++.btn-header-primary:focus-visible,
++.btn-header-outline:focus-visible,
++.btn-unified-theme-toggle:focus-visible,
++.portal-user-chip:focus-visible,
++.filter-pill:focus-visible,
++.doc-pill-btn:focus-visible,
++.fmh-confirm-btn:focus-visible,
++a:focus-visible,
++button:focus-visible,
++[tabindex]:not([tabindex="-1"]):focus-visible,
++summary:focus-visible {
++  outline: 2px solid var(--primary, #38bdf8) !important;
++  outline-offset: 2px !important;
++  box-shadow: 0 0 0 4px var(--primary-glow, rgba(56, 189, 248, 0.25)) !important;
++  border-radius: inherit;
++}
++
++/* Form fields already carry a focus ring; keep it and add the outline so the
++   indicator is consistent no matter which control the keyboard lands on. */
++input:focus-visible,
++select:focus-visible,
++textarea:focus-visible {
++  outline: 2px solid var(--primary, #38bdf8) !important;
++  outline-offset: 1px !important;
++}
++
++/* The confirm dialog's default button is focused on open; make that obvious. */
++.fmh-confirm-btn:focus-visible {
++  outline-offset: 3px !important;
++}
++
++/* Windows high-contrast / forced-colors mode ignores custom colours, so fall
++   back to a system-defined ring rather than losing the indicator entirely. */
++@media (forced-colors: active) {
++  a:focus-visible,
++  button:focus-visible,
++  input:focus-visible,
++  select:focus-visible,
++  textarea:focus-visible,
++  [tabindex]:not([tabindex="-1"]):focus-visible {
++    outline: 3px solid Highlight !important;
++    outline-offset: 2px !important;
++  }
++}
++
++/* ==========================================================================
++   MINIMUM TARGET SIZE
++   --------------------------------------------------------------------------
++   Below 1080px the navigation pills collapse to icon-only with 4px/6px
++   padding, which measured 22px wide — under the 24x24 CSS-pixel floor in
++   WCAG 2.2 AA (2.5.8 Target Size, Minimum) and awkward to hit on a tablet
++   during ward rounds. Squaring them to 32px keeps the header's height and
++   spacing unchanged while giving a comfortable target.
++   ========================================================================== */
++
++@media (max-width: 1080px) {
++  .portal-master-nav .portal-nav-pill {
++    min-width: 32px !important;
++    min-height: 32px !important;
++    height: 32px !important;
++    justify-content: center !important;
++    padding: 4px !important;
++  }
++  .portal-actions-cluster .btn-header-primary,
++  .portal-actions-cluster .btn-header-outline,
++  .portal-actions-cluster .btn-unified-theme-toggle {
++    min-height: 32px !important;
++  }
++}
++
++/* ==========================================================================
++   HEADER ACTION CLUSTER OVERFLOW
++   --------------------------------------------------------------------------
++   .portal-actions-cluster was pinned to width/min-width/max-width: 290px to
++   mirror the 290px brand anchor and keep the centre nav optically centred.
++   But its four controls (A4 Blanklar, Yangi Qabul, theme toggle, Sayt) need
++   about 407px. With justify-content: flex-end, flex-wrap: nowrap and visible
++   overflow, the surplus ~117px spilled out of the LEFT edge of the box, so the
++   first button rendered on top of the last navigation pill and the two read as
++   one doubled control. The 290px lock is only released below 1080px, so this
++   affected roughly 1081px-1640px — i.e. most desktop widths, 1440 and 1512
++   included.
++
++   The cluster now sizes to its content with 290px kept as a floor, and the
++   grid's trailing column tracks it, so the anchor still reads as 290px
++   whenever the buttons fit inside it. There is room for this: at 1512px the
++   brand (290) + nav (743) + cluster (407) come to 1440 inside a 1506px
++   wrapper, so nothing else has to shrink.
++   ========================================================================== */
++
++@media (min-width: 1081px) {
++  .portal-actions-cluster,
++  .super-topbar-right {
++    width: auto !important;
++    min-width: 290px !important;
++    max-width: none !important;
++  }
++}
++
++/* Trailing column follows the cluster. Split by band so each keeps the brand
++   width its own breakpoint already set (240px below 1450px, 290px above). */
++@media (min-width: 1451px) {
++  .portal-nav-wrapper {
++    grid-template-columns: 290px 1fr minmax(290px, auto) !important;
++  }
++}
++
++@media (min-width: 1081px) and (max-width: 1450px) {
++  .portal-nav-wrapper {
++    grid-template-columns: 240px 1fr minmax(290px, auto) !important;
++  }
++}
++
++/* ==========================================================================
++   HEADER STAT CHIPS
++   --------------------------------------------------------------------------
++   .header-stat-chip had no styling at all — the markup exists on the
++   Qabulxona, CRM, Buxgalteriya and HR pages, but nothing ever gave it padding,
++   a background or a border. The three stats were bare text separated only by
++   an 8px flex gap set inline, so "Real Bo'sh: 14  Bugun: 0  Yangi lid: 0" ran
++   together as one continuous line instead of reading as three figures.
++
++   Each chip now sits in its own pill with real separation between them.
++   Colours come from the existing tokens, so the strip follows the day/night
++   theme like the rest of the header.
++   ========================================================================== */
++
++.portal-center-chips {
++  display: flex !important;
++  align-items: center !important;
++  gap: 0.75rem !important;
++  flex-wrap: wrap !important;
++  row-gap: 0.4rem !important;
+ }
+ 
++.header-stat-chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 0.4rem;
++  padding: 5px 11px;
++  border-radius: 999px;
++  background: var(--bg-panel, #0a1b33);
++  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
++  font-size: 0.78rem;
++  line-height: 1.2;
++  color: var(--text-secondary, #cbd5e1);
++  white-space: nowrap;
++  transition: background 0.15s ease, border-color 0.15s ease;
++}
++
++.header-stat-chip:hover {
++  background: var(--bg-panel-hover, #122c54);
++  border-color: var(--border-color, rgba(255, 255, 255, 0.09));
++}
++
++/* The figure itself should outweigh its label. */
++.header-stat-chip .val {
++  font-weight: 800;
++  font-size: 0.86rem;
++  color: var(--text-primary, #f8fafc);
++  font-variant-numeric: tabular-nums;
++}
++
++.header-stat-chip i {
++  font-size: 0.82rem;
++  flex: 0 0 auto;
++}
++
++/* Day mode needs a lighter ground than --bg-panel, which stays dark there. */
++[data-theme="day"] .header-stat-chip,
++body.day-mode .header-stat-chip {
++  background: #f1f5f9;
++  border-color: #e2e8f0;
++  color: #334155;
++}
++
++[data-theme="day"] .header-stat-chip:hover,
++body.day-mode .header-stat-chip:hover {
++  background: #e2e8f0;
++  border-color: #cbd5e1;
++}
++
++[data-theme="day"] .header-stat-chip .val,
++body.day-mode .header-stat-chip .val {
++  color: #0f172a;
++}
++
++/* ==========================================================================
++   SUPER-PORTAL HEADER CROWDING
++   --------------------------------------------------------------------------
++   superpage.html carries two header widgets no other portal has: the user /
++   role switcher (~182px) and the gold Superadmin button (~121px). With those
++   added, the header needs roughly 1717px of content — brand 290 + full nav 710
++   + cluster 717 — but .portal-nav-wrapper is capped at max-width: 1640px. It
++   therefore could never fit at ANY window size, and the surplus spilled out of
++   the cluster's left edge: the user widget landed on top of "HR & Kadrlar" and
++   "Qabulxona", and the Superadmin button on top of "CRM". Measured overlaps
++   ran from 900px right up to 1920px.
++
++   Fixed in three parts:
++     1. The nav zone may shrink (min-width: 0) and clips rather than overlaps,
++        so a shortfall can never again stack controls on top of each other.
++     2. Non-active nav labels collapse to their icons — the same treatment the
++        design already applies below 1450px — which brings the nav from ~710px
++        down to ~320px and buys back the space the two extra widgets need.
++     3. The two extra widgets then compact in stages as the window narrows.
++   ========================================================================== */
++
++body.super-portal-page .portal-center-nav-zone,
++body.super-portal-page .portal-master-nav {
++  min-width: 0 !important;
++}
++
++body.super-portal-page .portal-master-nav {
++  overflow: hidden !important;
++}
++
++/* 2. Icon-only nav except the current section, which keeps its label. */
++body.super-portal-page .portal-master-nav .portal-nav-pill:not(.active) span {
++  display: none !important;
++}
++
++/* 3a. Drop the name/role text in the switcher, keeping the crown and chevron. */
++@media (max-width: 1500px) {
++  body.super-portal-page .user-role-widget .user-info-cluster {
++    display: none !important;
++  }
++}
++
++/* 3b. Then the Superadmin button's label, keeping its crown icon. */
++@media (max-width: 1380px) {
++  body.super-portal-page .btn-superadmin-gold span {
++    display: none !important;
++  }
++}
++
++/* 3c. Then the secondary action labels, so the primary action stays readable. */
++@media (max-width: 1280px) {
++  body.super-portal-page .portal-actions-cluster a.btn-header-outline span {
++    display: none !important;
++  }
++}
++
++/* ==========================================================================
++   NARROW-WIDTH CLUSTER CAP
++   --------------------------------------------------------------------------
++   The max-width: 1080px block releases the cluster's width and min-width back
++   to auto but leaves the base rule's `max-width: 290px` in force, so the box
++   stayed capped at 290px while its contents needed more and spilled out of the
++   left edge again. Releasing the cap completes that override.
++
++   The Super-Portal's theme toggle also keeps its full label at this size,
++   where every other action has already collapsed to an icon; collapsing it too
++   keeps the row inside the viewport.
++   ========================================================================== */
++
++@media (max-width: 1080px) {
++  .portal-actions-cluster,
++  .super-topbar-right {
++    max-width: none !important;
++  }
++  body.super-portal-page .btn-unified-theme-toggle span {
++    display: none !important;
++  }
++}
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/css/superpage.css	2026-09-15 21:49:02
++++ css/superpage.css	2026-09-16 12:00:21
+@@ -1459,4 +1459,42 @@
+   filter: grayscale(0.8);
+   pointer-events: none;
+   cursor: not-allowed !important;
++}
++
++/* ==========================================================================
++   SUPER-PORTAL TOOLBAR ROW
++   --------------------------------------------------------------------------
++   The search box + "Kassa To'lovi" row was an inline flex with nowrap and a
++   fixed 240px input. Below roughly 900px the pair outgrew the space and the
++   button was pushed ~90px past the right edge; because no ancestor scrolls,
++   it was simply clipped and the cashier action became unreachable.
++   The row may now wrap and the input may shrink.
++   ========================================================================== */
++
++.super-toolbar-actions {
++  flex-wrap: wrap !important;
++  justify-content: flex-end;
++  row-gap: 0.5rem;
++  min-width: 0;
++}
++
++.super-toolbar-actions .super-search-box {
++  flex: 1 1 200px;
++  min-width: 0;
+ }
++
++.super-toolbar-actions .super-search-input {
++  width: 100% !important;
++  min-width: 0 !important;
++  box-sizing: border-box;
++}
++
++@media (min-width: 1100px) {
++  /* Keep the original fixed width where there is room for it. */
++  .super-toolbar-actions .super-search-box {
++    flex: 0 0 auto;
++  }
++  .super-toolbar-actions .super-search-input {
++    width: 240px !important;
++  }
++}
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/css/crm.css	2026-09-15 21:49:02
++++ css/crm.css	2026-09-16 11:32:16
+@@ -1047,3 +1047,20 @@
+     width: 100% !important;
+   }
+ }
++
++/* ==========================================================================
++   NARROW-VIEWPORT COLLAPSE
++   --------------------------------------------------------------------------
++   This stylesheet had no @media rules at all. Most of its layout is fluid
++   (auto-fit / auto-fill with minmax), which holds up on its own, but
++   .patient-meta-grid and .epicrisis-grid are fixed at two columns and so kept
++   two cramped columns on a phone instead of stacking. Everything else is left
++   to the existing fluid rules.
++   ========================================================================== */
++
++@media (max-width: 640px) {
++  .patient-meta-grid,
++  .epicrisis-grid {
++    grid-template-columns: 1fr;
++  }
++}
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/css/building_management.css	2026-09-15 21:49:02
++++ css/building_management.css	2026-09-16 11:39:48
+@@ -1943,4 +1943,18 @@
+ [data-theme="day"] .smart-search-box input::placeholder, body.day-mode .smart-search-box input::placeholder {
+   color: #94a3b8 !important;
+ }
++
++
++/* ==========================================================================
++   MINIMUM TARGET SIZE — per-bed action buttons
++   --------------------------------------------------------------------------
++   .btn-smart-action rendered at 23.5px tall, just under the 24x24 CSS-pixel
++   floor in WCAG 2.2 AA (2.5.8 Target Size, Minimum). These are the per-bed
++   Tahrirlash / Keyinga Bron / Chiqarish controls, so they should not be the
++   hardest things on the page to hit. 26px clears the floor while leaving the
++   card layout visually unchanged.
++   ========================================================================== */
+ 
++.btn-smart-action {
++  min-height: 26px;
++}
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/superpage.html	2026-09-15 21:49:02
++++ superpage.html	2026-09-16 12:00:21
+@@ -16,14 +16,15 @@
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+ 
+   <!-- Stylesheets -->
+-  <link rel="stylesheet" href="css/superpage.css?v=3.0">
+-  <link rel="stylesheet" href="css/building_management.css?v=3.0">
+-  <link rel="stylesheet" href="css/unified_header.css?v=3.0">
++  <link rel="stylesheet" href="css/superpage.css?v=3.1">
++  <link rel="stylesheet" href="css/building_management.css?v=3.1">
++  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+-<body>
++<body class="super-portal-page">
+ 
+   <!-- ==========================================================================
+        UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 3-ZONE GRID)
+@@ -238,7 +239,7 @@
+           </div>
+         </div>
+ 
+-        <div style="display: flex; align-items: center; gap: 0.75rem;">
++        <div class="super-toolbar-actions" style="display: flex; align-items: center; gap: 0.75rem;">
+           <div class="super-search-box" style="position: relative; display: flex; align-items: center;">
+             <i class="fas fa-search super-search-icon" style="position: absolute; left: 10px; color: var(--text-muted); font-size: 0.8rem;"></i>
+             <input type="text" id="super-global-search" class="super-search-input" placeholder="Bemor, dori, xona, kod..." style="padding: 6px 10px 6px 28px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-panel); color: var(--text-primary); font-size: 0.8rem; width: 240px;">
+@@ -1419,7 +1420,7 @@
+   <!-- Scripts -->
+   <script src="js/xlsx.full.min.js"></script>
+     <script src="js/unified_print_engine.js?v=5.0"></script>
+-<script src="js/superpage.js?v=7.0"></script>
++<script src="js/superpage.js?v=7.1"></script>
+   <div id="print-area"></div>
+ </body>
+ </html>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/medical_blank.html	2026-09-15 21:49:02
++++ medical_blank.html	2026-09-16 11:58:15
+@@ -11,8 +11,9 @@
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+-  <link rel="stylesheet" href="css/unified_header.css?v=5.0">
++  <link rel="stylesheet" href="css/unified_header.css?v=5.5">
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+   <script src="js/pharmacology_db.js"></script>
+   
+   <style>
+@@ -1115,7 +1116,7 @@
+         <!-- COMMON CLINIC MASTER HEADER -->
+         <header class="clinic-header">
+           <div class="header-logo-area">
+-            <img src="assets/images/logo.png" alt="Fayz Medical House Logo" class="clinic-logo" onerror="this.src='https://via.placeholder.com/60?text=FMH'">
++            <img src="assets/images/logo.png" alt="Fayz Medical House Logo" class="clinic-logo" onerror="this.onerror=null;this.src='data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%2060%22%20role%3D%22img%22%20aria-label%3D%22FMH%22%3E%3Crect%20width%3D%2260%22%20height%3D%2260%22%20rx%3D%2212%22%20fill%3D%22%230284c7%22%2F%3E%3Ctext%20x%3D%2230%22%20y%3D%2237%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2217%22%20font-weight%3D%22bold%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%3EFMH%3C%2Ftext%3E%3C%2Fsvg%3E'">
+             <div class="clinic-name-block">
+               <h1 class="clinic-name">FAYZ MEDICAL HOUSE</h1>
+               <div class="clinic-tagline">Narkologiya, Psixiatriya va Reabilitatsiya Klinikasi</div>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/reception.html	2026-09-15 21:49:02
++++ reception.html	2026-09-16 11:58:15
+@@ -13,10 +13,11 @@
+     <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+ <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+   <link rel="stylesheet" href="css/reception.css?v=9.0">
+-  <link rel="stylesheet" href="css/unified_header.css?v=3.0">
++  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+ <body class="reception-portal">
+ 
+@@ -796,6 +797,6 @@
+   <!-- Scripts -->
+   <script src="js/xlsx.full.min.js"></script>
+     <script src="js/unified_print_engine.js?v=5.0"></script>
+-<script src="js/reception.js?v=13.0"></script>
++<script src="js/reception.js?v=13.1"></script>
+ </body>
+ </html>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/crm.html	2026-09-15 21:49:02
++++ crm.html	2026-09-16 11:58:15
+@@ -16,11 +16,12 @@
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+ 
+   <!-- Stylesheets -->
+-  <link rel="stylesheet" href="css/crm.css?v=3.0">
+-  <link rel="stylesheet" href="css/unified_header.css?v=3.0">
++  <link rel="stylesheet" href="css/crm.css?v=3.1">
++  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+ <body class="crm-portal">
+ 
+@@ -412,7 +413,7 @@
+   <!-- Scripts -->
+   <script src="js/xlsx.full.min.js"></script>
+     <script src="js/unified_print_engine.js?v=5.0"></script>
+-<script src="js/crm.js?v=6.0"></script>
++<script src="js/crm.js?v=6.1"></script>
+   <div id="print-area"></div>
+ </body>
+ </html>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/accounting.html	2026-09-15 21:49:02
++++ accounting.html	2026-09-16 11:58:16
+@@ -14,10 +14,11 @@
+ <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+   <!-- Stylesheets -->
+   <link rel="stylesheet" href="css/accounting.css?v=3.0">
+-  <link rel="stylesheet" href="css/unified_header.css?v=3.0">
++  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+ <body class="accounting-portal">
+ 
+@@ -879,7 +880,7 @@
+ 
+   <script src="js/xlsx.full.min.js"></script>
+     <script src="js/unified_print_engine.js?v=5.0"></script>
+-<script src="js/accounting.js?v=9.0"></script>
++<script src="js/accounting.js?v=9.1"></script>
+   <div id="print-area"></div>
+ </body>
+ </html>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/hr.html	2026-09-15 21:49:02
++++ hr.html	2026-09-16 11:58:16
+@@ -14,10 +14,11 @@
+ <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+   <!-- Stylesheets -->
+   <link rel="stylesheet" href="css/hr.css?v=3.5">
+-  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
++  <link rel="stylesheet" href="css/unified_header.css?v=3.10">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js?v=3.5"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+ <body class="hr-portal">
+ 
+@@ -947,7 +948,7 @@
+   <!-- SheetJS Excel Library & HR Engine -->
+   <script src="js/xlsx.full.min.js"></script>
+     <script src="js/unified_print_engine.js?v=5.0"></script>
+-<script src="js/hr.js?v=9.5"></script>
++<script src="js/hr.js?v=9.6"></script>
+   <div id="print-area"></div>
+ </body>
+ </html>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/doctor.html	2026-09-15 21:49:02
++++ doctor.html	2026-09-16 11:58:15
+@@ -17,10 +17,11 @@
+ 
+   <!-- Stylesheets -->
+   <link rel="stylesheet" href="css/doctor.css?v=4.0">
+-  <link rel="stylesheet" href="css/unified_header.css?v=3.0">
++  <link rel="stylesheet" href="css/unified_header.css?v=3.5">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+ <body class="doctor-portal">
+ 
+@@ -1132,7 +1133,7 @@
+ 
+   <!-- JavaScript Engines -->
+     <script src="js/unified_print_engine.js?v=5.0"></script>
+-<script src="js/doctor.js?v=12.0"></script>
++<script src="js/doctor.js?v=12.1"></script>
+   <div id="print-area"></div>
+ </body>
+ </html>
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig_ux/fayzcontrol.uz/building_management.html	2026-09-15 21:49:02
++++ building_management.html	2026-09-16 11:58:15
+@@ -11,11 +11,12 @@
+   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+     <!-- Stylesheets -->
+-  <link rel="stylesheet" href="css/building_management.css?v=3.0">
+-  <link rel="stylesheet" href="css/unified_header.css?v=4.0">
++  <link rel="stylesheet" href="css/building_management.css?v=3.1">
++  <link rel="stylesheet" href="css/unified_header.css?v=4.5">
+ 
+   <!-- Centralized Enterprise Theme & Shift Engine -->
+   <script src="js/theme_engine.js"></script>
++  <script src="js/fmh_dialogs.js?v=1.0"></script>
+ </head>
+ <body class="building-portal">
+ 
+@@ -375,6 +376,6 @@
+ 
+   <script src="js/xlsx.full.min.js"></script>
+   <script src="js/pharmacology_db.js"></script>
+-  <script src="js/building_management.js?v=6.0"></script>
++  <script src="js/building_management.js?v=6.1"></script>
+ </body>
+ </html>

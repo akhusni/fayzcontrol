@@ -1,0 +1,17 @@
+# --- Sensitive spreadsheets & credentials ---
+*.xlsx
+*.xls
+FMH_hisoblar_va_parollar.xlsx
+db_config.json
+*.log
+__pycache__/
+*.py[cod]
+
+# --- Subdirectory runtime & sensitive paths ---
+fayzcontrol.uz/data/reports/
+fayzcontrol.uz/server_log.txt
+fayzcontrol.uz/server_err.log
+fayzcontrol.uz/server.log
+fayzcontrol.uz/pymysql.broken.vendored/
+fayzcontrol.uz/data/users[ .]*
+!fayzcontrol.uz/data/users.json

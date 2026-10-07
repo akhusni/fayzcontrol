@@ -1,0 +1,467 @@
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig/db.py	2026-09-16 10:12:06
++++ db.py	2026-09-16 10:12:45
+@@ -234,6 +234,21 @@
+ def get_active_engine():
+     return 'mysql'
+ 
++def is_duplicate_key_error(err):
++    """
++    True when an exception is a MySQL duplicate-key violation (errno 1062).
++    Used to retry generated primary keys that collided instead of failing the
++    whole operation. InnoDB does not abort the surrounding transaction on 1062,
++    so a retry inside the same transaction is safe.
++    """
++    code = None
++    args = getattr(err, 'args', None)
++    if args:
++        code = args[0]
++    if code == 1062:
++        return True
++    return 'Duplicate entry' in str(err)
++
+ def test_mysql_connection(host, port, user, password, database):
+     """
+     Test a MySQL connection with specific parameters and return (success, message).
+@@ -278,7 +293,12 @@
+     """
+     try:
+         cur = conn.cursor()
+-        adm_id = f"ADM-{datetime.now().strftime('%Y%m%d%H%M%S')}"
++        # Admission ids are second-resolution timestamps, so two admissions registered
++        # in the same second used to collide on the primary key and one was lost.
++        # The first candidate keeps the original ADM-YYYYMMDDHHMMSS format; a numeric
++        # suffix is only appended when that exact id is already taken.
++        adm_stamp = datetime.now().strftime('%Y%m%d%H%M%S')
++        adm_id = f"ADM-{adm_stamp}"
+         inv_id = f"INV-{adm_id}"
+ 
+         # 0. Fetch human-readable bed code & verify operational status
+@@ -291,23 +311,39 @@
+             return False, f"O'rin ({bed_code}) hozirda band yoki tozalash/ta'mirlash holatida ({b_status})!"
+ 
+         # 0.1 Concurrent Double-Booking Race Condition Guard
++        # Standard interval overlap test: new_start <= existing_end AND new_end >= existing_start.
++        # The two date parameters must be bound in that order, otherwise the predicate
++        # degrades into a "new stay fully contained in existing stay" check and lets
++        # every partially overlapping stay through (two patients in one bed).
+         cur.execute("""
+-            SELECT id FROM admissions 
+-            WHERE bed_id = ? 
++            SELECT id FROM admissions
++            WHERE bed_id = ?
+               AND status = 'active'
+               AND (? <= COALESCE(actual_end_date, planned_end_date) AND ? >= start_date)
+-        """, (bed_id, planned_end_date, start_date))
++        """, (bed_id, start_date, planned_end_date))
+         if cur.fetchone():
+             return False, f"Tanlangan o'rinda ({bed_code}) ko'rsatilgan sanalarda faol bemor mavjud!"
+ 
+-        # 1. Insert Admission
+-        cur.execute("""
+-            INSERT INTO admissions (
+-                id, patient_id, bed_id, attending_doctor_id, program_type,
+-                start_date, planned_end_date, daily_price, status, admission_notes
+-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+-        """, (adm_id, patient_id, bed_id, attending_doctor_id, program_type,
+-              start_date, planned_end_date, daily_price, admission_notes))
++        # 1. Insert Admission (retrying only the id on a same-second collision)
++        for attempt in range(100):
++            candidate = f"ADM-{adm_stamp}" if attempt == 0 else f"ADM-{adm_stamp}-{attempt}"
++            try:
++                cur.execute("""
++                    INSERT INTO admissions (
++                        id, patient_id, bed_id, attending_doctor_id, program_type,
++                        start_date, planned_end_date, daily_price, status, admission_notes
++                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
++                """, (candidate, patient_id, bed_id, attending_doctor_id, program_type,
++                      start_date, planned_end_date, daily_price, admission_notes))
++                adm_id = candidate
++                inv_id = f"INV-{adm_id}"
++                break
++            except Exception as e_dup:
++                if is_duplicate_key_error(e_dup):
++                    continue
++                raise
++        else:
++            return False, "Admission ID generatsiyasi muvaffaqiyatsiz (100 urinish)."
+ 
+         # 2. Insert Invoice Container
+         cur.execute("""
+@@ -380,13 +416,15 @@
+             return False, f"Ko'chirilayotgan o'rin ({new_code}) hozirda band yoki tozalash/ta'mirlash holatida ({new_status})!"
+ 
+         # 2.1 Concurrent Overlap Check on Target Bed
++        # Same interval overlap test as admit_patient: the stay being moved runs from
++        # transfer_date to raw_end, so bind start first, then end.
+         cur.execute("""
+-            SELECT id FROM admissions 
+-            WHERE bed_id = ? 
++            SELECT id FROM admissions
++            WHERE bed_id = ?
+               AND id != ?
+               AND status = 'active'
+               AND (? <= COALESCE(actual_end_date, planned_end_date) AND ? >= start_date)
+-        """, (new_bed_id, admission_id, str(raw_end), transfer_date))
++        """, (new_bed_id, admission_id, transfer_date, str(raw_end)))
+         if cur.fetchone():
+             return False, f"Ko'chirilayotgan o'rinda ({new_code}) ko'rsatilgan sanalarda boshqa faol bemor mavjud!"
+ 
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig/pdf_generator.py	2026-09-16 10:12:06
++++ pdf_generator.py	2026-09-16 10:15:40
+@@ -144,12 +144,16 @@
+     primary_diag = anam.get('diagnosis_primary') or "Surunkali alkogolizm 2-bosqich. Abstinensiya sindromi."
+     icd10 = anam.get('icd10_code') or "F10.2"
+     allergies = pt.get('medical_allergies') or "Qayd etilmagan (Yo'q)"
++    # Computed outside the f-string below: an escaped quote inside an f-string
++    # expression is a syntax error before Python 3.12, which made this whole
++    # module fail to import and silently disabled every PDF export.
++    allergy_color = '#f43f5e' if allergies.lower() != "yo'q" else '#10b981'
+ 
+     pt_grid_data = [
+         [Paragraph(f"<b>Bemor F.I.SH.:</b> {pt.get('full_name', '')}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {pt.get('patient_code', '')}", body_style)],
+         [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {room_str}", body_style)],
+         [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {primary_diag}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {icd10}", body_style)],
+-        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{'#f43f5e' if allergies.lower() != 'yo\'q' else '#10b981'}'><b>{allergies}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {adm.get('doctor_name', 'Dr. Rustam Ziyayev')}", body_style)]
++        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{allergies}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {adm.get('doctor_name', 'Dr. Rustam Ziyayev')}", body_style)]
+     ]
+ 
+     pt_grid_table = Table(pt_grid_data, colWidths=[260, 260])
+--- /private/tmp/claude-501/-Users-l-Desktop-projects-fayzcontrol/e574b6ae-89eb-4b14-80e3-d84da1d95d05/scratchpad/orig/server.py	2026-09-16 10:12:06
++++ server.py	2026-09-16 10:22:41
+@@ -16,6 +16,8 @@
+ import decimal
+ import decimal as _dec
+ import traceback
++import threading
++import tempfile
+ 
+ 
+ def json_default(obj):
+@@ -53,7 +55,68 @@
+     from pdf_generator import generate_patient_pdf
+ except Exception as e:
+     generate_patient_pdf = None
++
++# ----------------------------------------------------------------------------
++# Shared-state safety for the threaded server.
++#
++# The JSON data files (users.json, clinic_rooms.json, pricing_config.json) are
++# read-modify-written by request handlers. ThreadingHTTPServer runs each request
++# in its own thread, so without serialization two concurrent writers interleave:
++# one thread truncates the file with open(...,'w') while another is still reading
++# it, the reader gets a partial document, and the write-back persists that
++# truncated state. That silently destroyed whole files.
++#
++# WRITE_LOCK serializes every mutating request (POST/PUT/DELETE). It also makes
++# the read-COUNT-then-INSERT id generators in the staff/user routes correct,
++# since a concurrent request can no longer observe the same count.
++# write_json_atomic() replaces the file via os.replace(), which is atomic, so a
++# concurrent reader always sees either the old or the new complete document and
++# never a half-written one.
++# ----------------------------------------------------------------------------
++WRITE_LOCK = threading.RLock()
++
++
++def read_json_file(path, default=None):
++    """
++    Load a JSON data file.
++
++    An absent file yields `default` (there is nothing to lose yet). A file that
++    exists but cannot be parsed raises, deliberately: the previous code caught
++    every exception here and fell back to an empty list, so a handler that read,
++    modified and wrote the document back persisted that empty value and erased
++    every existing record. Failing the request is always preferable to silently
++    truncating live data.
++    """
++    if not os.path.exists(path):
++        return default
++    with open(path, 'r', encoding='utf-8') as f:
++        return json.load(f)
++
++
++def write_json_atomic(path, data):
++    """
++    Write JSON to `path` atomically: serialize into a temporary file in the same
++    directory, flush to disk, then os.replace() it over the target. Readers never
++    observe a partially written file.
++    """
++    directory = os.path.dirname(os.path.abspath(path)) or '.'
++    os.makedirs(directory, exist_ok=True)
++    fd, tmp_path = tempfile.mkstemp(prefix='.tmp-', suffix='.json', dir=directory)
++    try:
++        with os.fdopen(fd, 'w', encoding='utf-8') as f:
++            json.dump(data, f, indent=2, ensure_ascii=False)
++            f.flush()
++            os.fsync(f.fileno())
++        os.replace(tmp_path, path)
++    except Exception:
++        try:
++            if os.path.exists(tmp_path):
++                os.remove(tmp_path)
++        except Exception:
++            pass
++        raise
+ 
++
+ from db import (
+     get_db,
+     get_active_engine,
+@@ -114,7 +177,8 @@
+                 body = json.loads(body_raw)
+             except Exception:
+                 body = {}
+-            self.handle_api_post(path, body)
++            with WRITE_LOCK:
++                self.handle_api_post(path, body)
+         else:
+             self._set_json_headers(404)
+             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+@@ -129,7 +193,8 @@
+                 body = json.loads(body_raw)
+             except Exception:
+                 body = {}
+-            self.handle_api_put(path, body)
++            with WRITE_LOCK:
++                self.handle_api_put(path, body)
+         else:
+             self._set_json_headers(404)
+             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+@@ -138,7 +203,8 @@
+         parsed = urllib.parse.urlparse(self.path)
+         path = parsed.path
+         if path.startswith('/api/'):
+-            self.handle_api_delete(path)
++            with WRITE_LOCK:
++                self.handle_api_delete(path)
+         else:
+             self._set_json_headers(404)
+             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+@@ -740,10 +806,20 @@
+                 pid = path.replace('/api/doctor/download-pdf/', '')
+                 if generate_patient_pdf:
+                     try:
+-                        pdf_path = generate_patient_pdf(pid)
+-                        if pdf_path and os.path.exists(pdf_path):
+-                            with open(pdf_path, 'rb') as f:
++                        # generate_patient_pdf() returns the rendered PDF as bytes.
++                        # This branch used to pass that value straight to
++                        # os.path.exists(), which is never true for a PDF byte
++                        # string, so every export fell through to the 404 below.
++                        # Both shapes are accepted now: raw bytes, or a path to a
++                        # file already written to disk.
++                        pdf_result = generate_patient_pdf(pid)
++                        pdf_data = None
++                        if isinstance(pdf_result, (bytes, bytearray)):
++                            pdf_data = bytes(pdf_result)
++                        elif pdf_result and isinstance(pdf_result, str) and os.path.exists(pdf_result):
++                            with open(pdf_result, 'rb') as f:
+                                 pdf_data = f.read()
++                        if pdf_data:
+                             self.send_response(200)
+                             self.send_header('Content-Type', 'application/pdf')
+                             self.send_header('Content-Disposition', f'attachment; filename="Fayz_Medical_History_{pid}.pdf"')
+@@ -944,7 +1020,18 @@
+ 
+             # 2. POST /api/payments (Record Signed Patient Payment or Refund Payout)
+             elif path == '/api/payments' or path == '/api/crm/payments':
+-                pay_id = body.get('id') or f"PAY-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
++                # Same bounded random space as patient ids: probe for a free id so a
++                # collision cannot reject a real payment.
++                pay_id = body.get('id')
++                if not pay_id:
++                    for _ in range(200):
++                        candidate = f"PAY-2026-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
++                        cur.execute("SELECT 1 FROM payments WHERE id = ? LIMIT 1", (candidate,))
++                        if not cur.fetchone():
++                            pay_id = candidate
++                            break
++                    if not pay_id:
++                        pay_id = f"PAY-2026-{int(datetime.datetime.now().timestamp() * 1000)}"
+                 inv_id = body.get('invoice_id')
+                 amount = float(body.get('amount', 0))
+ 
+@@ -1099,7 +1186,21 @@
+ 
+             # 5. POST /api/crm/patients (Create new patient)
+             elif path == '/api/crm/patients' or path == '/api/patients':
+-                pid = body.get('id') or f"PAT-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
++                # A random 4-digit id draws from only 9000 values with no uniqueness
++                # check, so registrations started failing on duplicate primary keys
++                # well before the clinic reached a few hundred patients. Probe for a
++                # free id in the same PAT-#### format, falling back to a millisecond
++                # timestamp if the random space is saturated.
++                pid = body.get('id')
++                if not pid:
++                    for _ in range(200):
++                        candidate = f"PAT-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
++                        cur.execute("SELECT 1 FROM patients WHERE id = ? LIMIT 1", (candidate,))
++                        if not cur.fetchone():
++                            pid = candidate
++                            break
++                    if not pid:
++                        pid = f"PAT-{int(datetime.datetime.now().timestamp() * 1000)}"
+                 pcode = body.get('patient_code') or f"FMH-2026-{pid[-4:]}"
+                 cur.execute("""
+                     INSERT INTO patients (id, patient_code, full_name, phone, emergency_contact, gender, birth_year, referral_source, is_anonymous, medical_allergies, chronic_conditions, status)
+@@ -1411,8 +1512,7 @@
+                                         'status': 'active'
+                                     })
+                                     cr_data['sample_calendar_bookings'] = bookings_list
+-                                    with open(rooms_file, 'w', encoding='utf-8') as rf:
+-                                        json.dump(cr_data, rf, indent=2, ensure_ascii=False)
++                                    write_json_atomic(rooms_file, cr_data)
+                             except Exception as e_cr:
+                                 print("Warning syncing clinic_rooms.json on admission:", e_cr)
+ 
+@@ -1519,13 +1619,7 @@
+             # 12. POST /api/settings/pricing (Superadmin updates any price dynamically)
+             elif path == '/api/settings/pricing':
+                 pricing_file = os.path.join(BASE_DIR, 'data', 'pricing_config.json')
+-                existing = {}
+-                if os.path.exists(pricing_file):
+-                    try:
+-                        with open(pricing_file, 'r', encoding='utf-8') as f:
+-                            existing = json.load(f)
+-                    except Exception:
+-                        pass
++                existing = read_json_file(pricing_file, {})
+                 
+                 if 'packages' in body:
+                     if 'packages' not in existing:
+@@ -1536,8 +1630,7 @@
+                 existing['updated_at'] = datetime.datetime.now().isoformat()
+                 existing['updated_by'] = body.get('updated_by', 'superadmin')
+ 
+-                with open(pricing_file, 'w', encoding='utf-8') as f:
+-                    json.dump(existing, f, indent=2, ensure_ascii=False)
++                write_json_atomic(pricing_file, existing)
+ 
+                 # Also update MySQL beds default_daily_rate if shared rate updated
+                 if 'packages' in body and 'statsionar_shared' in body['packages']:
+@@ -1556,13 +1649,7 @@
+                 username = (body.get('username') or '').strip().lower()
+                 password = (body.get('password') or '').strip()
+                 users_file = os.path.join(BASE_DIR, 'data', 'users.json')
+-                u_list = []
+-                if os.path.exists(users_file):
+-                    try:
+-                        with open(users_file, 'r', encoding='utf-8') as f:
+-                            u_list = json.load(f)
+-                    except Exception:
+-                        pass
++                u_list = read_json_file(users_file, [])
+                 
+                 found = None
+                 for u in u_list:
+@@ -1572,7 +1659,7 @@
+                 
+                 if found:
+                     user_info = dict(found)
+-                    del user_info['password']
++                    user_info.pop('password', None)
+                     self._set_json_headers(200)
+                     self.wfile.write(json.dumps({'message': 'Muvaffaqiyatli tizimga kirildi', 'user': user_info}, ensure_ascii=False).encode('utf-8'))
+                 else:
+@@ -1582,13 +1669,7 @@
+             # 14. POST /api/users (Create / Register user)
+             elif path == '/api/users':
+                 users_file = os.path.join(BASE_DIR, 'data', 'users.json')
+-                u_list = []
+-                if os.path.exists(users_file):
+-                    try:
+-                        with open(users_file, 'r', encoding='utf-8') as f:
+-                            u_list = json.load(f)
+-                    except Exception:
+-                        pass
++                u_list = read_json_file(users_file, [])
+ 
+                 username = (body.get('username') or '').strip().lower()
+                 if not username:
+@@ -1615,11 +1696,10 @@
+                     "permissions": body.get('permissions') or (['*'] if body.get('role') == 'superadmin' else [body.get('role', 'doctor')])
+                 }
+                 u_list.append(new_u)
+-                with open(users_file, 'w', encoding='utf-8') as f:
+-                    json.dump(u_list, f, indent=2, ensure_ascii=False)
++                write_json_atomic(users_file, u_list)
+ 
+                 sanitized = dict(new_u)
+-                del sanitized['password']
++                sanitized.pop('password', None)
+                 self._set_json_headers(201)
+                 self.wfile.write(json.dumps({'message': 'Foydalanuvchi muvaffaqiyatli ro\'yxatdan o\'tkazildi', 'user': sanitized}, ensure_ascii=False).encode('utf-8'))
+ 
+@@ -1664,8 +1744,7 @@
+                 floor_obj['rooms'].append(new_room)
+                 r_data['facility_info']['total_inpatient_rooms'] = sum(1 for fl in r_data.get('floors', []) for r in fl.get('rooms', []) if r.get('has_beds'))
+ 
+-                with open(rooms_file, 'w', encoding='utf-8') as f:
+-                    json.dump(r_data, f, indent=2, ensure_ascii=False)
++                write_json_atomic(rooms_file, r_data)
+ 
+                 try:
+                     cur.execute("""
+@@ -1718,8 +1797,7 @@
+                 if attached:
+                     total_beds = sum(len(r.get('beds', [])) for fl in r_data.get('floors', []) for r in fl.get('rooms', []))
+                     r_data['facility_info']['total_inpatient_beds'] = total_beds
+-                    with open(rooms_file, 'w', encoding='utf-8') as f:
+-                        json.dump(r_data, f, indent=2, ensure_ascii=False)
++                    write_json_atomic(rooms_file, r_data)
+ 
+                     try:
+                         cur.execute("""
+@@ -1846,8 +1924,7 @@
+                                 updated = True
+ 
+                 if updated:
+-                    with open(rooms_file, 'w', encoding='utf-8') as f:
+-                        json.dump(r_data, f, indent=2, ensure_ascii=False)
++                    write_json_atomic(rooms_file, r_data)
+                     self._set_json_headers(200)
+                     self.wfile.write(json.dumps({'message': f"{bed_id} karavot yangilandi"}).encode('utf-8'))
+                 else:
+@@ -1874,11 +1951,10 @@
+                         if 'is_active' in body: found['is_active'] = bool(body['is_active'])
+                         if 'permissions' in body: found['permissions'] = body['permissions']
+ 
+-                        with open(users_file, 'w', encoding='utf-8') as f:
+-                            json.dump(u_list, f, indent=2, ensure_ascii=False)
++                        write_json_atomic(users_file, u_list)
+ 
+                         sanitized = dict(found)
+-                        del sanitized['password']
++                        sanitized.pop('password', None)
+                         self._set_json_headers(200)
+                         self.wfile.write(json.dumps({'message': 'Foydalanuvchi ma\'lumotlari yangilandi', 'user': sanitized}, ensure_ascii=False).encode('utf-8'))
+                     else:
+@@ -1980,8 +2056,7 @@
+                 if detached:
+                     total_beds = sum(len(r.get('beds', [])) for fl in r_data.get('floors', []) for r in fl.get('rooms', []))
+                     r_data['facility_info']['total_inpatient_beds'] = total_beds
+-                    with open(rooms_file, 'w', encoding='utf-8') as f:
+-                        json.dump(r_data, f, indent=2, ensure_ascii=False)
++                    write_json_atomic(rooms_file, r_data)
+ 
+                     try:
+                         cur.execute("DELETE FROM beds WHERE id = ? OR bed_code = ?", (bid, bid))
+@@ -2012,8 +2087,7 @@
+                     total_beds = sum(len(r.get('beds', [])) for fl in r_data.get('floors', []) for r in fl.get('rooms', []))
+                     r_data['facility_info']['total_inpatient_beds'] = total_beds
+                     r_data['facility_info']['total_inpatient_rooms'] = sum(1 for fl in r_data.get('floors', []) for r in fl.get('rooms', []) if r.get('has_beds'))
+-                    with open(rooms_file, 'w', encoding='utf-8') as f:
+-                        json.dump(r_data, f, indent=2, ensure_ascii=False)
++                    write_json_atomic(rooms_file, r_data)
+ 
+                     try:
+                         cur.execute("DELETE FROM rooms WHERE id = ? OR room_number = ?", (rid, rid))
+@@ -2034,8 +2108,7 @@
+                     with open(users_file, 'r', encoding='utf-8') as f:
+                         u_list = json.load(f)
+                     u_list = [u for u in u_list if u.get('id') != uid and u.get('username') != uid]
+-                    with open(users_file, 'w', encoding='utf-8') as f:
+-                        json.dump(u_list, f, indent=2, ensure_ascii=False)
++                    write_json_atomic(users_file, u_list)
+                 self._set_json_headers(200)
+                 self.wfile.write(json.dumps({'message': f"Foydalanuvchi muvaffaqiyatli o'chirildi"}).encode('utf-8'))
+ 
