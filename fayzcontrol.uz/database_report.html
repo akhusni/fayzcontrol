@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fayz Medical House — Database Architecture & Reference Manual</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-dark: #0369a1;
+      --primary-light: #e0f2fe;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--gray-800);
+      background: var(--gray-50);
+      line-height: 1.65;
+      padding-bottom: 80px;
+    }
+
+    /* Top Floating Action Bar */
+    .action-bar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    }
+    .action-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--gray-900);
+    }
+    .action-brand span {
+      background: var(--primary);
+      color: white;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary {
+      background: white;
+      border-color: var(--gray-300);
+      color: var(--gray-700);
+    }
+    .btn-secondary:hover { background: var(--gray-100); }
+
+    /* Layout Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    /* Hero Header */
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: white;
+      border-radius: 20px;
+      padding: 48px;
+      margin-bottom: 36px;
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.15);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(2, 132, 199, 0.25) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+    .hero-tag {
+      display: inline-block;
+      background: rgba(2, 132, 199, 0.3);
+      border: 1px solid rgba(2, 132, 199, 0.6);
+      color: #7dd3fc;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .hero p {
+      color: #94a3b8;
+      font-size: 1.1rem;
+      max-width: 800px;
+      margin-bottom: 24px;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 20px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+    .hero-meta-item strong { color: white; margin-right: 4px; }
+
+    /* Navigation & Table of Contents */
+    .toc-card {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 36px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+    }
+    .toc-card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 14px;
+      color: var(--gray-900);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .toc-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--gray-700);
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .toc-link:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary-dark);
+      transform: translateX(3px);
+    }
+
+    /* Section Cards */
+    .section-card {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 16px;
+      padding: 36px;
+      margin-bottom: 32px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+    }
+    .section-header {
+      margin-bottom: 24px;
+      border-bottom: 2px solid var(--gray-100);
+      padding-bottom: 16px;
+    }
+    .section-header h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--gray-900);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-header p {
+      color: var(--gray-600);
+      margin-top: 4px;
+      font-size: 0.95rem;
+    }
+
+    /* Diagram Containers */
+    .mermaid-box {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+
+    /* Tables */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 20px 0;
+      border: 1px solid var(--gray-200);
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.88rem;
+    }
+    th {
+      background: #f8fafc;
+      color: var(--gray-700);
+      font-weight: 700;
+      padding: 12px 16px;
+      border-bottom: 2px solid var(--gray-200);
+      white-space: nowrap;
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--gray-200);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(248, 250, 252, 0.8); }
+
+    /* Code Blocks */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 20px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin: 16px 0;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-pk { background: #dbeafe; color: #1e40af; }
+    .badge-fk { background: #fef3c7; color: #92400e; }
+    .badge-uq { background: #fce7f3; color: #9d174d; }
+    .badge-gen { background: #ede9fe; color: #5b21b6; }
+    .badge-active { background: #ecfdf5; color: #065f46; }
+
+    /* Key Callout Boxes */
+    .callout {
+      border-left: 4px solid var(--primary);
+      background: var(--primary-light);
+      padding: 16px 20px;
+      border-radius: 0 10px 10px 0;
+      margin: 20px 0;
+      font-size: 0.92rem;
+      color: #0369a1;
+    }
+    .callout strong { color: #075985; }
+
+    /* Print Styles */
+    @media print {
+      body { background: white; color: black; padding: 0; }
+      .action-bar { display: none; }
+      .hero {
+        background: none;
+        color: black;
+        box-shadow: none;
+        padding: 0 0 20px 0;
+        border-bottom: 2px solid #ccc;
+      }
+      .hero p { color: #555; }
+      .hero-meta { color: #555; }
+      .section-card {
+        border: none;
+        box-shadow: none;
+        padding: 20px 0;
+        page-break-inside: avoid;
+      }
+      .mermaid-box { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating Header Actions -->
+  <div class="action-bar">
+    <div class="action-brand">
+      🏥 Fayz Medical House <span>MySQL 8.0 Enterprise</span>
+    </div>
+    <div class="action-buttons">
+      <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(window.location.href); this.textContent = '✓ Copied';">
+        🔗 Copy Share Link
+      </button>
+      <button class="btn btn-primary" onclick="window.print();">
+        🖨️ Print / Save as PDF
+      </button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- Hero Banner -->
+    <div class="hero">
+      <div class="hero-tag">Official Architecture Reference</div>
+      <h1>Fayz Medical House & Fayz Control</h1>
+      <p>Comprehensive technical manual of the enterprise relational database powering Hospital Management, Electronic Medical Records (EMR), Clinical Accounting, and Bed Infrastructure.</p>
+      
+      <div class="hero-meta">
+        <div class="hero-meta-item"><strong>Database Engine:</strong> MySQL 8.0.45 Enterprise</div>
+        <div class="hero-meta-item"><strong>Storage Engine:</strong> InnoDB (ACID / Row-Level Lock)</div>
+        <div class="hero-meta-item"><strong>Charset:</strong> UTF8MB4 (Unicode Collation)</div>
+        <div class="hero-meta-item"><strong>Production Host:</strong> fayzcontrol.uz (31.184.242.14)</div>
+        <div class="hero-meta-item"><strong>Verified:</strong> September 2026</div>
+      </div>
+    </div>
+
+    <!-- Table of Contents -->
+    <div class="toc-card">
+      <h3>📑 Table of Contents</h3>
+      <div class="toc-grid">
+        <a href="#overview" class="toc-link">⚙️ 1. Architecture Overview</a>
+        <a href="#er-diagram" class="toc-link">🗺️ 2. Entity-Relationship (ER)</a>
+        <a href="#domain1" class="toc-link">🏨 3. Facility & Inpatient Beds</a>
+        <a href="#domain2" class="toc-link">👥 4. Human Resources & Shifts</a>
+        <a href="#domain3" class="toc-link">📋 5. CRM & Patient Registry</a>
+        <a href="#domain4" class="toc-link">🛏️ 6. Hospitalization & Vitals</a>
+        <a href="#domain5" class="toc-link">💊 7. Clinical EMR & Pharmacy</a>
+        <a href="#domain6" class="toc-link">💰 8. Billing & Ledger</a>
+        <a href="#triggers" class="toc-link">⚡ 9. Automated Trigger Engine</a>
+        <a href="#views" class="toc-link">👁️ 10. Real-Time BI & KPI Views</a>
+        <a href="#backup" class="toc-link">🛡️ 11. Security & Disaster Recovery</a>
+      </div>
+    </div>
+
+    <!-- Section 1: Overview -->
+    <div class="section-card" id="overview">
+      <div class="section-header">
+        <h2>⚙️ 1. Storage Engine & System Architecture</h2>
+        <p>Reliability, Concurrency, and Multi-Engine Strategy</p>
+      </div>
+      
+      <p>The system is architected for zero-data-loss healthcare operations. It handles dual-engine execution:</p>
+      
+      <div class="callout">
+        <strong>Dual-Engine Resilience Layer (db.py):</strong> In production on <code>fayzcontrol.uz</code>, the backend connects natively to <strong>MySQL 8.0.45</strong>. During offline development on a local computer without MySQL running, it falls back seamlessly to <strong>SQLite 3</strong> (WAL Mode). Developers write single-standard ANSI SQL queries, and <code>db.py</code> transparently handles query translation (<code>?</code> into <code>%s</code>) and row mapping.
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Architecture Pillar</th>
+              <th>Specification</th>
+              <th>Clinical & Operational Benefit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Storage Engine</strong></td>
+              <td><code>InnoDB</code></td>
+              <td>Full ACID transaction safety. Crash recovery via Write-Ahead Log (WAL) and Redo logs.</td>
+            </tr>
+            <tr>
+              <td><strong>Concurrency Model</strong></td>
+              <td><code>Row-Level Locking & MVCC</code></td>
+              <td>Cashiers can settle invoices while nurses record vitals and doctors prescribe meds simultaneously without table lockups.</td>
+            </tr>
+            <tr>
+              <td><strong>Isolation Level</strong></td>
+              <td><code>REPEATABLE READ</code></td>
+              <td>Prevents dirty reads and phantom updates during simultaneous bed reservation.</td>
+            </tr>
+            <tr>
+              <td><strong>Character Encoding</strong></td>
+              <td><code>utf8mb4 / utf8mb4_unicode_ci</code></td>
+              <td>Complete multi-lingual fidelity: Uzbek (Latin & Cyrillic), Russian, English, medical symbols, and emojis.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 2: ER Diagram -->
+    <div class="section-card" id="er-diagram">
+      <div class="section-header">
+        <h2>🗺️ 2. Comprehensive Entity-Relationship Diagram</h2>
+        <p>Interactive relational model connecting the 6 clinical and financial domains</p>
+      </div>
+
+      <div class="mermaid-box">
+        <pre class="mermaid">
+erDiagram
+    ROOMS ||--o{ BEDS : "contains"
+    STAFF ||--o{ STAFF_ATTENDANCE : "logs"
+    STAFF ||--o{ ADMISSIONS : "supervises"
+    STAFF ||--o{ APPOINTMENTS : "attends"
+    STAFF ||--o{ MEDICAL_HISTORIES : "evaluates"
+    STAFF ||--o{ PRESCRIPTIONS : "prescribes"
+    
+    PATIENTS ||--o{ APPOINTMENTS : "books"
+    PATIENTS ||--o{ ADMISSIONS : "hospitalized_in"
+    PATIENTS ||--o{ MEDICAL_HISTORIES : "has_history"
+    PATIENTS ||--o{ PRESCRIPTIONS : "receives_rx"
+    
+    BEDS ||--o{ ADMISSIONS : "assigned_to"
+    ADMISSIONS ||--o{ DAILY_LOGS : "daily_vitals"
+    ADMISSIONS ||--o{ BED_TRANSFERS : "transferred"
+    ADMISSIONS ||--|| INVOICES : "billed_by"
+    
+    MEDICATIONS_CATALOG ||--o{ PRESCRIPTIONS : "orders_from"
+    INVOICES ||--o{ INVOICE_ITEMS : "details"
+    INVOICES ||--o{ PAYMENTS : "paid_by"
+    PAYMENTS ||--o{ ACCOUNTING_TRANSACTIONS : "recorded_in"
+        </pre>
+      </div>
+    </div>
+
+    <!-- Section 3: Domain 1 -->
+    <div class="section-card" id="domain1">
+      <div class="section-header">
+        <h2>🏨 3. Domain 1: Facility & Inpatient Infrastructure</h2>
+        <p>Physical room management and the 14 inpatient treatment beds</p>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">1. Table: <code>rooms</code></h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Key</th><th>Default</th><th>Constraint / Logic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-pk">PK</span></td><td>—</td><td>Primary identifier (e.g. <code>RM-101</code>).</td></tr>
+            <tr><td><code>floor_number</code></td><td>INT</td><td>—</td><td>—</td><td><code>CHECK(floor_number IN (1, 2))</code></td></tr>
+            <tr><td><code>room_number</code></td><td>VARCHAR(32)</td><td>—</td><td>—</td><td>Door number label (e.g. <code>101</code>, <code>204</code>).</td></tr>
+            <tr><td><code>room_name_uz</code></td><td>VARCHAR(255)</td><td>—</td><td>—</td><td>Uzbek title (e.g. <em>1-Palata</em>).</td></tr>
+            <tr><td><code>room_type</code></td><td>VARCHAR(64)</td><td>—</td><td>—</td><td><code>standard_ward</code>, <code>vip_ward</code>, <code>consultation</code>, <code>nurse_station</code>.</td></tr>
+            <tr><td><code>total_capacity</code></td><td>INT</td><td>—</td><td>1</td><td>Maximum bed/workstation capacity.</td></tr>
+            <tr><td><code>is_active</code></td><td>TINYINT(1)</td><td>—</td><td>1</td><td>Operational flag.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">2. Table: <code>beds</code></h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Key</th><th>Default</th><th>Constraint / Logic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-pk">PK</span></td><td>—</td><td>Bed ID (e.g. <code>BED-101-A</code>).</td></tr>
+            <tr><td><code>room_id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-fk">FK</span></td><td>—</td><td>Links to <code>rooms(id)</code> (<code>ON DELETE RESTRICT</code>).</td></tr>
+            <tr><td><code>bed_code</code></td><td>VARCHAR(32)</td><td><span class="badge badge-uq">UQ</span></td><td>—</td><td>Clinical bed code (e.g. <code>B-101</code>).</td></tr>
+            <tr><td><code>bed_type</code></td><td>VARCHAR(32)</td><td>—</td><td>'standard'</td><td><code>CHECK(bed_type IN ('standard', 'vip'))</code></td></tr>
+            <tr><td><code>default_daily_rate</code></td><td>DECIMAL(14,2)</td><td>—</td><td>720000.00</td><td>Standard 24h treatment fee in UZS.</td></tr>
+            <tr><td><code>status</code></td><td>VARCHAR(32)</td><td>—</td><td>'available'</td><td><code>available</code>, <code>occupied</code>, <code>reserved</code>, <code>cleaning</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 4: Domain 2 -->
+    <div class="section-card" id="domain2">
+      <div class="section-header">
+        <h2>👥 4. Domain 2: Human Resources & Shifts</h2>
+        <p>Medical personnel, roles, salaries, and biometric shift presence</p>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">3. Table: <code>staff</code></h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Key</th><th>Default</th><th>Constraint / Logic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-pk">PK</span></td><td>—</td><td>Doctor/Staff ID (e.g. <code>STF-DOC-01</code>).</td></tr>
+            <tr><td><code>full_name</code></td><td>VARCHAR(255)</td><td>—</td><td>—</td><td>Full legal name of the specialist.</td></tr>
+            <tr><td><code>role</code></td><td>VARCHAR(64)</td><td>—</td><td>—</td><td><code>admin</code>, <code>chief_doctor</code>, <code>doctor</code>, <code>nurse</code>, <code>receptionist</code>, <code>accountant</code>.</td></tr>
+            <tr><td><code>specialty</code></td><td>VARCHAR(255)</td><td>—</td><td>NULL</td><td>e.g., <em>Narkolog-Reanimatolog</em>, <em>Psixoterapevt</em>.</td></tr>
+            <tr><td><code>salary_base</code></td><td>DECIMAL(14,2)</td><td>—</td><td>0.00</td><td>Base salary in UZS.</td></tr>
+            <tr><td><code>shift_type</code></td><td>VARCHAR(32)</td><td>—</td><td>'day'</td><td><code>day</code>, <code>night</code>, <code>24h</code>, <code>rotating</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">4. Table: <code>staff_attendance</code></h4>
+      <p style="margin-bottom: 10px; font-size: 0.9rem; color: var(--gray-600);">Tracks daily presence with unique constraint <code>(staff_id, work_date)</code> preventing double logs.</p>
+    </div>
+
+    <!-- Section 5: Domain 3 -->
+    <div class="section-card" id="domain3">
+      <div class="section-header">
+        <h2>📋 5. Domain 3: CRM, Reception & Registry</h2>
+        <p>Patient master registry, anonymous addiction care flags, hotline leads</p>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">5. Table: <code>patients</code></h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Key</th><th>Default</th><th>Constraint / Logic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-pk">PK</span></td><td>—</td><td>Primary Master ID.</td></tr>
+            <tr><td><code>patient_code</code></td><td>VARCHAR(32)</td><td><span class="badge badge-uq">UQ</span></td><td>—</td><td>Confidential tracking code (e.g. <code>FM-2026-0042</code>).</td></tr>
+            <tr><td><code>full_name</code></td><td>VARCHAR(255)</td><td>—</td><td>—</td><td>Legal name or encrypted alias.</td></tr>
+            <tr><td><code>is_anonymous</code></td><td>TINYINT(1)</td><td>—</td><td>0</td><td><code>1</code> = Anonymous treatment protected under medical privacy laws.</td></tr>
+            <tr><td><code>medical_allergies</code></td><td>TEXT</td><td>—</td><td>NULL</td><td>Critical alerts (e.g. <em>Penicillin, Novocaine</em>).</td></tr>
+            <tr><td><code>status</code></td><td>VARCHAR(32)</td><td>—</td><td>'active'</td><td><code>active</code>, <code>discharged</code>, <code>archived</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">6. Table: <code>appointments</code> & 7. Table: <code>call_logs</code></h4>
+      <p style="font-size: 0.9rem; color: var(--gray-600);">Captures incoming leads across hotline, Telegram bot, and website booking widgets with automatic priority queuing (<code>low</code>, <code>medium</code>, <code>high</code>, <code>urgent</code>).</p>
+    </div>
+
+    <!-- Section 6: Domain 4 -->
+    <div class="section-card" id="domain4">
+      <div class="section-header">
+        <h2>🛏️ 6. Domain 4: Hospitalization & Nursing Track</h2>
+        <p>Patient admissions, virtual stored day calculation, and daily vitals</p>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">8. Table: <code>admissions</code></h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Key</th><th>Default</th><th>Constraint / Logic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-pk">PK</span></td><td>—</td><td>Admission dossier (e.g. <code>ADM-2026-001</code>).</td></tr>
+            <tr><td><code>patient_id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-fk">FK</span></td><td>—</td><td>Links to <code>patients(id)</code>.</td></tr>
+            <tr><td><code>bed_id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-fk">FK</span></td><td>—</td><td>Assigned bed (<code>ON DELETE RESTRICT</code>).</td></tr>
+            <tr><td><code>program_type</code></td><td>VARCHAR(64)</td><td>—</td><td>'detox'</td><td><code>detox</code>, <code>rehab</code>, <code>intensive</code>.</td></tr>
+            <tr><td><code>daily_price</code></td><td>DECIMAL(14,2)</td><td>—</td><td>—</td><td>Agreed price per night in UZS.</td></tr>
+            <tr><td><code>total_days</code></td><td>INT</td><td><span class="badge badge-gen">GENERATED</span></td><td>—</td><td><strong>Virtual Stored Column:</strong> <code>GREATEST(1, DATEDIFF(COALESCE(actual_end_date, planned_end_date), start_date))</code></td></tr>
+            <tr><td><code>status</code></td><td>VARCHAR(32)</td><td>—</td><td>'active'</td><td><code>active</code>, <code>discharged</code>, <code>transferred</code>, <code>cancelled</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">9. Table: <code>daily_logs</code> (Vital Signs)</h4>
+      <p style="font-size: 0.9rem; color: var(--gray-600);">Records Blood Pressure (Systolic/Diastolic), Pulse, Body Temperature (°C), and Oxygen Saturation (SpO2%) for ward monitoring.</p>
+    </div>
+
+    <!-- Section 7: Domain 5 -->
+    <div class="section-card" id="domain5">
+      <div class="section-header">
+        <h2>💊 7. Domain 5: Clinical EMR & Pharmacology</h2>
+        <p>Anamnesis, WHO ICD-10 diagnosis, real-time inventory, and discharge summaries</p>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Entity Table</th><th>Key Fields</th><th>Clinical Relevance</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>medical_histories</code></td>
+              <td><code>complaints</code>, <code>anamnesis_morbi</code>, <code>icd10_code</code></td>
+              <td>Comprehensive psychiatric and somatic assessment. Tracks dependency history and withdrawal symptoms.</td>
+            </tr>
+            <tr>
+              <td><code>medications_catalog</code></td>
+              <td><code>name</code>, <code>category</code>, <code>stock_quantity</code>, <code>min_stock_level</code></td>
+              <td>Hospital pharmacy formulary with automated reorder warnings when stock drops below safety thresholds.</td>
+            </tr>
+            <tr>
+              <td><code>prescriptions</code></td>
+              <td><code>dosage</code>, <code>route</code>, <code>frequency</code>, <code>duration_days</code></td>
+              <td>Doctor's medical orders (*List naznacheniy*). Supports IV, IM, Oral, and infusion rates.</td>
+            </tr>
+            <tr>
+              <td><code>doctor_daily_notes</code></td>
+              <td><code>note_date</code>, <code>patient_condition</code>, <code>dynamics_notes</code></td>
+              <td>Daily ward rounds (*Dnevnik obxoda*). Evaluates detox progress and clinical stabilization.</td>
+            </tr>
+            <tr>
+              <td><code>discharge_epicrises</code></td>
+              <td><code>diagnosis_final</code>, <code>treatment_summary</code>, <code>home_prescriptions</code></td>
+              <td>Official legal discharge dossier for patient release with outpatient therapy guidelines.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 8: Domain 6 -->
+    <div class="section-card" id="domain6">
+      <div class="section-header">
+        <h2>💰 8. Domain 6: Billing, Revenue & Auditing</h2>
+        <p>Financial ledger, automated balance calculations, and multi-channel receipts</p>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">17. Table: <code>invoices</code></h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Key</th><th>Formula / Logic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>VARCHAR(64)</td><td><span class="badge badge-pk">PK</span></td><td>Invoice number (e.g. <code>INV-ADM-001</code>).</td></tr>
+            <tr><td><code>total_billed</code></td><td>DECIMAL(14,2)</td><td>—</td><td>Gross billed charges based on daily price * days.</td></tr>
+            <tr><td><code>discount_amount</code></td><td>DECIMAL(14,2)</td><td>—</td><td>Approved institutional discount.</td></tr>
+            <tr><td><code>net_amount</code></td><td>DECIMAL(14,2)</td><td>—</td><td><code>total_billed - discount_amount</code></td></tr>
+            <tr><td><code>total_paid</code></td><td>DECIMAL(14,2)</td><td>—</td><td>Auto-calculated sum of all payments received.</td></tr>
+            <tr><td><code>balance_due</code></td><td>DECIMAL(14,2)</td><td>—</td><td><code>net_amount - total_paid</code> (Outstanding patient debt).</td></tr>
+            <tr><td><code>payment_status</code></td><td>VARCHAR(32)</td><td>—</td><td>Auto-updated: <code>unpaid</code>, <code>partial</code>, or <code>paid</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin: 20px 0 10px 0; color: var(--primary-dark);">19. Table: <code>payments</code></h4>
+      <p style="font-size: 0.9rem; color: var(--gray-600);">Tracks fiscal payments across Cash, Terminal Bank, Online Cards (Payme / Click), and Bank Wire Transfers into target accounts.</p>
+    </div>
+
+    <!-- Section 9: Triggers -->
+    <div class="section-card" id="triggers">
+      <div class="section-header">
+        <h2>⚡ 9. Automated Trigger Engine (Zero Human Error)</h2>
+        <p>6 Autonomous MySQL triggers enforcing real-time consistency</p>
+      </div>
+
+      <div class="mermaid-box">
+        <pre class="mermaid">
+flowchart LR
+    A[Admission Created] -->|trg_admission_occupy_bed| B[Bed marked OCCUPIED]
+    A -->|trg_admission_occupy_bed| C[Invoice Auto-Generated]
+    
+    D[Patient Discharged] -->|trg_admission_release_bed| E[Bed marked AVAILABLE]
+    
+    F[Bed Relocated] -->|trg_after_bed_transfer| G[Sync Old/New Bed States]
+    
+    H[Payment Recorded] -->|trg_after_payment_insert| I[Recalculate Paid & Balance Due]
+    I --> J[Set Status: PAID / PARTIAL]
+        </pre>
+      </div>
+
+      <div class="callout">
+        <strong>Financial Integrity Guarantee:</strong> Triggers 4, 5, and 6 ensure that no matter how many partial payments are made across multiple payment channels, the patient's balance due and payment status are recalculated atomically in MySQL. Cashiers never have to do math manually.
+      </div>
+    </div>
+
+    <!-- Section 10: Views -->
+    <div class="section-card" id="views">
+      <div class="section-header">
+        <h2>👁️ 10. Real-Time Analytical BI Views</h2>
+        <p>Pre-aggregated views for executive dashboards and instant queries</p>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>View Name</th><th>Primary Consumer</th><th>Calculated Metrics & Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>v_bed_live_status</code></td>
+              <td>Inpatient CAD Map</td>
+              <td>Floor number, room number, bed code, real-time occupancy status, admitted patient name, and attending doctor.</td>
+            </tr>
+            <tr>
+              <td><code>v_financial_ledger</code></td>
+              <td>Accounting Portal</td>
+              <td>Consolidated patient ledger with revenue split across Cash, Terminal, and Online Card channels.</td>
+            </tr>
+            <tr>
+              <td><code>v_patient_full_profile</code></td>
+              <td>Doctor EMR</td>
+              <td>360° patient summary with active admissions, bed code, outstanding balance, and active prescription count.</td>
+            </tr>
+            <tr>
+              <td><code>v_daily_hospital_kpi</code></td>
+              <td>Executive Superpage</td>
+              <td>Total beds, occupied beds, available beds, occupancy rate %, total billed revenue, collected cash, and pending debt.</td>
+            </tr>
+            <tr>
+              <td><code>v_pharmacy_low_stock</code></td>
+              <td>Pharmacy & Purchasing</td>
+              <td>Medications with stock below minimum reserve level, showing exact deficit count for automated procurement.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 11: Backup & Recovery -->
+    <div class="section-card" id="backup">
+      <div class="section-header">
+        <h2>🛡️ 11. Security, Backups & Disaster Recovery</h2>
+        <p>Maintenance commands and production backup strategy</p>
+      </div>
+
+      <p>To back up the MySQL database on the production server (<code>31.184.242.14</code>):</p>
+      <pre><code># 1. Complete Compressed Backup (Including Triggers, Routines & Views)
+mysqldump -u fayzhouse -p --routines --triggers --single-transaction fayzhouse | gzip > /var/backups/fayzhouse_backup_$(date +%Y%m%d_%H%M%S).sql.gz
+
+# 2. Instant Disaster Recovery (Restore from Backup)
+gunzip < /var/backups/fayzhouse_backup_YYYYMMDD.sql.gz | mysql -u fayzhouse -p fayzhouse</code></pre>
+    </div>
+
+    <footer style="text-align: center; color: var(--gray-600); font-size: 0.85rem; margin-top: 40px; padding: 20px 0; border-top: 1px solid var(--gray-200);">
+      &copy; 2026 Fayz Medical House. All rights reserved. Powered by MySQL 8.0 Enterprise & Antigravity Intelligence.
+    </footer>
+
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

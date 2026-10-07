@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy this file to db_config.json and fill in this machine's own values. db_config.json is gitignored because it holds a plaintext password. Every field can also be supplied by environment variable instead: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME.",
+  "db_type": "mysql",
+  "host": "127.0.0.1",
+  "port": 3306,
+  "user": "fayzhouse",
+  "password": "",
+  "database": "fayzhouse"
+}

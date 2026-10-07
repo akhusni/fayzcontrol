@@ -1,0 +1,480 @@
+{
+  "facility_info": {
+    "name_uz": "Fayz Medical House - 1-Bino Boshqaruvi",
+    "name_ru": "Fayz Medical House - Управление 1-м Корпусом",
+    "name_en": "Fayz Medical House - Building 1 Facility Management",
+    "building_number": 1,
+    "total_floors": 2,
+    "total_inpatient_rooms": 9,
+    "total_inpatient_beds": 14,
+    "floor_1_beds": 4,
+    "floor_2_beds": 10,
+    "room_policy": "Barcha 7 ta palata 2 o'rinli standart palatalardir. Agar bemor Yakka (1 kishi butun xona) rejimini tanlasa (1,100,000 so'm/kun), xonadagi ikkinchi karavot avtomatik bloklanadi va hech kimga berilmaydi."
+  },
+  "floors": [
+    {
+      "floor_number": 1,
+      "name_uz": "1-Qavat",
+      "name_ru": "1-й Этаж",
+      "name_en": "1st Floor",
+      "total_beds": 4,
+      "rooms": [
+        {
+          "id": "ROOM-CONS-A",
+          "floor": 1,
+          "name_uz": "1-konsultatsiya",
+          "name_ru": "Кабинет 1",
+          "name_en": "Consultation 1",
+          "type": "consultation",
+          "features": [
+            "Shifokor ish stoli",
+            "2 ta konsultatsiya kreslosi",
+            "Dori shkafi"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-CONS-B",
+          "floor": 1,
+          "name_uz": "2-konsultatsiya",
+          "name_ru": "Кабинет 2",
+          "name_en": "Consultation 2",
+          "type": "consultation",
+          "features": [
+            "Diagnostika kompyuteri",
+            "2 ta bemor kreslosi",
+            "Dori shkafi"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-REG-HALL",
+          "floor": 1,
+          "name_uz": "Qabulxona",
+          "name_ru": "Регистратура",
+          "name_en": "Reception",
+          "type": "reception",
+          "features": [
+            "Resepshn peshtaxtasi",
+            "Kutish divani"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-SANITARY-1",
+          "floor": 1,
+          "name_uz": "Hojatxona & Zinapoya",
+          "name_ru": "Санузел и Лестница",
+          "name_en": "Sanitary & Staircase",
+          "type": "sanitary",
+          "features": [
+            "Bath 1",
+            "Bath 2",
+            "Public WC",
+            "Zinapoya"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-NURSERY",
+          "floor": 1,
+          "name_uz": "Hamshiralar posti",
+          "name_ru": "Сестринский пост",
+          "name_en": "Nurse Station",
+          "type": "nursery",
+          "features": [
+            "Hamshira navbatchilik stoli",
+            "Dori saqlash bo'limi"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-WARD-1",
+          "floor": 1,
+          "room_number": "11",
+          "name_uz": "11-xona",
+          "name_ru": "11-палата",
+          "name_en": "Room 11",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-1A",
+              "floor": 1,
+              "room_id": "ROOM-WARD-1",
+              "room_number": "11",
+              "bed_number": "1A",
+              "full_label": "11-xona 1A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Stol"
+              ]
+            },
+            {
+              "bed_id": "BED-1B",
+              "floor": 1,
+              "room_id": "ROOM-WARD-1",
+              "room_number": "11",
+              "bed_number": "1B",
+              "full_label": "11-xona 1B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Stol"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ROOM-WARD-2",
+          "floor": 1,
+          "room_number": "12",
+          "name_uz": "12-xona",
+          "name_ru": "12-палата",
+          "name_en": "Room 12",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-2A",
+              "floor": 1,
+              "room_id": "ROOM-WARD-2",
+              "room_number": "12",
+              "bed_number": "2A",
+              "full_label": "12-xona 2A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ"
+              ]
+            },
+            {
+              "bed_id": "BED-2B",
+              "floor": 1,
+              "room_id": "ROOM-WARD-2",
+              "room_number": "12",
+              "bed_number": "2B",
+              "full_label": "12-xona 2B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ROOM-WARD-15",
+          "floor": 1,
+          "room_number": "15",
+          "name_uz": "15-xona",
+          "name_ru": "15-палата",
+          "name_en": "Room 15",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": []
+        },
+        {
+          "id": "ROOM-WARD-15",
+          "floor": 1,
+          "room_number": "15",
+          "name_uz": "15-xona",
+          "name_ru": "15-палата",
+          "name_en": "Room 15",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": []
+        }
+      ]
+    },
+    {
+      "floor_number": 2,
+      "name_uz": "2-Qavat",
+      "name_ru": "2-й Этаж",
+      "name_en": "2nd Floor",
+      "total_beds": 10,
+      "rooms": [
+        {
+          "id": "ROOM-21",
+          "floor": 2,
+          "room_number": "21",
+          "name_uz": "21-xona",
+          "name_ru": "21-палата",
+          "name_en": "Room 21",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-21A",
+              "floor": 2,
+              "room_id": "ROOM-21",
+              "room_number": "21",
+              "bed_number": "21A",
+              "full_label": "21-xona 21A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Wall Smart TV",
+                "IV shtativ",
+                "EKG monitor",
+                "Stol"
+              ]
+            },
+            {
+              "bed_id": "BED-21B",
+              "floor": 2,
+              "room_id": "ROOM-21",
+              "room_number": "21",
+              "bed_number": "21B",
+              "full_label": "21-xona 21B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Wall Smart TV",
+                "IV shtativ",
+                "EKG monitor",
+                "Stol"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ROOM-22",
+          "floor": 2,
+          "room_number": "22",
+          "name_uz": "22-xona",
+          "name_ru": "22-палата",
+          "name_en": "Room 22",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-22A",
+              "floor": 2,
+              "room_id": "ROOM-22",
+              "room_number": "22",
+              "bed_number": "22A",
+              "full_label": "22-xona 22A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Wall Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            },
+            {
+              "bed_id": "BED-22B",
+              "floor": 2,
+              "room_id": "ROOM-22",
+              "room_number": "22",
+              "bed_number": "22B",
+              "full_label": "22-xona 22B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Wall Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ROOM-KITCHEN",
+          "floor": 2,
+          "name_uz": "Oshxona",
+          "name_ru": "Пищеблок",
+          "name_en": "Kitchen",
+          "type": "kitchen",
+          "features": [
+            "Plita",
+            "Muzlatgich",
+            "Rakovina",
+            "Parhez stoli"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-SANITARY-2",
+          "floor": 2,
+          "name_uz": "Hojatxona & Zinapoya",
+          "name_ru": "Санузел и Лестница",
+          "name_en": "Sanitary & Staircase",
+          "type": "sanitary",
+          "features": [
+            "Bathroom 1",
+            "Bathroom 2",
+            "Zinapoya"
+          ],
+          "has_beds": false
+        },
+        {
+          "id": "ROOM-23",
+          "floor": 2,
+          "room_number": "23",
+          "name_uz": "23-xona",
+          "name_ru": "23-палата",
+          "name_en": "Room 23",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-23A",
+              "floor": 2,
+              "room_id": "ROOM-23",
+              "room_number": "23",
+              "bed_number": "23A",
+              "full_label": "23-xona 23A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            },
+            {
+              "bed_id": "BED-23B",
+              "floor": 2,
+              "room_id": "ROOM-23",
+              "room_number": "23",
+              "bed_number": "23B",
+              "full_label": "23-xona 23B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ROOM-24",
+          "floor": 2,
+          "room_number": "24",
+          "name_uz": "24-xona",
+          "name_ru": "24-палата",
+          "name_en": "Room 24",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-24A",
+              "floor": 2,
+              "room_id": "ROOM-24",
+              "room_number": "24",
+              "bed_number": "24A",
+              "full_label": "24-xona 24A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            },
+            {
+              "bed_id": "BED-24B",
+              "floor": 2,
+              "room_id": "ROOM-24",
+              "room_number": "24",
+              "bed_number": "24B",
+              "full_label": "24-xona 24B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ROOM-25",
+          "floor": 2,
+          "room_number": "25",
+          "name_uz": "25-xona",
+          "name_ru": "25-палата",
+          "name_en": "Room 25",
+          "type": "stationary",
+          "has_beds": true,
+          "beds": [
+            {
+              "bed_id": "BED-25A",
+              "floor": 2,
+              "room_id": "ROOM-25",
+              "room_number": "25",
+              "bed_number": "25A",
+              "full_label": "25-xona 25A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            },
+            {
+              "bed_id": "BED-25B",
+              "floor": 2,
+              "room_id": "ROOM-25",
+              "room_number": "25",
+              "bed_number": "25B",
+              "full_label": "25-xona 25B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "sample_calendar_bookings": [
+    {
+      "id": "ADM-20260909144147",
+      "bed_id": "1A",
+      "patient_name": "Alisher Vohidov",
+      "patient_phone": "+998939998877",
+      "doctor": "Dr. Bobur Mirzayev",
+      "program": "Standart Statsionar davolash kursi",
+      "daily_rate": 720000.0,
+      "start_date": "2026-09-09",
+      "end_date": "2026-09-16",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+{
+  "clinic_info": {
+    "name": "Fayz Medical House",
+    "legal_name": "\"FAYZ MEDICAL HOUSE\" MChJ",
+    "inn": "308492817",
+    "mfo": "00440",
+    "bank_account": "20208000900548923001",
+    "bank_name": "ATB 'Kapitalbank' Yunusobod filiali",
+    "address": "O'zbekiston, 100009, Toshkent sh., Yunusobod tumani, Nurmakon ko'chasi, 2A",
+    "phones": [
+      "+998 (90) 372-03-03",
+      "+998 (71) 209-99-10"
+    ],
+    "director": "Klinika Rahbari",
+    "chief_accountant": "Bosh Buxgalter"
+  },
+  "pricing_catalog": {
+    "standard_duration_days": 10,
+    "packages": {
+      "statsionar_shared": {
+        "id": "statsionar_shared",
+        "name_uz": "Statsionar (1 karavot / 2 kishilik xona)",
+        "name_ru": "Стационар (1 койко-место)",
+        "daily_rate": 720000,
+        "standard_days": 10,
+        "standard_total": 7200000,
+        "description": "24 soatlik to'liq statsionar nazorat, 4 mahal parhez taomnoma, detoksikatsiya va shifokorlar monitoringi"
+      },
+      "statsionar_full_room": {
+        "id": "statsionar_full_room",
+        "name_uz": "Statsionar Butun Xona (1 kishi / VIP Solo)",
+        "name_ru": "Стационар вся палата на одного (VIP Solo)",
+        "daily_rate": 1100000,
+        "standard_days": 10,
+        "standard_total": 11000000,
+        "description": "Bemor xonada yolg'iz yotadi, xonadagi ikkinchi karavot boshqa bemorga berilmaydi (100% yopiq va maxfiy)"
+      },
+      "kunlik_statsionar": {
+        "id": "kunlik_statsionar",
+        "name_uz": "Kunlik Statsionar (Kunduzgi o'rin)",
+        "name_ru": "Дневной стационар (Дневная койка)",
+        "daily_rate": 630000,
+        "standard_days": 10,
+        "standard_total": 6300000,
+        "description": "Karavot faqat kunduzgi vaqtda muolaja va kapelnitsalar uchun ishlatiladi (kechasi qolmaydi)"
+      },
+      "ambulator_1": {
+        "id": "ambulator_1",
+        "name_uz": "Ambulator (Kuniga 1 mahal muolaja)",
+        "name_ru": "Амбулаторно (1 раз в день)",
+        "daily_rate": 310000,
+        "standard_days": 10,
+        "standard_total": 3100000,
+        "description": "Klinikaga kuniga 1 mahal kelib kapelnitsa va inyeksiya muolajalarini olish"
+      },
+      "ambulator_2": {
+        "id": "ambulator_2",
+        "name_uz": "Ambulator (Kuniga 2 mahal muolaja)",
+        "name_ru": "Амбулаторно (2 раза в день)",
+        "daily_rate": 500000,
+        "standard_days": 10,
+        "standard_total": 5000000,
+        "description": "Klinikaga kuniga 2 mahal (ertalab va kechqurun) kelib intensiv muolaja olish"
+      }
+    }
+  },
+  "patients_billing": [],
+  "transactions": [],
+  "doctors_payroll": [],
+  "expense_categories": [
+    {
+      "id": "salary",
+      "name_uz": "Oylik Maoshlar & Gonorarlar",
+      "name_ru": "Заработная плата",
+      "icon": "fa-user-nurse"
+    },
+    {
+      "id": "pharmacy_restock",
+      "name_uz": "Dorilar va Reaktivlar Xaridi",
+      "name_ru": "Закупка медикаментов",
+      "icon": "fa-pills"
+    },
+    {
+      "id": "nutrition",
+      "name_uz": "Bemorlar 4-mahal Taomnomasi",
+      "name_ru": "Питание пациентов",
+      "icon": "fa-utensils"
+    },
+    {
+      "id": "utilities",
+      "name_uz": "Kommunal va Aloqa Xarajatlari",
+      "name_ru": "Коммунальные услуги",
+      "icon": "fa-bolt"
+    },
+    {
+      "id": "maintenance",
+      "name_uz": "Xo'jalik va Ta'mirlash Ishlari",
+      "name_ru": "Хозяйственные расходы",
+      "icon": "fa-tools"
+    },
+    {
+      "id": "marketing",
+      "name_uz": "Reklama va Internet Marketing",
+      "name_ru": "Маркетинг и реклама",
+      "icon": "fa-bullhorn"
+    },
+    {
+      "id": "incasso",
+      "name_uz": "Kassa Inkassatsiyasi (Bankka topshirish)",
+      "name_ru": "Инкассация в банк",
+      "icon": "fa-university"
+    },
+    {
+      "id": "other",
+      "name_uz": "Boshqa Operatsion Xarajatlar",
+      "name_ru": "Прочие расходы",
+      "icon": "fa-receipt"
+    }
+  ],
+  "pharmacy_stock": [
+    {
+      "id": "med-1",
+      "name": "Reamberin eritmasi (400ml)",
+      "group": "Detoksikatsiya / Antioksidant",
+      "stock": 85,
+      "unit": "flakon",
+      "unit_price": 38000,
+      "status": "adequate"
+    },
+    {
+      "id": "med-2",
+      "name": "Gemodez-N eritmasi (200ml)",
+      "group": "Detoksikatsiya",
+      "stock": 120,
+      "unit": "flakon",
+      "unit_price": 25000,
+      "status": "adequate"
+    },
+    {
+      "id": "med-3",
+      "name": "Meksidol inyeksiyasi (5ml №5)",
+      "group": "Neyroprotektor",
+      "stock": 45,
+      "unit": "quti",
+      "unit_price": 82000,
+      "status": "adequate"
+    },
+    {
+      "id": "med-4",
+      "name": "Essensiale Forte N (ampula №5)",
+      "group": "Gepatoprotektor",
+      "stock": 30,
+      "unit": "quti",
+      "unit_price": 115000,
+      "status": "adequate"
+    },
+    {
+      "id": "med-5",
+      "name": "Relanium / Diazepam (2ml №10)",
+      "group": "Sedativ / Anksiolitik",
+      "stock": 12,
+      "unit": "quti",
+      "unit_price": 65000,
+      "status": "low"
+    },
+    {
+      "id": "med-6",
+      "name": "Geptral / Ademetionin (400mg №5)",
+      "group": "Gepatoprotektor",
+      "stock": 25,
+      "unit": "quti",
+      "unit_price": 240000,
+      "status": "adequate"
+    },
+    {
+      "id": "med-7",
+      "name": "Vitamin C (5% 2ml №10)",
+      "group": "Vitaminlar",
+      "stock": 90,
+      "unit": "quti",
+      "unit_price": 18000,
+      "status": "adequate"
+    },
+    {
+      "id": "med-8",
+      "name": "Magniy Sulfat (25% 10ml №10)",
+      "group": "Sedativ / Antigipertenziv",
+      "stock": 60,
+      "unit": "quti",
+      "unit_price": 22000,
+      "status": "adequate"
+    }
+  ],
+  "additional_services_catalog": [
+    {
+      "id": "srv-1",
+      "name": "Membranali Plazmaferez muolajasi",
+      "category": "Effektor terapiya",
+      "price": 450000
+    },
+    {
+      "id": "srv-2",
+      "name": "Individual Psixoterapiya seansi (1 soat)",
+      "category": "Psixoterapiya",
+      "price": 250000
+    },
+    {
+      "id": "srv-3",
+      "name": "Kardiomonitoring va EKG tekshiruvi",
+      "category": "Diagnostika",
+      "price": 120000
+    },
+    {
+      "id": "srv-4",
+      "name": "Narkologik Blokada (Torpedo / Esperal)",
+      "category": "Kodlash",
+      "price": 800000
+    },
+    {
+      "id": "srv-5",
+      "name": "Umumiy va Biokimyoviy qon tahlili",
+      "category": "Laboratoriya",
+      "price": 180000
+    }
+  ],
+  "transactions_log": []
+}

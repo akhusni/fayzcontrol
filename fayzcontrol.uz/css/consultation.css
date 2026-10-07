@@ -1,0 +1,551 @@
+/* ==========================================================================
+   FAYZ MEDICAL HOUSE — CONSULTATION & TREATMENT PLAN
+   --------------------------------------------------------------------------
+   Palette comes from the tokens in unified_header.css, so this page follows
+   the day/night theme with the rest of the suite.
+
+   The intake is 41 fields across six sections. A doctor fills it while
+   talking to a patient, so the form is one column of clearly separated
+   sections rather than a dense grid: losing your place mid-interview is worse
+   than scrolling.
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+
+body.consultation-portal {
+  margin: 0;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  background: var(--bg-main, #060e1f);
+  color: var(--text-primary, #f8fafc);
+  padding-bottom: 60px;
+}
+
+/* --------------------------------------------------------------------------
+   Two main menus
+   -------------------------------------------------------------------------- */
+.doc-modeswitch {
+  max-width: 1640px;
+  margin: 16px auto 0;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.doc-mode {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  border-radius: 12px;
+  text-decoration: none;
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  color: var(--text-secondary, #cbd5e1);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.doc-mode:hover { background: var(--bg-panel-hover, #122c54); }
+
+.doc-mode.active {
+  border-color: var(--primary, #38bdf8);
+  background: var(--primary-bg, rgba(2, 132, 199, 0.18));
+  color: var(--text-primary, #f8fafc);
+}
+
+.doc-mode > i { font-size: 1.15rem; flex: 0 0 auto; color: var(--primary-light, #7dd3fc); }
+.doc-mode-title { font-size: 0.95rem; font-weight: 800; }
+.doc-mode-sub { font-size: 0.74rem; color: var(--text-muted, #94a3b8); margin-top: 2px; }
+
+/* --------------------------------------------------------------------------
+   Layout
+   -------------------------------------------------------------------------- */
+.cons-main {
+  max-width: 1640px;
+  margin: 18px auto 0;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.cons-side {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  border-radius: 14px;
+  padding: 15px;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.cons-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 11px;
+}
+
+.cons-side-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+}
+
+.cons-mine {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim, #64748b);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.queue-list { display: flex; flex-direction: column; gap: 7px; }
+
+.queue-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.14s ease;
+}
+
+.queue-item:hover { background: var(--bg-panel-hover, #122c54); }
+.queue-item.selected { border-color: var(--primary, #38bdf8); background: var(--primary-bg, rgba(2,132,199,0.18)); }
+
+.queue-name { font-size: 0.88rem; font-weight: 700; }
+.queue-meta { font-size: 0.72rem; color: var(--text-muted, #94a3b8); margin-top: 2px; }
+
+.queue-empty {
+  font-size: 0.8rem;
+  color: var(--text-dim, #64748b);
+  padding: 12px 4px;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   Work area
+   -------------------------------------------------------------------------- */
+.cons-work { min-width: 0; }
+
+.cons-empty {
+  margin: 60px auto;
+  max-width: 400px;
+  text-align: center;
+  color: var(--text-muted, #94a3b8);
+}
+.cons-empty i { font-size: 2.2rem; opacity: 0.4; margin-bottom: 14px; }
+.cons-empty-title { font-size: 1rem; font-weight: 800; color: var(--text-secondary, #cbd5e1); }
+.cons-empty-text { font-size: 0.85rem; margin-top: 6px; line-height: 1.5; }
+
+.cons-patient-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 17px;
+  border-radius: 12px;
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  flex-wrap: wrap;
+  row-gap: 9px;
+}
+
+.cons-patient-ident { flex: 1 1 220px; min-width: 0; }
+.cons-patient-name { font-size: 1.05rem; font-weight: 800; }
+.cons-patient-meta { font-size: 0.76rem; color: var(--text-muted, #94a3b8); margin-top: 2px; }
+.cons-patient-flags { display: flex; gap: 7px; flex-wrap: wrap; }
+
+.cons-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.flag-danger  { background: rgba(225,29,72,0.14);  border: 1px solid rgba(225,29,72,0.4);  color: #fda4af; }
+.flag-warning { background: rgba(217,119,6,0.14);  border: 1px solid rgba(217,119,6,0.4);  color: #fcd34d; }
+.flag-info    { background: rgba(2,132,199,0.14);  border: 1px solid rgba(2,132,199,0.4);  color: #7dd3fc; }
+
+/* --------------------------------------------------------------------------
+   Tabs
+   -------------------------------------------------------------------------- */
+.cons-tabs {
+  display: flex;
+  gap: 7px;
+  margin: 14px 0;
+  flex-wrap: wrap;
+}
+
+.cons-tab {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-panel, #0a1b33);
+  color: var(--text-secondary, #cbd5e1);
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.cons-tab:hover { background: var(--bg-panel-hover, #122c54); }
+.cons-tab.active {
+  border-color: var(--primary, #38bdf8);
+  background: var(--primary-bg, rgba(2, 132, 199, 0.18));
+  color: var(--text-primary, #f8fafc);
+}
+
+.cons-pane { display: none; }
+.cons-pane.active { display: block; }
+
+.cons-hint {
+  display: flex;
+  gap: 9px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: rgba(2, 132, 199, 0.1);
+  border: 1px solid rgba(2, 132, 199, 0.28);
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 0.79rem;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.cons-hint i { flex: 0 0 auto; color: var(--primary-light, #7dd3fc); margin-top: 2px; }
+
+/* --------------------------------------------------------------------------
+   Form sections
+   -------------------------------------------------------------------------- */
+.form-section {
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.09));
+  border-radius: 12px;
+  margin-bottom: 13px;
+  overflow: hidden;
+}
+
+.form-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+  cursor: pointer;
+  user-select: none;
+}
+
+.form-section-title { font-size: 0.9rem; font-weight: 800; }
+.form-section-count { font-size: 0.72rem; color: var(--text-dim, #64748b); font-weight: 700; }
+
+.form-section-body {
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 13px;
+}
+
+.form-section.collapsed .form-section-body { display: none; }
+
+.field { min-width: 0; }
+/* Long narrative answers get the full width; short facts sit side by side. */
+.field.wide { grid-column: 1 / -1; }
+
+.field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary, #cbd5e1);
+  margin-bottom: 5px;
+}
+
+.field .req { color: #fda4af; margin-left: 3px; }
+
+.cons-input,
+.field input[type="text"],
+.field input[type="date"],
+.field input[type="number"],
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-input, #060e1f);
+  color: var(--text-primary, #f8fafc);
+  font-family: inherit;
+  font-size: 0.87rem;
+}
+
+.field textarea { min-height: 62px; resize: vertical; line-height: 1.45; }
+
+.cons-input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--primary, #38bdf8);
+  box-shadow: 0 0 0 3px var(--primary-glow, rgba(56, 189, 248, 0.22));
+  outline: none;
+}
+
+.field-hint { font-size: 0.7rem; color: var(--text-dim, #64748b); margin-top: 4px; }
+
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-input, #060e1f);
+  cursor: pointer;
+  min-height: 40px;
+}
+.field-check input { width: 17px; height: 17px; flex: 0 0 auto; }
+.field-check span { font-size: 0.83rem; font-weight: 600; }
+
+/* A risk selector reads at a glance, so the levels are colour-coded. */
+select.risk-none     { border-color: rgba(100,116,139,0.45); }
+select.risk-low      { border-color: rgba(16,185,129,0.5); }
+select.risk-moderate { border-color: rgba(217,119,6,0.6); }
+select.risk-high     { border-color: rgba(225,29,72,0.65); box-shadow: 0 0 0 3px rgba(225,29,72,0.15); }
+
+/* --------------------------------------------------------------------------
+   Substance log — a repeating row set
+   -------------------------------------------------------------------------- */
+.substance-list { display: flex; flex-direction: column; gap: 9px; }
+
+.substance-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 1fr 1fr 0.9fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.substance-row .field label { font-size: 0.68rem; }
+
+.btn-row-remove {
+  min-height: 38px;
+  min-width: 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(225, 29, 72, 0.35);
+  background: transparent;
+  color: #fda4af;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.btn-row-remove:hover { background: rgba(225, 29, 72, 0.12); }
+
+.btn-row-add {
+  align-self: start;
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 8px;
+  border: 1px dashed var(--border-color, rgba(255, 255, 255, 0.2));
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-row-add:hover { background: var(--bg-panel-hover, #122c54); }
+
+/* --------------------------------------------------------------------------
+   Actions
+   -------------------------------------------------------------------------- */
+.cons-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin: 16px 0 26px;
+  flex-wrap: wrap;
+}
+
+.btn-cons {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-cons-primary { background: var(--primary-dark, #0284c7); color: #fff; }
+.btn-cons-primary:hover { background: var(--primary, #38bdf8); }
+.btn-cons-ghost {
+  background: transparent;
+  border-color: var(--border-color, rgba(255, 255, 255, 0.15));
+  color: var(--text-secondary, #cbd5e1);
+}
+.btn-cons-ghost:hover { background: var(--bg-panel-hover, #122c54); }
+.btn-cons:disabled { opacity: 0.55; cursor: progress; }
+
+/* --------------------------------------------------------------------------
+   History
+   -------------------------------------------------------------------------- */
+.hist-group { margin-bottom: 20px; }
+.hist-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 9px;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: var(--bg-panel, #0a1b33);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+  margin-bottom: 7px;
+  flex-wrap: wrap;
+  row-gap: 7px;
+}
+.hist-date { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-muted, #94a3b8); flex: 0 0 auto; }
+.hist-main { flex: 1 1 200px; min-width: 0; font-size: 0.86rem; font-weight: 600; }
+.hist-sub { font-size: 0.74rem; color: var(--text-dim, #64748b); margin-top: 2px; }
+
+.badge {
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.badge-active     { background: rgba(16,185,129,0.15);  border: 1px solid rgba(16,185,129,0.4);  color: #6ee7b7; }
+.badge-superseded { background: rgba(100,116,139,0.15); border: 1px solid rgba(100,116,139,0.35); color: #94a3b8; }
+.badge-completed  { background: rgba(2,132,199,0.14);   border: 1px solid rgba(2,132,199,0.35);  color: #7dd3fc; }
+.badge-draft      { background: rgba(217,119,6,0.14);   border: 1px solid rgba(217,119,6,0.35);  color: #fcd34d; }
+
+/* --------------------------------------------------------------------------
+   Print — the intake and the plan print as separate documents
+   -------------------------------------------------------------------------- */
+.print-only { display: none; }
+
+@media print {
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+
+  body.consultation-portal { background: #fff !important; color: #000 !important; padding: 0 !important; }
+
+  .no-print,
+  .portal-master-header,
+  .doc-modeswitch,
+  .cons-side,
+  .cons-tabs,
+  .cons-actions,
+  .cons-hint,
+  .cons-main { display: none !important; }
+
+  .print-only { display: block !important; }
+
+  .pr-head { text-align: center; border-bottom: 2px solid #000; padding-bottom: 7px; margin-bottom: 12px; }
+  .pr-clinic { font-size: 14pt; font-weight: 800; letter-spacing: 0.03em; }
+  .pr-doc { font-size: 10pt; font-weight: 700; margin-top: 3px; }
+  .pr-meta { font-size: 8.5pt; margin-top: 5px; }
+
+  .pr-patient {
+    border: 1px solid #000;
+    padding: 6px 9px;
+    margin-bottom: 10px;
+    font-size: 9pt;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px 14px;
+  }
+
+  .pr-section { margin-bottom: 9px; break-inside: avoid; page-break-inside: avoid; }
+  .pr-section-title {
+    font-size: 9.5pt;
+    font-weight: 800;
+    border-bottom: 1px solid #333;
+    padding-bottom: 2px;
+    margin-bottom: 4px;
+  }
+  .pr-field { font-size: 9pt; margin-bottom: 3px; line-height: 1.35; }
+  .pr-label { font-weight: 700; }
+
+  .pr-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin: 4px 0; }
+  .pr-table th, .pr-table td { border: 1px solid #333; padding: 3px 5px; text-align: left; }
+  .pr-table th { background: #eee; font-weight: 700; }
+
+  /* A clinical record is signed. */
+  .pr-sign {
+    margin-top: 22px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+  }
+  .pr-sign-line { border-top: 1px solid #000; width: 190px; padding-top: 3px; text-align: center; }
+
+  /* Risk is printed as words, not colour: a ward printer is monochrome. */
+  .pr-risk { border: 1.5px solid #000; padding: 4px 7px; font-weight: 800; font-size: 9pt; display: inline-block; }
+}
+
+/* --------------------------------------------------------------------------
+   Day mode
+   -------------------------------------------------------------------------- */
+body.day-mode.consultation-portal,
+[data-theme="day"] body.consultation-portal { background: #eef2f7; color: #0f172a; }
+
+body.day-mode .cons-side,
+body.day-mode .form-section,
+body.day-mode .cons-patient-bar,
+body.day-mode .hist-row,
+body.day-mode .doc-mode,
+body.day-mode .cons-tab {
+  background: #fff;
+  border-color: #e2e8f0;
+}
+body.day-mode .form-section-head { background: #f8fafc; border-bottom-color: #e2e8f0; }
+body.day-mode .field input,
+body.day-mode .field select,
+body.day-mode .field textarea,
+body.day-mode .cons-input,
+body.day-mode .field-check {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+body.day-mode .doc-mode.active,
+body.day-mode .cons-tab.active { background: #e0f2fe; border-color: #0284c7; color: #0f172a; }
+
+/* --------------------------------------------------------------------------
+   Narrow screens
+   -------------------------------------------------------------------------- */
+@media (max-width: 1080px) {
+  .cons-main { grid-template-columns: 1fr; }
+  .cons-side { position: static; max-height: none; }
+}
+
+@media (max-width: 720px) {
+  .cons-main, .doc-modeswitch { padding-left: 14px; padding-right: 14px; }
+  .form-section-body { grid-template-columns: 1fr; }
+  .substance-row { grid-template-columns: 1fr 1fr; }
+  .btn-cons { flex: 1 1 auto; justify-content: center; }
+}

@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buxgalteriya & Moliya Boshqaruvi | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House xususiy klinikasi buxgalteriya, kassa, statsionar hisob-kitoblar, shifokorlar maoshi va to'lov kvitansiyalari boshqaruv portali.">
+
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/accounting.css?v=3.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.3"></script>
+</head>
+<body class="accounting-portal">
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 3-ZONE GRID)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting active" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <a href="medical_blank.html" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-print"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" onclick="window.FMH_Accounting.openNewTxnModal('income')">
+          <i class="fas fa-plus-circle"></i> <span>Yangi Kirim</span>
+        </button>
+
+        <button id="accounting-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_Accounting.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CONTAINER
+       ========================================================================== -->
+  <main class="portal-container">
+
+    <!-- Quick Kassa Balances Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+      <div class="portal-center-chips" style="display: flex; gap: 0.5rem;">
+        <div class="header-stat-chip" title="Kassadagi Naqd Pul Qoldig'i">
+          <i class="fas fa-money-bill-wave" style="color: var(--emerald);"></i>
+          <span>Naqd:</span>
+          <span class="val" id="chip-cash-val">—</span>
+        </div>
+        <div class="header-stat-chip" title="Terminal (Uzcard/Humo) Tushumlari">
+          <i class="fas fa-credit-card" style="color: var(--primary);"></i>
+          <span>Terminal:</span>
+          <span class="val" id="chip-terminal-val">—</span>
+        </div>
+        <div class="header-stat-chip" title="Click / Payme / Online Tushumlar">
+          <i class="fas fa-mobile-alt" style="color: var(--purple);"></i>
+          <span>Online:</span>
+          <span class="val" id="chip-online-val">—</span>
+        </div>
+      </div>
+
+      <div style="font-size: 0.8rem; color: var(--emerald); font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+        <span>Kassa Holati: 24/7 Avtomatlashtirilgan Kvitansiya</span>
+      </div>
+    </div>
+
+    <!-- KPI SUMMARY CARDS (CLICKABLE FOR INSTANT FILTERING & DRILLDOWN) -->
+    <section class="financial-kpi-grid">
+      <!-- Gross Revenue -->
+      <div class="kpi-card kpi-revenue" onclick="window.FMH_Accounting.filterByKPI('revenue')" title="Kassa Kirimlarini (Tushum) ko'rish uchun bosing">
+        <div class="kpi-header">
+          <span class="kpi-label">Jami Tushum (Gross Revenue)</span>
+          <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-gross-revenue">—</div>
+        <div class="kpi-sub">
+          <span class="highlight-cyan"><i class="fas fa-arrow-up"></i> +14.2%</span> o'tgan oyga nisbatan
+          <span style="float: right; color: #38bdf8; font-size: 0.72rem; font-weight: 700;">Ko'rish <i class="fas fa-chevron-right"></i></span>
+        </div>
+      </div>
+
+      <!-- Net Profit -->
+      <div class="kpi-card kpi-profit" onclick="window.FMH_Accounting.filterByKPI('profit')" title="Sof foyda analitikasini ko'rish uchun bosing">
+        <div class="kpi-header">
+          <span class="kpi-label">Sof Foyda (Net Profit)</span>
+          <div class="kpi-icon"><i class="fas fa-wallet"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-net-profit">—</div>
+        <div class="kpi-sub">
+          <span class="highlight-green"><i class="fas fa-check-double"></i> Rentabellik: 68.3%</span>
+          <span style="float: right; color: #10b981; font-size: 0.72rem; font-weight: 700;">Analitika <i class="fas fa-chevron-right"></i></span>
+        </div>
+      </div>
+
+      <!-- Expenses -->
+      <div class="kpi-card kpi-expense" onclick="window.FMH_Accounting.filterByKPI('expense')" title="Faqat xarajat va chiqimlarni ochish uchun bosing">
+        <div class="kpi-header">
+          <span class="kpi-label">Jami Xarajatlar</span>
+          <div class="kpi-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-total-expenses">—</div>
+        <div class="kpi-sub">
+          <span class="highlight-rose"><i class="fas fa-arrow-down"></i> Oyliklar & Dorilar</span>
+          <span style="float: right; color: #f43f5e; font-size: 0.72rem; font-weight: 700;">Chiqimlar <i class="fas fa-chevron-right"></i></span>
+        </div>
+      </div>
+
+      <!-- Outstanding Debt -->
+      <div class="kpi-card kpi-debt" onclick="window.FMH_Accounting.filterByKPI('debt')" title="Faqat qarzdor bemorlar ro'yxatini ochish uchun bosing">
+        <div class="kpi-header">
+          <span class="kpi-label">Bemorlar Qoldiq Qarzi</span>
+          <div class="kpi-icon"><i class="fas fa-hand-holding-usd"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-total-debt" style="color: #fbbf24;">0 so'm</div>
+        <div class="kpi-sub">
+          <span>Kutilayotgan tushumlar</span>
+          <span style="float: right; color: #fbbf24; font-size: 0.72rem; font-weight: 700;">Qarzdorlar <i class="fas fa-chevron-right"></i></span>
+        </div>
+      </div>
+
+      <!-- Cash in Drawer -->
+      <div class="kpi-card kpi-cash" onclick="window.FMH_Accounting.filterByKPI('cash')" title="Naqd pul kassa operatsiyalarini ko'rish uchun bosing">
+        <div class="kpi-header">
+          <span class="kpi-label">Kassa Naqd Pul Qoldig'i</span>
+          <div class="kpi-icon"><i class="fas fa-cash-register"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-cash-drawer">—</div>
+        <div class="kpi-sub">
+          <span>Jismoniy seyfdagi pul</span>
+          <span style="float: right; color: #a855f7; font-size: 0.72rem; font-weight: 700;">Naqd Kassa <i class="fas fa-chevron-right"></i></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- DATE RANGE FILTER BAR (QUICK PRESETS & CUSTOM RANGE) -->
+    <section class="date-range-filter-bar">
+      <div class="date-range-presets">
+        <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; margin-right: 4px;">
+          <i class="fas fa-calendar-alt" style="color: #38bdf8;"></i> Davr:
+        </span>
+        <button class="date-range-btn active" data-range="all" onclick="window.FMH_Accounting.setDateRangePreset('all')">Barchasi</button>
+        <button class="date-range-btn" data-range="today" onclick="window.FMH_Accounting.setDateRangePreset('today')">Bugun</button>
+        <button class="date-range-btn" data-range="yesterday" onclick="window.FMH_Accounting.setDateRangePreset('yesterday')">Kecha</button>
+        <button class="date-range-btn" data-range="week" onclick="window.FMH_Accounting.setDateRangePreset('week')">Shu Hafta (7 kun)</button>
+        <button class="date-range-btn" data-range="month" onclick="window.FMH_Accounting.setDateRangePreset('month')">Shu Oy (Avgust)</button>
+      </div>
+
+      <div class="date-custom-inputs">
+        <span>Oraliq:</span>
+        <input type="date" id="date-filter-start" class="date-custom-input" onchange="window.FMH_Accounting.applyCustomDateRange()">
+        <span>—</span>
+        <input type="date" id="date-filter-end" class="date-custom-input" onchange="window.FMH_Accounting.applyCustomDateRange()">
+        <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.resetDateRange()" title="Filtrni tozalash">
+          <i class="fas fa-undo"></i>
+        </button>
+      </div>
+    </section>
+
+    <!-- TABS BAR -->
+    <nav class="portal-tabs-bar" aria-label="Buxgalteriya Bo'limlari">
+      <div class="portal-tabs">
+        <button class="tab-btn active" data-tab="patients">
+          <i class="fas fa-user-injured"></i> Statsionar & Bemorlar Hisobi
+          <span class="tab-badge" id="badge-patients-count">—</span>
+        </button>
+        <button class="tab-btn" data-tab="transactions">
+          <i class="fas fa-list-alt"></i> Kassa Daftari & Operatsiyalar
+          <span class="tab-badge" id="badge-txns-count">—</span>
+        </button>
+        <button class="tab-btn" data-tab="doctors">
+          <i class="fas fa-user-md"></i> Shifokorlar Oyligi & Gonorar
+        </button>
+        <button class="tab-btn" data-tab="analytics">
+          <i class="fas fa-chart-pie"></i> Moliya Analitikasi & Dinamika
+        </button>
+        <button class="tab-btn" data-tab="pharmacy">
+          <i class="fas fa-pills"></i> Farmakologiya & Dori Xarajatlari
+          <span class="tab-badge" id="badge-pharmacy-count">—</span>
+        </button>
+      </div>
+
+      <div class="tab-actions">
+        <button class="btn-portal btn-success-portal" onclick="window.FMH_Accounting.exportAllToExcel()">
+          <i class="fas fa-file-excel"></i> Jami Kompleks Excel (.xlsx)
+        </button>
+      </div>
+    </nav>
+
+    <!-- ==========================================================================
+         TAB 1: PATIENTS BILLING LEDGER
+         ========================================================================== -->
+    <section class="tab-panel active" id="tab-panel-patients">
+      <div class="section-toolbar-card">
+        <div class="toolbar-search">
+          <i class="fas fa-search" style="color: var(--text-muted);"></i>
+          <input type="text" id="search-billing-input" placeholder="Bemor ismi, telefon raqami, shifokor yoki ID bo'yicha qidirish...">
+        </div>
+
+        <div class="toolbar-filters">
+          <select id="filter-billing-status" class="select-filter">
+            <option value="all">Barcha Holatlar (To'langan & Qarz)</option>
+            <option value="paid">To'liq To'langanlar</option>
+            <option value="partial">Qisman To'langanlar (Qarzdor)</option>
+          </select>
+
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openNewBillModal()">
+            <i class="fas fa-user-plus"></i> Yangi Bemor Hisobini Ochish
+          </button>
+
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportPatientsToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399;">
+            <i class="fas fa-file-excel"></i> Bemorlar To'lovlari (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div class="table-responsive-wrapper">
+        <table class="finance-table">
+          <thead>
+            <tr>
+              <th>Hisob №</th>
+              <th>Bemor F.I.Sh & Tel</th>
+              <th>Karavot & Dastur</th>
+              <th>Mas'ul Shifokor</th>
+              <th>To'lanishi Kerak</th>
+              <th>Fakt To'landi</th>
+              <th>Qoldiq Qarz</th>
+              <th>Holat</th>
+              <th style="text-align: center;">Amallar</th>
+            </tr>
+          </thead>
+          <tbody id="patients-billing-tbody">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 2: TRANSACTION JOURNAL & POS
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-transactions">
+      <div class="section-toolbar-card">
+        <div class="toolbar-filters">
+          <select id="filter-txn-type" class="select-filter">
+            <option value="all">Barcha Operatsiyalar (Kirim & Chiqim)</option>
+            <option value="income">Faqat Kirimlar (Tushum)</option>
+            <option value="expense">Faqat Chiqimlar (Xarajat)</option>
+          </select>
+
+          <select id="filter-txn-method" class="select-filter">
+            <option value="all">Barcha To'lov Shakllari</option>
+            <option value="cash">💵 Naqd Pul</option>
+            <option value="terminal">💳 Terminal (Humo/Uzcard)</option>
+            <option value="online">📱 Click / Payme</option>
+            <option value="bank">🏦 Bank O'tkazmasi</option>
+          </select>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openNewTxnModal('income')">
+            <i class="fas fa-plus"></i> Yangi Kirim
+          </button>
+          <button class="btn-portal btn-danger-portal" onclick="window.FMH_Accounting.openNewTxnModal('expense')">
+            <i class="fas fa-minus"></i> Yangi Chiqim
+          </button>
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1);" title="Dori-darmon xaridini kiritish va xarajatga yozish">
+            <i class="fas fa-pills"></i> Dori Xaridi (Chiqim)
+          </button>
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.openIncassoModal()" style="border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
+            <i class="fas fa-university"></i> Bankka Inkassatsiya
+          </button>
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportTransactionsToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399;">
+            <i class="fas fa-file-excel"></i> Kassa Daftari (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div class="table-responsive-wrapper">
+        <table class="finance-table">
+          <thead>
+            <tr>
+              <th>Operatsiya №</th>
+              <th>Tavsif & Izoh</th>
+              <th>Turi</th>
+              <th>Summa</th>
+              <th>To'lov Usuli</th>
+              <th>Sana & Kassir</th>
+              <th style="text-align: center;">Amallar</th>
+            </tr>
+          </thead>
+          <tbody id="transactions-tbody">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 3: DOCTORS PAYROLL & COMMISSIONS
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-doctors">
+      <div class="section-toolbar-card" style="margin-bottom: 0.5rem;">
+        <div id="accounting-doctors-title" style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+          <i class="fas fa-user-md" style="color: var(--primary);"></i> Shifokorlar Oylik Maoshi va Gonorar Qayti
+        </div>
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportDoctorsToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
+          <i class="fas fa-file-excel"></i> Shifokorlar Oyligini Excelga Yuklash (.xlsx)
+        </button>
+      </div>
+
+      <div class="doctors-grid" id="doctors-payroll-grid">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 4: FINANCIAL ANALYTICS & CHARTS
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-analytics">
+      <div class="analytics-split-grid">
+        <div class="chart-box-card">
+          <div class="chart-title-bar">
+            <div class="chart-title"><i class="fas fa-chart-bar" style="color: var(--primary);"></i> Oylik Tushum va Xarajatlar Dinamikasi</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 10px;">
+              <span style="color: var(--primary);">■ Tushum</span>
+              <span style="color: var(--rose);">■ Xarajat</span>
+            </div>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="monthly-revenue-canvas"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-box-card">
+          <div class="chart-title-bar">
+            <div class="chart-title"><i class="fas fa-pie-chart" style="color: var(--emerald);"></i> Bo'limlar Bo'yicha Tushum Taqsimoti</div>
+          </div>
+          <div class="dept-bars-list" id="dept-bars-container">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 5: PHARMACY & INVENTORY VALUATION
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-pharmacy">
+      <div class="section-toolbar-card" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem;">
+        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+          <i class="fas fa-pills" style="color: var(--primary);"></i> Farmakologiya, Dori-Darmon Xarajatlari & Omborxona
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1);">
+            <i class="fas fa-plus-circle"></i> Yangi Dori Xaridini Kiritish (Chiqim)
+          </button>
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportMedPurchasesToExcel()" style="border-color: rgba(244, 63, 94, 0.4); color: var(--rose);">
+            <i class="fas fa-file-invoice-dollar"></i> Xaridlar Tarixini Excelga (.xlsx)
+          </button>
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportPharmacyToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
+            <i class="fas fa-file-excel"></i> Dorixona Qoldig'ini Excelga (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div class="financial-kpi-grid" style="margin-bottom: 1.25rem;">
+        <div class="kpi-card kpi-revenue">
+          <div class="kpi-header"><span class="kpi-label">Ombordagi Dorilar Turi</span><div class="kpi-icon"><i class="fas fa-pills"></i></div></div>
+          <div class="kpi-value" id="pharm-total-meds">—</div>
+          <div class="kpi-sub">Klinika farmakologiya katalogi</div>
+        </div>
+        <div class="kpi-card kpi-profit">
+          <div class="kpi-header"><span class="kpi-label">Omborxona Umumiy Qiymati</span><div class="kpi-icon"><i class="fas fa-boxes"></i></div></div>
+          <div class="kpi-value" id="pharm-total-valuation">—</div>
+          <div class="kpi-sub">Barcha dorilar qoldiq tannarxi</div>
+        </div>
+        <div class="kpi-card kpi-expense">
+          <div class="kpi-header"><span class="kpi-label">Dori Xarajatlari (Chiqim)</span><div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div></div>
+          <div class="kpi-value" id="pharm-period-expense" style="color: var(--rose);">—</div>
+          <div class="kpi-sub" id="pharm-expense-sub">Tanlangan davr bo'yicha jami chiqim</div>
+        </div>
+        <div class="kpi-card kpi-cash">
+          <div class="kpi-header"><span class="kpi-label">Xarid Partiyalari Soni</span><div class="kpi-icon"><i class="fas fa-receipt"></i></div></div>
+          <div class="kpi-value" id="pharm-total-purchases">—</div>
+          <div class="kpi-sub">Qayd etilgan dori partiyalari</div>
+        </div>
+      </div>
+
+      <!-- BLOCK 1: MEDICATIONS BOUGHT (PURCHASE EXPENSES) -->
+      <div class="chart-box-card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-cart-arrow-down" style="color: var(--rose);"></i>
+              Sotib Olingan Dori-Darmonlar Ro'yxati (Klinika Xarajatlari)
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+              Sotib olingan dorilar, miqdori va tannarxi — buxgalteriyaning chiqimlar daftari (Accounting Expense) ga avtomatik yoziladi
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="toolbar-search" style="margin: 0;">
+              <i class="fas fa-search" style="color: var(--text-muted);"></i>
+              <input type="text" id="search-med-purchases-input" placeholder="Dori, yetkazib beruvchi, chek..." style="width: 220px;" oninput="window.FMH_Accounting.filterMedPurchases()">
+            </div>
+            <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="padding: 6px 12px; font-size: 0.82rem; background: linear-gradient(135deg, #0284c7, #0369a1);">
+              <i class="fas fa-plus"></i> Yangi Dori Xaridi
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive-wrapper">
+          <table class="finance-table" id="med-purchases-table">
+            <thead>
+              <tr>
+                <th>Sana</th>
+                <th>Dori Nomi & Guruhi</th>
+                <th>Miqdori</th>
+                <th>Donasi Narxi (Qanchadan)</th>
+                <th>Jami Chiqim (Xarajat)</th>
+                <th>To'lov Shakli</th>
+                <th>Yetkazib Beruvchi & Chek</th>
+                <th>Kassir / Mas'ul</th>
+                <th>Amallar</th>
+              </tr>
+            </thead>
+            <tbody id="med-purchases-tbody">
+              <!-- Rendered dynamically by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BLOCK 2: PHARMACY CURRENT INVENTORY & VALUATION -->
+      <div class="chart-box-card" style="padding: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-boxes" style="color: var(--emerald);"></i>
+              Dorixona Ombordagi Joriy Qoldiq va Tannarxi
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+              Klinika omboridagi mavjud dorilar qoldig'i, birlik narxi va umumiy zaxira qiymati
+            </div>
+          </div>
+          <div class="toolbar-search" style="margin: 0;">
+            <i class="fas fa-search" style="color: var(--text-muted);"></i>
+            <input type="text" id="search-pharmacy-stock-input" placeholder="Ombordagi dorini qidirish..." style="width: 220px;" oninput="window.FMH_Accounting.filterPharmacyStock()">
+          </div>
+        </div>
+
+        <div class="table-responsive-wrapper">
+          <table class="finance-table" id="pharmacy-stock-table">
+            <thead>
+              <tr>
+                <th>Dori Nomi & Dozasi</th>
+                <th>Farmakologik Guruhi</th>
+                <th>Ombordagi Qoldiq</th>
+                <th>Birligi Narxi</th>
+                <th>Jami Qiymati</th>
+                <th>Holat</th>
+                <th>Amal</th>
+              </tr>
+            </thead>
+            <tbody id="pharmacy-stock-tbody">
+              <!-- Rendered dynamically by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==========================================================================
+       MODAL 1: ACCEPT PAYMENT MODAL
+       ========================================================================== -->
+  <div class="modal-backdrop" id="accept-payment-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-hand-holding-usd" style="color: #10b981;"></i> To'lov Qabul Qilish (Kirim)</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="accept-payment-form">
+        <div class="modal-body">
+          <input type="hidden" id="pay-bill-id">
+          <div class="form-grid-2">
+            <div>
+              <label class="form-label">Bemor Ismi</label>
+              <input type="text" id="pay-patient-name" class="form-input" readonly>
+            </div>
+            <div>
+              <label class="form-label">Jami Hisoblangan Summa</label>
+              <input type="text" id="pay-total-due" class="form-input" readonly>
+            </div>
+            <div>
+              <label class="form-label">Ilgari To'langan Summa</label>
+              <input type="text" id="pay-already-paid" class="form-input" readonly>
+            </div>
+            <div>
+              <label class="form-label">Qoldiq Qarzdorlik</label>
+              <input type="text" id="pay-debt-remaining" class="form-input" readonly style="color: #fbbf24; font-weight: 700;">
+            </div>
+            <div>
+              <label class="form-label" for="pay-amount-input">To'lanayotgan Summa (UZS) *</label>
+              <input type="number" id="pay-amount-input" class="form-input" required placeholder="Masalan: 1000000" style="font-family: var(--font-mono); font-weight: 700; color: #34d399;">
+            </div>
+            <div>
+              <label class="form-label" for="pay-method-select">To'lov Usuli *</label>
+              <select id="pay-method-select" class="form-select">
+                <option value="cash">💵 Naqd Pul (Kassa)</option>
+                <option value="terminal">💳 Terminal (Uzcard / Humo)</option>
+                <option value="online">📱 Click / Payme / Uzum</option>
+                <option value="bank">🏦 Bank O'tkazmasi (Hisob raqam)</option>
+              </select>
+            </div>
+            <div class="form-group-full">
+              <label class="form-label" for="pay-notes-input">Kassa Izohi</label>
+              <input type="text" id="pay-notes-input" class="form-input" placeholder="Masalan: 2-bosqich qisman to'lov...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-success-portal">
+            <i class="fas fa-check-circle"></i> To'lovni Qabul Qilish & Chek Berish
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: NEW TRANSACTION (INCOME / EXPENSE) MODAL
+       ========================================================================== -->
+  <div class="modal-backdrop" id="new-transaction-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-file-invoice" style="color: #38bdf8;"></i> Yangi Kassa Operatsiyasi</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="new-transaction-form">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div>
+              <label class="form-label" for="txn-type-select">Operatsiya Turi *</label>
+              <select id="txn-type-select" class="form-select">
+                <option value="income">📥 Kirim (Tushum)</option>
+                <option value="expense">📤 Chiqim (Xarajat)</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" for="txn-category-select">Kategoriya *</label>
+              <select id="txn-category-select" class="form-select">
+                <option value="patient_inpatient">Bemor to'lovi (Statsionar)</option>
+                <option value="patient_outpatient">Bemor to'lovi (Ambulator / Kodlash)</option>
+                <option value="emergency_call">24/7 Tezkor Uyga Chaqiruv</option>
+                <option value="pharmacy_restock">Dorilar va Reaktivlar Xaridi</option>
+                <option value="salary">Oylik Maosh & Smena To'lovlari</option>
+                <option value="nutrition">Bemorlar 4-mahal Parhez Taomi</option>
+                <option value="utilities">Kommunal va Aloqa Xarajatlari</option>
+                <option value="maintenance">Xo'jalik va Ta'mirlash</option>
+                <option value="other">Boshqa Xarajatlar</option>
+              </select>
+            </div>
+            <div class="form-group-full">
+              <label class="form-label" for="txn-title-input">Operatsiya Nomi / Tavsifi *</label>
+              <input type="text" id="txn-title-input" class="form-input" required placeholder="Masalan: Dori vositalari partiyasi uchun to'lov">
+            </div>
+            <div>
+              <label class="form-label" for="txn-amount-input">Summa (UZS) *</label>
+              <input type="number" id="txn-amount-input" class="form-input" required placeholder="Masalan: 2500000" style="font-family: var(--font-mono); font-weight: 700;">
+            </div>
+            <div>
+              <label class="form-label" for="txn-method-select">To'lov Shakli *</label>
+              <select id="txn-method-select" class="form-select">
+                <option value="cash">💵 Naqd Pul</option>
+                <option value="terminal">💳 Terminal (Humo/Uzcard)</option>
+                <option value="online">📱 Click / Payme</option>
+                <option value="bank">🏦 Bank O'tkazmasi</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" for="txn-date-input">Sana *</label>
+              <input type="date" id="txn-date-input" class="form-input" required>
+            </div>
+            <div>
+              <label class="form-label" for="txn-notes-input">Qo'shimcha Izoh</label>
+              <input type="text" id="txn-notes-input" class="form-input" placeholder="Shartnoma raqami yoki chek...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-primary-portal">
+            <i class="fas fa-save"></i> Kassa Daftarga Yozish
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 3: INVOICE / OFFICIAL RECEIPT (PRINTABLE)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="invoice-receipt-modal">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-print" style="color: #38bdf8;"></i> Rasmiy To'lov Kvitansiyasi & Chek</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="invoice-receipt-content">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Yopish</button>
+        <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.printInvoice()">
+          <i class="fas fa-print"></i> Kvitansiyani Chop Etish (Print)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 4: Z-REPORT MODAL (DAILY CASH CLOSING)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="z-report-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-calculator" style="color: #f59e0b;"></i> Kunlik Kassa Yopilishi (Z-Hisobot)</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="z-report-content">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Yopish</button>
+        <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.printZReport()">
+          <i class="fas fa-print"></i> Z-Hisobotni Chop Etish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 5: NEW PATIENT BILL MODAL (OFFICIAL PRICING TIERS)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="new-bill-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-file-medical-alt" style="color: #38bdf8;"></i> Yangi Bemor Hisob-Fakturasini Ochish</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="new-bill-form">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group-full">
+              <label class="form-label" for="newbill-package-select">Muolaja / Xizmat Turi (Rasmiy Narxlar) *</label>
+              <select id="newbill-package-select" class="form-select">
+                <option value="statsionar_shared">🏥 Statsionar (1 karavot / 2 kishilik xona) — 720 000 so'm / kun</option>
+                <option value="statsionar_full_room">👑 Statsionar Butun Xona (1 kishi / VIP Solo) — 1 100 000 so'm / kun</option>
+                <option value="kunlik_statsionar">☀️ Kunlik Statsionar (Kunduzgi o'rin) — 630 000 so'm / kun</option>
+                <option value="ambulator_1">🩺 Ambulator (Kuniga 1 mahal muolaja) — 310 000 so'm / kun</option>
+                <option value="ambulator_2">💉 Ambulator (Kuniga 2 mahal muolaja) — 500 000 so'm / kun</option>
+              </select>
+              <small style="color: #94a3b8; font-size: 0.72rem; margin-top: 3px; display: block;">
+                * Butun xona (1.1 mln) tanlansa, xonadagi 2-karavot avtomatik qulflanadi va boshqa bemorga berilmaydi.
+              </small>
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-patient-name">Bemor F.I.Sh. *</label>
+              <input type="text" id="newbill-patient-name" class="form-input" required placeholder="Masalan: Otabek Jo'rayev">
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-patient-phone">Telefon Raqami</label>
+              <input type="text" id="newbill-patient-phone" class="form-input" value="+998 ">
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-days-input">Davomiyligi (Kunlar soni) *</label>
+              <input type="number" id="newbill-days-input" class="form-input" value="10" min="1" max="60" required style="font-family: var(--font-mono); font-weight: 700;">
+              <small style="color: #64748b; font-size: 0.72rem;">Standart davolanish: 10 kun (o'zgartirish mumkin)</small>
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-bed-select">Biriktiriladigan Karavot</label>
+              <select id="newbill-bed-select" class="form-select">
+                <option value="">Ambulator (O'ringsiz)</option>
+                <optgroup label="1-Qavat (4 ta karavot)">
+                  <option value="bed-1a">11-xona 1A karavot</option>
+                  <option value="bed-1b">11-xona 1B karavot</option>
+                  <option value="bed-2a">12-xona 2A karavot</option>
+                  <option value="bed-2b">12-xona 2B karavot</option>
+                </optgroup>
+                <optgroup label="2-Qavat (10 ta karavot)">
+                  <option value="bed-21a">21-xona 21A karavot</option>
+                  <option value="bed-21b">21-xona 21B karavot</option>
+                  <option value="bed-22a">22-xona 22A karavot</option>
+                  <option value="bed-22b">22-xona 22B karavot</option>
+                  <option value="bed-23a">23-xona 23A karavot</option>
+                  <option value="bed-23b">23-xona 23B karavot</option>
+                  <option value="bed-24a">24-xona 24A karavot</option>
+                  <option value="bed-24b">24-xona 24B karavot</option>
+                  <option value="bed-25a">25-xona 25A karavot</option>
+                  <option value="bed-25b">25-xona 25B karavot</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-doctor-select">Mas'ul Shifokor</label>
+              <select id="newbill-doctor-select" class="form-select">
+                <option value="">— Shifokor biriktirilmagan —</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label">Jami Hisoblangan Summa:</label>
+              <div id="newbill-calc-total" style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: #38bdf8; padding: 0.5rem 0;">
+                7 200 000 so'm
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-advance-input">Boshlang'ich To'lov (Avans UZS)</label>
+              <input type="number" id="newbill-advance-input" class="form-input" placeholder="0" style="font-family: var(--font-mono); font-weight: 700; color: #34d399;">
+            </div>
+
+            <div>
+              <label class="form-label" for="newbill-method-select">To'lov Usuli</label>
+              <select id="newbill-method-select" class="form-select">
+                <option value="cash">💵 Naqd Pul (Kassa)</option>
+                <option value="terminal">💳 Terminal (Humo / Uzcard)</option>
+                <option value="online">📱 Click / Payme / Uzum</option>
+                <option value="bank">🏦 Bank O'tkazmasi</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-primary-portal">
+            <i class="fas fa-save"></i> Hisob-Fakturani Ochish & Saqlash
+          </button>
+        </div>
+  <!-- ==========================================================================
+       MODAL 6: ADD EXTRA MEDICATION / PROCEDURE TO PATIENT BILL
+       ========================================================================== -->
+  <div class="modal-backdrop" id="add-service-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-pills" style="color: #a855f7;"></i> Bemor Hisobiga Qo'shimcha Dori / Muolaja Qo'shish</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="add-service-form">
+        <input type="hidden" id="addsvc-bill-id">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group-full">
+              <label class="form-label">Bemor:</label>
+              <input type="text" id="addsvc-patient-name" class="form-input" readonly style="background: rgba(0,0,0,0.3); font-weight: 700; color: #38bdf8;">
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="addsvc-item-select">Dori Vositasi / Tibbiy Xizmatni Tanlang *</label>
+              <select id="addsvc-item-select" class="form-select" required>
+                <optgroup label="Dorixona Ombordagi Dorilar (Ombordan hisobdan chiqariladi)">
+                  <option value="med-1" data-price="38000" data-type="pharmacy">💊 Reamberin eritmasi (400ml) — 38 000 so'm</option>
+                  <option value="med-2" data-price="25000" data-type="pharmacy">💊 Gemodez-N eritmasi (200ml) — 25 000 so'm</option>
+                  <option value="med-3" data-price="82000" data-type="pharmacy">💊 Meksidol inyeksiyasi (5ml №5) — 82 000 so'm</option>
+                  <option value="med-4" data-price="115000" data-type="pharmacy">💊 Essensiale Forte N (ampula №5) — 115 000 so'm</option>
+                  <option value="med-5" data-price="65000" data-type="pharmacy">💊 Relanium / Diazepam (2ml №10) — 65 000 so'm</option>
+                  <option value="med-6" data-price="240000" data-type="pharmacy">💊 Geptral / Ademetionin (400mg №5) — 240 000 so'm</option>
+                  <option value="med-7" data-price="18000" data-type="pharmacy">💊 Vitamin C (5% 2ml №10) — 18 000 so'm</option>
+                  <option value="med-8" data-price="22000" data-type="pharmacy">💊 Magniy Sulfat (25% 10ml №10) — 22 000 so'm</option>
+                </optgroup>
+                <optgroup label="Qo'shimcha Tibbiy Muolajalar & Tekshiruvlar">
+                  <option value="srv-1" data-price="450000" data-type="procedure">💉 Membranali Plazmaferez muolajasi — 450 000 so'm</option>
+                  <option value="srv-2" data-price="250000" data-type="procedure">🧠 Individual Psixoterapiya seansi (1 soat) — 250 000 so'm</option>
+                  <option value="srv-3" data-price="120000" data-type="procedure">❤️ Kardiomonitoring va EKG tekshiruvi — 120 000 so'm</option>
+                  <option value="srv-4" data-price="800000" data-type="procedure">🛡️ Narkologik Blokada (Torpedo / Esperal) — 800 000 so'm</option>
+                  <option value="srv-5" data-price="180000" data-type="procedure">🧪 Umumiy va Biokimyoviy qon tahlili — 180 000 so'm</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="addsvc-qty-input">Miqdori (Dozasi / Soni) *</label>
+              <input type="number" id="addsvc-qty-input" class="form-input" value="1" min="1" max="50" required style="font-family: var(--font-mono); font-weight: 700;">
+            </div>
+
+            <div>
+              <label class="form-label">Qo'shiladigan Jami Summa:</label>
+              <div id="addsvc-total-preview" style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 800; color: #a855f7; padding: 0.4rem 0;">
+                38 000 so'm
+              </div>
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="addsvc-notes-input">Tayinlangan Sabab / Shifokor Ko'rsatmasi</label>
+              <input type="text" id="addsvc-notes-input" class="form-input" placeholder="Masalan: Bosh shifokor ko'rsatmasi bo'yicha qo'shimcha infuziya...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-primary-portal" style="background: linear-gradient(135deg, #a855f7, #7e22ce);">
+            <i class="fas fa-plus-circle"></i> Hisobga Qo'shish & Ombordan Chiqarish
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 7: CASH INCASSO TO BANK (KASSA INKASSATSIYASI)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="incasso-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-university" style="color: #fbbf24;"></i> Kassa Inkassatsiyasi (Naqd Pulni Bankka Topshirish)</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="incasso-form">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group-full" style="background: var(--amber-glow); border: 1px solid var(--amber); padding: 12px; border-radius: 8px;">
+              <div style="font-size: 0.8rem; color: var(--amber); font-weight: 600;">Jismoniy Seyfdagi Mavjud Naqd Pul:</div>
+              <div id="incasso-current-cash" style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 800; color: var(--text-primary);">
+                0 so'm
+              </div>
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="incasso-amount-input">Inkassatsiya Qilinadigan Summa (UZS) *</label>
+              <input type="number" id="incasso-amount-input" class="form-input" required placeholder="Masalan: 3000000" style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 800; color: #34d399;">
+            </div>
+
+            <div>
+              <label class="form-label" for="incasso-bank-select">Qabul Qiluvchi Bank *</label>
+              <select id="incasso-bank-select" class="form-select">
+                <option value="Kapitalbank">ATB 'Kapitalbank' (H/R: ...3001)</option>
+                <option value="Ipoteka Bank">ATIB 'Ipoteka Bank' (H/R: ...7890)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="incasso-collector-name">Inkassator / Mas'ul Xodim *</label>
+              <input type="text" id="incasso-collector-name" class="form-input" value="Xusnitdinov Azamat" required>
+            </div>
+
+            <div class="form-group-full">
+              <label class="form-label" for="incasso-notes-input">Inkassatsiya Xaltasi № / Dalolatnoma Izohi</label>
+              <input type="text" id="incasso-notes-input" class="form-input" placeholder="Xalta № 4821, Kassa mudiri topshirdi...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-primary-portal" style="background: linear-gradient(135deg, #d97706, #b45309);">
+            <i class="fas fa-shield-alt"></i> Inkassatsiyani Tasdiqlash & Chiqim Qilish
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 8: MEDICATION PURCHASE & RESTOCK (DORI-DARMON XARIDI VA KLINIKA CHIQIMI)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="medication-purchase-modal">
+    <div class="modal-dialog modal-lg" style="max-width: 860px;">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-pills" style="color: #38bdf8;"></i> Yangi Dori-Darmon Xaridini Qayd Etish (Klinika Xarajati)</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="medication-purchase-form">
+        <div class="modal-body">
+          <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-info-circle" style="color: #38bdf8; font-size: 1.2rem;"></i>
+            <span style="font-size: 0.82rem; color: var(--text-secondary);">
+              Ushbu bo'limda sotib olingan dorilar ro'yxati, miqdori va tannarxi kiritiladi. Hisoblangan umumiy summa avtomatik ravishda klinikaning buxgalteriya <strong>chiqimlariga (xarajat)</strong> yoziladi va ombordagi dori qoldig'ini oshiradi.
+            </span>
+          </div>
+
+          <div class="form-grid-2" style="margin-bottom: 1rem;">
+            <div>
+              <label class="form-label" for="medpur-date-input">Xarid Sanasi *</label>
+              <input type="date" id="medpur-date-input" class="form-input" required>
+            </div>
+            <div>
+              <label class="form-label" for="medpur-method-select">To'lov Shakli (Kassa / Bank) *</label>
+              <select id="medpur-method-select" class="form-select">
+                <option value="cash">💵 Naqd Pul (Kassa Chiqimi)</option>
+                <option value="bank">🏦 Bank O'tkazmasi (Hisob raqamdan)</option>
+                <option value="terminal">💳 Korporativ Karta / Terminal</option>
+                <option value="online">📱 Click / Payme</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" for="medpur-supplier-input">Yetkazib Beruvchi (Dorixona / Distribyutor)</label>
+              <input type="text" id="medpur-supplier-input" class="form-input" placeholder="Masalan: Grand Pharm, Dori-Darmon AK...">
+            </div>
+            <div>
+              <label class="form-label" for="medpur-invoice-input">Chek / Faktura / Nakladnaya №</label>
+              <input type="text" id="medpur-invoice-input" class="form-input" placeholder="Masalan: FAK-2026-4012...">
+            </div>
+          </div>
+
+          <!-- MEDICATIONS ITEMS LIST -->
+          <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <label class="form-label" style="margin: 0; font-weight: 700;">
+              <i class="fas fa-list-ul" style="color: var(--primary);"></i> Sotib Olingan Dorilar va Tannarxi *
+            </label>
+            <button type="button" class="btn-portal btn-outline-portal" id="btn-add-medpur-row" style="padding: 4px 10px; font-size: 0.78rem;">
+              <i class="fas fa-plus"></i> + Yana Dori Qo'shish
+            </button>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; margin-bottom: 1rem; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;" id="medpur-items-table">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); text-align: left;">
+                  <th style="padding: 6px 8px; width: 34%;">Dori Nomi *</th>
+                  <th style="padding: 6px 8px; width: 18%;">Guruhi</th>
+                  <th style="padding: 6px 8px; width: 12%;">Miqdori *</th>
+                  <th style="padding: 6px 8px; width: 16%;">Donasi Narxi (so'm) *</th>
+                  <th style="padding: 6px 8px; width: 16%;">Jami Summa</th>
+                  <th style="padding: 6px 4px; width: 4%;"></th>
+                </tr>
+              </thead>
+              <tbody id="medpur-items-tbody">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- TOTAL & NOTES -->
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 1rem;">
+            <span style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+              <i class="fas fa-calculator" style="color: var(--rose);"></i> Jami Xarajat Summasi (Chiqim):
+            </span>
+            <span id="medpur-grand-total-disp" style="font-family: var(--font-mono); font-size: 1.35rem; font-weight: 800; color: var(--rose);">
+              0 so'm
+            </span>
+          </div>
+
+          <div>
+            <label class="form-label" for="medpur-notes-input">Qo'shimcha Izoh</label>
+            <input type="text" id="medpur-notes-input" class="form-input" placeholder="Partiya muddati, saqlash sharoiti yoki boshqa izoh...">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-danger-portal" style="background: linear-gradient(135deg, #e11d48, #be123c);">
+            <i class="fas fa-check-circle"></i> Xaridni Saqlash & Xarajatga Yozish
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/xlsx.full.min.js"></script>
+  <script src="js/unified_print_engine.js?v=5.3"></script>
+  <script src="js/accounting.js?v=9.4"></script>
+  <div id="print-area"></div>
+</body>
+</html>

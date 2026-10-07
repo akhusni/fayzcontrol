@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HR & Kadrlar Boshqaruvi | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House xususiy klinikasining inson resurslari, 24/7 smenalar, davomat tabeli va xodimlar oylik maoshi boshqaruv portali.">
+
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/unified_print.css?v=3.5">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/hr.css?v=3.5">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js?v=3.5"></script>
+  <script src="js/fmh_dialogs.js?v=1.3"></script>
+</head>
+<body class="hr-portal">
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 3-ZONE GRID)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr active" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="duty_schedule.html" class="portal-nav-pill pill-hr" title="24/7 Navbatchilik Jadvali">
+            <i class="fas fa-calendar-check"></i> <span>Navbatchilik</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <a href="medical_blank.html" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-print"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" onclick="window.FMH_HR.openAddStaffModal()">
+          <i class="fas fa-plus-circle"></i> <span>Yangi Xodim</span>
+        </button>
+
+        <button id="hr-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_HR.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CONTAINER
+       ========================================================================== -->
+  <main class="portal-container">
+
+    <!-- Quick HR Status Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+      <div class="portal-center-chips" style="display: flex; gap: 0.5rem;">
+        <div class="header-stat-chip" title="Klinikadagi Jami Xodimlar">
+          <i class="fas fa-user-md" style="color: var(--indigo);"></i>
+          <span>Xodimlar:</span>
+          <span class="val" id="chip-staff-count">—</span>
+        </div>
+        <div class="header-stat-chip" title="Bugun Smenada / Ishda Bo'lganlar">
+          <i class="fas fa-user-clock" style="color: var(--emerald);"></i>
+          <span>Ishda:</span>
+          <span class="val" id="chip-duty-count">—</span>
+        </div>
+      </div>
+
+      <div style="font-size: 0.8rem; color: var(--indigo); font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6366f1;"></span>
+        <span>24/7 Navbatchilik & T-13 Davomat Tabeli Nazorati</span>
+      </div>
+    </div>
+
+    <!-- KPI SUMMARY CARDS -->
+    <section class="financial-kpi-grid">
+      <!-- Total Staff -->
+      <div class="kpi-card kpi-staff" onclick="window.FMH_HR.switchTab('staff')">
+        <div class="kpi-header">
+          <span class="kpi-label">Jami Xodimlar Soni</span>
+          <div class="kpi-icon"><i class="fas fa-users"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-total-staff">—</div>
+        <div class="kpi-sub">
+          <span class="highlight-cyan"><i class="fas fa-check-circle"></i> Barcha faol xodimlar</span>
+        </div>
+      </div>
+
+      <!-- Present On Duty -->
+      <div class="kpi-card kpi-duty" onclick="window.FMH_HR.switchTab('shifts')">
+        <div class="kpi-header">
+          <span class="kpi-label">Bugun Smenada (Ishda)</span>
+          <div class="kpi-icon"><i class="fas fa-user-check"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-on-duty">—</div>
+        <div class="kpi-sub">
+          <span class="highlight-green"><i class="fas fa-sun"></i> Kunduzgi & Tungi postlar</span>
+        </div>
+      </div>
+
+      <!-- Monthly Payroll Budget -->
+      <div class="kpi-card kpi-payroll" onclick="window.FMH_HR.switchTab('payroll')">
+        <div class="kpi-header">
+          <span class="kpi-label">Oylik Maosh Fondi</span>
+          <div class="kpi-icon"><i class="fas fa-wallet"></i></div>
+        </div>
+        <div class="kpi-value" id="stat-payroll-budget">—</div>
+        <div class="kpi-sub">
+          <span class="highlight-purple"><i class="fas fa-hand-holding-usd"></i> Oklad + Smena hisoblari</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- DATE & FILTER PRESET BAR -->
+    <section class="date-range-filter-bar">
+      <div class="date-range-presets">
+        <span class="date-range-label" style="font-size: 0.78rem; font-weight: 700; margin-right: 4px;">
+          <i class="fas fa-calendar-alt"></i> Davr:
+        </span>
+        <button class="date-range-btn active" data-range="all">Barchasi</button>
+        <button class="date-range-btn" data-range="today" id="hr-btn-today">Bugun</button>
+        <button class="date-range-btn" data-range="week">Shu Hafta</button>
+        <button class="date-range-btn" data-range="month" id="hr-btn-month">Shu Oy</button>
+      </div>
+
+      <div class="date-custom-inputs">
+        <span>Oraliq:</span>
+        <input type="date" id="date-filter-start" class="date-custom-input">
+        <span>—</span>
+        <input type="date" id="date-filter-end" class="date-custom-input">
+      </div>
+    </section>
+
+    <!-- TABS BAR -->
+    <nav class="portal-tabs-bar" aria-label="HR Bo'limlari">
+      <div class="portal-tabs">
+        <button class="tab-btn active" data-tab="staff">
+          <i class="fas fa-user-md"></i> Xodimlar Bazasi & Profillar
+          <span class="tab-badge" id="badge-staff-count">—</span>
+        </button>
+        <button class="tab-btn" data-tab="shifts">
+          <i class="fas fa-clock"></i> 24/7 Navbatchilik & Smenalar
+        </button>
+        <button class="tab-btn" data-tab="attendance">
+          <i class="fas fa-clipboard-check"></i> Davomat & Tabel (T-13)
+          <span class="tab-badge" id="badge-att-count">—</span>
+        </button>
+        <button class="tab-btn" data-tab="payroll">
+          <i class="fas fa-money-check-alt"></i> Oylik Maosh & Gonorar
+        </button>
+      </div>
+
+      <div class="tab-actions">
+        <button class="btn-portal btn-primary-portal" onclick="window.FMH_HR.openAddStaffModal()">
+          <i class="fas fa-plus"></i> Yangi Xodim
+        </button>
+      </div>
+    </nav>
+
+    <!-- ==========================================================================
+         TAB 1: STAFF DIRECTORY
+         ========================================================================== -->
+    <section class="tab-panel active" id="tab-panel-staff">
+      <div class="section-toolbar-card">
+        <div class="toolbar-search">
+          <i class="fas fa-search" style="color: var(--text-muted);"></i>
+          <input type="text" id="search-staff-input" placeholder="Ism, lavozim, ixtisoslik, telefon yoki ID bo'yicha qidirish...">
+        </div>
+
+        <div class="toolbar-filters">
+          <select id="filter-staff-dept" class="select-filter">
+            <option value="all">Barcha Bo'limlar</option>
+            <option value="doctors">🩺 Shifokorlar Bo'limi</option>
+            <option value="nurses">💉 Hamshiralar Bo'limi</option>
+            <option value="administration">🏢 Ma'muriyat & Qabulxona</option>
+            <option value="diagnostics">🔬 Diagnostika & Laboratoriya</option>
+            <option value="support">🛡️ Xizmat & Xavfsizlik</option>
+          </select>
+
+          <select id="filter-staff-status" class="select-filter">
+            <option value="all">Barcha Holatlar</option>
+            <option value="active">🟢 Faol Xodimlar</option>
+            <option value="inactive">⚪ Noaktiv</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Staff Grid -->
+      <div class="staff-grid" id="staff-grid-container">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 2: 24/7 SHIFTS & SCHEDULE
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-shifts">
+      <div class="section-toolbar-card">
+        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+          <i class="fas fa-calendar-week" style="color: var(--indigo);"></i> 24/7 Navbatchilik Jadvali va Smenalar Taqsimoti (Statsionar 14 O'rin)
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_HR.openAssignShiftModal('all')">
+            <i class="fas fa-calendar-plus"></i> Yangi Smena Qo'shish
+          </button>
+        </div>
+      </div>
+
+      <div id="shifts-container">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 3: ATTENDANCE & TIMESHEET (TABEL T-13)
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-attendance">
+      <div class="section-toolbar-card">
+        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+          <i class="fas fa-clipboard-list" style="color: var(--emerald);"></i> Kunlik Davomat va Oylik Ish Vaqti Tabeli (T-13 Standarti)
+        </div>
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_HR.exportAllToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
+          <i class="fas fa-file-excel"></i> Tabelni Excelga Yuklash (.xlsx)
+        </button>
+      </div>
+
+      <div class="table-responsive-wrapper">
+        <table class="hr-table">
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Xodim F.I.Sh & Lavozim</th>
+              <th>Bo'lim</th>
+              <th>Kelgan Vaqti</th>
+              <th>Ketgan Vaqti</th>
+              <th>Ishlangan Soat</th>
+              <th>Davomat Holati</th>
+              <th>Izoh</th>
+              <th style="text-align: center;">Amallar</th>
+            </tr>
+          </thead>
+          <tbody id="attendance-tbody">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         TAB 4: PAYROLL & COMPENSATION ENGINE
+         ========================================================================== -->
+    <section class="tab-panel" id="tab-panel-payroll">
+      <div class="section-toolbar-card">
+        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
+          <i class="fas fa-calculator" style="color: var(--purple);"></i> Shifokorlar va Xodimlar Oylik Maoshi Hisob-Kitobi (Avgust 2026)
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_HR.exportAllToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
+            <i class="fas fa-file-excel"></i> Oylik Qaydnomasi (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div class="table-responsive-wrapper">
+        <table class="hr-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Xodim & Lavozim</th>
+              <th>Asosiy Oklad</th>
+              <th>Statsionar & Detox</th>
+              <th>Tungi Smena</th>
+              <th>Soliqlar (12.1%)</th>
+              <th>Sof To'lanadigan</th>
+              <th>Holat</th>
+              <th style="text-align: center;">Varaqa</th>
+            </tr>
+          </thead>
+          <tbody id="payroll-tbody">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Summary Card -->
+      <div style="margin-top: 1rem; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); text-transform: uppercase;">Jami Hisoblangan (Gross)</div>
+          <div id="payroll-total-gross" style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: var(--text-primary);">0 so'm</div>
+        </div>
+        <div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); text-transform: uppercase;">Jami Soliq va Ushlanmalar</div>
+          <div id="payroll-total-taxes" style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: var(--rose);">0 so'm</div>
+        </div>
+        <div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); text-transform: uppercase;">Jami Sof To'lanadigan (Net)</div>
+          <div id="payroll-total-net" style="font-family: var(--font-mono); font-size: 1.35rem; font-weight: 800; color: var(--emerald);">0 so'm</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==========================================================================
+       MODAL 1: SMART EMPLOYEE ONBOARDING & EDIT MODAL
+       ========================================================================== -->
+  <div class="modal-overlay" id="add-staff-modal">
+    <form class="modal-card modal-card-large" id="add-staff-form" autocomplete="off">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fas fa-user-plus" id="staff-modal-icon" style="color: #818cf8;"></i>
+          <span id="staff-modal-title">Yangi Xodim Qo'shish</span>
+          <span class="edit-mode-pill" id="staff-edit-pill"><i class="fas fa-pen"></i> Tahrirlash</span>
+        </div>
+        <button type="button" class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+
+      <input type="hidden" name="staff_id" id="staff-form-id" value="">
+        
+      <div class="modal-body">
+          <!-- TOP CONTROLS: PRESETS & MODE TOGGLE -->
+          <div class="staff-onboard-topbar">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+              <div class="staff-presets-label">
+                <i class="fas fa-bolt" style="color: #fbbf24;"></i> 1-Klikda Tezkor Shablon:
+              </div>
+              <div class="staff-mode-switcher">
+                <button type="button" class="staff-mode-btn active" id="btn-mode-quick" onclick="window.FMH_HR.switchStaffFormMode('quick')">
+                  <i class="fas fa-bolt"></i> Tezkor Rejim
+                </button>
+                <button type="button" class="staff-mode-btn" id="btn-mode-detailed" onclick="window.FMH_HR.switchStaffFormMode('detailed')">
+                  <i class="fas fa-id-card-alt"></i> To'liq Profil
+                </button>
+              </div>
+            </div>
+
+            <div class="staff-presets-grid" id="staff-presets-container">
+              <button type="button" class="staff-preset-chip active" data-preset="doctor">
+                🩺 Shifokor-Narkolog <span class="preset-sub">12M</span>
+              </button>
+              <button type="button" class="staff-preset-chip" data-preset="toxicologist">
+                👨‍⚕️ Reanimatolog <span class="preset-sub">14M</span>
+              </button>
+              <button type="button" class="staff-preset-chip" data-preset="nurse">
+                💉 Navbatchi Hamshira <span class="preset-sub">6M</span>
+              </button>
+              <button type="button" class="staff-preset-chip" data-preset="receptionist">
+                💁‍♀️ Administrator <span class="preset-sub">5M</span>
+              </button>
+              <button type="button" class="staff-preset-chip" data-preset="accountant">
+                💼 Bosh Buxgalter <span class="preset-sub">9M</span>
+              </button>
+              <button type="button" class="staff-preset-chip" data-preset="sanitar">
+                🧹 Sanitar / Xizmat <span class="preset-sub">3.8M</span>
+              </button>
+              <button type="button" class="staff-preset-chip" data-preset="security">
+                🛡️ Xavfsizlik Xodimi <span class="preset-sub">4M</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ESSENTIAL DETAILS CARD (ALWAYS VISIBLE) -->
+          <div class="staff-form-card">
+            <div class="staff-form-card-title">
+              <span><i class="fas fa-user-check" style="color: #38bdf8;"></i> Asosiy Ma'lumotlar</span>
+              <span class="staff-card-badge badge-quick">Muhim</span>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group" style="grid-column: span 2;">
+                <label class="form-label">To'liq F.I.Sh (Familiya, Ism, Sharif) *</label>
+                <input type="text" name="full_name" id="staff-input-name" class="form-input" placeholder="Masalan: Dr. Jasur Aliyev" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Telefon Raqami *</label>
+                <div class="phone-field-wrapper">
+                  <span class="phone-flag-icon">🇺🇿</span>
+                  <input type="tel" name="phone" id="staff-input-phone" class="form-input phone-input-custom" placeholder="+998 90 123 45 67" required>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Lavozim & Rol *</label>
+                <select name="role" id="staff-input-role" class="form-select" required>
+                  <option value="doctor">🩺 Shifokor</option>
+                  <option value="nurse">💉 Hamshira</option>
+                  <option value="receptionist">💁‍♀️ Qabulxona Administratori</option>
+                  <option value="accountant">💼 Buxgalter</option>
+                  <option value="admin">🏢 Ma'muriyat & Xizmat</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="grid-column: span 2;">
+                <label class="form-label">Asosiy Oylik Oklad (so'm) *</label>
+                <div class="salary-control-box">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="number" name="base_salary" id="staff-input-salary" class="form-input" style="font-family: var(--font-mono); font-weight: 700; font-size: 1rem;" placeholder="10000000" step="100000" required>
+                    <div class="salary-live-badge" id="salary-formatted-preview">10 000 000 so'm</div>
+                  </div>
+                  <div class="salary-quick-chips">
+                    <span style="font-size: 0.72rem; color: var(--text-muted); align-self: center; margin-right: 4px;">Tezkor:</span>
+                    <button type="button" class="salary-quick-btn" data-amount="3800000">3.8M</button>
+                    <button type="button" class="salary-quick-btn" data-amount="5000000">5M</button>
+                    <button type="button" class="salary-quick-btn" data-amount="6000000">6M</button>
+                    <button type="button" class="salary-quick-btn" data-amount="9000000">9M</button>
+                    <button type="button" class="salary-quick-btn" data-amount="12000000">12M</button>
+                    <button type="button" class="salary-quick-btn" data-amount="15000000">15M</button>
+                    <button type="button" class="salary-quick-btn" data-increment="1000000">+1M</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CLINICAL & MEDICAL SECTION (SMART CONDITIONAL: VISIBLE FOR DOCTORS/NURSES) -->
+          <div class="staff-form-card conditional-block" id="clinical-details-section">
+            <div class="staff-form-card-title">
+              <span><i class="fas fa-stethoscope" style="color: #34d399;"></i> Tibbiy Malaka & Ixtisoslik</span>
+              <span class="staff-card-badge badge-clinical">Klinik Xodimlar</span>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Tibbiy Ixtisoslik (Specialty)</label>
+                <input type="text" name="specialty" id="staff-input-specialty" class="form-input" placeholder="Masalan: Narkologiya, Psixiatriya">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Tibbiy Toifasi</label>
+                <select name="category" id="staff-input-category" class="form-select">
+                  <option value="Oliy toifa">Oliy toifa</option>
+                  <option value="1-toifa">1-toifa</option>
+                  <option value="2-toifa">2-toifa</option>
+                  <option value="Mutaxassis">Mutaxassis</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="grid-column: span 2;">
+                <label class="form-label">Detox Muolaja Bonusi (so'm)</label>
+                <input type="number" name="detox_procedure_fee" id="staff-input-detox" class="form-input" placeholder="150000" step="10000">
+                <span class="form-hint">Har bir muvaffaqiyatli o'tkazilgan infuzion detoks uchun bonus</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- DETAILED PROFILE SECTION (ACCORDION / TOGGLEABLE) -->
+          <div class="staff-form-card conditional-block is-hidden" id="extended-details-section">
+            <div class="staff-form-card-title">
+              <span><i class="fas fa-sliders-h" style="color: #a855f7;"></i> Smena, Bo'lim & Qo'shimcha Parametrlar</span>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Rasmiy Lavozim Nomi (O'zbekcha)</label>
+                <input type="text" name="role_title_uz" id="staff-input-title-uz" class="form-input" placeholder="Shifokor-Narkolog">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Biriktirilgan Bo'lim</label>
+                <select name="department" id="staff-input-dept" class="form-select">
+                  <option value="doctors">🩺 Shifokorlar Bo'limi</option>
+                  <option value="nurses">💉 Hamshiralar Bo'limi</option>
+                  <option value="administration">🏢 Ma'muriyat & Qabulxona</option>
+                  <option value="diagnostics">🔬 Diagnostika & Laboratoriya</option>
+                  <option value="support">🛡️ Xizmat & Xavfsizlik</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Standart Smena Turi</label>
+                <select name="shift_type" id="staff-input-shift" class="form-select">
+                  <option value="day_standard">Kunduzgi Standart (08:00 - 20:00)</option>
+                  <option value="night_only">Tungi Smena (20:00 - 08:00)</option>
+                  <option value="shift_24h">Sutkalik 24 soatlik navbatchilik</option>
+                  <option value="on_call">24/7 On-Call Tezkor chaqiruv</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Biriktirilgan Qavat</label>
+                <select name="assigned_floor" id="staff-input-floor" class="form-select">
+                  <option value="all">Barcha Qavatlar</option>
+                  <option value="1">1-Qavat (4 O'rin)</option>
+                  <option value="2">2-Qavat (10 O'rin)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Telegram Username</label>
+                <div style="position: relative;">
+                  <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #38bdf8; font-weight: 700;">@</span>
+                  <input type="text" name="telegram" id="staff-input-telegram" class="form-input" style="padding-left: 2rem;" placeholder="username">
+                </div>
+                <span class="form-hint">Smena ro'yxati va eslatmalar yuborish uchun</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Elektron Pochta</label>
+                <input type="email" name="email" id="staff-input-email" class="form-input" placeholder="xodim@fayzmedical.uz">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Pasport / JSHSHIR (PINFL)</label>
+                <input type="text" name="passport_pinfl" id="staff-input-passport" class="form-input" placeholder="AA 1234567 / 14 xonali">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Ish Staji (Yil)</label>
+                <input type="number" name="experience_years" id="staff-input-exp" class="form-input" value="5" min="0">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Ishga Qabul Sanasi</label>
+                <input type="date" name="hire_date" id="staff-input-hire-date" class="form-input">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-portal btn-outline-portal btn-modal-cancel">Bekor Qilish</button>
+          <button type="submit" class="btn-portal btn-primary-portal" id="staff-submit-btn">
+            <i class="fas fa-check"></i> <span id="staff-submit-text">Xodimni Saqlash</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+  <!-- ==========================================================================
+       MODAL 2: STAFF DOSSIER (SHAXSIY ISH)
+       ========================================================================== -->
+  <div class="modal-overlay" id="staff-dossier-modal">
+    <div class="modal-card modal-card-large">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-folder-open" style="color: #38bdf8;"></i> Xodimning Shaxsiy Ishi & Dossier</div>
+        <button class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" id="staff-dossier-content">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal btn-modal-cancel">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 3: LOG ATTENDANCE
+       ========================================================================== -->
+  <div class="modal-overlay" id="log-attendance-modal">
+    <form class="modal-card" id="log-attendance-form" style="max-width: 540px;">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-user-clock" style="color: #34d399;"></i> Davomat Qayd Etish</div>
+        <button type="button" class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;" id="att-modal-staff-name">Xodim nomi</div>
+        
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Holat *</label>
+            <select name="status" class="form-select" required>
+              <option value="present">🟢 Keldi (O'z vaqtida)</option>
+              <option value="late">🟡 Kechikib keldi</option>
+              <option value="scheduled_night">🔵 Tungi smenaga rejalashtirilgan</option>
+              <option value="absent">🔴 Kelmadi (Sababsiz)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Kelgan Vaqti</label>
+            <input type="time" name="check_in" class="form-input" value="08:00">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Ketgan Vaqti</label>
+            <input type="time" name="check_out" class="form-input">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Ishlangan Soat</label>
+            <input type="number" name="worked_hours" class="form-input" value="8" step="0.5">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Kechikish (Daqiqa)</label>
+            <input type="number" name="late_minutes" class="form-input" value="0" min="0">
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label class="form-label">Izoh / Qaydlar</label>
+            <input type="text" name="notes" class="form-input" placeholder="Statsionar obxod o'tkazildi...">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-portal btn-outline-portal btn-modal-cancel">Bekor Qilish</button>
+        <button type="submit" class="btn-portal btn-success-portal"><i class="fas fa-save"></i> Davomatni Saqlash</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 4: OFFICIAL PRINTABLE PAYSLIP
+       ========================================================================== -->
+  <div class="modal-overlay" id="payslip-modal">
+    <div class="modal-card modal-card-large" style="background: #ffffff;">
+      <div class="modal-header" style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+        <div class="modal-title" style="color: #0f172a;"><i class="fas fa-file-invoice-dollar" style="color: #0284c7;"></i> Rasmiy Oylik Varaqasi (Pay Slip)</div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="btn-portal btn-primary-portal" onclick="window.FMH_HR.printPayslip()">
+            <i class="fas fa-print"></i> Chop Etish (Print / PDF)
+          </button>
+          <button class="modal-close-btn" style="color: #64748b;" aria-label="Yopish"><i class="fas fa-times"></i></button>
+        </div>
+      </div>
+      <div class="modal-body" id="payslip-sheet-container" style="background: #ffffff; padding: 1.5rem;">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 5: SMART DUTY QUICK PICKER (INTELLEKTUAL TANLAGICH)
+       ========================================================================== -->
+  <div class="modal-overlay" id="quick-picker-modal">
+    <div class="modal-card modal-card-large">
+      <div class="modal-header">
+        <div class="modal-title" id="quick-picker-title"><i class="fas fa-user-check" style="color: #38bdf8;"></i> Navbatchi Xodimni Tanlash</div>
+        <button class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+          <i class="fas fa-info-circle" style="color: #818cf8;"></i> Algoritm xodimlarning oxirgi navbatchilik sanasi, dam olish muddati (48 soat) va oylik daromad balansini tahlil qiladi:
+        </div>
+        <div class="smart-picker-grid" id="quick-picker-candidates">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal btn-modal-cancel">Bekor Qilish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 6: BRIGADE & SHIFT TEAM BUILDER (1/3 & 1/2 REJIMI)
+       ========================================================================== -->
+  <div class="modal-overlay" id="brigade-modal">
+    <div class="modal-card modal-card-large">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-users-cog" style="color: #818cf8;"></i> 24/7 Tibbiy Brigadalar va Smena Qoliplari</div>
+        <button class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.5;">
+          <i class="fas fa-info-circle" style="color: #38bdf8;"></i> Har bir brigada tarkibini belgilang. Qolip tanlanganda tizim barcha 31 kunni hech qanday ziddiyatsiz, mukammal siklda avtomatik to'ldiradi:
+        </div>
+
+        <!-- Brigade Cards Grid -->
+        <div class="brigade-grid" id="brigade-cards-container">
+          <!-- Rendered by JS -->
+        </div>
+
+        <div style="margin-top: 1.5rem; background: rgba(255, 255, 255, 0.02); padding: 1rem; border-radius: var(--radius-md); border: 1px dashed var(--border-subtle);">
+          <div style="font-weight: 700; color: #ffffff; font-size: 0.85rem; margin-bottom: 0.5rem;">
+            <i class="fas fa-magic" style="color: #fbbf24;"></i> Qolipni tanlang va butun oyga tatbiq qiling:
+          </div>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button class="btn-portal btn-primary-portal" onclick="window.FMH_HR.applyBrigadesToMonth('brigade_1_3')">
+              <i class="fas fa-check-double"></i> 1/3 Rejimi (1 sutka ish, 3 sutka dam) — 4 Brigada
+            </button>
+            <button class="btn-portal btn-outline-portal" onclick="window.FMH_HR.applyBrigadesToMonth('brigade_1_2')">
+              <i class="fas fa-sync"></i> 1/2 Rejimi (1 sutka ish, 2 sutka dam) — 3 Brigada
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal btn-modal-cancel">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 7: SHIFT SWAPPER (SMENALARNI O'RNINI ALMASHTIRISH)
+       ========================================================================== -->
+  <div class="modal-overlay" id="swap-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-random" style="color: #fbbf24;"></i> Smenalarni 1-Klikda Almashtirish</div>
+        <button class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          Ikki xil sanani tanlang. Ularning navbatchi xodimlari bir zumda o'zaro almashtiriladi:
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">1-Sana (Kun):</label>
+            <select class="form-select" id="swap-day-a">
+              <option value="1" selected>1-Avgust 2026</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">2-Sana (Kun):</label>
+            <select class="form-select" id="swap-day-b">
+              <option value="4" selected>4-Avgust 2026</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label class="form-label">Qaysi lavozimlarni almashtirish:</label>
+            <select class="form-select" id="swap-role-type">
+              <option value="all">Barcha brigada a'zolarini (Shifokor, Hamshira, Sanitarka)</option>
+              <option value="doctor">Faqat Shifokorlarni (Doctor Night — 350k)</option>
+              <option value="nurse">Faqat Hamshirani (24h Nurse Butun Bino — 400k)</option>
+              <option value="sanitar">Faqat Sanitarkani (24h Sanitar — 300k)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal btn-modal-cancel">Bekor Qilish</button>
+        <button class="btn-portal btn-success-portal" onclick="window.FMH_HR.executeSwap()">
+          <i class="fas fa-exchange-alt"></i> Almashtirishni Bajarish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 8: TELEGRAM & WHATSAPP DUTY ROSTER MODAL
+       ========================================================================== -->
+  <div class="modal-overlay" id="telegram-modal">
+    <div class="modal-card modal-card-large">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fab fa-telegram-plane" style="color: #38bdf8;"></i> Telegram / WhatsApp Guruh uchun Roster</div>
+        <button class="modal-close-btn" aria-label="Yopish"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+          Quyidagi formatlangan matnni 1 bosishda nusxalab, klinika xodimlarining Telegram yoki WhatsApp guruhiga jo'natishingiz mumkin:
+        </div>
+
+        <div class="telegram-preview-box" id="telegram-preview-box">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal btn-modal-cancel">Yopish</button>
+        <button class="btn-portal btn-primary-portal" onclick="window.FMH_HR.copyTelegramText()">
+          <i class="fas fa-copy"></i> Matnni Nusxalash (Copy)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SheetJS Excel Library & HR Engine -->
+  <script src="js/xlsx.full.min.js"></script>
+    <script src="js/unified_print_engine.js?v=5.3"></script>
+<script src="js/hr.js?v=9.7"></script>
+  <div id="print-area"></div>
+</body>
+</html>

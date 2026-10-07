@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bemorlar CRM & Kasallik Tarixi Portali | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House xususiy narkologiya va psixiatriya klinikasi bemorlar CRM tizimi, shaxsiy kasallik tarixi, tibbiy epikriz, dori allergiyalari va moliya nazorati.">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+<!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/crm.css?v=3.1">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.3"></script>
+</head>
+<body class="crm-portal">
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 3-ZONE GRID)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 6-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm active" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <a href="medical_blank.html" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-print"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" onclick="window.FMH_CRM.openNewPatientModal()">
+          <i class="fas fa-user-plus"></i> <span>Yangi Bemor</span>
+        </button>
+
+        <button id="crm-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_CRM.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CRM CONTAINER
+       ========================================================================== -->
+  <main class="crm-container portal-container">
+
+    <!-- Quick Telemetry Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+      <div class="portal-center-chips" style="display: flex; gap: 0.5rem;">
+        <div class="header-stat-chip" title="Jami Ro'yxatdagi Bemorlar">
+          <i class="fas fa-users" style="color: var(--primary);"></i>
+          <span>Jami:</span>
+          <span class="val" id="chip-total-pts">—</span>
+        </div>
+        <div class="header-stat-chip" title="Statsionarda Yotgan Bemorlar">
+          <i class="fas fa-bed" style="color: var(--emerald);"></i>
+          <span>Statsionar:</span>
+          <span class="val" id="chip-stay-pts">—</span>
+        </div>
+        <div class="header-stat-chip" title="Maxfiylik Standarti">
+          <i class="fas fa-shield-alt" style="color: var(--purple);"></i>
+          <span>100% Anonim</span>
+        </div>
+      </div>
+
+      <div style="font-size: 0.8rem; color: #f43f5e; font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f43f5e;"></span>
+        <span>Bemorlar Kartotekasi: FMH-2026 Maxfiy Standart</span>
+      </div>
+    </div>
+
+    <!-- Top KPI Stats Grid -->
+    <section class="crm-stats-grid">
+      <div class="crm-stat-card" onclick="document.querySelector('.filter-pill[data-filter=all]').click()">
+        <div class="crm-stat-icon icon-blue">
+          <i class="fas fa-users"></i>
+        </div>
+        <div class="crm-stat-info">
+          <div class="crm-stat-val" id="stat-total-patients">—</div>
+          <div class="crm-stat-label">Jami Bemorlar</div>
+        </div>
+      </div>
+
+      <div class="crm-stat-card" onclick="document.querySelector('.filter-pill[data-filter=active]').click()">
+        <div class="crm-stat-icon icon-emerald">
+          <i class="fas fa-bed"></i>
+        </div>
+        <div class="crm-stat-info">
+          <div class="crm-stat-val" id="stat-inpatient-patients">—</div>
+          <div class="crm-stat-label">Faol Statsionar (14 o'rin)</div>
+        </div>
+      </div>
+
+      <div class="crm-stat-card" onclick="document.querySelector('.filter-pill[data-filter=outpatient]').click()">
+        <div class="crm-stat-icon icon-purple">
+          <i class="fas fa-stethoscope"></i>
+        </div>
+        <div class="crm-stat-info">
+          <div class="crm-stat-val" id="stat-outpatient-patients">—</div>
+          <div class="crm-stat-label">Ambulator Muolajada</div>
+        </div>
+      </div>
+
+      <div class="crm-stat-card" onclick="document.querySelector('.filter-pill[data-filter=discharged]').click()">
+        <div class="crm-stat-icon icon-indigo">
+          <i class="fas fa-user-check"></i>
+        </div>
+        <div class="crm-stat-info">
+          <div class="crm-stat-val" id="stat-discharged-patients">—</div>
+          <div class="crm-stat-label">Tuzalib Chiqqanlar</div>
+        </div>
+      </div>
+
+      <div class="crm-stat-card" onclick="document.querySelector('.filter-pill[data-filter=debt]').click()">
+        <div class="crm-stat-icon icon-rose">
+          <i class="fas fa-hand-holding-usd"></i>
+        </div>
+        <div class="crm-stat-info">
+          <div class="crm-stat-val" id="stat-debt-patients">—</div>
+          <div class="crm-stat-label">Qoldiq Qarzdorlar</div>
+        </div>
+      </div>
+
+      <div class="crm-stat-card" onclick="document.querySelector('.filter-pill[data-filter=allergies]').click()">
+        <div class="crm-stat-icon icon-amber">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="crm-stat-info">
+          <div class="crm-stat-val" id="stat-allergy-patients">—</div>
+          <div class="crm-stat-label">Dori Allergiyasi Bor</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar: Search, Filters & View Options -->
+    <section class="crm-controls-panel">
+      <div class="crm-search-row">
+        <div class="crm-search-box">
+          <i class="fas fa-search crm-search-icon"></i>
+          <input type="text" id="crm-search-input" class="crm-search-input" placeholder="Bemor ismi, FMH-kod, telefon, shifokor yoki tashxis bo'yicha qidirish...">
+          <i class="fas fa-times-circle crm-search-clear" id="crm-search-clear" title="Tozalash"></i>
+        </div>
+
+        <div class="crm-action-buttons">
+          <select id="crm-sort-select" class="crm-form-control" style="width: auto; padding: 9px 12px; font-weight: 700;">
+            <option value="recent">Eng so'nggi qabullar</option>
+            <option value="name">Ism bo'yicha (A-Z)</option>
+            <option value="debt_desc">Eng ko'p qarzdorlik</option>
+          </select>
+
+          <div class="crm-view-switchers">
+            <button class="view-btn active" id="view-btn-grid" title="Kartochkalar ko'rinishi">
+              <i class="fas fa-th-large"></i>
+            </button>
+            <button class="view-btn" id="view-btn-table" title="Jadval ko'rinishi">
+              <i class="fas fa-list"></i>
+            </button>
+          </div>
+
+          <button class="btn-crm btn-crm-primary" onclick="window.FMH_CRM.openNewPatientModal()">
+            <i class="fas fa-user-plus"></i> Yangi Bemor
+          </button>
+        </div>
+      </div>
+
+      <div class="crm-filter-row">
+        <div class="crm-filter-pills">
+          <button class="filter-pill active" data-filter="all">
+            <i class="fas fa-globe"></i> Barcha Bemorlar
+          </button>
+          <button class="filter-pill" data-filter="active">
+            <i class="fas fa-bed"></i> Statsionarda (Faol)
+          </button>
+          <button class="filter-pill" data-filter="outpatient">
+            <i class="fas fa-stethoscope"></i> Ambulator
+          </button>
+          <button class="filter-pill" data-filter="discharged">
+            <i class="fas fa-check-circle"></i> Tuzalganlar
+          </button>
+          <button class="filter-pill" data-filter="vip">
+            <i class="fas fa-star"></i> VIP Bemorlar
+          </button>
+          <button class="filter-pill" data-filter="debt">
+            <i class="fas fa-receipt"></i> Qarzdorlik Mavjud
+          </button>
+          <button class="filter-pill" data-filter="allergies">
+            <i class="fas fa-exclamation-triangle"></i> Allergiyasi Borlar
+          </button>
+        </div>
+
+        <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);" id="filtered-count-badge">
+          14 bemor topildi
+        </span>
+      </div>
+    </section>
+
+    <!-- Patient Directory Views -->
+    <section>
+      <!-- 1. Grid Cards View -->
+      <div class="crm-patients-grid" id="crm-patients-grid">
+        <!-- Rendered dynamically via js/crm.js -->
+      </div>
+
+      <!-- 2. Table List View -->
+      <div class="crm-table-wrapper" id="crm-table-wrapper" style="display: none;">
+        <table class="crm-table">
+          <thead>
+            <tr>
+              <th>Klinik Kod</th>
+              <th>Bemor F.I.Sh / Yoshi</th>
+              <th>Telefon Raqami</th>
+              <th>Joylashuvi / Bo'lim</th>
+              <th>Allergiyalar</th>
+              <th>To'langan</th>
+              <th>Qoldiq Qarz</th>
+              <th>Amallar</th>
+            </tr>
+          </thead>
+          <tbody id="crm-table-body">
+            <!-- Rendered dynamically via js/crm.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==========================================================================
+       MODAL 1: COMPREHENSIVE PATIENT DOSSIER & CASE HISTORY
+       ========================================================================== -->
+  <div class="crm-modal-backdrop" id="crm-dossier-modal">
+    <div class="crm-modal-dialog">
+      <!-- Header -->
+      <div class="dossier-header">
+        <div class="dossier-patient-main">
+          <div class="dossier-avatar" id="dossier-modal-avatar">--</div>
+          <div>
+            <div class="dossier-name-row">
+              <h2 id="dossier-modal-name">Bemor Dossyesi</h2>
+              <span class="patient-code-tag" id="dossier-modal-code">—</span>
+            </div>
+            <div class="dossier-meta-subtitle">
+              <span><i class="fas fa-phone-alt"></i> <span id="dossier-modal-phone">—</span></span> • 
+              <span><i class="fas fa-user"></i> <span id="dossier-modal-age">—</span></span>
+            </div>
+          </div>
+        </div>
+
+        <button class="crm-modal-close" onclick="window.FMH_CRM.closeDossier()" title="Yopish">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="dossier-tabs">
+        <button class="dossier-tab-btn active" data-tab="bio">
+          <i class="fas fa-id-card"></i> 1. Shaxsiy Profil & Kontaktlar
+        </button>
+        <button class="dossier-tab-btn" data-tab="medical">
+          <i class="fas fa-file-medical"></i> 2. Tibbiy Anamnez & Vitallar
+        </button>
+        <button class="dossier-tab-btn" data-tab="finance">
+          <i class="fas fa-receipt"></i> 3. Moliya & To'lovlar
+        </button>
+        <button class="dossier-tab-btn" data-tab="epicrisis">
+          <i class="fas fa-print"></i> 4. Rasmiy Tibbiy Epikriz (Print)
+        </button>
+      </div>
+
+      <!-- Tab Body Panes -->
+      <div class="dossier-body">
+        <div class="dossier-tab-pane active" id="pane-bio"></div>
+        <div class="dossier-tab-pane" id="pane-medical"></div>
+        <div class="dossier-tab-pane" id="pane-finance"></div>
+        <div class="dossier-tab-pane" id="pane-epicrisis"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: NEW PATIENT INTAKE & REGISTRATION
+       ========================================================================== -->
+  <div class="crm-modal-backdrop" id="crm-new-patient-modal">
+    <div class="crm-modal-dialog" style="max-width: 640px;">
+      <div class="dossier-header">
+        <div>
+          <h2 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 800;">
+            <i class="fas fa-user-plus" style="color: var(--primary);"></i> Yangi Bemorni Ro'yxatga Olish
+          </h2>
+          <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 3px;">
+            Klinik anonim kod avtomatik beriladi va to'liq maxfiylik kafolatlanadi.
+          </div>
+        </div>
+        <button class="crm-modal-close" onclick="window.FMH_CRM.closeNewPatientModal()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <div class="dossier-body">
+        <div class="crm-form-grid">
+          <div class="crm-form-group full-width">
+            <label class="crm-form-label">Bemor Ismi / Anonim Taxallus *</label>
+            <input type="text" id="new-patient-name" class="crm-form-control" placeholder="Masalan: Bemor Anvar K.">
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-form-label">Asosiy Telefon Raqami</label>
+            <input type="text" id="new-patient-phone" class="crm-form-control" placeholder="+998 (XX) XXX-XX-XX">
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-form-label">Yaqin Qarindoshi & Aloqa</label>
+            <input type="text" id="new-patient-emergency" class="crm-form-control" placeholder="+998 (XX) ... (Turmush o'rtog'i)">
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-form-label">Jinsi</label>
+            <select id="new-patient-gender" class="crm-form-control">
+              <option value="male">Erkak</option>
+              <option value="female">Ayol</option>
+            </select>
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-form-label">Tug'ilgan Yili</label>
+            <input type="number" id="new-patient-birthyear" class="crm-form-control" value="1990">
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-form-label">Jalb Qilish Manbasi</label>
+            <select id="new-patient-referral" class="crm-form-control">
+              <option value="hotline">24/7 Tezkor Aloqa Hotline</option>
+              <option value="telegram">Telegram Bot / Kanal</option>
+              <option value="doctor_referral">Shifokor Tavsiyasi</option>
+              <option value="relative">Oila / Yaqinlari</option>
+              <option value="walk_in">To'g'ridan-to'g'ri Tashrif</option>
+              <option value="advertisement">Internet / Reklama</option>
+            </select>
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-form-label">Birlamchi Holat (Status)</label>
+            <select id="new-patient-status" class="crm-form-control">
+              <option value="active">Statsionar Yotqizish (Faol)</option>
+              <option value="outpatient">Ambulator Konsultatsiya</option>
+            </select>
+          </div>
+          <div class="crm-form-group full-width">
+            <label class="crm-form-label" style="color: var(--rose);"><i class="fas fa-exclamation-triangle"></i> Dori Allergiyalari (mavjud bo'lsa)</label>
+            <input type="text" id="new-patient-allergies" class="crm-form-control" placeholder="Masalan: Penitsillin, Novokain (yo'q bo'lsa bo'sh qoldiring)">
+          </div>
+          <div class="crm-form-group full-width">
+            <label class="crm-form-label">Surunkali Kasalliklar / Qo'shimcha Izoh</label>
+            <textarea id="new-patient-chronic" class="crm-form-control" rows="2" placeholder="Masalan: Gipertoniya, gastrit..."></textarea>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+          <button class="btn-crm btn-crm-outline" onclick="window.FMH_CRM.closeNewPatientModal()">Bekor Qilish</button>
+          <button class="btn-crm btn-crm-primary" onclick="window.FMH_CRM.submitNewPatient()">
+            <i class="fas fa-check"></i> Ro'yxatga Olish
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/xlsx.full.min.js"></script>
+    <script src="js/unified_print_engine.js?v=5.3"></script>
+<script src="js/crm.js?v=6.4"></script>
+  <div id="print-area"></div>
+</body>
+</html>

@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shifokor Posti & Klinik EMR Portali | Fayz Medical House</title>
+  <meta name="description" content="Fayz Medical House xususiy narkologiya va psixiatriya klinikasi shifokor posti, bemorlar kasallik tarixi, 206 ta dori bo'yicha retseptlar (list naznacheniy) va kunlik ko'rik jurnali.">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+<!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/doctor.css?v=4.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+
+  <!-- Centralized Enterprise Theme & Shift Engine -->
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.3"></script>
+</head>
+<body class="doctor-portal">
+
+  <!-- ==========================================================================
+       UNIFIED MASTER PORTAL HEADER & NAVIGATION (LOCKED 7-PORTAL SUITE)
+       ========================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+      
+      <!-- ZONE 1: FIXED LEFT BRAND ANCHOR -->
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <!-- ZONE 2: CENTER MASTER 7-PORTAL NAVIGATION -->
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="10 Bo'limli Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="doctor.html" class="portal-nav-pill pill-doctor active" title="Shifokor Posti & Klinik EMR">
+            <i class="fas fa-user-md"></i> <span>Shifokor Posti</span>
+          </a>
+          <a href="consultation.html" class="portal-nav-pill pill-doctor" title="Konsultatsiya">
+            <i class="fas fa-user-doctor"></i> <span>Konsultatsiya</span>
+          </a>
+          <a href="ward.html" class="portal-nav-pill pill-doctor" title="Statsionar ko’rigi">
+            <i class="fas fa-stethoscope"></i> <span>Ko’rik</span>
+          </a>
+          <a href="nurse.html" class="portal-nav-pill pill-nurse" title="Hamshiralar Posti">
+            <i class="fas fa-syringe"></i> <span>Hamshira</span>
+          </a>
+          <a href="building_management.html" class="portal-nav-pill pill-building" title="Statsionar 14 Karavot CAD Xaritasi">
+            <i class="fas fa-bed"></i> <span>Statsionar</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, Tushum va Moliya">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="hr.html" class="portal-nav-pill pill-hr" title="Kadrlar, Smenalar va Davomat">
+            <i class="fas fa-users-cog"></i> <span>HR & Kadrlar</span>
+          </a>
+          <a href="reception.html" class="portal-nav-pill pill-reception" title="Bemorlar Qabuli va Triaj">
+            <i class="fas fa-concierge-bell"></i> <span>Qabulxona</span>
+          </a>
+          <a href="crm.html" class="portal-nav-pill pill-crm" title="Bemorlar CRM va Kasallik Tarixi">
+            <i class="fas fa-address-book"></i> <span>CRM</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- ZONE 3: RIGHT ACTIONS & TOOLS -->
+      <div class="portal-actions-cluster">
+        <a href="medical_blank.html" target="_blank" class="btn-header-outline" style="border-color: #10b981; color: #10b981;" title="A4 Tibbiy Blanklar, Retseptlar va Ko'rik varaqlari">
+          <i class="fas fa-file-medical"></i> <span>A4 Blanklar</span>
+        </a>
+
+        <button class="btn-header-primary" onclick="window.FMH_Doctor.openOfficialDocModal()">
+          <i class="fas fa-file-pdf"></i> <span>Rasmiy Hujjat / PDF</span>
+        </button>
+
+        <button id="doctor-theme-toggle" class="btn-unified-theme-toggle" onclick="window.FMH_Doctor.toggleTheme()" title="Rejimni almashtirish (Day/Night)">
+          <i class="fas fa-sun"></i> <span>Kunduzgi</span>
+        </button>
+
+        <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-header-outline" title="Rasmiy Veb-Saytga O'tish">
+          <i class="fas fa-external-link-alt"></i> <span>Sayt</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN DOCTOR STATION CONTAINER
+       ========================================================================== -->
+  <main class="doctor-container portal-container">
+
+    <!-- Top Doctor Profile & Telemetry Bar -->
+    <section class="doctor-station-bar">
+      <!-- Locked Doctor Identity Card -->
+      <div class="doctor-identity-card" id="doctor-identity-badge">
+        <div class="doctor-identity-avatar" id="active-doctor-avatar">👨‍⚕️</div>
+        <div class="doctor-identity-info">
+          <div class="doctor-identity-name">
+            <span id="active-doctor-display-name">Dr. Umarov Xusan Payziboyevich</span>
+            <span class="doc-auth-badge"><i class="fas fa-user-shield"></i> Shaxsiy Kabinet</span>
+          </div>
+          <div class="doctor-identity-title" id="active-doctor-display-title">Bosh Shifokor / Narkolog-Psixiatr</div>
+        </div>
+        <button type="button" class="btn-doc-logout" onclick="window.FMH_Doctor.logoutDoctor()" title="Shifokor hisobidan chiqish / Almashtirish">
+          <i class="fas fa-sign-out-alt"></i> <span>Chiqish</span>
+        </button>
+      </div>
+
+      <!-- Action: + Yangi Konsultatsiya & Kasallik Varaqasi -->
+      <div>
+        <button type="button" class="btn-new-consultation" onclick="window.FMH_Doctor.openNewConsultationModal()">
+          <i class="fas fa-file-medical"></i> <span>+ Yangi Konsultatsiya & Kasallik Varaqasi</span>
+        </button>
+      </div>
+
+      <div class="doctor-kpi-chips">
+        <div class="doc-chip chip-cyan" title="Statsionarda yotgan bemorlar">
+          <i class="fas fa-bed"></i>
+          <span>Statsionar:</span>
+          <strong id="kpi-inpatients-count">—</strong>
+        </div>
+        <div class="doc-chip chip-emerald" title="Jami faol dori-darmon tayinlovlari">
+          <i class="fas fa-pills"></i>
+          <span>Faol Retseptlar:</span>
+          <strong id="kpi-rx-count">—</strong>
+        </div>
+        <div class="doc-chip chip-rose" title="Dori allergiyasi qayd etilgan bemorlar">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>Allergik Nazorat:</span>
+          <strong id="kpi-allergy-count">—</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Two-Column Clinical Grid -->
+    <div class="doctor-layout-grid">
+
+      <!-- =======================================================================
+           LEFT COLUMN: PATIENT SELECTION & WARD ROUNDS
+           ======================================================================= -->
+      <aside class="doc-patient-panel">
+        <div class="doc-panel-header">
+          <div class="doc-panel-title">
+            <span><i class="fas fa-user-injured" style="color: var(--doctor-cyan-light); margin-right: 6px;"></i> Bemorlar Kartotekasi</span>
+            <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">Live EMR</span>
+          </div>
+
+          <!-- Search Input -->
+          <div class="doc-search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="doctor-patient-search" class="doc-search-input" placeholder="Ism, xona, kod yoki tashxis...">
+            <button type="button" class="btn-clear-search" id="btn-clear-search" onclick="window.FMH_Doctor.clearSearch()" style="display:none;" title="Qidiruvni tozalash">&times;</button>
+          </div>
+
+          <!-- Filter Pills with Dynamic Counts -->
+          <div class="doc-filter-pills">
+            <button class="doc-pill-btn active" data-filter="all" onclick="window.FMH_Doctor.filterPatients('all')">Barchasi <span class="pill-badge" id="cnt-all">0</span></button>
+            <button class="doc-pill-btn" data-filter="inpatient" onclick="window.FMH_Doctor.filterPatients('inpatient')">Statsionar <span class="pill-badge" id="cnt-inpatient">0</span></button>
+            <button class="doc-pill-btn" data-filter="my_patients" onclick="window.FMH_Doctor.filterPatients('my_patients')">Mening <span class="pill-badge" id="cnt-my">0</span></button>
+            <button class="doc-pill-btn" data-filter="consultation" onclick="window.FMH_Doctor.filterPatients('consultation')">Konsultatsiya <span class="pill-badge" id="cnt-consultation">0</span></button>
+            <button class="doc-pill-btn" data-filter="allergy" onclick="window.FMH_Doctor.filterPatients('allergy')">Allergiya <span class="pill-badge" id="cnt-allergy">0</span></button>
+            <button class="doc-pill-btn" data-filter="outpatient" onclick="window.FMH_Doctor.filterPatients('outpatient')">Ambulator <span class="pill-badge" id="cnt-outpatient">0</span></button>
+          </div>
+        </div>
+
+        <!-- Scrollable Patient Cards List -->
+        <div class="doc-patient-list" id="doctor-patient-list">
+          <!-- Dynamically populated from MySQL via js/doctor.js -->
+        </div>
+      </aside>
+
+      <!-- =======================================================================
+           RIGHT COLUMN: CLINICAL WORKSTATION & EMR TABS
+           ======================================================================= -->
+      <section class="doc-workstation">
+
+        <!-- Workstation Patient Identity Header -->
+        <div class="workstation-header">
+          <div class="patient-identity-box">
+            <div class="patient-identity-avatar" id="ws-patient-avatar">—</div>
+            <div class="patient-identity-info">
+              <h2 id="ws-patient-name">Bemor Tanlanmagan</h2>
+              <div class="patient-meta-row" id="ws-patient-meta">
+                <!-- Populated via JS -->
+              </div>
+            </div>
+          </div>
+
+          <div class="workstation-quick-actions">
+            <button class="btn-doc-primary" onclick="window.FMH_Doctor.saveAnamnesis()">
+              <i class="fas fa-save"></i> <span>Saqlash</span>
+            </button>
+            <button class="btn-doc-outline" onclick="window.FMH_Doctor.openOfficialDocModal()" title="Rasmiy muolaja varaqasini yoki epikrizni shakllantirish">
+              <i class="fas fa-file-pdf"></i> <span>Hujjat / PDF</span>
+            </button>
+            <button class="btn-doc-outline btn-doc-danger" onclick="window.FMH_Doctor.deleteCurrentPatient()" title="Bemorni bazadan o'chirish">
+              <i class="fas fa-trash-alt"></i> <span>O'chirish</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Clinical Quick Jump Navigation Bar -->
+        <div class="ws-quick-jump-strip" id="ws-quick-jump-strip" style="display: none;">
+          <button type="button" class="quick-jump-btn" onclick="window.FMH_Doctor.quickJump('diary')">
+            <i class="fas fa-stethoscope icon-cyan"></i> <span>+ Ko'rik kiritish</span>
+          </button>
+          <button type="button" class="quick-jump-btn" onclick="window.FMH_Doctor.quickJump('prescriptions')">
+            <i class="fas fa-pills icon-emerald"></i> <span>+ Dori tayinlash</span>
+          </button>
+          <button type="button" class="quick-jump-btn" onclick="window.FMH_Doctor.quickJump('epicrisis')">
+            <i class="fas fa-file-signature icon-purple"></i> <span>Epikriz &amp; Tavsiyalar</span>
+          </button>
+          <button type="button" class="quick-jump-btn" onclick="window.FMH_Doctor.openOfficialDocModal('prescriptions')">
+            <i class="fas fa-print"></i> <span>A4 Retsept / Muolaja</span>
+          </button>
+          <button type="button" class="quick-jump-btn" onclick="window.FMH_Doctor.openOfficialDocModal('full_dossier')">
+            <i class="fas fa-folder-open"></i> <span>To'liq Dossye</span>
+          </button>
+        </div>
+
+        <!-- 4 Main Clinical Tabs -->
+        <div class="workstation-tabs">
+          <button class="ws-tab-btn active" data-tab="anamnesis" onclick="window.FMH_Doctor.switchTab('anamnesis')">
+            <i class="fas fa-stethoscope"></i> 1. Konsultatsiya &amp; Kasallik Tarixi
+          </button>
+          <button class="ws-tab-btn" data-tab="prescriptions" onclick="window.FMH_Doctor.switchTab('prescriptions')">
+            <i class="fas fa-pills"></i> 2. Retseptlar &amp; Dori Tayinlash <span class="tab-badge" id="tab-badge-rx" style="display:none;">0</span>
+          </button>
+          <button class="ws-tab-btn" data-tab="diary" onclick="window.FMH_Doctor.switchTab('diary')">
+            <i class="fas fa-clipboard-check"></i> 3. Shifokor Ko'rigi <span class="tab-badge" id="tab-badge-notes" style="display:none;">0</span>
+          </button>
+          <button class="ws-tab-btn" data-tab="epicrisis" onclick="window.FMH_Doctor.switchTab('epicrisis')">
+            <i class="fas fa-file-signature"></i> 4. Chiqarish Epikrizi
+          </button>
+        </div>
+
+        <!-- Tab Panes Container -->
+        <div class="workstation-body">
+
+          <!-- Global Allergy Alert Banner inside workstation -->
+          <div class="allergy-alert-banner" id="ws-allergy-banner" style="display: none;">
+            <!-- Populated via JS -->
+          </div>
+
+          <!-- Empty Workstation State (shown when no patient selected) -->
+          <div class="empty-workstation" id="empty-workstation-view">
+            <div class="empty-icon"><i class="fas fa-user-md"></i></div>
+            <div class="empty-title">Bemor Tanlanmagan</div>
+            <div class="empty-desc">
+              Chap paneldan bemorni tanlang yoki <strong>"+ Yangi Konsultatsiya"</strong> tugmasini bosib yangi kasallik varaqasini oching.
+            </div>
+          </div>
+
+          <!-- Vitals Dashboard (populated by JS when patient is selected) -->
+          <div class="vitals-dashboard" id="ws-vitals-dashboard" style="display: none;">
+            <div class="vital-card vital-normal" id="vital-bp">
+              <div class="vital-icon"><i class="fas fa-heartbeat" style="color: var(--rose);"></i></div>
+              <div class="vital-value" id="vital-bp-val">—/—</div>
+              <div class="vital-label">Qon Bosimi (AQB)</div>
+            </div>
+            <div class="vital-card vital-normal" id="vital-pulse">
+              <div class="vital-icon"><i class="fas fa-wave-square" style="color: var(--doctor-cyan-light);"></i></div>
+              <div class="vital-value" id="vital-pulse-val">—</div>
+              <div class="vital-label">Puls (ur/daq)</div>
+            </div>
+            <div class="vital-card vital-normal" id="vital-temp">
+              <div class="vital-icon"><i class="fas fa-thermometer-half" style="color: var(--amber);"></i></div>
+              <div class="vital-value" id="vital-temp-val">—°C</div>
+              <div class="vital-label">Harorat</div>
+            </div>
+            <div class="vital-card vital-normal" id="vital-spo2">
+              <div class="vital-icon"><i class="fas fa-lungs" style="color: var(--emerald);"></i></div>
+              <div class="vital-value" id="vital-spo2-val">—%</div>
+              <div class="vital-label">SpO2 Saturatsiya</div>
+            </div>
+            <div class="vital-card vital-normal" id="vital-condition">
+              <div class="vital-icon"><i class="fas fa-clipboard-check" style="color: var(--purple);"></i></div>
+              <div class="vital-value" id="vital-condition-val">—</div>
+              <div class="vital-label">Umumiy Ahvol</div>
+            </div>
+          </div>
+
+          <!-- ===================================================================
+               TAB 1: KASALLIK TARIXI & ANAMNEZ
+               =================================================================== -->
+          <div class="ws-tab-pane active" id="tab-anamnesis">
+            
+            <!-- Section 1: Shikoyatlar & Bemor Xavotirlari (Their Concern) -->
+            <div class="clinical-section-card">
+              <div class="clinical-section-title">
+                <i class="fas fa-comment-medical" style="color: var(--doctor-cyan-light);"></i> 1. Bemor Xavotirlari va Shikoyatlari (Their Concern)
+              </div>
+              <div class="clinical-form-grid">
+                <div class="clinical-form-group full-width">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label class="clinical-label">Murojaat Sababi &amp; Bemor Xavotirlari (Chief Complaints &amp; Concerns) *</label>
+                  </div>
+                  <div class="preset-chips-cluster">
+                    <span class="preset-label"><i class="fas fa-bolt icon-cyan"></i> Tezkor shablon:</span>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('complaints_alcohol')">Alkogolli intoksikatsiya</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('complaints_abstinence')">Abstinent sindrom</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('complaints_anxiety')">Xavotir &amp; Uyqusizlik</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('complaints_narcotic')">Giyohvandlik abstinensiyasi</button>
+                  </div>
+                  <textarea id="anam-complaints" class="clinical-textarea" placeholder="Bemor nima sababdan murojaat qildi, uning asosiy xavotirlari va bezovtaliklari (qo'rquv, tremor, uyqusizlik, ko'krakdagi siqilish...)..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 2: Kasallik Tarixi (Patient History) -->
+            <div class="clinical-section-card">
+              <div class="clinical-section-title">
+                <i class="fas fa-history" style="color: #38bdf8;"></i> 2. Kasallik Tarixi (Patient History / Anamnesis Morbi &amp; Vitae)
+              </div>
+              <div class="clinical-form-grid">
+                <div class="clinical-form-group full-width">
+                  <label class="clinical-label">Kasallik Tarixi &amp; Dinamikasi (Anamnesis Morbi: Boshlanishi, iste'mol staji, remissiya, triggerlar) *</label>
+                  <div class="preset-chips-cluster">
+                    <span class="preset-label"><i class="fas fa-bolt icon-cyan"></i> Tezkor shablon:</span>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('morbi_zapoy_5d')">5 kunlik zapoy</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('morbi_chronic_8y')">Surunkali staj (8 yil)</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('morbi_first_intake')">Birinchi marta qabul</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('morbi_relapse')">Remissiyadan so'ng qaytalanish</button>
+                  </div>
+                  <textarea id="anam-morbi" class="clinical-textarea" placeholder="Kasallik qachon va qanday boshlangan, qanday kechgan, avvalgi reabilitatsiyalar va muolajalar..."></textarea>
+                </div>
+                <div class="clinical-form-group full-width">
+                  <label class="clinical-label">Hayotiy Tarixi &amp; Ijtimoiy Sharoiti (Anamnesis Vitae)</label>
+                  <div class="preset-chips-cluster">
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('vitae_standard')">Oddiy (patologiyasiz)</button>
+                  </div>
+                  <textarea id="anam-vitae" class="clinical-textarea" placeholder="O'tkazilgan jarohatlar, operatsiyalar, zararli odatlar, oilaviy va yashash sharoiti..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 3: Alomatlar & Belgilar (The Symptoms) -->
+            <div class="clinical-section-card">
+              <div class="clinical-section-title">
+                <i class="fas fa-stethoscope" style="color: var(--rose);"></i> 3. Alomatlar &amp; Belgilar (The Symptoms: Somatik, Nevrologik &amp; Psixik)
+              </div>
+              <div class="clinical-form-grid">
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Somatik &amp; Nevrologik Belgilar</label>
+                  <div class="preset-chips-cluster">
+                    <span class="preset-label"><i class="fas fa-bolt icon-cyan"></i> Shablon:</span>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('somatic_moderate')">O'rta og'ir (tremor, AQB 140/90)</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('somatic_stable')">Barqaror somatik holat</button>
+                  </div>
+                  <textarea id="anam-somatic" class="clinical-textarea" placeholder="Teri qoplamalari, arterial bosim, puls, qo'llarda tremor, nafas olish, vegetativ o'zgarishlar..."></textarea>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Psixik Alomatlar &amp; Xulq-atvor</label>
+                  <div class="preset-chips-cluster">
+                    <span class="preset-label"><i class="fas fa-bolt icon-cyan"></i> Shablon:</span>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('psych_anxious')">Affektiv labil, xavotirli</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('psych_sedated')">Sokin, oriyentatsiyasi to'liq</button>
+                  </div>
+                  <textarea id="anam-psychiatric" class="clinical-textarea" placeholder="Ong darajasi, oriyentatsiya, kayfiyat (affektiv fon), xavotir/depressiya, xulq-atvor buzilishlari..."></textarea>
+                </div>
+                <div class="clinical-form-group full-width">
+                  <label class="clinical-label" style="color: var(--rose);"><i class="fas fa-exclamation-triangle"></i> Dori Allergiyalari (Allergic Anamnesis / Taqiqlangan vositalar) *</label>
+                  <div class="preset-chips-cluster">
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('allergy_none')">Allergiya yo'q</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('allergy_novocaine')">Novokain</button>
+                    <button type="button" class="chip-shablon" onclick="window.FMH_Doctor.applyAnamnesisTemplate('allergy_penicillin')">Penitsillin</button>
+                  </div>
+                  <textarea id="anam-allergy" class="clinical-textarea" style="border-color: rgba(244, 63, 94, 0.4);" placeholder="Novokain, Penitsillin, Sulfanilamidlar (agar yo'q bo'lsa 'Yo'q' deb yozing)..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 4: Shifokor Fikri, Xulosasi & Tashxis (Doctor's Opinion) -->
+            <div class="clinical-section-card">
+              <div class="clinical-section-title">
+                <i class="fas fa-file-medical-alt" style="color: var(--emerald);"></i> 4. Shifokor Fikri, Xulosasi &amp; Tashxis (Doctor's Opinion &amp; ICD-10)
+              </div>
+              
+              <!-- 1-Click ICD-10 Diagnosis Selector -->
+              <div class="preset-chips-cluster" style="margin-bottom: 12px; background: rgba(16, 185, 129, 0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                <span class="preset-label" style="color: var(--emerald); font-weight: 800;"><i class="fas fa-tag"></i> 1-BOSISHDA TASHXIS:</span>
+                <button type="button" class="chip-shablon chip-diag" onclick="window.FMH_Doctor.applyDiagnosisPreset('F10.2', 'Surunkali alkogolizm 2-bosqich. Alkogolli qaramlik sindromi.')">F10.2 Alkogolizm 2-bosqich</button>
+                <button type="button" class="chip-shablon chip-diag" onclick="window.FMH_Doctor.applyDiagnosisPreset('F10.3', 'Alkogolli abstinent holat (sindrom). O\'rta-og\'ir daraja.')">F10.3 Abstinensiya holati</button>
+                <button type="button" class="chip-shablon chip-diag" onclick="window.FMH_Doctor.applyDiagnosisPreset('F11.2', 'Opioidlar qabul qilish oqibatidagi ruhiy va xulq-atvor buzilishlari. Qaramlik sindromi.')">F11.2 Opioid qaramligi</button>
+                <button type="button" class="chip-shablon chip-diag" onclick="window.FMH_Doctor.applyDiagnosisPreset('F19.2', 'Bir nechta dori vositalari va boshqa psixoaktiv moddalar qaramligi (Polinarkomaniya).')">F19.2 Polinarkomaniya</button>
+                <button type="button" class="chip-shablon chip-diag" onclick="window.FMH_Doctor.applyDiagnosisPreset('F32.1', 'O\'rta og\'irlikdagi depressiv epizod somatik alomatlar bilan.')">F32.1 Depressiya</button>
+                <button type="button" class="chip-shablon chip-diag" onclick="window.FMH_Doctor.applyDiagnosisPreset('F41.1', 'Umumiy xavotirli buzilish (Generalizatsiyalangan xavotir).')">F41.1 Xavotirli buzilish</button>
+              </div>
+
+              <div class="clinical-form-grid">
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Shifokor Xulosasi &amp; Asosiy Tashxis (Doctor's Opinion) *</label>
+                  <input type="text" id="anam-diagnosis-primary" class="clinical-input" placeholder="Shifokorning klinik fikri va tashxisi (masalan: Surunkali alkogolizm 2-bosqich. Alkogolli abstinent sindrom)...">
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">XKT-10 (ICD-10) Kodi</label>
+                  <input type="text" id="anam-icd10" class="clinical-input" style="font-family: var(--font-mono); font-weight: 700; color: var(--doctor-cyan-light);" placeholder="F10.2 / F10.3 / F11.2 / F32.1">
+                </div>
+                <div class="clinical-form-group full-width">
+                  <label class="clinical-label">Qo'shimcha Shifokor Fikri, Yo'ldosh Kasalliklar va Asoratlar</label>
+                  <input type="text" id="anam-diagnosis-secondary" class="clinical-input" placeholder="Shifokorning qo'shimcha mulohazalari: Toksik gepatopatiya, gipertoniya kasalligi, vegetativ disfunksiya...">
+                </div>
+              </div>
+            </div>
+
+            <div class="doc-save-bar">
+              <span style="font-size: 0.8rem; color: var(--text-muted);">
+                <i class="fas fa-shield-alt"></i> Konsultatsiya xulosasi MySQL bazasida xavfsiz saqlanadi.
+              </span>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="button" class="btn-doc-outline" onclick="window.FMH_Doctor.saveAnamnesis()">
+                  <i class="fas fa-save"></i> <span>Konsultatsiyani Saqlash</span>
+                </button>
+                <button type="button" class="btn-doc-primary" onclick="window.FMH_Doctor.goToPrescriptionMenu()" style="background: linear-gradient(135deg, #059669, #10b981); border-color: #059669; font-weight: 700; padding: 0.65rem 1.4rem; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);">
+                  <span>Keyingisi: Retsept va Dori Tayinlash</span> <i class="fas fa-arrow-right"></i>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ===================================================================
+               TAB 2: DORI-DARMON TAYINLASH & RETSEPTLAR (LIST NAZNACHENIY)
+               =================================================================== -->
+          <div class="ws-tab-pane" id="tab-prescriptions">
+
+            <!-- Quick Protocols (Presets) -->
+            <div class="preset-protocols-bar">
+              <span class="preset-protocols-label">
+                <i class="fas fa-magic"></i> Tayyor Klinik Protokollar:
+              </span>
+              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('detox')">
+                <i class="fas fa-tint" style="color: var(--doctor-cyan-light);"></i> Standart Detoks (4 Dori)
+              </button>
+              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('alcohol_abstinence')">
+                <i class="fas fa-wine-bottle" style="color: var(--rose);"></i> Alkogolli Abstinensiya (3 Dori)
+              </button>
+              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('hepato_neuro')">
+                <i class="fas fa-shield-virus" style="color: var(--emerald);"></i> Gepatoprotektor & Antioksidant
+              </button>
+              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('psychiatry')">
+                <i class="fas fa-brain" style="color: var(--purple);"></i> Psixofarmakoterapiya & Sedatsiya
+              </button>
+            </div>
+
+            <!-- New Prescription Form connected to Live Pharmacology Database & 88 Clinic Drugs -->
+            <div class="new-prescription-box">
+              <div class="rx-box-header">
+                <span><i class="fas fa-plus-circle icon-cyan"></i> Yangi Dori / Muolaja Tayinlash (Klinika Bazasidan)</span>
+                <div class="rx-box-actions">
+                  <button type="button" class="btn-doc-primary btn-doc-sm btn-clinic-meds" onclick="window.FMH_Doctor.openClinicMedsModal()">
+                    <i class="fas fa-pills"></i> <span>🏥 Klinika Dorilari (88 Dori)</span>
+                  </button>
+                  <span class="rx-live-label">Jonli Baza</span>
+                </div>
+              </div>
+
+              <div class="rx-form-row">
+                <div class="clinical-form-group" style="position: relative;">
+                  <label class="clinical-label" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-pills" style="color: var(--doctor-cyan-light);"></i> Dori Vositasining Nomi *</span>
+                    <span style="font-size: 0.7rem; color: var(--doctor-cyan-light); font-weight: 600;"><i class="fas fa-language"></i> Lotin yoki Кирилл</span>
+                  </label>
+                  <input type="text" id="rx-drug-name" class="clinical-input" placeholder="Dori nomini yozing (masalan: Verzepam, Димедрол, 18, Mexidol, Sibazon)..." autocomplete="off" onchange="window.FMH_Doctor.onDrugNameChange(this.value)">
+                  <datalist id="rx-medications-datalist"></datalist>
+                  <div class="quick-pill-row" style="margin-top: 6px; overflow-x: auto; padding-bottom: 2px;">
+                    <span class="quick-pill-hint"><i class="fas fa-bolt"></i> Tezkor:</span>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Natriy oksibutirat')">№1 Oksibutirat</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Verzepam')">№2 Verzepam</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Sibazon')">№3 Sibazon</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Siklodol')">№4 Siklodol</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Reosorbilakt')">№21 Reosorbilakt</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Analgin')">№24 Analgin</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Mexidol')">Mexidol</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Dimedrol')">Dimedrol</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Ketanov')">Ketanov</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Magniy sulfat')">Magniy sulfat</button>
+                  </div>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Chiqarilish Shakli</label>
+                  <select id="rx-form" class="clinical-select">
+                    <option value="Infuzion flakon">Infuzion flakon</option>
+                    <option value="Ampula">Ampula (Inyeksiya)</option>
+                    <option value="Tabletkalar">Tabletkalar (Per os)</option>
+                    <option value="Kapsulalar">Kapsulalar</option>
+                    <option value="Kukun / Eritma">Kukun / Eritma</option>
+                  </select>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Bir Martalik Dozasi *</label>
+                  <input type="text" id="rx-dosage" class="clinical-input" value="" placeholder="400 ml, 500 mg, 2 ml...">
+                  <div class="quick-pill-row">
+                    <span class="quick-pill-hint">Doza:</span>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '100 ml')">100 ml</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '200 ml')">200 ml</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '400 ml')">400 ml</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '1 ampula (2 ml)')">1 amp</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '2 ampula (4 ml)')">2 amp</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '1 tabletka')">1 tab</button>
+                  </div>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Yuborish Yo'li *</label>
+                  <select id="rx-route" class="clinical-select">
+                    <option value="V/I tomchilab (kapelnitsa)">V/I tomchilab (kapelnitsa)</option>
+                    <option value="V/I oqimli">V/I oqimli (struyno)</option>
+                    <option value="V/M inyeksiya">V/M inyeksiya (mushak ichiga)</option>
+                    <option value="Ichishga (Per os)">Ichishga (Per os)</option>
+                    <option value="Sublingual">Sublingual (til ostiga)</option>
+                  </select>
+                  <div class="quick-pill-row">
+                    <span class="quick-pill-hint">Yo'li:</span>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('route', 'V/I tomchilab (kapelnitsa)')">V/I kapelnitsa</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('route', 'V/M inyeksiya')">V/M</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('route', 'Ichishga (Per os)')">Per os</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rx-form-row" style="grid-template-columns: 1.2fr 1fr 1fr 2fr;">
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Qabul Davriyligi</label>
+                  <select id="rx-frequency" class="clinical-select">
+                    <option value="Kuniga 1 mahal">Kuniga 1 mahal</option>
+                    <option value="Kuniga 2 mahal">Kuniga 2 mahal</option>
+                    <option value="Kuniga 3 mahal">Kuniga 3 mahal</option>
+                    <option value="Zarurat tug'ilganda">Zarurat tug'ilganda (PRN)</option>
+                  </select>
+                  <div class="quick-pill-row">
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 1 mahal')">1 mahal</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 2 mahal')">2 mahal</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 3 mahal')">3 mahal</button>
+                  </div>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Davomiyligi (kun)</label>
+                  <input type="number" id="rx-duration" class="clinical-input" value="5" min="1" max="60">
+                  <div class="quick-pill-row">
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '3')">3 kun</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '5')">5 kun</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '7')">7 kun</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '10')">10 kun</button>
+                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '14')">14 kun</button>
+                  </div>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Qabul Vaqti</label>
+                  <select id="rx-timing" class="clinical-select">
+                    <option value="Ertalab 09:30">Ertalab 09:30</option>
+                    <option value="Tushlik 13:30">Tushlik 13:30</option>
+                    <option value="Kechki 18:30">Kechki 18:30</option>
+                    <option value="Uyqudan oldin 21:30">Uyqudan oldin 21:30</option>
+                    <option value="Ertalab & Kechqurun">Ertalab & Kechqurun</option>
+                  </select>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Maxsus Shifokor Ko'rsatmasi</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" id="rx-instructions" class="clinical-input" placeholder="Sekin tomchilatib yuborilsin (40-60 tomchi/min)..." style="flex: 1;">
+                    <button class="btn-doc-primary" onclick="window.FMH_Doctor.addPrescription()">
+                      <i class="fas fa-plus"></i> <span>Tayinlash</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <!-- Selected Medication Clinical & Safety Card -->
+              <div id="rx-active-drug-card" style="display: none; margin-top: 10px; padding: 10px 14px; border-radius: 10px; background: rgba(13, 148, 136, 0.08); border: 1px solid rgba(13, 148, 136, 0.25);"></div>
+            </div>
+
+            <!-- Prescriptions Interactive Table -->
+            <div class="clinical-section-card" style="padding: 0; overflow: hidden;">
+              <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div class="clinical-section-title" style="margin: 0;">
+                    <i class="fas fa-list-check" style="color: var(--doctor-cyan-light);"></i> Tayinlovlar Varaqasi (List Naznacheniy)
+                  </div>
+                  <!-- Prescription Table Filters -->
+                  <div class="rx-filter-tabs">
+                    <button type="button" class="rx-filter-btn active" data-rx-filter="all" onclick="window.FMH_Doctor.filterRxTable('all')">Barchasi</button>
+                    <button type="button" class="rx-filter-btn" data-rx-filter="active" onclick="window.FMH_Doctor.filterRxTable('active')">🟢 Faol</button>
+                    <button type="button" class="rx-filter-btn" data-rx-filter="completed" onclick="window.FMH_Doctor.filterRxTable('completed')">✅ Bajarildi</button>
+                    <button type="button" class="rx-filter-btn" data-rx-filter="cancelled" onclick="window.FMH_Doctor.filterRxTable('cancelled')">❌ Bekor</button>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <a href="medical_blank.html" target="_blank" class="btn-doc-outline" style="padding: 4px 10px; font-size: 0.76rem; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;" title="A4 rasmiy retsept blankida ochish">
+                    <i class="fas fa-prescription"></i> <span>A4 Retsept (Rx)</span>
+                  </a>
+                  <button class="btn-doc-outline" onclick="window.FMH_Doctor.printPrescriptionSheet()" style="padding: 4px 10px; font-size: 0.76rem;">
+                    <i class="fas fa-print"></i> Hamshiralik Varaqasi
+                  </button>
+                </div>
+              </div>
+
+              <div class="rx-table-wrapper">
+                <table class="rx-table">
+                  <thead>
+                    <tr>
+                      <th>Dori Nomi & Shakli</th>
+                      <th>Dozasi</th>
+                      <th>Yuborish Yo'li</th>
+                      <th>Davriylik & Vaqti</th>
+                      <th>Muddat</th>
+                      <th>Holati</th>
+                      <th>Amallar</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rx-table-body">
+                    <!-- Populated via js/doctor.js -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Prescription Action Bar -->
+            <div class="doc-save-bar" style="margin-top: 1rem;">
+              <button type="button" class="btn-doc-outline" onclick="window.FMH_Doctor.switchTab('anamnesis')">
+                <i class="fas fa-arrow-left"></i> <span>Konsultatsiyaga Qaytish</span>
+              </button>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="button" class="btn-doc-outline" onclick="window.FMH_Doctor.printPrescriptionSheet()">
+                  <i class="fas fa-print"></i> <span>A4 Retsept Blankini Chop Etish</span>
+                </button>
+                <button type="button" class="btn-doc-primary" onclick="window.FMH_Doctor.finalizeConsultation()" style="background: linear-gradient(135deg, #059669, #10b981); border-color: #059669; font-weight: 700;">
+                  <i class="fas fa-check-circle"></i> <span>Konsultatsiyani Yakunlash &amp; Saqlash</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ===================================================================
+               TAB 3: KUNDALIK SHIFOKOR KO'RIGI (DNEVNIK OBXODA)
+               =================================================================== -->
+          <div class="ws-tab-pane" id="tab-diary">
+
+            <!-- Add Daily Round Note Box -->
+            <div class="new-prescription-box">
+              <div class="rx-box-header">
+                <span><i class="fas fa-plus icon-cyan"></i> Bugungi Shifokor Ko'rigi Natijasini Kiritish (Dnevnik)</span>
+                <span class="rx-live-label" style="font-family: var(--font-mono); color: var(--doctor-cyan-light);" id="diary-today-date">Bugun: —</span>
+              </div>
+
+              <div style="margin-bottom: 10px;">
+                <button type="button" class="btn-quick-vitals" onclick="window.FMH_Doctor.setNormalVitals()">
+                  <i class="fas fa-magic icon-cyan"></i> <span>⚡ Standart Me'yoriy Ko'rsatkichlar (120/80, 74 ur/daq, 36.6°C, 99% SpO2)</span>
+                </button>
+              </div>
+
+              <div class="clinical-form-grid" style="margin-bottom: 0.75rem;">
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Bemor Umumiy Ahvoli (Objective Condition)</label>
+                  <select id="note-condition" class="clinical-select">
+                    <option value="satisfactory">Qoniqarli (Barqarorlashgan)</option>
+                    <option value="moderate" selected>O'rta og'ir (Kuzatuvda)</option>
+                    <option value="severe">Og'ir (Intoksikatsiya / Tremor)</option>
+                    <option value="critical">Kritik (Reanimatsion nazorat)</option>
+                  </select>
+                </div>
+                <div class="clinical-form-group vitals-input-grid">
+                  <div>
+                    <label class="clinical-label">BP (Bosim)</label>
+                    <input type="text" id="note-bp" class="clinical-input" value="" placeholder="120/80">
+                  </div>
+                  <div>
+                    <label class="clinical-label">Puls</label>
+                    <input type="number" id="note-pulse" class="clinical-input" value="" placeholder="74">
+                  </div>
+                  <div>
+                    <label class="clinical-label">Harorat</label>
+                    <input type="text" id="note-temp" class="clinical-input" value="" placeholder="36.6">
+                  </div>
+                  <div>
+                    <label class="clinical-label">SpO2 %</label>
+                    <input type="number" id="note-spo2" class="clinical-input" value="" placeholder="98">
+                  </div>
+                </div>
+                <div class="clinical-form-group full-width">
+                  <label class="clinical-label">Bemor Ahvoli Dinamikasi &amp; Shikoyatlari *</label>
+                  <div class="preset-chips-cluster">
+                    <span class="preset-label"><i class="fas fa-plus icon-cyan"></i> Dinamika iboralari (bosib qo'shing):</span>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendDynamicsPhrase('Bemor umumiy ahvoli barqarorlashmoqda.')">+ Ahvoli barqaror</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendDynamicsPhrase('Qo\'llardagi tremor sezilarli kamaydi.')">+ Tremor kamaydi</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendDynamicsPhrase('Tungi uyqusi tiklandi, tinch uxladi.')">+ Uyqusi tiklandi</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendDynamicsPhrase('Ishtahasi normallashdi, ko\'ngil aynishi yo\'q.')">+ Ishtahasi yaxshi</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendDynamicsPhrase('Intoksikatsiya belgilari kamaydi, teri ranglari tabiiylashdi.')">+ Intoksikatsiya kamaydi</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendDynamicsPhrase('Psixoemotsional fon sokin, xavotir hissi pasaydi.')">+ Xavotir pasaydi</button>
+                  </div>
+                  <textarea id="note-dynamics" class="clinical-textarea" placeholder="Bemor kechasi qanday uxladi, ishtahasi, tremori kamayishi, affektiv fon o'zgarishi..."></textarea>
+                </div>
+                <div class="clinical-form-group full-width">
+                  <label class="clinical-label">Davolash Rejasiga Kiritilgan O'zgartirishlar &amp; Korreksiya</label>
+                  <div class="preset-chips-cluster">
+                    <span class="preset-label"><i class="fas fa-plus icon-cyan"></i> Korreksiya:</span>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.setTreatmentPhrase('Davolash rejasi o\'zgarishsiz davom ettiriladi.')">Reja o'zgarishsiz</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.setTreatmentPhrase('Detoksikatsion infuziya kursi yakunlandi. Vitaminoterapiyaga o\'tildi.')">Detoks yakunlandi</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.setTreatmentPhrase('Sedativ vositalar dozasi bosqichma-bosqich kamaytirildi.')">Sedativ kamaytirildi</button>
+                    <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.setTreatmentPhrase('Psixologik suhbat o\'tkazildi, reabilitatsiya dasturi boshlandi.')">Psixoterapiya boshlandi</button>
+                  </div>
+                  <input type="text" id="note-treatment" class="clinical-input" placeholder="Masalan: Detoks infuziyasi yakunlandi, vitamin B1 mushak ichiga davom ettiriladi...">
+                </div>
+              </div>
+
+              <div class="doc-save-actions">
+                <button class="btn-doc-primary" onclick="window.FMH_Doctor.addDailyNote()">
+                  <i class="fas fa-plus"></i> <span>Ko'rik Yozuvini Qo'shish</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Daily Notes Timeline Feed -->
+            <div class="daily-notes-timeline" id="daily-notes-container">
+              <!-- Populated via js/doctor.js -->
+            </div>
+
+          </div>
+
+          <!-- ===================================================================
+               TAB 4: CHIQARISH EPIKRIZI & UYGA DAVOLANISH TAVSIYALARI
+               =================================================================== -->
+          <div class="ws-tab-pane" id="tab-epicrisis">
+            <div class="epicrisis-box">
+              <div class="epicrisis-header">
+                <div>
+                  <h3 style="font-family: var(--font-heading); font-size: 1.2rem; font-weight: 800;">
+                    FAYZ MEDICAL HOUSE — TIBBIY CHIQARISH EPIKRIZI
+                  </h3>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                    Rasmiy Shifokor Xulosasi va Uyda Davolanish Dasturi
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button type="button" class="btn-doc-primary btn-auto-epicrisis" onclick="window.FMH_Doctor.autoGenerateEpicrisis()">
+                    <i class="fas fa-magic"></i> <span>⚡ Avtomatik Epikriz Yaratish</span>
+                  </button>
+                  <button type="button" class="btn-doc-primary" onclick="window.FMH_Doctor.printOfficialDocument('epicrisis')">
+                    <i class="fas fa-print"></i> <span>Epikrizni Chop Etish</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 1rem; background: var(--bg-surface); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <p><strong>Bemor:</strong> <span id="epicrisis-patient">—</span></p>
+                <p><strong>Klinik Tashxis:</strong> <span id="epicrisis-diag">—</span></p>
+                <p style="margin-top: 6px;"><strong>Chiqish natijasi *</strong>
+                  <select id="epicrisis-outcome" class="clinical-select" style="max-width: 280px; display: inline-block; margin-left: 6px;">
+                    <option value="">— tanlang —</option>
+                    <option value="recovered">Sog'aydi</option>
+                    <option value="improved">Yaxshilandi</option>
+                    <option value="unchanged">O'zgarishsiz</option>
+                    <option value="transferred">Boshqa muassasaga o'tkazildi</option>
+                    <option value="against_medical_advice">Shifokor tavsiyasiga qarshi ketdi</option>
+                  </select>
+                </p>
+              </div>
+
+              <div class="clinical-form-group full-width" style="margin-bottom: 1rem;">
+                <label class="clinical-label">Uyda Davom Ettirish Uchun Tavsiya Etilgan Dori-Darmonlar (Home Pharmacotherapy)</label>
+                <div class="preset-chips-cluster">
+                  <span class="preset-label"><i class="fas fa-bolt icon-cyan"></i> Tezkor tavsiyalar:</span>
+                  <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendHomeRx('1. Meksidol 125 mg — 1 tabletkadan kuniga 2 mahal, 1 oy.\n2. Neyromultivit — 1 tabletkadan kuniga 1 mahal, 20 kun.\n3. Gepabene (yoki Essensiale) — 1 kapsuladan kuniga 3 mahal, 1 oy.')">+ Standart Tiklanish Paketi</button>
+                  <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.appendHomeRx('1. Magne B6 — 1 tabletkadan kuniga 2 mahal, 1 oy.\n2. Glitsin 100 mg — 1 tabletkadan til ostiga uyqudan oldin, 20 kun.')">+ Sedativ &amp; Neyro-Garmoniya</button>
+                </div>
+                <textarea id="epicrisis-home-rx" class="clinical-textarea" style="min-height: 110px; font-family: var(--font-mono); font-size: 0.84rem;"></textarea>
+              </div>
+
+              <div class="clinical-form-group full-width" style="margin-bottom: 1rem;">
+                <label class="clinical-label">Psixoterapevtik va Reabilitatsiya Tavsiyalari</label>
+                <div class="preset-chips-cluster">
+                  <span class="preset-label"><i class="fas fa-bolt icon-cyan"></i> Shablon:</span>
+                  <button type="button" class="chip-phrase" onclick="window.FMH_Doctor.setPsychoRec('1. Spirtli ichimliklar va har qanday psixoaktiv moddalarni qat\'iyan inkor qilish.\n2. Psixoterapevt (psixolog) individual mashg\'ulotlariga haftada 1 marta qatnashish.\n3. Sog\'lom turmush tarzi, me\'yoriy uyqu va jismoniy faollik tartibiga rioya qilish.\n4. Zarurat tug\'ilganda klinika shoshilinch aloqa raqamiga murojaat qilish.')">+ Standart Reabilitatsiya Dasturi</button>
+                </div>
+                <textarea id="epicrisis-psycho" class="clinical-textarea" style="min-height: 80px;"></textarea>
+              </div>
+
+              <div style="border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary);">
+                <div><strong>Klinika:</strong> Toshkent sh., Yunusobod t., Bodomzor str. 42</div>
+                <div style="display: flex; gap: 10px;">
+                  <button class="btn-doc-primary" onclick="window.FMH_Doctor.saveEpicrisis()">
+                    <i class="fas fa-save"></i> <span>Epikrizni Saqlash</span>
+                  </button>
+                  <button class="btn-doc-outline" onclick="window.FMH_Doctor.openOfficialDocModal('epicrisis')">
+                    <i class="fas fa-file-pdf"></i> <span>Epikriz Hujjati / PDF</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <!-- ==========================================================================
+       DOCTOR AUTHENTICATION / LOGIN GATE MODAL
+       ========================================================================== -->
+  <div id="doctor-auth-modal" class="doc-modal-overlay" style="display: none;">
+    <div class="auth-doc-modal-window">
+      <div class="auth-doc-header">
+        <div class="auth-doc-icon">👨‍⚕️</div>
+        <h2 class="auth-doc-title">Shifokor Shaxsiy Kabineti</h2>
+        <p class="auth-doc-subtitle">Fayz Medical House — Har bir shifokor o'z nomidan konsultatsiya va kasallik varaqasi yuritadi</p>
+      </div>
+
+      <!-- Quick Doctor Selector Cards -->
+      <div style="margin-bottom: 1.2rem;">
+        <label style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 0.5rem;">Tezkor Shifokor Tanlovi</label>
+        <div class="auth-doc-grid">
+          <div class="auth-doc-card active" onclick="window.FMH_Doctor.selectAuthPreset('dr_xusan')" id="auth-preset-dr_xusan">
+            <div class="auth-doc-card-avatar">👨‍⚕️</div>
+            <div class="auth-doc-card-name">Dr. Umarov Xusan Payziboyevich</div>
+            <div class="auth-doc-card-role">Bosh Shifokor / Narkolog</div>
+          </div>
+          <div class="auth-doc-card" onclick="window.FMH_Doctor.selectAuthPreset('dr_farida')" id="auth-preset-dr_farida">
+            <div class="auth-doc-card-avatar">👩‍⚕️</div>
+            <div class="auth-doc-card-name">Dr. Shermuxamedova Farida Miraxatovna</div>
+            <div class="auth-doc-card-role">Shifokor Narkolog</div>
+          </div>
+          <div class="auth-doc-card" onclick="window.FMH_Doctor.selectAuthPreset('dr_yuliya')" id="auth-preset-dr_yuliya">
+            <div class="auth-doc-card-avatar">👩‍⚕️</div>
+            <div class="auth-doc-card-name">Dr. Vasina Yuliya Aleksandrovna</div>
+            <div class="auth-doc-card-role">Psixiatr-Psixoterapevt</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Credentials Form -->
+      <form id="doctor-auth-form" onsubmit="window.FMH_Doctor.handleAuthSubmit(event)">
+        <div style="margin-bottom: 0.9rem;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-secondary, #cbd5e1);">Login / Foydalanuvchi nomi</label>
+          <input type="text" id="auth-doctor-username" class="clinical-input" required placeholder="Masalan: dr_xusan" value="dr_xusan" style="width: 100%;">
+        </div>
+        <div style="margin-bottom: 1.2rem;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-secondary, #cbd5e1);">Parol</label>
+          <input type="password" id="auth-doctor-password" class="clinical-input" required placeholder="Shaxsiy parolingizni kiriting" autocomplete="current-password" style="width: 100%;">
+        </div>
+        <div id="auth-error-msg" style="display: none; color: #fb7185; background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 8px 12px; font-size: 0.82rem; margin-bottom: 1rem; text-align: center;"></div>
+        <button type="submit" class="btn-doc-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 0.95rem; font-weight: 700; background: linear-gradient(135deg, #06b6d4, #3b82f6);">
+          <i class="fas fa-sign-in-alt"></i> <span>Tizimga Kirish (Shaxsiy Kabinet)</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       ALL-IN-ONE CONSULTATION, KASALLIK VARAQASI & RETSEPTLAR MODAL
+       ========================================================================== -->
+  <div id="doctor-consultation-case-modal" class="doc-modal-overlay" style="display: none;">
+    <div class="doc-modal-window">
+      
+      <!-- Modal Header -->
+      <div class="case-modal-header">
+        <div class="case-modal-title">
+          <div class="case-modal-icon"><i class="fas fa-file-medical-alt"></i></div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800;">Yangi Konsultatsiya & Kasallik Varaqasi Ochish</h3>
+            <div class="case-modal-doc-lock">
+              <i class="fas fa-user-md"></i> Qabul qiluvchi shifokor: <strong id="case-modal-doctor-name">Dr. Umarov Xusan Payziboyevich</strong> (Identifikatsiyalangan)
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-doc-outline" style="padding: 6px 12px;" onclick="window.FMH_Doctor.closeNewConsultationModal()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Multi-Step Navigation -->
+      <div class="case-steps-nav">
+        <button type="button" class="case-step-tab active" id="case-tab-btn-1" onclick="window.FMH_Doctor.switchCaseStep(1)">
+          <div class="step-num">1</div>
+          <div class="step-label">Bemor & Qabul Turi</div>
+        </button>
+        <button type="button" class="case-step-tab" id="case-tab-btn-2" onclick="window.FMH_Doctor.switchCaseStep(2)">
+          <div class="step-num">2</div>
+          <div class="step-label">Ko'rik, Anamnez & Tashxis</div>
+        </button>
+        <button type="button" class="case-step-tab" id="case-tab-btn-3" onclick="window.FMH_Doctor.switchCaseStep(3)">
+          <div class="step-num">3</div>
+          <div class="step-label">Retseptlar & Muolaja (List Naznacheniy)</div>
+        </button>
+      </div>
+
+      <!-- Modal Body with 3 Step Panes -->
+      <form id="new-case-form" onsubmit="window.FMH_Doctor.handleCaseSubmit(event)">
+        <div class="case-modal-body">
+          
+          <!-- STEP 1: PATIENT DEMOGRAPHICS & INTAKE TYPE -->
+          <div class="case-step-pane active" id="case-step-1">
+            <div style="background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.2); border-radius: 10px; padding: 12px 16px; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 12px;">
+              <i class="fas fa-info-circle" style="color: #06b6d4; font-size: 1.2rem;"></i>
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">Shifokor konsultatsiyasi asosida bemorga bir vaqtning o'zida ambulator ko'rik hujjati yoki statsionar kasallik varaqasi ochiladi.</span>
+            </div>
+
+            <!-- Intake Type Switcher -->
+            <div class="intake-type-selector">
+              <div class="intake-type-option selected" id="opt-intake-outpatient" onclick="window.FMH_Doctor.toggleIntakeType('outpatient')">
+                <div class="icon">🩺</div>
+                <div class="title">Ambulator Konsultatsiya</div>
+                <div class="desc">Bir martalik ko'rik, tavsiyalar va ambulator retseptlar tayinlash</div>
+              </div>
+              <div class="intake-type-option" id="opt-intake-inpatient" onclick="window.FMH_Doctor.toggleIntakeType('inpatient')">
+                <div class="icon">🏥</div>
+                <div class="title">Statsionar Yotqizish (Gospitalizatsiya)</div>
+                <div class="desc">Klinika statsionariga (14 koyka) yotqizish va kasallik tarixi (№ EMR) ochish</div>
+              </div>
+            </div>
+
+            <!-- Inpatient Bed Selection (Conditional) -->
+            <div id="inpatient-room-bed-section" style="display: none; background: rgba(30, 41, 59, 0.5); border: 1px dashed rgba(99, 102, 241, 0.4); border-radius: 10px; padding: 14px; margin-bottom: 1.2rem;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <div>
+                  <label class="clinical-label">Statsionar Xona & Koyka Tanlovi *</label>
+                  <select id="case-bed-select" class="clinical-select" style="width: 100%;">
+                    <option value="">— Bo'sh koykani tanlang —</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="clinical-label">Xona Toifasi</label>
+                  <input type="text" id="case-room-type" class="clinical-input" readonly value="Standart" style="background: rgba(0,0,0,0.2);">
+                </div>
+                <div>
+                  <label class="clinical-label">Rejalashtirilgan Davolanish (kun)</label>
+                  <input type="number" id="case-stay-days" class="clinical-input" min="1" max="60" value="7">
+                </div>
+                <div>
+                  <label class="clinical-label">Dastlabki Depozit / To'lov (so'm)</label>
+                  <input type="number" id="case-deposit-amount" class="clinical-input" step="50000" placeholder="0" value="0">
+                </div>
+              </div>
+            </div>
+
+            <!-- Demographics Fields -->
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+              <div class="clinical-form-group">
+                <label class="clinical-label">Bemorning F.I.Sh. *</label>
+                <input type="text" id="case-patient-name" class="clinical-input" required placeholder="Masalan: Karimov Jamshid Alisherovich">
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label">Tug'ilgan Sana / Yoshi *</label>
+                <input type="text" id="case-patient-dob" class="clinical-input" required placeholder="1988 (38 yosh) yoki 14.05.1988">
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label">Jinsi</label>
+                <select id="case-patient-gender" class="clinical-select">
+                  <option value="">— tanlang —</option>
+                  <option value="Erkak">Erkak</option>
+                  <option value="Ayol">Ayol</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+              <div class="clinical-form-group">
+                <label class="clinical-label">Telefon Raqami *</label>
+                <input type="text" id="case-patient-phone" class="clinical-input" required placeholder="+998 90 123 45 67">
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label">Pasport / JSHSHIR (PINFL)</label>
+                <input type="text" id="case-patient-passport" class="clinical-input" placeholder="AA 1234567 / 31234567890012">
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label">Yaqin Qrindosh / Favqulodda Kontakt</label>
+                <input type="text" id="case-patient-relative" class="clinical-input" placeholder="Turmush o'rtog'i / +998 97 ...">
+              </div>
+            </div>
+
+            <div class="clinical-form-group" style="margin-top: 12px;">
+              <label class="clinical-label">Yashash Manzili</label>
+              <input type="text" id="case-patient-address" class="clinical-input" placeholder="Toshkent sh., Chilonzor tumani, ...">
+            </div>
+          </div>
+
+          <!-- STEP 2: EXAMINATION, ANAMNESIS & DIAGNOSIS -->
+          <div class="case-step-pane" id="case-step-2">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+              <div class="clinical-form-group">
+                <label class="clinical-label">Asosiy Shikoyatlar (Kelgan vaqtdagi holat) *</label>
+                <textarea id="case-complaints" class="clinical-textarea" required style="min-height: 80px;" placeholder="Uyqusizlik, ko'krak qafasidagi bezovtalik, titroq, qaltiroq, alkogol/moddaga kuchli xumor, yurak urishi tezlashishi..."></textarea>
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label">Kasallik Tarixi (Anamnesis Morbi)</label>
+                <textarea id="case-anamnesis-morbi" class="clinical-textarea" style="min-height: 80px;" placeholder="Kasallik qachon boshlangan, so'nggi iste'mol davomiyligi, remissiya davrlari, oldingi davolanishlar..."></textarea>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+              <div class="clinical-form-group">
+                <label class="clinical-label">Hayot Tarixi & Moddalar Iste'moli (Anamnesis Vitae)</label>
+                <textarea id="case-anamnesis-vitae" class="clinical-textarea" style="min-height: 70px;" placeholder="Iste'mol staji: 5 yil. Tolerantlik: yuqori. So'nggi iste'mol: kecha oqshom. Boshqa kasalliklar: surunkali gastrit..."></textarea>
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label" style="color: #f43f5e;"><i class="fas fa-exclamation-triangle"></i> Allergologik Anamnez & Dori Qarshi Ko'rsatmalari</label>
+                <textarea id="case-allergies" class="clinical-textarea" style="min-height: 70px; border-color: rgba(244, 63, 94, 0.4);" placeholder="Yo'q (yoki: Penitsillin, Novokain guruhiga reaksiya...)"></textarea>
+              </div>
+            </div>
+
+            <!-- Somatic Status & Vitals -->
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;">
+              <div style="font-size: 0.8rem; font-weight: 700; color: #38bdf8; margin-bottom: 8px; text-transform: uppercase;">Somatik & Obyektiv Holat (Vitals)</div>
+              <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                <div>
+                  <label class="clinical-label">Qon Bosimi (AQB)</label>
+                  <input type="text" id="case-vital-bp" class="clinical-input" placeholder="130/85 mm.sm.ust">
+                </div>
+                <div>
+                  <label class="clinical-label">Puls (YUQT)</label>
+                  <input type="text" id="case-vital-pulse" class="clinical-input" placeholder="88 ur/daq">
+                </div>
+                <div>
+                  <label class="clinical-label">Harorat (t°)</label>
+                  <input type="text" id="case-vital-temp" class="clinical-input" placeholder="36.6 °C">
+                </div>
+                <div>
+                  <label class="clinical-label">SpO2 (Saturatsiya)</label>
+                  <input type="text" id="case-vital-spo2" class="clinical-input" placeholder="98 %">
+                </div>
+              </div>
+            </div>
+
+            <!-- Psychiatric / Narcological Status & Diagnosis -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="clinical-form-group">
+                <label class="clinical-label">Psixik & Narkologik Status</label>
+                <textarea id="case-mental-status" class="clinical-textarea" style="min-height: 70px;" placeholder="Hushida, vaqt va fazoda oriyentatsiya saqlangan. Muloqotga kirishadi. Depressiv-tashvishli fon, affektiv labillik..."></textarea>
+              </div>
+              <div class="clinical-form-group">
+                <label class="clinical-label">Klinik Tashxis & ICD-10 Kodi *</label>
+                <input type="text" id="case-icd-code" class="clinical-input" placeholder="ICD-10 (Masalan: F10.2, F11.2, F19.2)" style="margin-bottom: 6px;">
+                <textarea id="case-diagnosis" class="clinical-textarea" required style="min-height: 48px;" placeholder="Surunkali alkogolizm II bosqich, o'rtacha og'irlikdagi abstinent sindrom..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 3: INTEGRATED PRESCRIPTIONS (LIST NAZNACHENIY) -->
+          <div class="case-step-pane" id="case-step-3">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Muolaja & Dori-Darmon Tayinlovlari (List Naznacheniy)</h4>
+                <div style="font-size: 0.78rem; color: #94a3b8;">Klinika bazasidagi 88 ta rasmiy dori vositasi yoki tayyor klinik protokollar</div>
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="btn-doc-outline" style="font-size: 0.76rem; padding: 4px 8px;" onclick="window.FMH_Doctor.applyModalPreset('detox')">⚡ Detoks Standart</button>
+                <button type="button" class="btn-doc-outline" style="font-size: 0.76rem; padding: 4px 8px;" onclick="window.FMH_Doctor.applyModalPreset('abstinence_heavy')">⚡ Og'ir Abstinensiya</button>
+                <button type="button" class="btn-doc-outline" style="font-size: 0.76rem; padding: 4px 8px;" onclick="window.FMH_Doctor.applyModalPreset('sedation')">⚡ Sedatsiya & Uyqu</button>
+                <button type="button" class="btn-doc-outline" style="font-size: 0.76rem; padding: 4px 8px;" onclick="window.FMH_Doctor.applyModalPreset('hepatoprotect')">⚡ Gepatoprotektor</button>
+              </div>
+            </div>
+
+            <!-- Medication Add Row -->
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 1rem;">
+              <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.2fr auto; gap: 8px; align-items: flex-end;">
+                <div>
+                  <label class="clinical-label">Dori Nomi (Formulary / 88 ta dori) *</label>
+                  <input type="text" id="modal-rx-drug-name" class="clinical-input" placeholder="Dori nomini yozing...">
+                </div>
+                <div>
+                  <label class="clinical-label">Bir martalik Doza *</label>
+                  <input type="text" id="modal-rx-dosage" class="clinical-input" placeholder="400 ml, 2 ml, 1 tab">
+                </div>
+                <div>
+                  <label class="clinical-label">Yuborish Usuli</label>
+                  <select id="modal-rx-route" class="clinical-select">
+                    <option value="v/i tomchilab">v/i tomchilab (k/k)</option>
+                    <option value="v/m inyeksiya">v/m inyeksiya</option>
+                    <option value="per os">per os (ichishga)</option>
+                    <option value="v/i oqim bilan">v/i oqim bilan</option>
+                    <option value="til osti">til osti (sublingual)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="clinical-label">Qabul Davriyligi *</label>
+                  <select id="modal-rx-frequency" class="clinical-select">
+                    <option value="Kuniga 1 mahal">Kuniga 1 mahal</option>
+                    <option value="Kuniga 2 mahal" selected>Kuniga 2 mahal</option>
+                    <option value="Kuniga 3 mahal">Kuniga 3 mahal</option>
+                    <option value="Kuniga 4 mahal">Kuniga 4 mahal</option>
+                    <option value="Zarurat tug'ilganda (PRN)">Zarurat tug'ilganda</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="clinical-label">Davomiyligi (kun) *</label>
+                  <input type="number" id="modal-rx-days" class="clinical-input" min="1" max="60" value="5">
+                </div>
+                <div>
+                  <label class="clinical-label">Qo'shimcha Ko'rsatma</label>
+                  <input type="text" id="modal-rx-notes" class="clinical-input" placeholder="Ovqatdan so'ng...">
+                </div>
+                <div>
+                  <button type="button" class="btn-doc-primary" onclick="window.FMH_Doctor.addModalPrescriptionRow()" style="height: 38px; white-space: nowrap;">
+                    <i class="fas fa-plus"></i> Qo'shish
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Prescription Table List -->
+            <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.83rem;">
+                <thead style="background: rgba(15, 23, 42, 0.8); position: sticky; top: 0;">
+                  <tr style="border-bottom: 1px solid var(--border-color); text-align: left; color: #94a3b8;">
+                    <th style="padding: 8px 12px; width: 30px;">#</th>
+                    <th style="padding: 8px 12px;">Dori Vositalari & Formasi</th>
+                    <th style="padding: 8px 12px;">Bir martalik Doza</th>
+                    <th style="padding: 8px 12px;">Yuborish Usuli</th>
+                    <th style="padding: 8px 12px;">Kurs (kun)</th>
+                    <th style="padding: 8px 12px;">Qabul Tartibi</th>
+                    <th style="padding: 8px 12px; width: 40px; text-align: center;">O'chirish</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-prescriptions-table-body">
+                  <tr>
+                    <td colspan="7" style="text-align: center; padding: 24px; color: #64748b;">
+                      Hali retsept qo'shilmagan. Yuqoridagi formadan qo'shing yoki tayyor protokollarni bosing.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Modal Footer Navigation -->
+        <div class="case-modal-footer">
+          <div>
+            <button type="button" class="btn-doc-outline" id="btn-case-prev" style="display: none;" onclick="window.FMH_Doctor.prevCaseStep()">
+              <i class="fas fa-arrow-left"></i> Orqaga
+            </button>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-doc-outline" onclick="window.FMH_Doctor.closeNewConsultationModal()">
+              Bekor Qilish
+            </button>
+            <button type="button" class="btn-doc-primary" id="btn-case-next" onclick="window.FMH_Doctor.nextCaseStep()">
+              Davom Etish <i class="fas fa-arrow-right"></i>
+            </button>
+            <button type="submit" class="btn-doc-primary" id="btn-case-submit" style="display: none; background: linear-gradient(135deg, #10b981, #059669);">
+              <i class="fas fa-check-circle"></i> Tasdiqlash & Kasallik Varaqasini Ochish
+            </button>
+          </div>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       OFFICIAL DOCUMENT PREVIEW & PDF / PRINT MODAL
+       ========================================================================== -->
+  <div id="official-doc-modal" class="doc-modal-backdrop" style="display: none;">
+    <div class="doc-modal-content">
+      <!-- Modal Header Bar (Screen Only) -->
+      <div class="doc-modal-topbar no-print">
+        <div class="modal-title-cluster">
+          <i class="fas fa-file-pdf" style="color: #06b6d4; font-size: 1.3rem;"></i>
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800;">Fayz Medical House — Rasmiy Hujjat Generator</h3>
+            <span style="font-size: 0.76rem; color: #94a3b8;">Sertifikatlangan Hujjat Shakli & PDF Export</span>
+          </div>
+        </div>
+
+        <div class="modal-controls">
+          <select id="doc-type-select" class="doc-type-select" onchange="window.FMH_Doctor.renderOfficialDocumentPreview()">
+            <option value="prescriptions" selected>Rasmiy Muolaja Varaqasi (List Naznacheniy)</option>
+            <option value="anamnesis">Kasallik Tarixi & Anamnez (EMR Blank)</option>
+            <option value="epicrisis">Chiqarish Epikrizi (Discharge Document)</option>
+            <option value="full_dossier">To'liq Bemor Klinik Dossyesi (All-in-One EMR)</option>
+          </select>
+
+          <button class="btn-doc-primary" onclick="window.FMH_Doctor.downloadPDF()">
+            <i class="fas fa-download"></i> PDF Yuklash
+          </button>
+          <button class="btn-doc-primary" style="background: #22c55e;" onclick="window.FMH_Doctor.printOfficialDocument()">
+            <i class="fas fa-print"></i> Chop Etish
+          </button>
+          <button class="btn-doc-outline" onclick="window.FMH_Doctor.closeOfficialDocModal()">
+            <i class="fas fa-times"></i> Yopish
+          </button>
+        </div>
+      </div>
+
+      <!-- Printable A4 Document Sheet -->
+      <div class="a4-document-container" id="printable-a4-document">
+        <!-- Rendered dynamically via js/doctor.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Export Engine (html2pdf) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <!-- JavaScript Engines -->
+    <script src="js/unified_print_engine.js?v=5.3"></script>
+    <script src="js/med_search_engine.js?v=4.0"></script>
+<script src="js/doctor.js?v=12.5"></script>
+  <div id="print-area"></div>
+</body>
+</html>

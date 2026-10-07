@@ -1,0 +1,67 @@
+{
+  "packages": {
+    "statsionar_shared": {
+      "daily_rate": 720000,
+      "name_uz": "Statsionar (1 karavot / 2 kishilik xona)"
+    },
+    "statsionar_full_room": {
+      "daily_rate": 1100000,
+      "name_uz": "Statsionar Butun Xona (VIP Solo)"
+    },
+    "kunlik_statsionar": {
+      "daily_rate": 630000,
+      "name_uz": "Kunlik Statsionar (Kunduzgi o'rin)"
+    },
+    "ambulator_1": {
+      "daily_rate": 310000,
+      "name_uz": "Ambulator (1 mahal)"
+    },
+    "ambulator_2": {
+      "daily_rate": 500000,
+      "name_uz": "Ambulator (2 mahal)"
+    },
+    "consultation": {
+      "daily_rate": 250000,
+      "name_uz": "Shifokor Konsultatsiyasi (Birlamchi ko'rik)"
+    }
+  },
+  "additional_services": [
+    {
+      "id": "srv-1",
+      "name": "Membranali Plazmaferez muolajasi",
+      "category": "Effektor terapiya",
+      "price": 450000,
+      "description": "Qon plazmasini toksin va metabolitlardan apparat yordamida tozalash"
+    },
+    {
+      "id": "srv-2",
+      "name": "Individual Psixoterapiya seansi (1 soat)",
+      "category": "Psixoterapiya",
+      "price": 250000,
+      "description": "Bosh psixiatr-narkolog bilan yakkama-yakka psixokorreksiya suhbati"
+    },
+    {
+      "id": "srv-3",
+      "name": "Kardiomonitoring va EKG tekshiruvi",
+      "category": "Diagnostika",
+      "price": 120000,
+      "description": "Yurak ritmi va gemodinamika xavfsizligini tekshirish"
+    },
+    {
+      "id": "srv-4",
+      "name": "Narkologik Blokada (Torpedo / Esperal)",
+      "category": "Kodlash",
+      "price": 800000,
+      "description": "Spirtli ichimliklarga qarshi uzoq muddatli medikamentoz to'siq"
+    },
+    {
+      "id": "srv-5",
+      "name": "Umumiy va Biokimyoviy qon tahlili",
+      "category": "Laboratoriya",
+      "price": 180000,
+      "description": "Jigar fermentlari (ALT, AST, Bilirubin), buyrak va qon formulasi"
+    }
+  ],
+  "updated_at": "2026-09-09T12:51:19.445380",
+  "updated_by": "superadmin"
+}

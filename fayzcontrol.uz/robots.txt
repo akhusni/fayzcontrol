@@ -1,0 +1,4 @@
+# Fayz Medical House CRM & Hospital Suite
+# Disallow all search engine crawlers to protect clinical confidentiality
+User-agent: *
+Disallow: /
