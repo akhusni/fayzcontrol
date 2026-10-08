@@ -392,9 +392,15 @@
                   <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
                   <div class="modal-section-title"><i class="fas fa-stethoscope"></i> Ambulator Muolaja Kursi</div>
                   <p style="font-size:0.82rem;color:var(--text-secondary);">Klinikaga qatnab o'tkaziladigan kunlik kapelnitsa va inyeksiya muolajalari.</p>
-                  <div class="form-group" style="margin-top:0.8rem;">
-                    <label class="form-label">Kunlik To'lov (so'm)</label>
-                    <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                  <div class="form-grid-2" style="margin-top:0.8rem;">
+                    <div class="form-group">
+                      <label class="form-label">Kunlik To'lov (so'm)</label>
+                      <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Kurs Davomiyligi (kun) <span class="req">*</span></label>
+                      <input type="number" id="intake-outpatient-days" class="form-input" min="1" max="365" placeholder="Necha kun">
+                    </div>
                   </div>
                 </div>
 
@@ -920,6 +926,6 @@
   <!-- Scripts -->
   <script src="js/xlsx.full.min.js"></script>
     <script src="js/unified_print_engine.js?v=5.4"></script>
-<script src="js/reception.js?v=17.1"></script>
+<script src="js/reception.js?v=17.2"></script>
 </body>
 </html>

@@ -357,6 +357,56 @@ def package_daily_rate(program_type, pricing=None):
         return float(DEFAULT_PRICING['packages']['statsionar_shared']['daily_rate'])
 
 
+def price_desk_visit(srv_type, body, pricing=None):
+    """
+    The one invoice line for a visit the desk records, or an error.
+
+    Returns ({'service_name', 'quantity', 'unit_price', 'item_type'}, None) or
+    (None, (message, field)).
+
+    The desk printed the consultation fee on the slip and showed the
+    outpatient daily fee in its preview, but neither request carried the fee
+    to anything that bills, so both were given away. The price is the one the
+    desk typed (the PO decided on 2026-10-08 that a typed price differing from
+    the list is not refused) or, when none was typed, the listed one. Nothing
+    is guessed: no price on either side, or an outpatient course with no
+    length, is refused rather than billed as 0 or as some default.
+    """
+    packages = (pricing or load_pricing()).get('packages') or {}
+    if srv_type == 'consultation':
+        pkg_id, fee_key, item_type = 'consultation', 'consultation_fee', 'consultation'
+        quantity = 1
+    elif srv_type == 'outpatient':
+        pkg_id = str(body.get('program_type') or '').strip()
+        if not pkg_id.startswith('ambulator') or not isinstance(packages.get(pkg_id), dict):
+            return None, ("Ambulator tarifini tanlang.", 'program_type')
+        fee_key, item_type = 'visit_fee', 'procedure'
+        try:
+            quantity = int(str(body.get('days') or '').strip())
+        except ValueError:
+            quantity = 0
+        if quantity < 1 or quantity > 365:
+            return None, ("Ambulator kurs kunlari 1 dan 365 gacha bo'lishi kerak.", 'days')
+    else:
+        return None, ("Bu xizmat turi uchun hisob ochilmaydi.", 'service_type')
+
+    pkg = packages.get(pkg_id) or {}
+    raw_fee = body.get(fee_key)
+    if raw_fee is None or str(raw_fee).strip() == '':
+        price, _err = validate_amount(pkg.get('daily_rate') or 0)
+        if _err:
+            price = 0
+    else:
+        price, _err = validate_amount(raw_fee, "Narx")
+        if _err or price != price:
+            return None, (_err or "Narx raqam bo'lishi kerak.", fee_key)
+    if not price or price <= 0:
+        return None, ("Narx noldan katta bo'lishi kerak (narxlar ro'yxatida ham yo'q).", fee_key)
+    name = str(pkg.get('name_uz') or pkg_id)
+    return {'service_name': name[:255], 'quantity': quantity,
+            'unit_price': float(price), 'item_type': item_type}, None
+
+
 # ----------------------------------------------------------------------------
 # Input validation
 #
@@ -733,6 +783,7 @@ from db import (
     APPOINTMENT_SERVICE_TYPES,
     ensure_staff_roles,
     ensure_staff_hr_columns,
+    ensure_invoice_visit_link,
     STAFF_HR_COLUMNS,
     STAFF_ROLES,
     load_config
@@ -1485,11 +1536,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("""
                     SELECT p.*,
                            (SELECT COUNT(*) FROM admissions a WHERE a.patient_id = p.id) AS total_admissions_count,
-                           (SELECT COALESCE(SUM(inv.net_amount), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_billed,
-                           (SELECT COALESCE(SUM(inv.total_billed), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_gross,
-                           (SELECT COALESCE(SUM(inv.discount_amount), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_discount,
-                           (SELECT COALESCE(SUM(inv.total_paid), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS total_paid,
-                           (SELECT COALESCE(SUM(inv.balance_due), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.patient_id = p.id) AS balance_due
+                           (SELECT COALESCE(SUM(inv.net_amount), 0.0) FROM invoices inv LEFT JOIN admissions a ON a.id = inv.admission_id LEFT JOIN appointments ap ON ap.id = inv.appointment_id WHERE COALESCE(a.patient_id, ap.patient_id) = p.id) AS total_billed,
+                           (SELECT COALESCE(SUM(inv.total_billed), 0.0) FROM invoices inv LEFT JOIN admissions a ON a.id = inv.admission_id LEFT JOIN appointments ap ON ap.id = inv.appointment_id WHERE COALESCE(a.patient_id, ap.patient_id) = p.id) AS total_gross,
+                           (SELECT COALESCE(SUM(inv.discount_amount), 0.0) FROM invoices inv LEFT JOIN admissions a ON a.id = inv.admission_id LEFT JOIN appointments ap ON ap.id = inv.appointment_id WHERE COALESCE(a.patient_id, ap.patient_id) = p.id) AS total_discount,
+                           (SELECT COALESCE(SUM(inv.total_paid), 0.0) FROM invoices inv LEFT JOIN admissions a ON a.id = inv.admission_id LEFT JOIN appointments ap ON ap.id = inv.appointment_id WHERE COALESCE(a.patient_id, ap.patient_id) = p.id) AS total_paid,
+                           (SELECT COALESCE(SUM(inv.balance_due), 0.0) FROM invoices inv LEFT JOIN admissions a ON a.id = inv.admission_id LEFT JOIN appointments ap ON ap.id = inv.appointment_id WHERE COALESCE(a.patient_id, ap.patient_id) = p.id) AS balance_due
                     FROM patients p
                     ORDER BY p.created_at DESC
                 """)
@@ -1627,9 +1678,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         SELECT p.*, inv.admission_id, s.full_name AS received_by_name
                         FROM payments p
                         JOIN invoices inv ON p.invoice_id = inv.id
-                        JOIN admissions a ON inv.admission_id = a.id
+                        LEFT JOIN admissions a ON inv.admission_id = a.id
+                        LEFT JOIN appointments ap ON inv.appointment_id = ap.id
                         LEFT JOIN staff s ON p.received_by_staff_id = s.id
-                        WHERE a.patient_id = ?
+                        WHERE COALESCE(a.patient_id, ap.patient_id) = ?
                         ORDER BY p.payment_date DESC
                     """, (actual_id,))
                     pt_dict['payments'] = [dict(pm) for pm in cur.fetchall()]
@@ -1652,9 +1704,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                                COALESCE(SUM(inv.discount_amount), 0.0) AS total_discount,
                                COALESCE(SUM(inv.total_paid), 0.0) AS total_paid,
                                COALESCE(SUM(inv.balance_due), 0.0) AS balance_due
-                        FROM admissions a
-                        JOIN invoices inv ON a.id = inv.admission_id
-                        WHERE a.patient_id = ?
+                        FROM invoices inv
+                        LEFT JOIN admissions a ON a.id = inv.admission_id
+                        LEFT JOIN appointments ap ON ap.id = inv.appointment_id
+                        WHERE COALESCE(a.patient_id, ap.patient_id) = ?
                     """, (actual_id,))
                     fin = cur.fetchone()
                     pt_dict['financials'] = dict(fin) if fin else {'total_billed': 0, 'total_paid': 0, 'balance_due': 0}
@@ -1696,6 +1749,59 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 rows = [dict(r) for r in cur.fetchall()]
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
+
+            # 5a. GET /api/accounting/patient-invoices?patient_id=<id or code>
+            # Every invoice of one patient (stays and desk visits) with its
+            # lines and payments, read-only. The cash desk could only see one
+            # bill at a time, so a patient's earlier unpaid visit or stay was
+            # easy to miss when taking money for the current one.
+            elif path == '/api/accounting/patient-invoices':
+                pid = (query.get('patient_id', [''])[0] or '').strip()
+                if not pid:
+                    self._send_validation_error("Bemor tanlanmagan.", 'patient_id')
+                    return
+                cur.execute("SELECT id, patient_code, full_name, phone FROM patients "
+                            "WHERE id = ? OR patient_code = ? LIMIT 1", (pid, pid))
+                prow = cur.fetchone()
+                if not prow:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Bemor topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                patient = dict(prow)
+                cur.execute("SELECT * FROM v_financial_ledger WHERE patient_id = ? ORDER BY created_at DESC",
+                            (patient['id'],))
+                invoices = []
+                for r in cur.fetchall():
+                    inv = dict(r)
+                    inv['kind'] = 'stay' if inv.get('admission_id') else 'visit'
+                    inv['items'] = []
+                    inv['payments'] = []
+                    invoices.append(inv)
+                by_id = {inv['invoice_id']: inv for inv in invoices}
+                if by_id:
+                    marks = ', '.join('?' for _ in by_id)
+                    ids = tuple(by_id)
+                    cur.execute(f"""
+                        SELECT id, invoice_id, service_name, quantity, unit_price, total_amount,
+                               item_type, service_start_date, service_end_date, created_at
+                        FROM invoice_items WHERE invoice_id IN ({marks})
+                        ORDER BY created_at, id
+                    """, ids)
+                    for it in cur.fetchall():
+                        by_id[it['invoice_id']]['items'].append(dict(it))
+                    cur.execute(f"""
+                        SELECT id, invoice_id, amount, payment_method, payment_date, notes, created_at
+                        FROM payments WHERE invoice_id IN ({marks})
+                        ORDER BY payment_date, created_at
+                    """, ids)
+                    for pm in cur.fetchall():
+                        by_id[pm['invoice_id']]['payments'].append(dict(pm))
+                totals = {k: sum(float(inv.get(k) or 0) for inv in invoices)
+                          for k in ('total_billed', 'discount_amount', 'net_amount',
+                                    'total_paid', 'balance_due')}
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'patient': patient, 'invoices': invoices,
+                                             'totals': totals}, ensure_ascii=False).encode('utf-8'))
 
             # 6. /api/daily-logs/<admission_id>
             # 6a. Consultation intake & treatment plans
@@ -1874,17 +1980,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 for r in cur.fetchall():
                     transactions.append(dict(r))
 
-                # Doctor payroll calculations
-                cur.execute("""
-                    SELECT s.id AS doctor_id, s.full_name AS doctor_name, s.specialty,
-                           s.salary_base,
-                           (SELECT COUNT(*) FROM admissions a WHERE a.attending_doctor_id = s.id) AS patients_treated,
-                           ((SELECT COALESCE(SUM(inv.total_paid), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.attending_doctor_id = s.id) * 0.1) AS bonus_amount,
-                           (s.salary_base + ((SELECT COALESCE(SUM(inv.total_paid), 0.0) FROM admissions a JOIN invoices inv ON a.id = inv.admission_id WHERE a.attending_doctor_id = s.id) * 0.1)) AS total_pay
-                    FROM staff s
-                    WHERE s.role IN ('doctor', 'chief_doctor') AND s.is_active = 1
-                """)
-                doctors_payroll = [dict(r) for r in cur.fetchall()]
+                # There was a 'doctor payroll' here: salary_base plus 10 % of
+                # everything the doctor's patients had paid. Nobody ever set
+                # that rate, no page used the figure, and it sent every
+                # doctor's salary to anyone with accounting:read (the desk,
+                # the chief doctor). Pay comes from GET /api/hr/payroll only.
 
                 # Medication purchases (clinic restock & expenses)
                 ensure_medication_purchases(conn)
@@ -1916,7 +2016,6 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "patients_billing": patients_billing,
                     "invoice_items": invoice_items,
                     "transactions": transactions,
-                    "doctors_payroll": doctors_payroll,
                     "medication_purchases": medication_purchases,
                     "expense_categories": [
                         {"id": "medication_purchase", "name_uz": "Dori-darmon xaridi (Ombor)"},
@@ -3828,33 +3927,26 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_validation_error("Shifokor tanlanmagan.", 'doctor_id')
                     return
 
-                # One doctor, one patient per slot. The desk's slot grid never
-                # showed booked times (it read fields the API does not send),
-                # and nothing here checked either, so two receptionists could
-                # book the same doctor at the same minute. Only a chosen time
-                # claims a slot; the 10:00 filled in above for a request that
-                # names none is a placeholder, not a booking of 10:00.
-                _slot_taken = None
-                if body.get('time'):
-                    cur.execute("""
-                        SELECT id FROM appointments
-                        WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ?
-                          AND status != 'cancelled'
-                        LIMIT 1
-                    """, (doc_id, date_str, time_str))
-                    _slot_taken = cur.fetchone()
-                if _slot_taken:
-                    self._send_validation_error(
-                        f"Bu vaqt band: shifokorda {date_str} soat {time_str} ga allaqachon yozilgan bemor bor.",
-                        'time')
-                    return
+                # The desk's intake form records a visit happening now and
+                # prints a slip with its fee; the appointments tab books a
+                # future slot and bills nothing. Only the former sends
+                # bill_visit, and its fee is billed with the appointment (see
+                # price_desk_visit). Priced before anything is written, so a
+                # bad price refuses the whole visit.
+                bill_visit = str(body.get('bill_visit') or '').lower() in ('1', 'true')
+                visit_line = None
+                if bill_visit:
+                    visit_line, _verr = price_desk_visit(srv_type, body)
+                    if _verr:
+                        self._send_validation_error(_verr[0], _verr[1])
+                        return
 
                 _bdate, _byear, _gender, _err = parse_birth_and_gender(body)
                 if _err:
                     self._send_validation_error(_err[0], _err[1])
                     return
 
-                # Find the patient, or register one.
+                # Find the patient (registered further down if not found).
                 #
                 # The match was `phone = ? OR full_name = ?` with the phone bound
                 # even when it was empty. Most records carry an empty phone, so
@@ -3886,6 +3978,51 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     cur.execute("SELECT id FROM patients WHERE full_name = ? AND birth_date = ? LIMIT 1",
                                 (patient_name, _bdate))
                     p_exist = cur.fetchone()
+
+                # A retried intake (a second click, or a resend after the
+                # answer was lost) would book and bill the same visit again.
+                # The same patient, doctor, day and service already recorded
+                # with a bill is that visit: answer with it, write nothing.
+                if bill_visit and p_exist:
+                    cur.execute("""
+                        SELECT ap.id, inv.id AS invoice_id
+                        FROM appointments ap
+                        JOIN invoices inv ON inv.appointment_id = ap.id
+                        WHERE ap.patient_id = ? AND ap.doctor_id = ? AND ap.appointment_date = ?
+                          AND ap.service_type = ? AND ap.status != 'cancelled'
+                        LIMIT 1
+                    """, (p_exist[0], doc_id, date_str, srv_type))
+                    _same = cur.fetchone()
+                    if _same:
+                        conn.close()
+                        self._set_json_headers(200)
+                        self.wfile.write(json.dumps({
+                            'message': "Bu tashrif allaqachon qayd etilgan",
+                            'id': _same['id'], 'patient_id': p_exist[0],
+                            'invoice_id': _same['invoice_id'], 'already_recorded': True,
+                        }, ensure_ascii=False).encode('utf-8'))
+                        return
+
+                # One doctor, one patient per slot. The desk's slot grid never
+                # showed booked times (it read fields the API does not send),
+                # and nothing here checked either, so two receptionists could
+                # book the same doctor at the same minute. Only a chosen time
+                # claims a slot; the 10:00 filled in above for a request that
+                # names none is a placeholder, not a booking of 10:00.
+                _slot_taken = None
+                if body.get('time'):
+                    cur.execute("""
+                        SELECT id FROM appointments
+                        WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ?
+                          AND status != 'cancelled'
+                        LIMIT 1
+                    """, (doc_id, date_str, time_str))
+                    _slot_taken = cur.fetchone()
+                if _slot_taken:
+                    self._send_validation_error(
+                        f"Bu vaqt band: shifokorda {date_str} soat {time_str} ga allaqachon yozilgan bemor bor.",
+                        'time')
+                    return
 
                 if p_exist:
                     patient_id = p_exist[0]
@@ -3923,10 +4060,33 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     body.get('status', 'confirmed'),
                     body.get('notes', '')
                 ))
+                invoice_id = None
+                if visit_line:
+                    # The visit's own invoice, through the same triggers as a
+                    # stay: the line sets total_billed, payments set the rest.
+                    # appointment_id is unique, so a visit is billed once.
+                    invoice_id = f"INV-{apt_id}"
+                    cur.execute("""
+                        INSERT INTO invoices (id, appointment_id, total_billed, discount_amount,
+                                              net_amount, total_paid, balance_due, payment_status)
+                        VALUES (?, ?, 0.00, 0.00, 0.00, 0.00, 0.00, 'unpaid')
+                    """, (invoice_id, apt_id))
+                    cur.execute("""
+                        INSERT INTO invoice_items (invoice_id, service_name, quantity, unit_price,
+                                                   item_type, service_start_date)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (invoice_id, visit_line['service_name'], visit_line['quantity'],
+                          visit_line['unit_price'], visit_line['item_type'], date_str))
                 conn.commit()
                 conn.close()
                 self._set_json_headers(201)
-                self.wfile.write(json.dumps({'message': 'Appointment booked', 'id': apt_id, 'patient_id': patient_id}, ensure_ascii=False).encode('utf-8'))
+                _out = {'message': 'Appointment booked', 'id': apt_id, 'patient_id': patient_id}
+                if visit_line:
+                    _out.update({'invoice_id': invoice_id,
+                                 'billed': visit_line['quantity'] * visit_line['unit_price'],
+                                 'unit_price': visit_line['unit_price'],
+                                 'quantity': visit_line['quantity']})
+                self.wfile.write(json.dumps(_out, ensure_ascii=False).encode('utf-8'))
 
             # 7. POST /api/reception/call-log (Log Hotline / CRM Call)
             elif path == '/api/reception/call-log':
@@ -5245,9 +5405,25 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         f"Bu yozuvni bekor qilib bo'lmaydi (holati: {row['status']}).", 'status')
                     return
                 cur.execute("UPDATE appointments SET status = 'cancelled' WHERE id = ?", (apt_id,))
+                # A visit recorded at the desk is billed when it is recorded.
+                # Cancelled before anyone paid, the bill goes with it, or the
+                # patient would owe for a visit that never happened. Once
+                # money was taken the bill stays: giving it back is a refund
+                # the cash desk records, not something to erase here.
+                _msg = 'Yozuv bekor qilindi'
+                cur.execute("SELECT id FROM invoices WHERE appointment_id = ?", (apt_id,))
+                _inv = cur.fetchone()
+                if _inv:
+                    cur.execute("SELECT COUNT(*) AS n FROM payments WHERE invoice_id = ?", (_inv['id'],))
+                    if int(cur.fetchone()['n'] or 0) == 0:
+                        cur.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (_inv['id'],))
+                        cur.execute("DELETE FROM invoices WHERE id = ?", (_inv['id'],))
+                    else:
+                        _msg = ("Yozuv bekor qilindi. Bu tashrif uchun to'lov olingan — "
+                                "pulni qaytarish buxgalteriyada rasmiylashtiriladi.")
                 conn.commit()
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps({'message': 'Yozuv bekor qilindi', 'id': apt_id, 'status': 'cancelled'}, ensure_ascii=False).encode('utf-8'))
+                self.wfile.write(json.dumps({'message': _msg, 'id': apt_id, 'status': 'cancelled'}, ensure_ascii=False).encode('utf-8'))
 
             # PUT /api/crm/patients/<id> -- the CRM edit form.
             #
@@ -5497,7 +5673,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     # Same two traps as the admission delete: cascades do not
                     # fire while FOREIGN_KEY_CHECKS is off, and a subquery on
                     # `invoices` collides with the triggers that write to it.
-                    cur.execute("SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?)", (tid,))
+                    # Visit invoices (consultation, outpatient) hang off the
+                    # patient's appointments rather than a stay.
+                    cur.execute("SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?) "
+                                "OR appointment_id IN (SELECT id FROM appointments WHERE patient_id = ?)", (tid, tid))
                     _inv_ids = [r['id'] for r in cur.fetchall()]
                     if _inv_ids:
                         _marks = ','.join(['?'] * len(_inv_ids))
@@ -5760,6 +5939,8 @@ def run_server():
             # lateness had no columns and were lost on reload.
             ensure_staff_hr_columns(_c)
             ensure_roster_sanitarkas(_c)
+            # Desk visits (consultation, outpatient course) get invoices.
+            ensure_invoice_visit_link(_c)
         finally:
             _c.close()
     except Exception as _e:

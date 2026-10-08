@@ -264,6 +264,28 @@ saqlash kerakmi, PO hal qiladi). "KPI reyting" ham hech qayerda kiritilmaydi.
 
 13 ta yangi test qo'shildi, jami 259 ta test o'tadi.
 
+### 2026-10-09: 4-bosqich (D) — buxgalteriya va hisoblar
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Buxgalteriya — Maosh | "Shifokorlar oyligi" sahifaning o'zida o'ylab topilgan raqamlardan hisoblanardi: oklad 8 500 000 (bosh shifokorga 12 000 000), bemorlar to'lovidan 8–10 % "gonorar" (hech kim belgilamagan), shifokorlar ismida "dr" borligiga qarab tanlanardi. Maosh shu summada to'lanardi — HR hisobidan boshqa ikkinchi formula | Maosh bo'limi serverdagi yagona hisobni ko'rsatadi (`GET /api/hr/payroll`, HR sahifasidagi bilan bir xil): oklad + saqlangan navbatchilik smenalari, minus daromad solig'i va pensiya. Barcha xodimlar ko'rinadi, "gonorar" yo'q |
+| Buxgalteriya — Maosh to'lash | To'lov summasi o'ylab topilgan "oklad + gonorar" edi; kassir nomi sifatida to'qima ism yozilardi | Qo'lga beriladigan (sof) summa to'lanadi — HR varaqasidagi "Sof to'lanadigan" bilan bir xil. Soliq va pensiya davlatga alohida xarajat sifatida o'tkaziladi, shuning uchun bu yerda ikki marta yozilmaydi. Jurnal yozuvida oy, brutto va ushlab qolingan summa ko'rinadi. "Shu oy to'langan" himoyasi (xodim + oy) saqlandi |
+| Ruxsatlar | Buxgalter maosh hisobini o'qiy olmasdi (faqat HR), shuning uchun sahifa o'zi hisoblardi | Maosh hisobini HR, buxgalteriyada yozish huquqi borlar va klinika egasi o'qiydi. Qabulxona (faqat o'qish) — yo'q (403). Boshqa HR ma'lumotlari ochilmadi |
+| Server — `/api/accounting/data` | Javobda yashirin "shifokorlar maoshi" bor edi: oklad + bemorlar to'lovining 10 %; bu har bir shifokor okladini qabulxona va bosh shifokorga ham yuborardi | Olib tashlandi (hech bir sahifa ishlatmasdi) |
+| Buxgalteriya — Hisoblar | Karavoti yoki muddati yo'q hisob "BED-1A" karavoti, soxta telefon "+998 (90) --- -- --", bugungi sana va 10 kun bilan ko'rsatilar va chekka chiqarilardi | Yo'q qiymat "—" bo'lib qoladi; chekda yotoq-kun qatori faqat statsionar uchun |
+| Buxgalteriya — Yangi hisob | Kunlar soni bo'sh qolsa 10 kun hisoblanardi; maydon oldindan 10 bilan to'ldirilgan edi | Maydon bo'sh ochiladi, kunlar kiritilmasa hisob ochilmaydi |
+| Buxgalteriya | Ishlatilmaydigan eski kod brauzer xotirasidagi bronlardan 10 kunlik va "BED-1A" li hisob yasay olardi | Olib tashlandi |
+| Qabulxona — Konsultatsiya | Kvitansiyada 250 000 so'm konsultatsiya narxi chiqardi, lekin hech qayerda hisobga yozilmasdi — pul bepul berilardi | Konsultatsiya qayd etilganda hisob ochiladi: 1 qator, qabulxonada yozilgan narx (yozilmasa — narxlar ro'yxatidagi). Narx 0 yoki noto'g'ri bo'lsa rad etiladi |
+| Qabulxona — Ambulator | Kunlik to'lov (310 000) oldindan ko'rishda ko'rinardi, lekin hisobga yozilmasdi; kurs kunlari maydoni ko'rinmasdi; 2 mahallik kurs tanlansa ham 1 mahallik narx qolardi | "Kurs davomiyligi (kun)" maydoni qo'shildi (majburiy). Hisob: kunlar × kunlik narx, bitta qator. Tanlangan tarifning narxi qo'yiladi |
+| Qabulxona — Statsionar | Kunlar soni bo'sh qolsa 7 kun deb olinardi | Kunlar kiritilmasa qabul qilinmaydi |
+| Server — Tashrif hisobi | Hisob faqat statsionarga (karavotga) bog'lanardi, shuning uchun tashrifni hisoblab bo'lmasdi | Hisob tashrifga (qabulga) ham bog'lanadi; bitta tashrif — bitta hisob. Qayta yuborilgan so'rov (ikki marta bosish) ikkinchi hisob ochmaydi. To'lov olinmagan tashrif bekor qilinsa hisobi ham o'chadi; to'lov olingan bo'lsa hisob qoladi (qaytarish — buxgalteriyada) |
+| Hisobotlar | — | Tashrif hisoblari buxgalteriya jadvali, bemor kartasi (CRM), egasi hisoboti va Telegram hisobotida ko'rinadi ("Ambulator", karavotsiz). Bo'limlar diagrammasiga "Shifokor konsultatsiyalari" qo'shildi |
+| Buxgalteriya — Bemor hisoblari (yangi) | Bemorning hisoblarini faqat bittadan ko'rish mumkin edi | Har bir qatorda "Hisoblar" tugmasi: bemorning barcha hisoblari — qatorlari, to'lovlari, chegirma va qoldig'i bilan. Faqat o'qish uchun (`GET /api/accounting/patient-invoices`) |
+
+Qabulxona to'lovni o'zi olmaydi: tashrif hisobi buxgalteriyada "To'lanmagan" bo'lib chiqadi va kassada to'lanadi.
+
+10 ta yangi test qo'shildi, jami 269 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
@@ -518,6 +540,18 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
    emas, yillar o'tib sekinlashadi.
 10. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
    ko'rish uchun SQL kerak).
+
+**PO qarori kerak:**
+
+11. **Shifokorlarga gonorar (bemorlar to'lovidan ulush) beriladimi?**
+   Buxgalteriya sahifasi 8–10 % ulushni o'zi to'qib qo'shardi — bu olib
+   tashlandi, chunki hech qayerda belgilangan stavka yo'q. Agar gonorar
+   kerak bo'lsa: kimga, necha foiz, nimadan (hisoblangan summa yoki
+   to'langan pul), qaysi oy uchun — shuni aytsangiz, u server maosh
+   hisobiga (HR bilan bir joyda) qo'shiladi.
+12. **Tashrif to'lovi qabulxonada olinadimi?** Hozir konsultatsiya va
+   ambulator hisobi ochiladi, pulni kassa (buxgalteriya) qabul qiladi.
+   Qabulxona ham pul olishi kerak bo'lsa, buni alohida yoqish mumkin.
 
 ---
 

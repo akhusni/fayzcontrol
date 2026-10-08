@@ -234,6 +234,8 @@ API_RULES = [
     ('/api/accounting/transaction',   'accounting', None),
     ('/api/accounting/invoice-items', 'accounting', 'write'),
     ('/api/accounting/data',          'accounting', 'read'),
+    # One patient's invoices with their lines and payments (read-only view).
+    ('/api/accounting/patient-invoices', 'accounting', 'read'),
     ('/api/accounting/medicine-usage', 'accounting', 'read'),
     ('/api/owner/summary',            'owner',      'read'),
     ('/api/accounting/medicine-links', 'accounting', None),
@@ -250,6 +252,8 @@ API_RULES = [
     # open it up.
     ('/api/hr/attendance',            'hr',         None),
     ('/api/hr/data',                  'hr',         'read'),
+    # Read-only; also open to the PAYROLL_READERS below.
+    ('/api/hr/payroll',               'hr',         None),
     ('/api/hr',                       'hr',         None),
     ('/api/duty-schedule',            'duty',       None),
     ('/api/staff',                    'hr',         None),
@@ -280,6 +284,14 @@ API_READ_EXEMPT = {
 # granted to the nursery and pharmacy as well as to the doctors. Writing stays
 # with the doctors via the rule table above.
 PLAN_READERS = ('doctors', 'nursery', 'pharmacy')
+
+# The month's payroll is read by HR (who keep the roster and salaries) and by
+# whoever pays it out: the cash desk's salary section used to make up its own
+# figures because accountants could not read this. Same circle that may see
+# salary_base on /api/staff. The desk (accounting:read only) stays out; the
+# route has no write side.
+PAYROLL_PATH = '/api/hr/payroll'
+PAYROLL_READERS = (('hr', 'read'), ('accounting', 'write'), ('owner', 'read'))
 
 # ---------------------------------------------------------------------------
 # Portal pages -> module. A role that cannot read the module is redirected to
@@ -428,6 +440,10 @@ def authorize_api(user, method, path):
         return False, 'doctors:read required'
     if method == 'GET' and path in API_READ_EXEMPT:
         return True, None
+    if method == 'GET' and path == PAYROLL_PATH:
+        if any(can(user, m, a) for m, a in PAYROLL_READERS):
+            return True, None
+        return False, 'hr:read or accounting:write required'
     required = required_for_api(method, path)
     if required is None:
         return False, f'no permission rule covers {method} {path}'

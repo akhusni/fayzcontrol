@@ -383,8 +383,9 @@ def fetch_comprehensive_financial_data(target_date=None):
         SELECT ii.*, inv.admission_id, p.full_name AS patient_name, p.patient_code
         FROM invoice_items ii
         JOIN invoices inv ON ii.invoice_id = inv.id
-        JOIN admissions a ON inv.admission_id = a.id
-        JOIN patients p ON a.patient_id = p.id
+        LEFT JOIN admissions a ON inv.admission_id = a.id
+        LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+        JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
         ORDER BY ii.created_at DESC
     """)
     invoice_items = [dict(r) for r in cur.fetchall()]
@@ -748,7 +749,8 @@ def generate_comprehensive_excel(data, output_path):
             idx,
             inv.get("patient_code"),
             inv.get("patient_name"),
-            f"{inv.get('room_number')}-{inv.get('bed_code')}",
+            # A desk visit (consultation, outpatient) has no bed.
+            f"{inv.get('room_number')}-{inv.get('bed_code')}" if inv.get('bed_code') else "Ambulator",
             inv.get("program_type"),
             float(inv.get("total_billed") or 0),
             float(inv.get("discount_amount") or 0),
@@ -1130,7 +1132,7 @@ def generate_comprehensive_pdf(data, output_path):
             Paragraph(str(idx), td_style),
             Paragraph(str(inv.get("patient_name") or ""), td_bold),
             Paragraph(str(inv.get("patient_code") or ""), td_style),
-            Paragraph(f"{inv.get('room_number')}-{inv.get('bed_code')}", td_style),
+            Paragraph(f"{inv.get('room_number')}-{inv.get('bed_code')}" if inv.get('bed_code') else "Ambulator", td_style),
             Paragraph(format_currency(inv.get("total_billed")), td_right),
             Paragraph(format_currency(inv.get("discount_amount")), td_right),
             Paragraph(format_currency(inv.get("net_amount")), td_right),
@@ -1705,7 +1707,8 @@ def notify_payment_entered_sync(pay_data):
                        r.room_number, b.bed_code
                 FROM invoices inv
                 LEFT JOIN admissions a ON inv.admission_id = a.id
-                LEFT JOIN patients p ON a.patient_id = p.id
+                LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+                LEFT JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
                 LEFT JOIN beds b ON a.bed_id = b.id
                 LEFT JOIN rooms r ON b.room_id = r.id
                 WHERE inv.id = ?

@@ -116,8 +116,9 @@ def _patients_for_invoices(cur, invoice_ids):
     cur.execute(f"""
         SELECT i.id AS invoice_id, p.full_name, p.patient_code
         FROM invoices i
-        JOIN admissions a ON a.id = i.admission_id
-        JOIN patients p ON p.id = a.patient_id
+        LEFT JOIN admissions a ON a.id = i.admission_id
+        LEFT JOIN appointments ap ON ap.id = i.appointment_id
+        JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
         WHERE i.id IN ({marks})
     """, tuple(invoice_ids))
     return {r['invoice_id']: (r['full_name'] or r['patient_code']) for r in cur.fetchall()}
@@ -227,14 +228,16 @@ def summary(conn, start, end):
     # An invoice is raised for the whole planned stay at booking, so a stay
     # that has not begun is not money anyone owes yet. Only stays that have
     # started count; their figure is still the full stay's unpaid balance.
+    # A desk visit (consultation, outpatient course) is billed on its day.
     cur.execute("""
         SELECT i.id AS invoice_id, i.balance_due, p.full_name, p.patient_code,
-               a.start_date
+               COALESCE(a.start_date, ap.appointment_date) AS start_date
         FROM invoices i
-        JOIN admissions a ON a.id = i.admission_id
-        JOIN patients p ON p.id = a.patient_id
+        LEFT JOIN admissions a ON a.id = i.admission_id
+        LEFT JOIN appointments ap ON ap.id = i.appointment_id
+        JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
         WHERE i.balance_due > 0 AND i.payment_status IN ('unpaid', 'partial')
-          AND a.start_date <= CURDATE()
+          AND COALESCE(a.start_date, ap.appointment_date) <= CURDATE()
         ORDER BY i.balance_due DESC
     """)
     debt_rows = [dict(r) for r in cur.fetchall()]

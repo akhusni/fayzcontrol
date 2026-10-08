@@ -183,6 +183,15 @@ class ApiTest(unittest.TestCase):
                         cur.execute(f"SELECT id FROM invoices WHERE admission_id IN ({marks})",
                                     tuple(adm_ids))
                         inv_ids = [r['id'] for r in cur.fetchall()]
+                    # Desk visits (consultation, outpatient) are billed on
+                    # the appointment, not on a stay.
+                    cur.execute("SELECT id FROM appointments WHERE patient_id = ?", (pid,))
+                    apt_ids = [r['id'] for r in cur.fetchall()]
+                    if apt_ids:
+                        marks = ','.join(['?'] * len(apt_ids))
+                        cur.execute(f"SELECT id FROM invoices WHERE appointment_id IN ({marks})",
+                                    tuple(apt_ids))
+                        inv_ids += [r['id'] for r in cur.fetchall()]
 
                     if inv_ids:
                         marks = ','.join(['?'] * len(inv_ids))
@@ -4698,6 +4707,195 @@ class AdminConsole(ApiTest):
         self.assertFalse(set(ids1) & set(ids2), 'pages overlap')
         if ids1 and ids2:
             self.assertGreater(min(ids1), max(ids2))
+
+
+class AccountingMoney(ApiTest):
+    """
+    Phase 4, chunk D. The cash desk paid salaries from figures it made up
+    (8.5 / 12 million and an 8-10 % "commission" nobody set) because
+    accountants could not read the server payroll; the desk printed a
+    consultation fee and showed an outpatient daily fee that were never
+    billed; and a patient's invoices could only be seen one at a time.
+    """
+
+    _account = RoleAuthorization._account
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+        self.day = (_dt.date.today() + _dt.timedelta(days=430)).isoformat()
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def _rows(self, sql, params=()):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+    def _visit(self, client=None, **over):
+        payload = {'patient_name': 'Hisob Probe Bemor', 'patient_phone': '+998900000431',
+                   'doctor_id': DOCTOR, 'date': self.day, 'time': '09:10',
+                   'service_type': 'consultation', 'bill_visit': True}
+        payload.update(over)
+        st, body = (client or self.api).post('/api/reception/appointment', payload)
+        if isinstance(body, dict) and body.get('patient_id') and body['patient_id'] not in self._patients:
+            self._patients.append(body['patient_id'])
+        return st, body
+
+    def _listed(self, package):
+        st, pricing = self.api.get('/api/settings/pricing')
+        self.assertEqual(st, 200)
+        return float(pricing['packages'][package]['daily_rate'])
+
+    # --- payroll -----------------------------------------------------------
+
+    def test_the_cash_desk_reads_the_server_payroll_and_the_front_desk_does_not(self):
+        acc = self._account('accountant')
+        st, body = acc.get('/api/hr/payroll')
+        self.assertEqual(st, 200, body)
+        self.assertIn('staff', body)
+        self.assertIn('net', body['totals'])
+        self.assertEqual(acc.post('/api/hr/payroll', {})[0], 403, 'reading payroll is not writing HR')
+        self.assertEqual(acc.get('/api/hr/data')[0], 403, 'only the payroll was opened, not all of HR')
+        desk = self._account('receptionist')
+        self.assertEqual(desk.get('/api/hr/payroll')[0], 403)
+
+    def test_accounting_data_carries_no_invented_doctor_pay(self):
+        """It sent salary_base + 10 % of patient payments to everyone with accounting:read."""
+        desk = self._account('receptionist')
+        st, body = desk.get('/api/accounting/data')
+        self.assertEqual(st, 200)
+        self.assertNotIn('doctors_payroll', body)
+
+    # --- desk visit billing --------------------------------------------------
+
+    def test_a_consultation_is_billed_once_at_the_typed_price(self):
+        st, body = self._visit(consultation_fee=260000)
+        self.assertEqual(st, 201, body)
+        inv_id = body.get('invoice_id')
+        self.assertTrue(inv_id, body)
+        items = self._rows("SELECT quantity, unit_price, item_type FROM invoice_items WHERE invoice_id = ?",
+                           (inv_id,))
+        self.assertEqual(len(items), 1, items)
+        self.assertEqual((float(items[0]['quantity']), float(items[0]['unit_price']), items[0]['item_type']),
+                         (1.0, 260000.0, 'consultation'))
+        inv = self._rows("SELECT appointment_id, admission_id, total_billed, balance_due FROM invoices WHERE id = ?",
+                         (inv_id,))[0]
+        self.assertEqual(inv['appointment_id'], body['id'])
+        self.assertIsNone(inv['admission_id'])
+        self.assertEqual(float(inv['total_billed']), 260000.0)
+        self.assertEqual(float(inv['balance_due']), 260000.0)
+
+        # A resend of the same visit answers with it and bills nothing more.
+        st2, again = self._visit(consultation_fee=260000)
+        self.assertEqual(st2, 200, again)
+        self.assertTrue(again.get('already_recorded'))
+        self.assertEqual((again['id'], again['invoice_id']), (body['id'], inv_id))
+        n_apts = self._rows("SELECT COUNT(*) AS n FROM appointments WHERE patient_id = ?", (body['patient_id'],))
+        self.assertEqual(int(n_apts[0]['n']), 1)
+        n_items = self._rows("SELECT COUNT(*) AS n FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id "
+                             "JOIN appointments a ON a.id = i.appointment_id WHERE a.patient_id = ?",
+                             (body['patient_id'],))
+        self.assertEqual(int(n_items[0]['n']), 1)
+
+    def test_an_outpatient_course_is_billed_at_the_listed_rate_when_none_is_typed(self):
+        st, body = self._visit(service_type='outpatient', program_type='ambulator_2', days=3,
+                               patient_phone='+998900000432', time='09:20')
+        self.assertEqual(st, 201, body)
+        items = self._rows("SELECT quantity, unit_price, item_type FROM invoice_items WHERE invoice_id = ?",
+                           (body['invoice_id'],))
+        self.assertEqual(len(items), 1, items)
+        self.assertEqual(float(items[0]['quantity']), 3.0)
+        self.assertEqual(float(items[0]['unit_price']), self._listed('ambulator_2'))
+        self.assertEqual(items[0]['item_type'], 'procedure')
+
+    def test_nothing_is_billed_or_booked_without_a_length_or_a_price(self):
+        cases = [
+            ({'service_type': 'outpatient', 'program_type': 'ambulator_1'}, 'days'),
+            ({'service_type': 'outpatient', 'program_type': 'ambulator_1', 'days': 0}, 'days'),
+            ({'service_type': 'outpatient', 'days': 5}, 'program_type'),
+            ({'service_type': 'outpatient', 'program_type': 'statsionar_shared', 'days': 5}, 'program_type'),
+            ({'consultation_fee': 0}, 'consultation_fee'),
+            ({'consultation_fee': 'abc'}, 'consultation_fee'),
+            ({'consultation_fee': -5}, 'consultation_fee'),
+        ]
+        for extra, field in cases:
+            st, body = self._visit(patient_name='Hisob Rad Bemor', patient_phone='+998900000433', **extra)
+            self.assertEqual((st, body.get('field')), (400, field), (extra, body))
+        left = self._rows("SELECT COUNT(*) AS n FROM appointments WHERE patient_name = 'Hisob Rad Bemor'")
+        self.assertEqual(int(left[0]['n']), 0, 'a refused visit was still booked')
+
+    def test_a_booking_from_the_appointments_tab_bills_nothing(self):
+        st, body = self._visit(bill_visit=None, patient_phone='+998900000434', time='09:30')
+        self.assertEqual(st, 201, body)
+        self.assertNotIn('invoice_id', body)
+        self.assertEqual(self._rows("SELECT id FROM invoices WHERE appointment_id = ?", (body['id'],)), [])
+
+    def test_cancelling_an_unpaid_visit_removes_its_bill(self):
+        st, body = self._visit(patient_phone='+998900000435', time='09:40')
+        self.assertEqual(st, 201, body)
+        st, res = self.api.put(f"/api/reception/appointment/{body['id']}/cancel", {})
+        self.assertEqual(st, 200, res)
+        self.assertEqual(self._rows("SELECT id FROM invoices WHERE id = ?", (body['invoice_id'],)), [])
+
+    def test_a_paid_visit_keeps_its_bill_when_cancelled(self):
+        st, body = self._visit(patient_phone='+998900000436', time='09:50')
+        self.assertEqual(st, 201, body)
+        st, pay = self.api.post('/api/payments', {'invoice_id': body['invoice_id'], 'amount': 1000,
+                                                  'payment_method': 'cash'})
+        self.assertEqual(st, 201, pay)
+        st, res = self.api.put(f"/api/reception/appointment/{body['id']}/cancel", {})
+        self.assertEqual(st, 200, res)
+        self.assertIn("to'lov olingan", res['message'])
+        self.assertEqual(len(self._rows("SELECT id FROM invoices WHERE id = ?", (body['invoice_id'],))), 1)
+
+    # --- where the bill shows up ---------------------------------------------
+
+    def test_a_visit_bill_is_in_the_ledger_and_the_patient_invoice_view(self):
+        st, body = self._visit(consultation_fee=255000, patient_phone='+998900000437', time='10:10')
+        self.assertEqual(st, 201, body)
+        st, ledger = self.api.get('/api/financial-ledger')
+        self.assertEqual(st, 200)
+        row = next((r for r in ledger if r['invoice_id'] == body['invoice_id']), None)
+        self.assertIsNotNone(row, 'the visit bill is missing from the ledger')
+        self.assertIsNone(row['bed_id'], 'a visit got a bed')
+        self.assertIsNone(row['total_days'], 'a visit got a length')
+        self.assertEqual(row['patient_id'], body['patient_id'])
+        self.assertEqual(float(row['net_amount']), 255000.0)
+
+        self.api.post('/api/payments', {'invoice_id': body['invoice_id'], 'amount': 55000,
+                                        'payment_method': 'cash'})
+        desk = self._account('receptionist')
+        st, view = desk.get('/api/accounting/patient-invoices?patient_id='
+                            + urllib.parse.quote(body['patient_id']))
+        self.assertEqual(st, 200, view)
+        self.assertEqual(view['patient']['id'], body['patient_id'])
+        self.assertEqual(len(view['invoices']), 1)
+        inv = view['invoices'][0]
+        self.assertEqual((inv['kind'], inv['invoice_id']), ('visit', body['invoice_id']))
+        self.assertEqual([float(i['unit_price']) for i in inv['items']], [255000.0])
+        self.assertEqual([float(p['amount']) for p in inv['payments']], [55000.0])
+        self.assertEqual(float(view['totals']['balance_due']), 200000.0)
+
+        st, crm = self.api.get('/api/crm/patients/' + urllib.parse.quote(body['patient_id']))
+        self.assertEqual(st, 200)
+        self.assertEqual(float(crm['financials']['balance_due']), 200000.0,
+                         'the patient card does not count the visit bill')
+
+    def test_the_patient_invoice_view_is_for_money_roles_only(self):
+        nurse = self._account('nurse')
+        self.assertEqual(nurse.get('/api/accounting/patient-invoices?patient_id=PAT-ANY')[0], 403)
+        self.assertEqual(self.api.get('/api/accounting/patient-invoices')[0], 400)
+        self.assertEqual(self.api.get('/api/accounting/patient-invoices?patient_id=PAT-NOPE-0')[0], 404)
 
 
 if __name__ == '__main__':

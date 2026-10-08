@@ -364,9 +364,13 @@ CREATE TABLE IF NOT EXISTS services_catalog (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- An invoice belongs to a stay (admission_id) or to a desk visit
+-- (appointment_id: a consultation or an outpatient course), never both. A
+-- visit has no bed, so it cannot be billed through a stay.
 CREATE TABLE IF NOT EXISTS invoices (
     id VARCHAR(64) PRIMARY KEY,
-    admission_id VARCHAR(64) NOT NULL UNIQUE,
+    admission_id VARCHAR(64) NULL UNIQUE,
+    appointment_id VARCHAR(64) NULL UNIQUE,
     total_billed DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK(total_billed >= 0),
     discount_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK(discount_amount >= 0),
     net_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK(net_amount >= 0),
@@ -377,7 +381,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     )),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (admission_id) REFERENCES admissions(id) ON UPDATE CASCADE ON DELETE RESTRICT
+    FOREIGN KEY (admission_id) REFERENCES admissions(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_invoices_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS invoice_items (
@@ -806,22 +811,23 @@ LEFT JOIN ranked_active_admissions a ON b.id = a.bed_id AND a.rn = 1
 ORDER BY r.floor_number, r.room_number, b.bed_code;
 
 CREATE OR REPLACE VIEW v_financial_ledger AS
-SELECT 
+SELECT
     inv.id AS invoice_id,
     a.id AS admission_id,
-    p.id AS patient_id,
+    inv.appointment_id,
+    COALESCE(a.patient_id, ap.patient_id) AS patient_id,
     p.patient_code,
-    p.full_name AS patient_name,
-    p.phone AS patient_phone,
+    COALESCE(p.full_name, ap.patient_name) AS patient_name,
+    COALESCE(p.phone, ap.patient_phone) AS patient_phone,
     p.referral_source,
     b.id AS bed_id,
     b.bed_code,
     r.room_number,
     r.floor_number,
     s.full_name AS doctor_name,
-    a.program_type,
+    COALESCE(a.program_type, ap.service_type) AS program_type,
     a.daily_price,
-    a.start_date,
+    COALESCE(a.start_date, ap.appointment_date) AS start_date,
     COALESCE(a.actual_end_date, a.planned_end_date) AS end_date,
     a.total_days,
     inv.total_billed,
@@ -835,11 +841,12 @@ SELECT
     COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('card_transfer', 'payme_click')), 0.00) AS paid_card_online,
     inv.created_at
 FROM invoices inv
-JOIN admissions a ON inv.admission_id = a.id
-JOIN patients p ON a.patient_id = p.id
-JOIN beds b ON a.bed_id = b.id
-JOIN rooms r ON b.room_id = r.id
-LEFT JOIN staff s ON a.attending_doctor_id = s.id
+LEFT JOIN admissions a ON inv.admission_id = a.id
+LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+LEFT JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
+LEFT JOIN beds b ON a.bed_id = b.id
+LEFT JOIN rooms r ON b.room_id = r.id
+LEFT JOIN staff s ON s.id = COALESCE(a.attending_doctor_id, ap.doctor_id)
 ORDER BY inv.created_at DESC;
 
 CREATE OR REPLACE VIEW v_patient_full_profile AS

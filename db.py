@@ -932,6 +932,103 @@ def ensure_staff_hr_columns(conn):
         print(f"[!] Could not add the HR staff columns: {e}")
 
 
+# The ledger the accounting page, the Telegram report and the owner page read.
+# Stays and desk visits (a consultation or an outpatient course) both appear;
+# a visit has no bed, no daily price and no length, so those stay NULL rather
+# than being filled with a guess.
+FINANCIAL_LEDGER_VIEW_SQL = """
+CREATE OR REPLACE VIEW v_financial_ledger AS
+SELECT
+    inv.id AS invoice_id,
+    a.id AS admission_id,
+    inv.appointment_id,
+    COALESCE(a.patient_id, ap.patient_id) AS patient_id,
+    p.patient_code,
+    COALESCE(p.full_name, ap.patient_name) AS patient_name,
+    COALESCE(p.phone, ap.patient_phone) AS patient_phone,
+    p.referral_source,
+    b.id AS bed_id,
+    b.bed_code,
+    r.room_number,
+    r.floor_number,
+    s.full_name AS doctor_name,
+    COALESCE(a.program_type, ap.service_type) AS program_type,
+    a.daily_price,
+    COALESCE(a.start_date, ap.appointment_date) AS start_date,
+    COALESCE(a.actual_end_date, a.planned_end_date) AS end_date,
+    a.total_days,
+    inv.total_billed,
+    inv.discount_amount,
+    inv.net_amount,
+    inv.total_paid,
+    inv.balance_due,
+    inv.payment_status,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('cash', 'cash_register')), 0.00) AS paid_cash,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method = 'terminal'), 0.00) AS paid_terminal,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('card_transfer', 'payme_click')), 0.00) AS paid_card_online,
+    inv.created_at
+FROM invoices inv
+LEFT JOIN admissions a ON inv.admission_id = a.id
+LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+LEFT JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
+LEFT JOIN beds b ON a.bed_id = b.id
+LEFT JOIN rooms r ON b.room_id = r.id
+LEFT JOIN staff s ON s.id = COALESCE(a.attending_doctor_id, ap.doctor_id)
+ORDER BY inv.created_at DESC
+"""
+
+_invoice_visit_link_checked = False
+
+
+def ensure_invoice_visit_link(conn):
+    """
+    Let an invoice belong to a desk visit (an appointment) instead of a stay.
+
+    invoices.admission_id was NOT NULL and an admission needs a bed, so the
+    consultation fee and the outpatient course the desk prints on the slip
+    could not be billed at all without inventing a stay on a bed the patient
+    never used. They were simply never billed. This makes admission_id
+    nullable, adds appointment_id (unique, so one visit can never be billed
+    twice) and rebuilds the ledger view so visit invoices show up next to
+    stays. Idempotent: each step runs only when it is missing.
+    """
+    global _invoice_visit_link_checked
+    if _invoice_visit_link_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoices'
+        """)
+        cols = {}
+        for r in cur.fetchall() or []:
+            cols[r['COLUMN_NAME'] if hasattr(r, 'keys') else r[0]] = \
+                r['IS_NULLABLE'] if hasattr(r, 'keys') else r[1]
+        if cols.get('admission_id') == 'NO':
+            cur.execute("ALTER TABLE invoices MODIFY admission_id VARCHAR(64) NULL")
+            print("[✓] invoices.admission_id may now be empty (visit invoices).")
+        if 'appointment_id' not in cols:
+            cur.execute("ALTER TABLE invoices ADD COLUMN appointment_id VARCHAR(64) NULL AFTER admission_id, "
+                        "ADD UNIQUE KEY uq_invoices_appointment (appointment_id), "
+                        "ADD CONSTRAINT fk_invoices_appointment FOREIGN KEY (appointment_id) "
+                        "REFERENCES appointments(id) ON UPDATE CASCADE ON DELETE RESTRICT")
+            print("[✓] invoices.appointment_id added.")
+        cur.execute("""
+            SELECT VIEW_DEFINITION FROM information_schema.VIEWS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'v_financial_ledger'
+        """)
+        row = cur.fetchone()
+        definition = str((row['VIEW_DEFINITION'] if hasattr(row, 'keys') else row[0]) if row else '')
+        if 'appointment_id' not in definition:
+            cur.execute(FINANCIAL_LEDGER_VIEW_SQL)
+            print("[✓] v_financial_ledger now lists visit invoices.")
+        conn.commit()
+        _invoice_visit_link_checked = True
+    except Exception as e:
+        print(f"[!] Could not link invoices to visits: {e}")
+
+
 _medication_purchases_checked = False
 
 

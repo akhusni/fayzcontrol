@@ -4,7 +4,7 @@
  * - Real-time KPI summary (Gross Revenue, Expenses, Net Profit, Debt, Kassa Balances)
  * - Inpatient Billing Ledger synced with 14 beds and bookings (FMH_FACILITY_14BEDS_STORAGE_V7)
  * - POS & Cash Flow Transaction Journal (Kirim / Chiqim)
- * - Doctor Payroll & Commission Calculations
+ * - Staff payroll from the server (GET /api/hr/payroll) and salary payouts
  * - Medication Dispensation & Extra Services to Patient Bill (Ombordan hisobdan chiqarish)
  * - Cash Incasso to Bank (Kassa Inkassatsiyasi)
  * - Custom Date Range Filtering (Bugun, Kecha, Shu Hafta, Shu Oy, Custom Range)
@@ -91,6 +91,12 @@
     "ambulator_2": { name: "Ambulator (Kuniga 2 mahal muolaja)", get rate() { return listedRate('ambulator_2'); }, desc: "Kuniga 2 mahal qatnab muolaja" }
   };
 
+  // Bills raised for a desk visit carry the appointment's service type.
+  const VISIT_LABELS = {
+    consultation: 'Shifokor konsultatsiyasi',
+    outpatient: 'Ambulator muolaja kursi'
+  };
+
   // The new-bill <select> in accounting.html has the prices typed into its
   // option text; they are rewritten from the price list once it is loaded.
   function applyListedPackageLabels() {
@@ -169,7 +175,7 @@
           },
           patients_billing: [],
           transactions: [],
-          doctors_payroll: [],
+          payroll_lines: [],
           pharmacy_stock: [],
           medication_purchases: []
         };
@@ -193,12 +199,15 @@
         ];
       }
 
-      if (!accountingData.doctors_payroll || !Array.isArray(accountingData.doctors_payroll)) {
-        accountingData.doctors_payroll = [];
-      }
+      // The payroll is never taken from the browser cache: it is the
+      // server's figure for this month or nothing.
+      accountingData.payroll_lines = [];
+      accountingData.payroll_info = null;
+      delete accountingData.doctors_payroll;
 
       // Sync with MySQL Financial Ledger, Admissions & Staff
       await syncWithLedgerAndBackend();
+      await loadPayroll();
 
       const mBtn = document.getElementById('accounting-month-btn');
       if (mBtn) {
@@ -206,7 +215,7 @@
       }
       const payrollTitle = document.getElementById('accounting-doctors-title');
       if (payrollTitle) {
-        payrollTitle.innerHTML = `<i class="fas fa-user-md" style="color: var(--primary);"></i> Shifokorlar Oylik Maoshi va Gonorar Qayti (${new Date().toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' })})`;
+        payrollTitle.innerHTML = `<i class="fas fa-user-md" style="color: var(--primary);"></i> Xodimlar Oylik Maoshi — Kadrlar hisobi (${new Date().toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' })})`;
       }
 
       setupEventListeners();
@@ -278,19 +287,15 @@
       if (staffRes.ok) {
         const staffList = await staffRes.json();
         if (Array.isArray(staffList)) {
-          const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || s.full_name.toLowerCase().includes('dr'));
-          accountingData.doctors_payroll = docStaff.map((d) => ({
+          // Only the new-bill form's doctor picker uses this list now. Pay
+          // used to be built here too, from 8 500 000 / 12 000 000 and an
+          // 8-10 % "commission" typed into this file; it now comes from the
+          // server payroll (loadPayroll).
+          const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || String(s.full_name || '').toLowerCase().includes('dr'));
+          accountingData.doctors_list = docStaff.map((d) => ({
             id: d.id,
             name: d.full_name,
-            role: d.specialty || d.role || 'Shifokor',
-            base_salary: d.role === 'chief_doctor' ? 12000000 : 8500000,
-            commission_rate: d.role === 'chief_doctor' ? 10 : 8,
-            // Paid this month if the journal holds a salary payout for this
-            // person. The badge used to be set only in the browser and went
-            // back to "calculated" on the next sync, inviting a second payout.
-            status: (accountingData.transactions || []).some(t =>
-              t.category === 'salary' && t.related_staff_id === d.id &&
-              String(t.date || '').slice(0, 7) === getTodayISO().slice(0, 7)) ? 'paid' : 'calculated'
+            role: d.specialty || d.role || 'Shifokor'
           }));
         }
       }
@@ -299,25 +304,34 @@
         const ledgerRows = await ledgerRes.json();
         if (Array.isArray(ledgerRows)) {
           accountingData.patients_billing = ledgerRows.map(row => {
+            // A desk visit (consultation or outpatient course) is billed on
+            // its appointment: no bed, no daily price, no length.
+            const isVisit = !row.admission_id;
             return {
               id: row.invoice_id,
               booking_id: row.admission_id,
-              bed_id: row.bed_id || 'BED-1A',
+              appointment_id: row.appointment_id || null,
+              patient_id: row.patient_id || null,
+              is_visit: isVisit,
+              // These used to fall back to bed BED-1A, a fake phone number,
+              // today and a 10-day stay, so a bill missing them showed (and
+              // printed) a stay nobody had. Missing stays missing ("—").
+              bed_id: row.bed_id || null,
               bed_name: row.room_number ? `${row.room_number}-xona (${row.bed_code || ''})` : (row.bed_code || 'Ambulator'),
               patient_name: row.patient_name || 'Bemor',
-              patient_phone: row.patient_phone || '+998 (90) --- -- --',
+              patient_phone: row.patient_phone || '',
               patient_city: '',
-              program: row.program_type || 'Statsionar',
+              program: VISIT_LABELS[row.program_type] || row.program_type || '—',
               // The stay's own programme decides the package; the price is
               // only a guess for a programme that is not a package id.
-              package_type: OFFICIAL_RATES[row.program_type] ? row.program_type
+              package_type: isVisit ? null : (OFFICIAL_RATES[row.program_type] ? row.program_type
                 : ((listedRate('statsionar_full_room') > 0 &&
                     Number(row.daily_price) >= listedRate('statsionar_full_room'))
-                   ? 'statsionar_full_room' : 'statsionar_shared'),
+                   ? 'statsionar_full_room' : 'statsionar_shared')),
               doctor: row.doctor_name || 'Shifokor biriktirilmagan',
-              start_date: row.start_date || getTodayISO(),
-              end_date: row.end_date || getOffsetDateStr(10),
-              days_count: row.total_days || 10,
+              start_date: row.start_date ? String(row.start_date).slice(0, 10) : '',
+              end_date: row.end_date ? String(row.end_date).slice(0, 10) : '',
+              days_count: Number(row.total_days) > 0 ? Number(row.total_days) : null,
               // A stay with no stored rate shows 0, not an invented 720 000.
               daily_rate: Number(row.daily_price) || 0,
               gross_due: Number(row.total_billed) || 0,
@@ -362,115 +376,66 @@
     }
   }
 
-  // Synchronize with building management 14 beds bookings
-  function syncWithInpatientBookings() {
+  // The month's pay, from the server (GET /api/hr/payroll): base salary
+  // plus the duty shifts saved on the roster, minus income tax and pension,
+  // exactly as the HR page shows it. This page used to work out its own
+  // "doctors payroll" from figures typed into this file (8 500 000 /
+  // 12 000 000 and an 8-10 % share of patient bills that nobody had ever
+  // set), and paid that out -- a second pay formula next to HR's.
+  // There is no recorded commission rate, so no commission is shown; the PO
+  // decides whether doctors get one (CHANGES.md).
+  async function loadPayroll() {
+    const month = getTodayISO().slice(0, 7);
+    let res;
     try {
-      const bedsStored = localStorage.getItem(BEDS_STORAGE_KEY);
-      if (!bedsStored) return;
-
-      const bedsData = JSON.parse(bedsStored);
-      if (!bedsData || !Array.isArray(bedsData)) return;
-
-      let changed = false;
-
-      bedsData.forEach(booking => {
-        if (!booking || !booking.patient_name) return;
-
-        // Check if patient already exists in billing
-        let bill = accountingData.patients_billing.find(b => b.booking_id === String(booking.id));
-
-        // Determine rate
-        let dailyRate = listedRate('statsionar_shared');
-        let progName = "Statsionar (1 karavot / 720 ming)";
-        let packageKey = "statsionar_shared";
-
-        if (booking.is_full_room || (booking.program && (booking.program.includes("Butun Xona") || booking.program.includes("1.1 mln"))) || (booking.notes && booking.notes.includes("Butun xona"))) {
-          dailyRate = listedRate('statsionar_full_room');
-          progName = "Statsionar Butun Xona (1 kishi / VIP Solo)";
-          packageKey = "statsionar_full_room";
-        } else if (booking.program && (booking.program.includes("Kunlik") || booking.program.includes("630 ming"))) {
-          dailyRate = listedRate('kunlik_statsionar');
-          progName = "Kunlik Statsionar (Kunduzgi o'rin)";
-          packageKey = "kunlik_statsionar";
-        }
-
-        // Calculate days (default 10 days or actual date range)
-        let days = 10;
-        if (booking.start_date && booking.end_date) {
-          const d1 = new Date(booking.start_date);
-          const d2 = new Date(booking.end_date);
-          const diffTime = Math.abs(d2 - d1);
-          days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-        }
-        const totalDue = days * dailyRate;
-
-        if (!bill) {
-          const newBill = {
-            id: `BILL-2026-${String(accountingData.patients_billing.length + 1).padStart(3, '0')}`,
-            booking_id: String(booking.id),
-            bed_id: booking.bed_id,
-            bed_name: getBedName(booking.bed_id),
-            patient_name: booking.patient_name,
-            patient_phone: booking.patient_phone || "+998 (90) --- -- --",
-            patient_city: '',
-            program: progName,
-            package_type: packageKey,
-            doctor: booking.doctor || '',
-            start_date: booking.start_date || getTodayISO(),
-            end_date: booking.end_date || getOffsetDateStr(10),
-            days_count: days,
-            daily_rate: dailyRate,
-            total_due: totalDue,
-            paid_cash: 0,
-            paid_terminal: 0,
-            paid_online: 0,
-            paid_bank: 0,
-            total_paid: 0,
-            debt_remaining: totalDue,
-            extra_services: [],
-            status: "unpaid",
-            created_at: new Date().toISOString()
-          };
-          accountingData.patients_billing.push(newBill);
-          changed = true;
-        } else {
-          if (bill.patient_name !== booking.patient_name || bill.bed_id !== booking.bed_id) {
-            bill.patient_name = booking.patient_name;
-            bill.bed_id = booking.bed_id;
-            bill.bed_name = getBedName(booking.bed_id);
-            bill.doctor = booking.doctor;
-            changed = true;
-          }
-        }
-      });
-
-      if (changed) {
-        saveData();
-      }
+      res = await fetch('/api/hr/payroll?month=' + encodeURIComponent(month));
     } catch (e) {
-      console.warn("Could not sync with beds storage:", e);
+      accountingData.payroll_lines = [];
+      accountingData.payroll_info = { month, error: "Server bilan aloqa yo'q — maosh hisobi yuklanmadi." };
+      return;
     }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      accountingData.payroll_lines = [];
+      accountingData.payroll_info = {
+        month,
+        error: res.status === 403
+          ? "Maosh hisobi faqat buxgalteriya va kadrlar bo'limiga ko'rinadi."
+          : (body.error || `Maosh hisobi yuklanmadi (${res.status}).`)
+      };
+      return;
+    }
+    accountingData.payroll_lines = (Array.isArray(body.staff) ? body.staff : []).map(l => ({
+      id: l.staff_id,
+      name: l.full_name || '',
+      role: l.role || '',
+      is_active: l.is_active !== false,
+      base_salary: Number(l.base_salary) || 0,
+      duty_shifts: Number(l.duty_shifts) || 0,
+      duty_pay: Number(l.duty_pay) || 0,
+      gross: Number(l.gross) || 0,
+      income_tax: Number(l.income_tax) || 0,
+      pension: Number(l.pension) || 0,
+      deductions: Number(l.deductions) || 0,
+      net: Number(l.net) || 0
+    }));
+    accountingData.payroll_info = {
+      month: body.month || month,
+      totals: body.totals || null,
+      rates: body.rates || null,
+      unlinked: Array.isArray(body.unlinked_shifts) ? body.unlinked_shifts : [],
+      mismatches: Array.isArray(body.name_mismatches) ? body.name_mismatches : []
+    };
   }
 
-  function getBedName(bedId) {
-    const cleanId = String(bedId || '').toLowerCase().trim();
-    const bedNames = {
-      "bed-1a": "11-xona 1A karavot",
-      "bed-1b": "11-xona 1B karavot",
-      "bed-2a": "12-xona 2A karavot",
-      "bed-2b": "12-xona 2B karavot",
-      "bed-21a": "21-xona 21A karavot",
-      "bed-21b": "21-xona 21B karavot",
-      "bed-22a": "22-xona 22A karavot",
-      "bed-22b": "22-xona 22B karavot",
-      "bed-23a": "23-xona 23A karavot",
-      "bed-23b": "23-xona 23B karavot",
-      "bed-24a": "24-xona 24A karavot",
-      "bed-24b": "24-xona 24B karavot",
-      "bed-25a": "25-xona 25A karavot",
-      "bed-25b": "25-xona 25B karavot"
-    };
-    return bedNames[cleanId] || (bedId ? bedId : "Ambulator Qabul");
+  // Paid this month if the journal holds a salary payout for this person.
+  // Worked out on every render from the synced journal, so the badge cannot
+  // drift back to "calculated" and invite a second payout.
+  function payrollPaid(staffId) {
+    const month = getTodayISO().slice(0, 7);
+    return (accountingData.transactions || []).some(t =>
+      t.category === 'salary' && t.related_staff_id === staffId &&
+      String(t.date || '').slice(0, 7) === month);
   }
 
   // ==========================================================================
@@ -710,7 +675,8 @@
         statusBadge = `<span class="badge-status badge-unpaid"><i class="fas fa-exclamation-circle"></i> To'lanmagan</span>`;
       }
 
-      let priceTag = `<span style="font-family: var(--font-mono); font-size: 0.72rem; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 2px 6px; border-radius: 4px;">${formatShortUZS(b.daily_rate)}/kun</span>`;
+      // A desk visit has no daily rate; its price is the bill line itself.
+      let priceTag = b.is_visit ? '' : `<span style="font-family: var(--font-mono); font-size: 0.72rem; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 2px 6px; border-radius: 4px;">${formatShortUZS(b.daily_rate)}/kun</span>`;
 
       let extraServicesHTML = '';
       if (b.extra_services && b.extra_services.length > 0) {
@@ -744,14 +710,14 @@
           <td>
             <div class="patient-cell">
               <span class="patient-name-bold">${b.patient_name}</span>
-              <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${b.patient_phone}${b.patient_city ? ' • ' + b.patient_city : ''}</span>
+              <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${esc(b.patient_phone || '—')}${b.patient_city ? ' • ' + esc(b.patient_city) : ''}</span>
             </div>
           </td>
           <td>
             <div style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
               ${b.bed_name || 'Ambulator'} ${priceTag}
             </div>
-            <div class="patient-details-sub">${b.program} (${b.days_count} kun)</div>
+            <div class="patient-details-sub">${esc(b.program)} (${b.days_count ? b.days_count + ' kun' : (b.is_visit ? esc(b.start_date || '—') : '—')})</div>
             ${extraServicesHTML}
           </td>
           <td>
@@ -774,6 +740,9 @@
               <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openInvoiceReceipt('${b.id}')" title="Kvitansiya / Chek">
                 <i class="fas fa-receipt"></i> Chek
               </button>
+              ${b.patient_id ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" data-patient-id="${esc(b.patient_id)}" onclick="window.FMH_Accounting.openPatientInvoices(this.dataset.patientId)" title="Bemorning barcha hisoblari">
+                <i class="fas fa-folder-open"></i> Hisoblar
+              </button>` : ''}
             </div>
           </td>
         </tr>
@@ -864,82 +833,91 @@
   }
 
   // ==========================================================================
-  // RENDER TAB: DOCTOR PAYROLL & COMMISSIONS
+  // RENDER TAB: STAFF PAYROLL (from the server; see loadPayroll)
   // ==========================================================================
+
+  const ROLE_LABELS = {
+    chief_doctor: 'Bosh shifokor', doctor: 'Shifokor', nurse: 'Hamshira',
+    sanitar: 'Sanitarka', receptionist: 'Qabulxona', accountant: 'Buxgalter',
+    admin: 'Administrator', pharmacist: 'Farmatsevt', hr_manager: 'Kadrlar bo\'limi',
+    ward_manager: 'Statsionar menejeri', kitchen_staff: 'Oshxona', support: 'Xodim'
+  };
 
   function renderDoctorsPayroll() {
     const grid = document.getElementById('doctors-payroll-grid');
     if (!grid || !accountingData) return;
 
-    const list = Array.isArray(accountingData.doctors_payroll) ? accountingData.doctors_payroll : [];
-
-    if (list.length === 0) {
-      grid.innerHTML = `
+    const info = accountingData.payroll_info;
+    const list = Array.isArray(accountingData.payroll_lines) ? accountingData.payroll_lines : [];
+    const emptyBox = (title, text) => `
         <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted); background: var(--card-bg); border-radius: 12px; border: 1px dashed var(--border-color);">
           <i class="fas fa-user-md" style="font-size: 2.2rem; margin-bottom: 0.75rem; opacity: 0.5; color: var(--primary);"></i>
-          <div style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Hozircha shifokorlar oylik qaydnomasi bo'sh</div>
-          <div style="font-size: 0.85rem;">Kadrlar (HR) bo'limida yangi shifokorlar qo'shilgach, ularning oylik maoshi va gonorarlari avtomatik hisoblanadi.</div>
-        </div>
-      `;
+          <div style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">${esc(title)}</div>
+          <div style="font-size: 0.85rem;">${esc(text)}</div>
+        </div>`;
+
+    if (info && info.error) {
+      grid.innerHTML = emptyBox("Maosh hisobi ko'rsatilmaydi", info.error);
+      return;
+    }
+    if (list.length === 0) {
+      grid.innerHTML = emptyBox("Hozircha oylik qaydnomasi bo'sh",
+        "Kadrlar (HR) bo'limida xodimlar va ularning maoshi kiritilgach, bu yerda ko'rinadi.");
       return;
     }
 
-    grid.innerHTML = list.map(doc => {
-      const myPatients = (accountingData.patients_billing || []).filter(p => {
-        const pDoc = (p.doctor || '').toLowerCase();
-        const dName = (doc.name || '').toLowerCase().replace('dr.', '').trim();
-        return dName && pDoc.includes(dName);
-      });
+    // Roster days the server could not pay to anyone are reported, not
+    // guessed at: HR has to fix the roster or the staff record.
+    const unlinked = (info && info.unlinked) || [];
+    const mismatches = (info && info.mismatches) || [];
+    const skipped = unlinked.reduce((s, u) => s + (Number(u.shifts) || 0), 0) +
+                    mismatches.reduce((s, m) => s + (Number(m.shifts) || 0), 0);
+    const warning = skipped > 0 ? `
+        <div style="grid-column: 1/-1; padding: 0.75rem 1rem; border-radius: 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 0.85rem;">
+          <i class="fas fa-exclamation-triangle"></i> Navbatchilik jadvalidagi ${skipped} ta smena hech bir xodimga bog'lanmagan yoki ismi mos kelmaydi — ular maoshga qo'shilmadi. Kadrlar bo'limida tekshiring.
+        </div>` : '';
 
-      const patientCount = myPatients.length;
-      const revenueGen = myPatients.reduce((sum, p) => sum + (Number(p.total_due) || 0), 0);
-      const commissionEarned = Math.round(revenueGen * ((Number(doc.commission_rate) || 0) / 100));
-      const totalPayable = (Number(doc.base_salary) || 0) + commissionEarned;
-      // The payout reads these. They lived only in this function, so the
-      // payout sent no amount and recorded 0 so'm.
-      doc.patients_count_month = patientCount;
-      doc.commission_earned = commissionEarned;
-      doc.total_payable = totalPayable;
-
+    grid.innerHTML = warning + list.map(doc => {
+      const paid = payrollPaid(doc.id);
       return `
         <div class="doctor-payroll-card">
           <div class="doc-card-header">
             <div class="doc-avatar"><i class="fas fa-user-md"></i></div>
             <div class="doc-info">
-              <div class="doc-name">${doc.name}</div>
-              <div class="doc-role">${doc.role || 'Shifokor'}</div>
+              <div class="doc-name">${esc(doc.name)}</div>
+              <div class="doc-role">${esc(ROLE_LABELS[doc.role] || doc.role || 'Xodim')}${doc.is_active ? '' : ' (faol emas)'}</div>
             </div>
-            <span class="badge-status ${doc.status === 'paid' ? 'badge-paid' : 'badge-partial'}">
-              ${doc.status === 'paid' ? "To'langan" : "Hisoblangan"}
+            <span class="badge-status ${paid ? 'badge-paid' : 'badge-partial'}">
+              ${paid ? "To'langan" : "Hisoblangan"}
             </span>
           </div>
 
           <div class="doc-stats-row">
             <div class="doc-stat-item">
-              <div class="label">Bemorlar Soni (Oy)</div>
-              <div class="val" style="color: var(--primary);">${patientCount} ta bemor</div>
-            </div>
-            <div class="doc-stat-item">
-              <div class="label">Klinikaga Tushum</div>
-              <div class="val">${formatShortUZS(revenueGen)}</div>
-            </div>
-            <div class="doc-stat-item">
               <div class="label">Asosiy Oylik Maosh</div>
-              <div class="val">${formatShortUZS(doc.base_salary || 0)}</div>
+              <div class="val">${formatShortUZS(doc.base_salary)}</div>
             </div>
             <div class="doc-stat-item">
-              <div class="label">Gonorar Ulushi (${doc.commission_rate || 0}%)</div>
-              <div class="val" style="color: var(--emerald);">+${formatShortUZS(commissionEarned)}</div>
+              <div class="label">Navbatchilik (${doc.duty_shifts} smena)</div>
+              <div class="val" style="color: var(--emerald);">+${formatShortUZS(doc.duty_pay)}</div>
+            </div>
+            <div class="doc-stat-item">
+              <div class="label">Hisoblangan (brutto)</div>
+              <div class="val">${formatShortUZS(doc.gross)}</div>
+            </div>
+            <div class="doc-stat-item">
+              <div class="label">Ushlab qolinadi (soliq + pensiya)</div>
+              <div class="val" style="color: var(--rose);">-${formatShortUZS(doc.deductions)}</div>
             </div>
           </div>
 
           <div class="doc-total-payable-box">
-            <div class="doc-payable-label">Jami To'lanadigan Maosh:</div>
-            <div class="doc-payable-amount">${formatUZS(totalPayable)}</div>
+            <div class="doc-payable-label">Qo'lga beriladi (sof):</div>
+            <div class="doc-payable-amount">${formatUZS(doc.net)}</div>
           </div>
 
           <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button class="btn-portal btn-success-portal" style="width: 100%;" onclick="window.FMH_Accounting.payoutDoctorSalary('${doc.id}')">
+            <button class="btn-portal btn-success-portal" style="width: 100%;" data-staff-id="${esc(doc.id)}" onclick="window.FMH_Accounting.payoutDoctorSalary(this.dataset.staffId)">
               <i class="fas fa-check-circle"></i> Oylik Maoshni To'lash (Kassadan Chiqim)
             </button>
           </div>
@@ -1381,10 +1359,18 @@
     let kunlikAmt = 0;
     let ambulatorAmt = 0;
     let pharmacyAmt = 0;
+    let consultAmt = 0;
 
     (accountingData.patients_billing || []).forEach(p => {
       const prog = (p.program || '').toLowerCase();
       const due = Number(p.total_due) || 0;
+      // A desk visit's whole bill is its one line: count it once, under its
+      // own heading, not again as an "extra service".
+      if (p.is_visit) {
+        if (prog.includes('konsultatsiya')) consultAmt += due;
+        else ambulatorAmt += due;
+        return;
+      }
       if (prog.includes('kunlik') || prog.includes('630')) {
         kunlikAmt += due;
       } else if (prog.includes('ambulator') || prog.includes('310') || prog.includes('500')) {
@@ -1398,13 +1384,14 @@
       });
     });
 
-    const totalAll = statsionarAmt + kunlikAmt + ambulatorAmt + pharmacyAmt;
+    const totalAll = statsionarAmt + kunlikAmt + ambulatorAmt + consultAmt + pharmacyAmt;
     const calcPct = (amt) => totalAll > 0 ? Math.round((amt / totalAll) * 100) : 0;
 
     const depts = [
       { name: "Statsionar Davolanish (720 ming / 1.1 mln)", amount: statsionarAmt, color: "#38bdf8", pct: calcPct(statsionarAmt) },
       { name: "Kunlik Statsionar (630 ming / kun)", amount: kunlikAmt, color: "#10b981", pct: calcPct(kunlikAmt) },
       { name: "Ambulator Muolajalar (310 ming & 500 ming)", amount: ambulatorAmt, color: "#a855f7", pct: calcPct(ambulatorAmt) },
+      { name: "Shifokor Konsultatsiyalari", amount: consultAmt, color: "#818cf8", pct: calcPct(consultAmt) },
       { name: "Farmakologiya & Qo'shimcha Xizmatlar", amount: pharmacyAmt, color: "#f59e0b", pct: calcPct(pharmacyAmt) }
     ];
 
@@ -1439,22 +1426,24 @@
     const now = new Date();
     const dateFormatted = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
 
-    // Itemized table rows
-    let itemRows = `
+    // Itemized table rows. Only a stay has a bed-days line; a desk visit
+    // (consultation, outpatient course) is just its own bill line below.
+    const hasStayRow = !bill.is_visit && bill.days_count;
+    let itemRows = hasStayRow ? `
       <tr>
         <td>1</td>
-        <td><strong>${bill.program}</strong><br><small style="color: #64748b;">${bill.bed_name} • Shifokor nazorati, muolajalar va parhez taomnoma</small></td>
+        <td><strong>${esc(bill.program)}</strong><br><small style="color: #64748b;">${esc(bill.bed_name)} • Shifokor nazorati, muolajalar va parhez taomnoma</small></td>
         <td style="text-align: center; font-weight: 700;">${bill.days_count} kun</td>
         <td style="text-align: right;">${formatUZS(bill.daily_rate)}</td>
         <td style="text-align: right; font-weight: 700;">${formatUZS(bill.days_count * bill.daily_rate)}</td>
       </tr>
-    `;
+    ` : '';
 
     if (bill.extra_services && bill.extra_services.length > 0) {
       bill.extra_services.forEach((s, i) => {
         itemRows += `
           <tr>
-            <td>${i + 2}</td>
+            <td>${i + (hasStayRow ? 2 : 1)}</td>
             <td><strong>${esc(s.name)}</strong><br><small style="color: #64748b;">Qo'shimcha tayinlangan muolaja / dori (${esc(s.notes || 'Shifokor ko\'rsatmasi')})</small></td>
             <td style="text-align: center; font-weight: 700;">${s.qty} ta</td>
             <td style="text-align: right;">${formatUZS(s.unit_price)}</td>
@@ -1488,16 +1477,18 @@
         <div class="inv-meta-grid">
           <div class="inv-meta-col">
             <div class="title">Bemor Ma'lumotlari:</div>
-            <div class="name">${bill.patient_name}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Tel: ${bill.patient_phone}</div>
+            <div class="name">${esc(bill.patient_name)}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Tel: ${esc(bill.patient_phone || '—')}</div>
             <div style="font-size: 0.8rem; color: #475569;">Manzil: ${bill.patient_city || '—'}</div>
           </div>
           <div class="inv-meta-col">
             <div class="title">Muolaja / Tarif Paketi:</div>
-            <div style="font-weight: 700; color: #0f172a;">${bill.program}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Joy: ${bill.bed_name || 'Ambulator'}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Davomiyligi: ${bill.days_count} kun (${bill.start_date} — ${bill.end_date})</div>
-            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${bill.doctor || '—'}</div>
+            <div style="font-weight: 700; color: #0f172a;">${esc(bill.program)}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Joy: ${esc(bill.bed_name || 'Ambulator')}</div>
+            <div style="font-size: 0.8rem; color: #475569;">${bill.is_visit
+              ? `Sana: ${esc(bill.start_date || '—')}`
+              : `Davomiyligi: ${bill.days_count ? bill.days_count + ' kun' : '—'} (${esc(bill.start_date || '—')} — ${esc(bill.end_date || '—')})`}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${esc(bill.doctor || '—')}</div>
           </div>
         </div>
 
@@ -1947,13 +1938,15 @@
     document.getElementById('newbill-patient-name').value = '';
     document.getElementById('newbill-patient-phone').value = '+998 ';
     document.getElementById('newbill-package-select').value = 'statsionar_shared';
-    document.getElementById('newbill-days-input').value = 10;
+    // Left empty: the length of a stay is the desk's to type. A prefilled
+    // 10 days billed ten days to anyone who did not change it.
+    document.getElementById('newbill-days-input').value = '';
     document.getElementById('newbill-advance-input').value = '';
 
     const docSelect = document.getElementById('newbill-doctor-select');
     if (docSelect) {
-      if (accountingData.doctors_payroll && accountingData.doctors_payroll.length > 0) {
-        docSelect.innerHTML = accountingData.doctors_payroll.map(d => `<option value="${d.name}">${d.name} (${d.role})</option>`).join('');
+      if (accountingData.doctors_list && accountingData.doctors_list.length > 0) {
+        docSelect.innerHTML = accountingData.doctors_list.map(d => `<option value="${esc(d.name)}">${esc(d.name)} (${esc(d.role)})</option>`).join('');
       } else {
         docSelect.innerHTML = `<option value="">— Shifokor biriktirilmagan —</option>`;
       }
@@ -1966,7 +1959,7 @@
 
   function updateNewBillCalculation() {
     const pkgKey = document.getElementById('newbill-package-select').value;
-    const days = Number(document.getElementById('newbill-days-input').value) || 10;
+    const days = Number(document.getElementById('newbill-days-input').value) || 0;
     const pkg = OFFICIAL_RATES[pkgKey] || OFFICIAL_RATES.statsionar_shared;
 
     const total = pkg.rate * days;
@@ -1981,7 +1974,7 @@
     const name = document.getElementById('newbill-patient-name').value.trim();
     const phone = document.getElementById('newbill-patient-phone').value.trim();
     const pkgKey = document.getElementById('newbill-package-select').value;
-    const days = Number(document.getElementById('newbill-days-input').value) || 10;
+    const days = Number(document.getElementById('newbill-days-input').value);
     const bedId = document.getElementById('newbill-bed-select').value;
     const doctor = document.getElementById('newbill-doctor-select').value;
     const advancePaid = Number(document.getElementById('newbill-advance-input').value) || 0;
@@ -1989,6 +1982,11 @@
 
     if (!name) {
       showToast("Iltimos, bemor ismini kiriting!", 'warning');
+      return;
+    }
+    // A blank length used to become 10 days.
+    if (!Number.isInteger(days) || days < 1) {
+      showToast("Necha kun yotishini kiriting.", 'warning');
       return;
     }
 
@@ -2142,24 +2140,134 @@
   }
 
   // ==========================================================================
+  // ALL INVOICES OF ONE PATIENT (read-only)
+  // ==========================================================================
+
+  const INVOICE_STATUS_LABELS = {
+    unpaid: "To'lanmagan", partial: 'Qisman', paid: "To'langan",
+    refund_due: 'Qaytarish kerak', refunded: 'Qaytarilgan'
+  };
+  const ITEM_TYPE_LABELS = {
+    bed_stay: 'Yotoq kunlari', consultation: 'Konsultatsiya', medication: 'Dori',
+    lab_test: 'Tahlil', procedure: 'Muolaja', other: 'Boshqa'
+  };
+
+  // The bills table shows one invoice per row, so a patient's earlier unpaid
+  // visit or stay was easy to miss when taking money for the current one.
+  // Everything here comes from the server and is escaped; nothing is edited.
+  async function openPatientInvoices(patientId) {
+    const modal = document.getElementById('patient-invoices-modal');
+    const content = document.getElementById('patient-invoices-content');
+    if (!modal || !content || !patientId) return;
+    content.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Yuklanmoqda...</div>`;
+    modal.classList.add('active');
+
+    let data;
+    try {
+      const res = await fetch('/api/accounting/patient-invoices?patient_id=' + encodeURIComponent(patientId));
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        content.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--rose);">${esc(data.error || `Hisoblar yuklanmadi (${res.status}).`)}</div>`;
+        return;
+      }
+    } catch (e) {
+      content.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--rose);">Server bilan aloqa yo'q.</div>`;
+      return;
+    }
+
+    const p = data.patient || {};
+    const invoices = Array.isArray(data.invoices) ? data.invoices : [];
+    const t = data.totals || {};
+    const money = (v) => formatUZS(Number(v) || 0);
+    const cell = 'padding: 4px 8px; border-bottom: 1px solid var(--border-color);';
+
+    const invoiceBlock = (inv) => {
+      const where = inv.kind === 'visit'
+        ? `${esc(VISIT_LABELS[inv.program_type] || inv.program_type || 'Tashrif')} • ${esc(inv.start_date ? String(inv.start_date).slice(0, 10) : '—')}`
+        : `${esc(inv.program_type || 'Statsionar')} • ${inv.room_number ? esc(inv.room_number) + '-xona ' : ''}${esc(inv.bed_code || '—')} • ${esc(inv.start_date ? String(inv.start_date).slice(0, 10) : '—')} — ${esc(inv.end_date ? String(inv.end_date).slice(0, 10) : '—')}${inv.total_days ? ' (' + esc(inv.total_days) + ' kun)' : ''}`;
+      const items = (inv.items || []).map(it => `
+            <tr>
+              <td style="${cell}">${esc(it.service_name)}<br><small style="color: var(--text-muted);">${esc(ITEM_TYPE_LABELS[it.item_type] || it.item_type || '')}</small></td>
+              <td style="${cell} text-align: center;">${esc(Number(it.quantity))}</td>
+              <td style="${cell} text-align: right;">${money(it.unit_price)}</td>
+              <td style="${cell} text-align: right; font-weight: 700;">${money(it.total_amount)}</td>
+            </tr>`).join('') || `<tr><td colspan="4" style="${cell} color: var(--text-muted);">Qatorlar yo'q</td></tr>`;
+      const pays = (inv.payments || []).map(pm => `
+            <tr>
+              <td style="${cell}">${esc(pm.payment_date ? String(pm.payment_date).slice(0, 10) : '—')}</td>
+              <td style="${cell}">${esc(pm.payment_method || '')}${pm.notes ? ' — ' + esc(pm.notes) : ''}</td>
+              <td style="${cell} text-align: right; font-weight: 700; color: ${Number(pm.amount) < 0 ? '#fbbf24' : 'var(--emerald)'};">${money(pm.amount)}</td>
+            </tr>`).join('') || `<tr><td colspan="3" style="${cell} color: var(--text-muted);">To'lovlar yo'q</td></tr>`;
+      return `
+        <div style="border: 1px solid var(--border-color); border-radius: 10px; padding: 0.9rem; margin-bottom: 0.9rem;">
+          <div style="display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.4rem;">
+            <strong style="font-family: var(--font-mono);">${esc(inv.invoice_id)}</strong>
+            <span>${esc(INVOICE_STATUS_LABELS[inv.payment_status] || inv.payment_status || '')}</span>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${where} • Shifokor: ${esc(inv.doctor_name || '—')}</div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+              <thead><tr><th style="${cell} text-align: left;">Xizmat</th><th style="${cell}">Miqdor</th><th style="${cell} text-align: right;">Narx</th><th style="${cell} text-align: right;">Jami</th></tr></thead>
+              <tbody>${items}</tbody>
+            </table>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.4rem; margin: 0.6rem 0; font-size: 0.82rem;">
+            <div>Hisoblangan: <strong>${money(inv.total_billed)}</strong></div>
+            <div>Chegirma: <strong>${money(inv.discount_amount)}</strong></div>
+            <div>To'lanishi kerak: <strong>${money(inv.net_amount)}</strong></div>
+            <div>To'langan: <strong style="color: var(--emerald);">${money(inv.total_paid)}</strong></div>
+            <div>Qoldiq: <strong style="color: ${Number(inv.balance_due) > 0 ? 'var(--rose)' : 'inherit'};">${money(inv.balance_due)}</strong></div>
+          </div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+              <thead><tr><th style="${cell} text-align: left;">To'lov sanasi</th><th style="${cell} text-align: left;">Usul</th><th style="${cell} text-align: right;">Summa</th></tr></thead>
+              <tbody>${pays}</tbody>
+            </table>
+          </div>
+        </div>`;
+    };
+
+    content.innerHTML = `
+      <div style="margin-bottom: 0.9rem;">
+        <div style="font-size: 1.05rem; font-weight: 800;">${esc(p.full_name || 'Bemor')}</div>
+        <div style="font-size: 0.82rem; color: var(--text-muted);">${esc(p.patient_code || p.id || '')}${p.phone ? ' • ' + esc(p.phone) : ''}</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; font-size: 0.85rem;">
+        <div>Hisoblar soni: <strong>${invoices.length}</strong></div>
+        <div>Jami to'lanishi kerak: <strong>${money(t.net_amount)}</strong></div>
+        <div>Jami to'langan: <strong style="color: var(--emerald);">${money(t.total_paid)}</strong></div>
+        <div>Jami qoldiq: <strong style="color: ${Number(t.balance_due) > 0 ? 'var(--rose)' : 'inherit'};">${money(t.balance_due)}</strong></div>
+      </div>
+      ${invoices.length ? invoices.map(invoiceBlock).join('') : `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">Bu bemorda hisob yo'q.</div>`}
+    `;
+  }
+
+  // ==========================================================================
   // DOCTOR SALARY PAYOUT
   // ==========================================================================
 
   async function payoutDoctorSalary(docId) {
-    const doc = accountingData.doctors_payroll.find(d => d.id === docId);
+    const doc = (accountingData.payroll_lines || []).find(d => d.id === docId);
     if (!doc) return;
-    if (doc.status === 'paid') {
+    if (payrollPaid(doc.id)) {
       showToast(`${esc(doc.name)} uchun shu oy maosh allaqachon to'langan.`, 'warning');
       return;
     }
-    if (!(Number(doc.total_payable) > 0)) {
-      showToast("To'lanadigan summa 0 so'm. Avval xodimning oylik maoshini kiriting.", 'warning');
+    // The employee is handed the net figure. Income tax and pension are
+    // withheld from it and go to the state, not to the employee; paying the
+    // state is its own expense entry, so recording the gross here would count
+    // the withheld part twice once that is entered. The HR payslip calls the
+    // same figure "Sof to'lanadigan".
+    const amount = Math.round(Number(doc.net) || 0);
+    if (!(amount > 0)) {
+      showToast("To'lanadigan summa 0 so'm. Avval Kadrlar bo'limida xodimning maoshini kiriting.", 'warning');
       return;
     }
+    const month = (accountingData.payroll_info && accountingData.payroll_info.month) || getTodayISO().slice(0, 7);
 
     const confirmed = await fmhConfirm({
       title: "Maosh To'lovini Tasdiqlash",
-      message: `<strong>${doc.name}</strong> uchun jami <strong>${formatUZS(doc.total_payable)}</strong> maosh va gonorar to'lansinmi?`,
+      message: `<strong>${esc(doc.name)}</strong> uchun ${esc(month)} oyi maoshi: qo'lga <strong>${formatUZS(amount)}</strong> (hisoblangan ${formatUZS(doc.gross)}, ushlab qolinadi ${formatUZS(doc.deductions)}). To'lansinmi?`,
       confirmText: "To'lash",
       cancelText: "Bekor Qilish",
       type: 'primary'
@@ -2167,33 +2275,33 @@
     if (!confirmed) {
       return;
     }
+    // A second click while the first request is on its way.
+    if (payrollPaid(doc.id)) return;
 
-    // Record expense transaction
     const newTxn = {
-      id: `TXN-2026-${Date.now().toString().slice(-6)}`,
       type: "expense",
       category: "salary",
-      title: `Shifokor oyligi va gonorari (${doc.name})`,
-      amount: doc.total_payable,
+      // The journal keeps only this text, so the breakdown goes in it.
+      title: `Oylik maosh ${month} — ${doc.name} (hisoblangan ${formatUZS(doc.gross)}, ushlab qolindi ${formatUZS(doc.deductions)})`,
+      amount: amount,
       related_staff_id: doc.id,
       payment_method: "bank",
       patient_name: null,
       bill_id: null,
       date: getTodayISO(),
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-      cashier: "Xusnitdinov Azamat",
-      notes: `${doc.name} maoshi (${formatUZS(doc.base_salary)}) + ${doc.patients_count_month} ta bemor uchun gonorari (${formatUZS(doc.commission_earned)})`
+      cashier: '',
+      notes: `${doc.name}: asosiy ${formatUZS(doc.base_salary)} + navbatchilik ${formatUZS(doc.duty_pay)} = ${formatUZS(doc.gross)}; ushlab qolindi ${formatUZS(doc.deductions)}; qo'lga ${formatUZS(amount)}`
     };
 
     const savedId = await postTransaction(newTxn);
     if (!savedId) return;
     newTxn.id = savedId;
-    doc.status = 'paid';
 
     accountingData.transactions.unshift(newTxn);
     saveData();
     renderAll();
-    showToast(`✅ ${doc.name} ga ${formatUZS(doc.total_payable)} oylik maosh to'landi va xarajatlarga yozildi!`);
+    showToast(`✅ ${esc(doc.name)} ga ${formatUZS(amount)} oylik maosh to'landi va xarajatlarga yozildi!`);
   }
 
   // ==========================================================================
@@ -2546,25 +2654,27 @@
       return;
     }
 
-    const rows = accountingData.doctors_payroll.map((d, index) => ({
+    // Same figures as the server payroll the cards show; no commission.
+    const rows = (accountingData.payroll_lines || []).map((d, index) => ({
       "№": index + 1,
-      "Shifokor ID": d.id,
-      "Shifokor F.I.Sh.": d.name,
-      "Lavozimi": d.role,
-      "Bemorlar Soni (Oy)": d.patients_count_month,
-      "Klinikaga Keltirgan Tushum (so'm)": d.total_revenue_generated,
+      "Xodim ID": d.id,
+      "Xodim F.I.Sh.": d.name,
+      "Lavozimi": ROLE_LABELS[d.role] || d.role,
       "Asosiy Oylik Maosh (so'm)": d.base_salary,
-      "Gonorar Ulushi (%)": `${d.commission_rate}%`,
-      "Hisoblangan Gonorar (so'm)": d.commission_earned,
-      "Jami To'lanadigan Maosh (so'm)": d.total_payable,
-      "To'lov Holati": d.status === 'paid' ? "To'langan" : "Hisoblangan"
+      "Navbatchilik smenalari": d.duty_shifts,
+      "Navbatchilik puli (so'm)": d.duty_pay,
+      "Hisoblangan (brutto, so'm)": d.gross,
+      "Daromad solig'i (so'm)": d.income_tax,
+      "Pensiya (so'm)": d.pension,
+      "Qo'lga beriladi (sof, so'm)": d.net,
+      "To'lov Holati": payrollPaid(d.id) ? "To'langan" : "Hisoblangan"
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Shifokorlar Oyligi");
+    XLSX.utils.book_append_sheet(wb, ws, "Xodimlar Oyligi");
 
-    const fileName = `FMH_Shifokorlar_Oylik_Hisoboti_${getFormattedDate()}.xlsx`;
+    const fileName = `FMH_Xodimlar_Oylik_Hisoboti_${getFormattedDate()}.xlsx`;
     XLSX.writeFile(wb, fileName);
     showToast(`📗 <strong>${fileName}</strong> muvaffaqiyatli yuklab olindi!`);
   }
@@ -2638,18 +2748,18 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txnRows), "Kassa Kirim-Chiqim");
 
     // Sheet 3: Doctors
-    const docRows = accountingData.doctors_payroll.map((d, index) => ({
+    const docRows = (accountingData.payroll_lines || []).map((d, index) => ({
       "№": index + 1,
-      "Shifokor": d.name,
-      "Lavozimi": d.role,
-      "Bemorlar Soni": d.patients_count_month,
-      "Tushum": d.total_revenue_generated,
+      "Xodim": d.name,
+      "Lavozimi": ROLE_LABELS[d.role] || d.role,
       "Asosiy Maosh": d.base_salary,
-      "Gonorar": d.commission_earned,
-      "Jami To'lov": d.total_payable,
-      "Holat": d.status
+      "Navbatchilik": d.duty_pay,
+      "Brutto": d.gross,
+      "Ushlab qolindi": d.deductions,
+      "Qo'lga (sof)": d.net,
+      "Holat": payrollPaid(d.id) ? "To'langan" : "Hisoblangan"
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(docRows), "Shifokorlar Oyligi");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(docRows), "Xodimlar Oyligi");
 
     // Sheet 4: Pharmacy
     const pharmRows = accountingData.pharmacy_stock.map((p, index) => ({
@@ -2775,6 +2885,9 @@
 
     if (tabId === 'analytics') {
       setTimeout(renderAnalytics, 50);
+    } else if (tabId === 'doctors') {
+      // HR may have saved roster days or salaries since the page opened.
+      loadPayroll().then(renderDoctorsPayroll);
     } else if (tabId === 'pharmacy') {
       renderMedicationPurchases();
       renderPharmacyInventory();
@@ -3257,6 +3370,7 @@
     loadMedicineUsage,
     exportMedPurchasesToExcel,
     payoutDoctorSalary,
+    openPatientInvoices,
     exportToCSV: exportAllToExcel,
     exportAllToExcel,
     exportPatientsToExcel,
