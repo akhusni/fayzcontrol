@@ -3,6 +3,7 @@ Fayz Medical House — Backend PDF Generator Engine
 Queries Enterprise MySQL 8.0 directly and compiles official PDF documents using ReportLab.
 """
 
+import datetime
 import io
 import os
 from reportlab.lib.pagesizes import A4
@@ -138,22 +139,26 @@ def generate_patient_pdf(*args, **kwargs):
     story.append(Spacer(1, 10))
 
     # --- PATIENT IDENTITY GRID ---
-    age_str = f"{2026 - pt['birth_year']} yosh" if pt.get('birth_year') else "N/A"
-    gender_str = "Ayol" if pt.get('gender') == 'female' else "Erkak"
+    age_str = f"{datetime.date.today().year - int(pt['birth_year'])} yosh" if pt.get('birth_year') else "—"
+    # Nothing clinical is invented: blanks print as NOT_RECORDED. This file
+    # used to fill them with a diagnosis (F10.2), complaints, vitals, a
+    # "successful" discharge, home medicines and a doctor's name.
+    NOT_RECORDED = "Qayd etilmagan"
+    gender_str = {'female': "Ayol", 'male': "Erkak"}.get(pt.get('gender'), NOT_RECORDED)
     room_str = f"{adm.get('room_number', 'N/A')}-xona ({adm.get('bed_code', '')})" if adm else "Ambulator"
-    primary_diag = anam.get('diagnosis_primary') or "Surunkali alkogolizm 2-bosqich. Abstinensiya sindromi."
-    icd10 = anam.get('icd10_code') or "F10.2"
-    allergies = pt.get('medical_allergies') or "Qayd etilmagan (Yo'q)"
+    primary_diag = anam.get('diagnosis_primary') or NOT_RECORDED
+    icd10 = anam.get('icd10_code') or NOT_RECORDED
+    allergies = pt.get('medical_allergies') or NOT_RECORDED
     # Computed outside the f-string below: an escaped quote inside an f-string
     # expression is a syntax error before Python 3.12, which made this whole
     # module fail to import and silently disabled every PDF export.
-    allergy_color = '#f43f5e' if allergies.lower() != "yo'q" else '#10b981'
+    allergy_color = '#10b981' if allergies.lower() == "yo'q" else ('#64748b' if allergies == NOT_RECORDED else '#f43f5e')
 
     pt_grid_data = [
         [Paragraph(f"<b>Bemor F.I.SH.:</b> {pt.get('full_name', '')}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {pt.get('patient_code', '')}", body_style)],
         [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {room_str}", body_style)],
         [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {primary_diag}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {icd10}", body_style)],
-        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{allergies}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {adm.get('doctor_name', 'Dr. Rustam Ziyayev')}", body_style)]
+        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{allergies}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {(adm or {}).get('doctor_name') or NOT_RECORDED}", body_style)]
     ]
 
     pt_grid_table = Table(pt_grid_data, colWidths=[260, 260])
@@ -172,10 +177,10 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(Paragraph("<b>BEMOR SHIKOYATLARI & ANAMNEZI</b>", section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
         
-        complaints_text = anam.get('complaints') or "Patsiyent intoksikatsiya, uyqusizlik, tremor va bezovtalikdan shikoyat qiladi."
-        morbi_text = anam.get('anamnesis_morbi') or "Surunkali alkogolli intoksikatsiya holati. Zapoy staji 5 kun."
-        somatic_text = anam.get('somatic_status') or "Teri qoplamalari rangpar, tremori bor, arterial bosim 120/80 mm Hg, puls 74 ur/min."
-        psych_text = anam.get('psychiatric_status') or "Ongi saqlangan, zamon va makonda orientatsiyasi bor. Affektiv fon bezovta."
+        complaints_text = anam.get('complaints') or NOT_RECORDED
+        morbi_text = anam.get('anamnesis_morbi') or NOT_RECORDED
+        somatic_text = anam.get('somatic_status') or NOT_RECORDED
+        psych_text = anam.get('psychiatric_status') or NOT_RECORDED
 
         anam_data = [
             [Paragraph("<b>Shikoyat va Anamnez:</b>", bold_style), Paragraph(complaints_text, body_style)],
@@ -210,7 +215,7 @@ def generate_patient_pdf(*args, **kwargs):
                     Paragraph(f"<b>{r.get('dosage', '')}</b>", body_style),
                     Paragraph(r.get('route', ''), body_style),
                     Paragraph(f"{r.get('frequency', '')}<br/><font color='#64748b' size='7'>{r.get('timing', '')}</font>", body_style),
-                    Paragraph(f"{r.get('duration_days', 5)} kun", body_style),
+                    Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
                     Paragraph(f"<font color='{status_color}'><b>{status_lbl}</b></font>", body_style)
                 ])
         else:
@@ -235,12 +240,16 @@ def generate_patient_pdf(*args, **kwargs):
         dn_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in dn_headers]]
 
         for dn in daily_notes:
-            vitals = f"BP: {dn.get('vital_bp', '120/80')}<br/>P: {dn.get('vital_pulse', 72)}<br/>T: {dn.get('vital_temp', 36.6)}°C"
+            _sys, _dia = dn.get('vital_bp_systolic'), dn.get('vital_bp_diastolic')
+            _bp = f"{_sys}/{_dia}" if _sys is not None and _dia is not None else "—"
+            _pulse = dn.get('vital_pulse') if dn.get('vital_pulse') is not None else "—"
+            _temp = f"{dn.get('vital_temp')}°C" if dn.get('vital_temp') is not None else "—"
+            vitals = f"BP: {_bp}<br/>P: {_pulse}<br/>T: {_temp}"
             dn_rows.append([
                 Paragraph(f"<b>{dn.get('note_date', '')}</b>", body_style),
                 Paragraph(vitals, body_style),
-                Paragraph(dn.get('dynamics_notes', ''), body_style),
-                Paragraph(dn.get('treatment_adjustments', 'O\'zgarishsiz'), body_style)
+                Paragraph(dn.get('dynamics_notes') or '—', body_style),
+                Paragraph(dn.get('treatment_adjustments') or '—', body_style)
             ])
 
         dn_table = Table(dn_rows, colWidths=[65, 85, 240, 130])
@@ -258,9 +267,9 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(Paragraph("<b>CHIQARISH EPIKRIZI VA TAVSIYALAR</b>", section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
 
-        summary_text = epicrisis.get('treatment_summary') or "Bemor klinikada detoksikatsiya va statsionar reabilitatsiya kursini muvaffaqiyatli o'tdi. Holati barqarorlashgan holda chiqarildi."
-        home_rx_text = epicrisis.get('home_prescriptions') or "1. Meksidol 125mg tabletka — kuniga 2 mahal, 1 oy.\n2. Neyromultivit — kuniga 1 tabletka, 20 kun."
-        psycho_text = epicrisis.get('psycho_recommendations') or "Psixoterapevt qabuliga haftada 1 marta qatnashish, 12 qadam dasturi mashg'ulotlari."
+        summary_text = epicrisis.get('treatment_summary') or NOT_RECORDED
+        home_rx_text = epicrisis.get('home_prescriptions') or NOT_RECORDED
+        psycho_text = epicrisis.get('psycho_recommendations') or NOT_RECORDED
 
         epi_data = [
             [Paragraph("<b>Klinik Xulosa:</b>", bold_style), Paragraph(summary_text, body_style)],
@@ -295,7 +304,7 @@ def generate_patient_pdf(*args, **kwargs):
     sig_col3 = [
         Paragraph("<b>Hujjat Verifikatsiyasi:</b>", body_style),
         Paragraph(f"<font size='7' color='#64748b'>Sertifikat kodi: EMR-{pt.get('patient_code', '')}-SQL</font>", body_style),
-        Paragraph(f"<font size='7' color='#64748b'>Generatsiya vaqti: 2026-08-18</font>", body_style),
+        Paragraph(f"<font size='7' color='#64748b'>Generatsiya vaqti: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</font>", body_style),
         Spacer(1, 6),
         Paragraph("<font size='6.5' color='#94a3b8'>Ushbu PDF fayli MySQL 8.0 ma'lumotlar bazasidan avtomatik shakllantirilgan.</font>", body_style)
     ]

@@ -740,6 +740,53 @@ def ensure_ward_round_schema(conn):
         print(f"[!] Could not add the ward-round unique key: {e}")
 
 
+APPOINTMENT_SERVICE_TYPES = ('outpatient', 'inpatient_consult', 'psychotherapy',
+                             'home_visit', 'diagnostics', 'consultation')
+_appointment_types_checked = False
+
+
+def ensure_appointment_service_types(conn):
+    """
+    Let appointments.service_type accept 'consultation'.
+
+    The schema file allows it, but databases created from an older schema
+    still carry a CHECK without it, so every consultation booked at the desk
+    failed with a 500 (MySQL 3819). Idempotent: the CHECK is only rewritten
+    when a value is missing.
+    """
+    global _appointment_types_checked
+    if _appointment_types_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+            FROM information_schema.CHECK_CONSTRAINTS cc
+            JOIN information_schema.TABLE_CONSTRAINTS tc
+              ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+             AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+            WHERE tc.TABLE_NAME = 'appointments' AND tc.TABLE_SCHEMA = DATABASE()
+        """)
+        target = None
+        for r in cur.fetchall() or []:
+            clause = str(r['CHECK_CLAUSE'])
+            if 'service_type' in clause:
+                target = (r['CONSTRAINT_NAME'], clause)
+                break
+        if target is None or all(t in target[1] for t in APPOINTMENT_SERVICE_TYPES):
+            _appointment_types_checked = True
+            return
+        allowed = ', '.join("'%s'" % t for t in APPOINTMENT_SERVICE_TYPES)
+        cur.execute("ALTER TABLE appointments DROP CHECK %s" % target[0])
+        cur.execute("ALTER TABLE appointments ADD CONSTRAINT %s CHECK (service_type IN (%s))"
+                    % (target[0], allowed))
+        conn.commit()
+        _appointment_types_checked = True
+        print("[✓] appointments.service_type now accepts 'consultation'.")
+    except Exception as e:
+        print(f"[!] Could not widen appointments.service_type: {e}")
+
+
 _medication_purchases_checked = False
 
 

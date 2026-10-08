@@ -146,6 +146,7 @@
         bookings = liveAdmissions.filter(adm => adm.status === 'active').map(adm => ({
           id: adm.id,
           bed_id: adm.bed_id,
+          patient_id: adm.patient_id,
           patient_name: adm.patient_name || 'Bemor',
           patient_phone: adm.patient_phone || '+998 90 000 00 00',
           doctor: adm.doctor_name || 'Shifokor biriktirilmagan',
@@ -1801,8 +1802,11 @@
   // implementation (it used to be defined here, which is why the Doctor page had
   // no confirmation dialog at all). Styles remain in css/unified_header.css.
 
-  function dischargeCurrentPatient() {
-    const bookingId = document.getElementById('booking-id-input').value.trim();
+  // The bed-card button passes its own booking id. Reading the hidden modal
+  // input instead discharged whichever patient was opened in the modal last,
+  // because form.reset() never clears hidden inputs.
+  function dischargeCurrentPatient(targetBookingId) {
+    const bookingId = String(targetBookingId || document.getElementById('booking-id-input').value || '').trim();
     if (!bookingId) return;
 
     const booking = bookings.find(b => String(b.id) === String(bookingId));
@@ -1822,7 +1826,9 @@
       actualDays = 1;
     }
 
-    const dailyPrice = (booking.program && (booking.program.includes("1.1 mln") || booking.is_full_room)) ? 1100000 : (booking.program && booking.program.includes("630 ming") ? 630000 : 720000);
+    // The stay's own stored rate is what billing uses; guessing it from the
+    // programme text showed day-care stays at 720 000 instead of 630 000.
+    const dailyPrice = Number(booking.daily_rate) || ((booking.program && (booking.program.includes("1.1 mln") || booking.is_full_room)) ? 1100000 : (booking.program && booking.program.includes("630 ming") ? 630000 : 720000));
     const calculatedTotal = actualDays * dailyPrice;
 
     window.FMH_ConfirmDialog({
@@ -1842,12 +1848,10 @@
       cancelText: "Ortga",
       type: "info",
       onConfirm: async () => {
-        booking.status = 'completed';
-        booking.end_date = today;
-        booking.total_days = actualDays;
-
+        // Only mark the stay discharged once the server agrees; before, a
+        // refused discharge still freed the bed on screen and showed success.
         try {
-          await fetch('/api/admissions/' + encodeURIComponent(booking.id) + '/discharge', {
+          const res = await fetch('/api/admissions/' + encodeURIComponent(booking.id) + '/discharge', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1856,10 +1860,19 @@
               discharge_summary: `Bemor ${actualDays} kunlik statsionar muolajadan so'ng chiqarildi.`
             })
           });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || "Bemorni chiqarib bo'lmadi. Qayta urinib ko'ring.", 'danger');
+            return;
+          }
         } catch (e) {
-          console.warn('Discharge API sync warning:', e);
+          showToast("Server bilan aloqa yo'q. Bemor chiqarilmadi.", 'danger');
+          return;
         }
 
+        booking.status = 'completed';
+        booking.end_date = today;
+        booking.total_days = actualDays;
         saveBookings();
         refreshBedStatuses();
         closeBookingModal();
@@ -1873,30 +1886,36 @@
     if (!bookingId) return;
     const booking = bookings.find(b => String(b.id) === String(bookingId));
     const pName = booking ? booking.patient_name : "ushbu bemor";
-    const patientId = booking ? (booking.patient_id || booking.patient_code || booking.patient_name) : bookingId;
 
+    // Only the stay (admission + its invoice) is removed here. This page used
+    // to also DELETE /api/patients/<name>, and the server matches full_name,
+    // so every patient sharing that name lost all their records. Removing a
+    // patient belongs to the CRM, which deletes by id.
     window.FMH_ConfirmDialog({
-      title: "Bronni & Bemorni O'chirish",
-      message: `Haqiqatan ham <strong>${pName}</strong> uchun qilingan qabul va barcha klinik ma'lumotlarni butunlay o'chirmoqchimisiz?`,
+      title: "Qabulni O'chirish",
+      message: `Haqiqatan ham <strong>${pName}</strong> uchun qilingan qabulni (karavot bandligi va hisob-fakturasi) o'chirmoqchimisiz? Bemor kartasi CRMda qoladi.`,
       confirmText: "O'chirish (Enter ↵)",
       cancelText: "Bekor Qilish",
       type: "danger",
       onConfirm: async () => {
         try {
-          await fetch('/api/admissions/' + encodeURIComponent(bookingId), { method: 'DELETE' });
-        } catch (e) {}
-        try {
-          if (patientId) {
-            await fetch('/api/patients/' + encodeURIComponent(patientId), { method: 'DELETE' });
+          const res = await fetch('/api/admissions/' + encodeURIComponent(bookingId), { method: 'DELETE' });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || "Qabulni o'chirib bo'lmadi.", 'danger');
+            return;
           }
-        } catch (e) {}
+        } catch (e) {
+          showToast("Server bilan aloqa yo'q. Qabul o'chirilmadi.", 'danger');
+          return;
+        }
 
         bookings = bookings.filter(b => String(b.id) !== String(bookingId));
         saveBookings();
         refreshBedStatuses();
         closeBookingModal();
         renderDashboard();
-        showToast(`🗑️ <strong>${pName}</strong> bazadan butunlay o'chirildi!`, 'danger');
+        showToast(`🗑️ <strong>${pName}</strong> qabuli o'chirildi.`, 'danger');
       }
     });
   }

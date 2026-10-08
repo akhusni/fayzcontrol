@@ -244,9 +244,24 @@ window.FMH_Reception = (function () {
     } catch (e) { /* ignore silent failure */ }
   }
 
+  // The API sends appointment_date / appointment_time ("9:30:00"); this page
+  // reads date / time ("09:30"). Without this, no booked slot ever showed as
+  // busy and today's list only held bookings made in this browser session,
+  // so the same slot could be booked twice.
+  function normalizeAppointment(apt) {
+    if (!apt) return apt;
+    if (!apt.date && apt.appointment_date) apt.date = String(apt.appointment_date).slice(0, 10);
+    if (!apt.time && apt.appointment_time) {
+      const m = String(apt.appointment_time).match(/^(\d{1,2}):(\d{2})/);
+      if (m) apt.time = `${m[1].padStart(2, '0')}:${m[2]}`;
+    }
+    return apt;
+  }
+
   function indexBookedSlots() {
     State.apt.bookedSlots = {};
     if (State.data && State.data.appointments) {
+      State.data.appointments.forEach(normalizeAppointment);
       State.data.appointments.forEach(apt => {
         if (apt.status !== 'cancelled') {
           const key = apt.doctor_id + '_' + apt.date;
@@ -317,6 +332,7 @@ window.FMH_Reception = (function () {
         const recData = await recRes.json();
         if (recData) {
           State.data = mergeReceptionData(recData);
+          (State.data.appointments || []).forEach(normalizeAppointment);
         }
       }
       if (staffRes.ok) {
@@ -1650,6 +1666,10 @@ window.FMH_Reception = (function () {
           discount_percent: discount,
           notes: notes,
           referral_source: referral,
+          // The advance travels with the admission and is paid onto the
+          // invoice it creates (see POST /api/admissions).
+          advance_amount: advance > 0 ? advance : 0,
+          advance_method: payMethod,
         };
 
         const res = await fetch('/api/admissions', {
@@ -1666,23 +1686,9 @@ window.FMH_Reception = (function () {
         const json = await res.json();
         showToast(`✓ Bemor muvaffaqiyatli qabul qilindi! (${isAnon ? 'Anonim' : name}, Karavot: ${bedId})`, 'success');
 
-        // Record advance payment if provided
-        if (advance > 0 && json.invoice_id) {
-          try {
-            await fetch('/api/payments', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                invoice_id: json.invoice_id,
-                amount: advance,
-                payment_method: payMethod,
-                account_destination: payMethod === 'cash' ? 'kassa' : 'bank',
-                notes: 'Birlamchi qabul avans to`lovi'
-              }),
-            });
-          } catch (ePay) {
-            console.warn('Payment note:', ePay);
-          }
+        // The advance was recorded by the admission request itself.
+        if (advance > 0 && !(json.advance_payment_id)) {
+          showToast("Diqqat: avans to'lovi saqlanmadi. Buxgalteriyada kiriting.", 'warning');
         }
 
         // Reset form
@@ -1928,6 +1934,8 @@ window.FMH_Reception = (function () {
       daily_price: parseFloat(data.rate) || 720000.0,
       notes: data.notes || '',
       referral_source: data.referral || 'reception',
+      advance_amount: data.advance > 0 ? data.advance : 0,
+      advance_method: data.payMethod || 'cash',
     };
 
     try {
@@ -1946,23 +1954,8 @@ window.FMH_Reception = (function () {
       closeModal('modal-admission-confirm');
       showToast(`✓ Bemor muvaffaqiyatli qabul qilindi! (${data.isAnon ? 'Anonim' : data.name})`, 'success');
 
-      // Record advance payment if provided
-      if (data.advance > 0 && json.invoice_id) {
-        try {
-          await fetch('/api/payments', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              invoice_id: json.invoice_id,
-              amount: data.advance,
-              payment_method: data.payMethod || 'cash',
-              account_destination: data.payMethod === 'cash' ? 'kassa' : 'bank',
-              notes: 'Birlamchi qabul avans to`lovi'
-            }),
-          });
-        } catch (ePay) {
-          console.warn('Payment recording note:', ePay);
-        }
+      if (data.advance > 0 && !(json.advance_payment_id)) {
+        showToast("Diqqat: avans to'lovi saqlanmadi. Buxgalteriyada kiriting.", 'warning');
       }
 
       // The admission is in the database; it used to be copied into this
@@ -2463,10 +2456,19 @@ window.FMH_Reception = (function () {
       return;
     }
 
+    // Only remove the patient from screen once the server has. The answer
+    // used to be ignored, so a refused delete (e.g. no permission) still
+    // said "fully deleted" while the record stayed in the database.
     try {
-      await fetch('/api/patients/' + encodeURIComponent(patientId), { method: 'DELETE' });
+      const res = await fetch('/api/patients/' + encodeURIComponent(patientId), { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Bemorni o'chirib bo'lmadi.", 'danger');
+        return;
+      }
     } catch (e) {
-      console.warn('DELETE patient error:', e);
+      showToast("Server bilan aloqa yo'q. Bemor o'chirilmadi.", 'danger');
+      return;
     }
 
     State.patients = State.patients.filter(pt => pt.id !== patientId && pt.patient_code !== patientId);

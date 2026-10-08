@@ -9,6 +9,7 @@ import http.server
 import socketserver
 import json
 import os
+import re
 import urllib.parse
 import sys
 import datetime
@@ -325,6 +326,7 @@ from db import (
     ensure_ward_round_schema,
     ensure_appointment_requests,
     ensure_medication_purchases,
+    ensure_appointment_service_types,
     load_config
 )
 
@@ -614,6 +616,39 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             return given
         sess = self.current_session()
         return (sess['user'].get('staff_id') if sess else None) or None
+
+    def _record_payment(self, conn, cur, inv_id, amount, method, acc,
+                        pay_date, notes, staff_id, transaction_ref=None, pay_id=None):
+        """
+        Insert one payment row, commit, and notify Telegram.
+
+        Shared by POST /api/payments and by the advance taken at admission,
+        so both write the same row (the payments triggers then update the
+        invoice and the cash journal) and both reach the accounting topic.
+        """
+        pay_id = pay_id or new_record_id(cur, 'payments', 'PAY-2026')
+        ref = transaction_ref or f"CHK-{pay_id[-4:]}"
+        cur.execute("""
+            INSERT INTO payments (id, invoice_id, amount, payment_method, account_destination, transaction_ref, payment_date, notes, received_by_staff_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (pay_id, inv_id, amount, method, acc, ref, pay_date, notes, staff_id))
+        conn.commit()
+        if telegram_service:
+            try:
+                telegram_service.notify_payment_entered_async({
+                    'id': pay_id,
+                    'invoice_id': inv_id,
+                    'amount': amount,
+                    'payment_method': method,
+                    'account_destination': acc,
+                    'transaction_ref': ref,
+                    'payment_date': pay_date,
+                    'notes': notes,
+                    'staff_id': staff_id
+                })
+            except Exception as _e_notify:
+                print(f"[Telegram Notify Error] {_e_notify}")
+        return pay_id
 
     def _send_server_error(self):
         """
@@ -1950,7 +1985,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         # string, so every export fell through to the 404 below.
                         # Both shapes are accepted now: raw bytes, or a path to a
                         # file already written to disk.
-                        pdf_result = generate_patient_pdf(pid)
+                        # The page's document type was ignored, so every
+                        # choice downloaded the prescription sheet.
+                        doc_type = (query.get('doc_type', ['prescriptions'])[0] or 'prescriptions')
+                        if doc_type not in ('prescriptions', 'anamnesis', 'epicrisis', 'full_dossier'):
+                            doc_type = 'prescriptions'
+                        # Keyword argument: with two positional arguments the
+                        # generator reads the second one as the patient id.
+                        pdf_result = generate_patient_pdf(pid, doc_type=doc_type)
                         pdf_data = None
                         if isinstance(pdf_result, (bytes, bytearray)):
                             pdf_data = bytes(pdf_result)
@@ -2129,6 +2171,26 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "Chegirma 0 va 100 foiz orasida bo'lishi kerak.", 'discount_percent')
                     return
 
+                # Advance taken at the desk. It used to be a second request
+                # to POST /api/payments, which needs accounting write; the
+                # receptionist has only accounting read, so the server
+                # refused it and the page never looked. The advance is now
+                # part of the admission itself: it can only be paid onto the
+                # invoice this request creates, so the desk gains no general
+                # right to take or refund money.
+                advance_amount = 0.0
+                if body.get('advance_amount') not in (None, '', 0, '0'):
+                    advance_amount, _err = validate_amount(
+                        body.get('advance_amount'), field='Avans')
+                    if _err:
+                        self._send_validation_error(_err, 'advance_amount')
+                        return
+                    if advance_amount <= 0:
+                        self._send_validation_error(
+                            "Avans summasi musbat bo'lishi kerak.", 'advance_amount')
+                        return
+                advance_method = normalize_payment_method(body.get('advance_method') or 'cash')
+
                 if not patient_id:
                     # No patient given: register one from the details supplied.
                     # Date of birth and gender come from the desk now; they were
@@ -2185,8 +2247,19 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             (discount_amount, res_data.get('invoice_id')))
                         conn.commit()
 
+                advance_payment_id = None
+                if advance_amount > 0 and res_data.get('invoice_id'):
+                    advance_payment_id = self._record_payment(
+                        conn, cur, res_data.get('invoice_id'), advance_amount,
+                        advance_method, account_source_for(advance_method),
+                        datetime.date.today().isoformat(),
+                        'Birlamchi qabul avans to`lovi',
+                        self._actor_staff_id(body, 'received_by_staff_id'))
+
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
+                    'advance_payment_id': advance_payment_id,
+                    'advance_amount': advance_amount if advance_payment_id else 0,
                     'message': 'Admission created successfully',
                     'id': res_data.get('admission_id'),
                     'admission_id': res_data.get('admission_id'),
@@ -2307,37 +2380,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': 'To`lov summasi 0 bo`lishi mumkin emas'}, ensure_ascii=False).encode('utf-8'))
                     return
 
-                cur.execute("""
-                    INSERT INTO payments (id, invoice_id, amount, payment_method, account_destination, transaction_ref, payment_date, notes, received_by_staff_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    pay_id,
-                    inv_id,
-                    amount,
-                    method,
-                    acc,
-                    body.get('transaction_ref', f"CHK-{pay_id[-4:]}"),
-                    pay_date,
+                self._record_payment(
+                    conn, cur, inv_id, amount, method, acc, pay_date,
                     body.get('notes', ''),
-                    self._actor_staff_id(body, 'received_by_staff_id')
-                ))
-
-                conn.commit()
-                if telegram_service:
-                    try:
-                        telegram_service.notify_payment_entered_async({
-                            'id': pay_id,
-                            'invoice_id': inv_id,
-                            'amount': amount,
-                            'payment_method': method,
-                            'account_destination': acc,
-                            'transaction_ref': body.get('transaction_ref', f"CHK-{pay_id[-4:]}"),
-                            'payment_date': pay_date,
-                            'notes': body.get('notes', ''),
-                            'staff_id': self._actor_staff_id(body, 'received_by_staff_id')
-                        })
-                    except Exception as _e_notify:
-                        print(f"[Telegram Notify Error] {_e_notify}")
+                    self._actor_staff_id(body, 'received_by_staff_id'),
+                    transaction_ref=body.get('transaction_ref'), pay_id=pay_id)
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
                     'message': 'Payment recorded successfully',
@@ -2644,7 +2691,19 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 saved = read_json_file(ds_file, default=None)
                 if not isinstance(saved, dict):
                     saved = {}
-                saved['shifts'] = body['shifts']
+                # Merge by date. Replacing the list let a one-month payload
+                # (the swap's fallback for a month not yet stored) erase every
+                # other month of the roster.
+                merged = {}
+                for sh in (saved.get('shifts') or []):
+                    if isinstance(sh, dict) and sh.get('date'):
+                        merged[str(sh['date'])] = sh
+                for sh in body['shifts']:
+                    if not sh.get('date') or not re.match(r'^\d{4}-\d{2}-\d{2}$', str(sh.get('date'))):
+                        self._send_validation_error("Smena sanasi noto'g'ri", 'shifts')
+                        return
+                    merged[str(sh['date'])] = sh
+                saved['shifts'] = [merged[d] for d in sorted(merged)]
                 if isinstance(body.get('sanitarkas'), list):
                     saved['sanitarkas'] = body['sanitarkas']
                 saved['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2942,6 +3001,27 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     return
                 if not doc_id:
                     self._send_validation_error("Shifokor tanlanmagan.", 'doctor_id')
+                    return
+
+                # One doctor, one patient per slot. The desk's slot grid never
+                # showed booked times (it read fields the API does not send),
+                # and nothing here checked either, so two receptionists could
+                # book the same doctor at the same minute. Only a chosen time
+                # claims a slot; the 10:00 filled in above for a request that
+                # names none is a placeholder, not a booking of 10:00.
+                _slot_taken = None
+                if body.get('time'):
+                    cur.execute("""
+                        SELECT id FROM appointments
+                        WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ?
+                          AND status != 'cancelled'
+                        LIMIT 1
+                    """, (doc_id, date_str, time_str))
+                    _slot_taken = cur.fetchone()
+                if _slot_taken:
+                    self._send_validation_error(
+                        f"Bu vaqt band: shifokorda {date_str} soat {time_str} ga allaqachon yozilgan bemor bor.",
+                        'time')
                     return
 
                 _bdate, _byear, _gender, _err = parse_birth_and_gender(body)
@@ -4372,7 +4452,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path.startswith('/api/patients/') or path.startswith('/api/crm/patients/'):
                 pid = urllib.parse.unquote(path.replace('/api/patients/', '').replace('/api/crm/patients/', ''))
                 cur.execute("PRAGMA foreign_keys = OFF;")
-                cur.execute("SELECT id, full_name, patient_code FROM patients WHERE id = ? OR patient_code = ? OR full_name = ?", (pid, pid, pid))
+                # Never match on full_name: names are not unique, and the bed
+                # board once sent a name here, wiping every namesake's records.
+                cur.execute("SELECT id, full_name, patient_code FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
                 p_rows = cur.fetchall()
                 target_ids = [r[0] for r in p_rows] if p_rows else [pid]
 
@@ -4594,6 +4676,8 @@ def run_server():
             ensure_appointment_requests(_c)
             # Table for clinic medication purchases and restock expenses.
             ensure_medication_purchases(_c)
+            # Older databases refuse 'consultation' appointments.
+            ensure_appointment_service_types(_c)
         finally:
             _c.close()
     except Exception as _e:

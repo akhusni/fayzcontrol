@@ -665,26 +665,43 @@
     // Keep a copy so a refused save can be undone on screen too.
     const before = JSON.parse(JSON.stringify(State.rawShifts || []));
 
-    // Perform swap in local State.rawShifts
-    const s1 = State.rawShifts.find(s => s.date === fromDate);
-    const s2 = State.rawShifts.find(s => s.date === toDate);
-
-    if (s1 && s2) {
-      const tempSan = s1.sanitar_primary;
-      s1.sanitar_primary = s2.sanitar_primary;
-      s2.sanitar_primary = tempSan;
-    } else {
-      // Re-generate and assign
-      const monthShifts = ensureMonthShifts(State.currentYear, State.currentMonth);
-      const sh1 = monthShifts.find(s => s.date === fromDate);
-      const sh2 = monthShifts.find(s => s.date === toDate);
-      if (sh1 && sh2) {
-        const temp = sh1.sanitar_primary;
-        sh1.sanitar_primary = sh2.sanitar_primary;
-        sh2.sanitar_primary = temp;
+    // Both days are taken from the stored roster, or generated and added to
+    // it. The old fallback replaced State.rawShifts with the current month
+    // only and posted that, so the server file lost every other month.
+    function storedShift(dateStr) {
+      let sh = State.rawShifts.find(s => s.date === dateStr);
+      if (!sh) {
+        const parts = dateStr.split('-').map(Number);
+        const gen = ensureMonthShifts(parts[0], parts[1]).find(s => s.date === dateStr);
+        if (gen) {
+          sh = JSON.parse(JSON.stringify(gen));
+          State.rawShifts.push(sh);
+        }
       }
-      State.rawShifts = monthShifts;
+      return sh;
     }
+    const s1 = storedShift(fromDate);
+    const s2 = storedShift(toDate);
+    if (!s1 || !s2) {
+      State.rawShifts = before;
+      notify("Tanlangan sanalar jadvalda topilmadi", "warning");
+      return;
+    }
+
+    // "Kim bilan" was ignored: the swap is only valid if the chosen person
+    // is actually on duty on the day being taken in exchange.
+    if (targetStaff && s2.sanitar_primary !== targetStaff) {
+      State.rawShifts = before;
+      notify(`${targetStaff} ${toDate} kuni navbatchi emas. Uning navbatchilik kunini tanlang.`, "warning");
+      return;
+    }
+
+    const tempSan = s1.sanitar_primary;
+    const tempSanId = s1.sanitar_primary_id;
+    s1.sanitar_primary = s2.sanitar_primary;
+    s1.sanitar_primary_id = s2.sanitar_primary_id;
+    s2.sanitar_primary = tempSan;
+    s2.sanitar_primary_id = tempSanId;
 
     // Persist to server via POST /api/duty-schedule. The swap used to be
     // reported as done even when the server refused it (e.g. a read-only
@@ -696,7 +713,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sanitarkas: SANITARKAS,
-          shifts: State.rawShifts
+          // Only the two changed days: the server merges by date.
+          shifts: [s1, s2]
         })
       });
       if (!res.ok) {

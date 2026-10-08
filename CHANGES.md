@@ -67,6 +67,37 @@ tekshirildi. Topilgan xatolar:
 | Telegram | 21:00 hisoboti server qayta ishga tushganda ikki marta ketardi | Bir marta |
 | Server | Port band bo'lsa cheksiz qayta urinardi | To'xtaydi va sababini yozadi |
 
+### 2026-10-08: 1-bosqich — jiddiy xatolar tuzatildi
+
+Tizim xaritasi (`FMH_System_Overview_2026-10-08.md`) bo'yicha topilgan eng
+xavfli xatolar. Ko'rinish o'zgarmadi; faqat quyidagi "o'ylab topilgan"
+ma'lumotlar olib tashlandi.
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Statsionar (karavotlar) | Kartadagi "Chiqarish" tugmasi oxirgi ochilgan bemorni chiqarardi | Aynan shu kartadagi bemor chiqariladi |
+| Statsionar | "O'chirish" bir xil ismli barcha bemorlarni va ularning yozuvlarini o'chirardi | Faqat shu qabul o'chiriladi; server endi ism bo'yicha o'chirmaydi |
+| Statsionar | Chiqarish rad etilsa ham "chiqarildi" deb ko'rsatardi | Server xatosi ko'rsatiladi |
+| Shifokor | Kunlik ko'rik yozuvi hech qachon saqlanmasdi | Saqlanadi va to'g'ri ko'rinadi |
+| Shifokor | Dori xavfsizligi / allergiya kartasi ishlamasdi | Ishlaydi |
+| Shifokor | Epikrizdagi tavsiyalar keyingi bemorga o'tib qolardi; uyga dorilar o'chib ketardi | Har bemorning o'z saqlangan epikrizi ko'rsatiladi |
+| Shifokor | "Avtomatik epikriz" hammaga bir xil dorilar (Meksidol va h.k.) yozardi | Faqat bemorning o'z tayinlovlari ko'chiriladi |
+| Shifokor | "Me'yoriy ko'rsatkichlar" tugmasi (120/80, 74, 36.6, 99%) | Olib tashlandi — o'lchanmagan ko'rsatkich yozilmaydi |
+| Shifokor | Ro'yxatda ko'rsatkichi yo'q bemorga 120/80, 72, 99% chiqardi | "—" chiqadi |
+| Shifokor | PDF har doim retsept varag'ini berardi; "Kasallik tarixi"/"Dossye" chop etilsa epikriz chiqardi | Tanlangan hujjat chiqadi |
+| PDF | Bo'sh joylarga F10.2 tashxis, shikoyat, 120/80, "muvaffaqiyatli" xulosa va shifokor ismi yozilardi | "Qayd etilmagan" yoziladi |
+| Qabulxona | Qabuldagi avans to'lovi jimgina yo'qolardi (qabulxona huquqi yetmasdi) | Avans qabul bilan birga saqlanadi; boshqa to'lovlarga ruxsat berilmadi |
+| Qabulxona | Band vaqtlar ko'rinmasdi — bitta vaqtga ikki bemor yozilardi | Band vaqt ko'rinadi, server ham ikkinchi yozuvni rad etadi |
+| Qabulxona | Eski bazada konsultatsiyaga yozish 500 xato berardi | Server ishga tushganda baza avtomatik tuzatiladi |
+| Navbatchilik | Smena almashtirish boshqa oylarni o'chirib yuborishi mumkin edi | Faqat ikki kun yangilanadi; server sanalar bo'yicha birlashtiradi; "Kim bilan" tekshiriladi |
+| Buxgalteriya | Daromad grafigi bemor to'lovlarini ikki marta hisoblardi | Bir marta |
+| CRM | Tug'ilgan yil 1990, jins "Ayol" deb o'zi to'ldirilardi | Bo'sh qoladi |
+| CRM | Epikriz bo'limi har bemorga bir xil soxta tashxis, davolash va imzo ko'rsatardi | Shifokor saqlagan haqiqiy epikriz yoki "hali yozilmagan" |
+| CRM | To'lov bo'lmasa soxta "CHK-2026-01" cheki ko'rinardi; tarixda soxta karavot va shifokor | "Qayd etilmagan" |
+| CRM, Qabulxona, Shifokor | Bemorni o'chirish rad etilsa ham "o'chirildi" deb chiqardi | Haqiqiy xato ko'rsatiladi |
+
+8 ta yangi test qo'shildi, jami 190 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
@@ -282,7 +313,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **182 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **190 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda

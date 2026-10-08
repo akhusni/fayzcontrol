@@ -24,6 +24,7 @@ import sys
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BASE = os.environ.get('FMH_TEST_BASE', 'http://127.0.0.1:3000')
@@ -2953,6 +2954,21 @@ class DutyScheduleSave(ApiTest):
         self.assertEqual(after.get('doctors'), before.get('doctors'))
         self.assertEqual(after.get('shifts'), before.get('shifts'))
 
+    def test_saving_one_day_keeps_the_other_months(self):
+        """A swap for a month not yet stored posted that month only and erased the rest of the roster."""
+        st, before = self.api.get('/api/duty-schedule')
+        self.assertEqual(st, 200)
+        kept = before.get('shifts', [])
+        st, res = self.api.post('/api/duty-schedule', {
+            'shifts': [{'date': '2031-01-15', 'sanitar_primary': 'Suite Probe'}],
+        })
+        self.assertEqual(st, 200, res)
+        st, after = self.api.get('/api/duty-schedule')
+        dates = {s.get('date') for s in after.get('shifts', [])}
+        for sh in kept:
+            self.assertIn(sh.get('date'), dates)
+        self.assertIn('2031-01-15', dates)
+
     def test_refuses_bad_shape_and_markup(self):
         st, res = self.api.post('/api/duty-schedule', {'shifts': 'hammasi'})
         self.assertEqual(st, 400, res)
@@ -3172,6 +3188,129 @@ class OwnerReport(ApiTest):
         today = _dt.date.today().isoformat()
         st, _ = accountant.get(f'/api/owner/summary?start={today}&end={today}')
         self.assertEqual(st, 403)
+
+
+
+class FrontDeskSafety(ApiTest):
+    """Faults found in the 2026-10-08 system map: a refused advance, double-booked slots, name deletes."""
+
+    _account = RoleAuthorization._account
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def test_reception_advance_is_paid_with_the_admission(self):
+        """The advance was a separate /api/payments call a receptionist may not make, and it was lost silently."""
+        desk = self._account('receptionist')
+        start = (_dt.date.today() + _dt.timedelta(days=400)).isoformat()
+        end = (_dt.date.today() + _dt.timedelta(days=405)).isoformat()
+        st, body = desk.post('/api/admissions', {
+            'patient_name': 'Avans Probe Bemor', 'patient_phone': '+998900000123',
+            'bed_id': BED_A, 'program_type': 'statsionar_shared',
+            'start_date': start, 'planned_end_date': end,
+            'attending_doctor_id': DOCTOR, 'daily_price': RATE,
+            'advance_amount': 150000, 'advance_method': 'cash',
+        })
+        self.assertEqual(st, 201, body)
+        self._admissions.append(body['admission_id'])
+        self._patients.append(body['patient_id'])
+        self.assertTrue(body.get('advance_payment_id'), body)
+        inv = self.invoice_for(body['admission_id'])
+        self.assertEqual(float(inv['total_paid']), 150000.0)
+
+    def test_receptionist_still_cannot_take_other_payments(self):
+        """The advance right is narrow: the general payments route stays closed to the desk."""
+        desk = self._account('receptionist')
+        st, _ = desk.post('/api/payments', {'invoice_id': 'INV-NOPE', 'amount': 1})
+        self.assertEqual(st, 403)
+
+    def test_a_negative_advance_is_refused(self):
+        st, body = self.api.post('/api/admissions', {
+            'patient_name': 'Avans Minus Bemor', 'bed_id': BED_A,
+            'start_date': '2029-03-01', 'planned_end_date': '2029-03-05',
+            'attending_doctor_id': DOCTOR, 'daily_price': RATE,
+            'advance_amount': -5000,
+        })
+        self.assertEqual(st, 400, body)
+        self.assertEqual(body.get('field'), 'advance_amount')
+
+    def test_the_same_doctor_slot_cannot_be_booked_twice(self):
+        """The slot grid never showed booked times and the server never checked, so two desks could book one slot."""
+        day = (_dt.date.today() + _dt.timedelta(days=420)).isoformat()
+        first = {'patient_name': 'Slot Probe Bir', 'patient_phone': '+998900000201',
+                 'doctor_id': DOCTOR, 'date': day, 'time': '11:30',
+                 'service_type': 'consultation'}
+        st, body = self.api.post('/api/reception/appointment', first)
+        self.assertIn(st, (200, 201), body)
+        if body.get('patient_id'):
+            self._patients.append(body['patient_id'])
+        second = dict(first, patient_name='Slot Probe Ikki', patient_phone='+998900000202')
+        st, body2 = self.api.post('/api/reception/appointment', second)
+        self.assertEqual(st, 400, body2)
+        self.assertEqual(body2.get('field'), 'time')
+        st, body3 = self.api.post('/api/reception/appointment', dict(second, time='12:00'))
+        self.assertIn(st, (200, 201), body3)
+        if body3.get('patient_id'):
+            self._patients.append(body3['patient_id'])
+
+    def test_deleting_by_name_deletes_nobody(self):
+        """The bed board sent a patient's name; the server matched full_name and wiped every namesake."""
+        pid = self.make_patient('Namesake Probe Bemor')
+        self.api.delete('/api/patients/' + urllib.parse.quote('Namesake Probe Bemor'))
+        st, rows = self.api.get('/api/crm/patients')
+        self.assertEqual(st, 200)
+        self.assertTrue(any(r.get('id') == pid for r in rows),
+                        'a delete by name removed the patient')
+
+
+class PdfHonesty(ApiTest):
+    """The patient PDF ignored the chosen document and filled blanks with a diagnosis, vitals and a doctor."""
+
+    def _pdf(self, pid, doc_type):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, root)
+        try:
+            import reportlab.rl_config as rl_config
+            from pdf_generator import generate_patient_pdf
+        except ImportError as e:
+            self.skipTest(f"reportlab not installed: {e}")
+        old = rl_config.pageCompression
+        rl_config.pageCompression = 0
+        try:
+            return generate_patient_pdf(pid, doc_type=doc_type)
+        finally:
+            rl_config.pageCompression = old
+
+    def test_an_empty_record_prints_not_recorded(self):
+        pid = self.make_patient('PDF Bo\'sh Bemor')
+        pdf = self._pdf(pid, 'full_dossier')
+        self.assertTrue(pdf and pdf.startswith(b'%PDF'))
+        self.assertIn(b'Qayd etilmagan', pdf)
+        for invented in (b'F10.2', b'Rustam', b'120/80', b'Meksidol', b'muvaffaqiyatli'):
+            self.assertNotIn(invented, pdf, f"invented content {invented!r} in the PDF")
+
+    def test_the_route_passes_the_document_type(self):
+        pid = self.make_patient('PDF Turi Bemor')
+        self.admit(pid, BED_A, '2028-03-01', '2028-03-05')
+
+        def fetch(doc_type):
+            req = urllib.request.Request(
+                BASE + '/api/doctor/download-pdf/' + pid + '?doc_type=' + doc_type)
+            req.add_header('Cookie', self.api.cookie)
+            with urllib.request.urlopen(req) as res:
+                return res.read()
+        rx = fetch('prescriptions')
+        dossier = fetch('full_dossier')
+        self.assertTrue(rx.startswith(b'%PDF') and dossier.startswith(b'%PDF'))
+        # The dossier adds the history and discharge sections.
+        self.assertGreater(len(dossier), len(rx) + 200,
+                           'full_dossier came back the same size as prescriptions')
 
 
 if __name__ == '__main__':

@@ -431,12 +431,15 @@
       const bedStr = p.active_admission ? `${p.active_admission.room_number}-xona ${p.active_admission.bed_code}` : (isConsultation ? `<span style="color:#0284c7; font-weight:700;"><i class="fas fa-stethoscope"></i> Konsultatsiya</span>` : 'Ambulator');
       const hasAllergy = p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '';
 
-      const bp = p.latest_vitals ? `${p.latest_vitals.vital_bp_systolic}/${p.latest_vitals.vital_bp_diastolic}` : '120/80';
-      const pulse = p.latest_vitals ? p.latest_vitals.vital_pulse : '72';
-      const spo2 = p.latest_vitals ? `${p.latest_vitals.vital_spo2}%` : '99%';
+      // Nothing clinical is invented: a patient with no recorded vitals used
+      // to show 120/80, 72 bpm, 99% here, which reads as a real measurement.
+      const lv = p.latest_vitals || null;
+      const bp = (lv && lv.vital_bp_systolic != null && lv.vital_bp_diastolic != null) ? `${lv.vital_bp_systolic}/${lv.vital_bp_diastolic}` : '—';
+      const pulse = (lv && lv.vital_pulse != null) ? lv.vital_pulse : '—';
+      const spo2 = (lv && lv.vital_spo2 != null) ? `${lv.vital_spo2}%` : '—';
 
       const notes = state.dailyNotesMap[p.id] || [];
-      const condition = notes.length > 0 ? notes[0].condition : 'satisfactory';
+      const condition = notes.length > 0 ? notes[0].condition : '';
       let statusClass = '';
       if (condition === 'moderate') statusClass = 'status-moderate';
       else if (condition === 'severe' || condition === 'critical') statusClass = 'status-critical';
@@ -503,7 +506,7 @@
           state.prescriptionsMap[patient.id] = bundle.prescriptions;
         }
         if (Array.isArray(bundle.daily_notes)) {
-          state.dailyNotesMap[patient.id] = bundle.daily_notes;
+          state.dailyNotesMap[patient.id] = bundle.daily_notes.map(normalizeNote);
         }
         if (bundle.discharge_epicrisis) {
           if (!state.epicrisisMap) state.epicrisisMap = {};
@@ -1103,6 +1106,15 @@
     } else {
       showToast(`Dori topilmadi: "${nameOrNum}"`, 'warning');
     }
+  }
+
+  // The drug safety card used escapeHtml(), which only exists privately
+  // inside med_search_engine.js. The ReferenceError stopped the card (and
+  // its allergy check) from ever rendering. This page needs its own copy.
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function updateDrugDetailsBanner(med) {
@@ -1755,6 +1767,34 @@
   }
 
   // --- TAB 3: DAILY PROGRESS NOTES (DNEVNIK OBXODA) ---
+
+  // The server stores notes as doctor_daily_notes columns (note_date,
+  // patient_condition, vital_*, dynamics_notes, treatment_adjustments). This
+  // page was written against a different shape, so every note loaded from the
+  // server rendered as "undefined" with empty vitals. Convert once on load;
+  // notes already in page shape pass through unchanged.
+  function normalizeNote(n) {
+    if (!n || n.dynamics_notes === undefined) return n;
+    const sys = n.vital_bp_systolic, dia = n.vital_bp_diastolic;
+    return {
+      id: n.id,
+      date: n.note_date ? String(n.note_date).slice(0, 10) : '',
+      condition: n.patient_condition || '',
+      bp: (sys != null && dia != null) ? `${sys}/${dia}` : null,
+      pulse: n.vital_pulse != null ? n.vital_pulse : null,
+      temp: n.vital_temp != null ? n.vital_temp : null,
+      spo2: n.vital_spo2 != null ? n.vital_spo2 : null,
+      dynamics: n.dynamics_notes || '',
+      treatment: n.treatment_adjustments || '',
+      doctor_name: n.doctor_name || ''
+    };
+  }
+
+  function localDateStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function renderDailyNotesTab() {
     const p = state.selectedPatient;
     if (!p) return;
@@ -1772,8 +1812,8 @@
       return;
     }
 
-    container.innerHTML = notes.map(n => {
-      const condBadge = n.condition === 'satisfactory' ? '<span class="status-pill status-active">Qoniqarli</span>' : (n.condition === 'severe' ? '<span class="status-pill status-cancelled">Og\'ir</span>' : '<span class="status-pill status-completed">O\'rta og\'ir</span>');
+    container.innerHTML = notes.map(normalizeNote).map(n => {
+      const condBadge = n.condition === 'satisfactory' ? '<span class="status-pill status-active">Qoniqarli</span>' : (n.condition === 'critical' ? '<span class="status-pill status-cancelled">Kritik</span>' : (n.condition === 'severe' ? '<span class="status-pill status-cancelled">Og\'ir</span>' : (n.condition === 'moderate' ? '<span class="status-pill status-completed">O\'rta og\'ir</span>' : '')));
       return `
         <div class="diary-entry-card">
           <div class="diary-top-row">
@@ -1809,17 +1849,52 @@
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Local date: toISOString() is UTC, so before 05:00 in Tashkent the note
+    // landed on yesterday.
+    const todayStr = localDateStr();
+    const bpRaw = document.getElementById('note-bp').value.trim();
+    let bpSys = '', bpDia = '';
+    if (bpRaw) {
+      const m = bpRaw.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+      if (!m) {
+        showToast("Qon bosimini 120/80 ko'rinishida yozing", 'warning');
+        return;
+      }
+      bpSys = m[1]; bpDia = m[2];
+    }
+    const pulseRaw = document.getElementById('note-pulse').value.trim();
+    const tempRaw = document.getElementById('note-temp').value.trim();
+    const spo2Raw = document.getElementById('note-spo2').value.trim();
+    const treatment = document.getElementById('note-treatment').value.trim();
+    const condition = document.getElementById('note-condition').value;
+
+    // Field names match POST /api/doctor/notes (the same ones ward.js sends).
+    // The old names (condition, bp, dynamics, treatment_changes) were not
+    // read by the server, so every note was refused with "Dinamika shart".
+    // Only vitals the doctor typed are sent: an absent field leaves the
+    // nurse's or ward round's reading for the day untouched.
+    const payload = {
+      patient_id: p.id,
+      admission_id: (p.active_admission && p.active_admission.admission_id) || null,
+      note_date: todayStr,
+      patient_condition: condition,
+      dynamics_notes: dynamics,
+      treatment_adjustments: treatment
+    };
+    if (bpSys) { payload.vital_bp_systolic = bpSys; payload.vital_bp_diastolic = bpDia; }
+    if (pulseRaw) payload.vital_pulse = pulseRaw;
+    if (tempRaw) payload.vital_temp = tempRaw;
+    if (spo2Raw) payload.vital_spo2 = spo2Raw;
+
     const newNote = {
-      id: Date.now(),
       date: todayStr,
-      condition: document.getElementById('note-condition').value,
-      bp: document.getElementById('note-bp').value.trim() || null,
-      pulse: parseInt(document.getElementById('note-pulse').value) || null,
-      temp: parseFloat(document.getElementById('note-temp').value) || null,
-      spo2: parseInt(document.getElementById('note-spo2').value) || null,
+      condition: condition,
+      bp: bpSys ? `${bpSys}/${bpDia}` : null,
+      pulse: pulseRaw ? Number(pulseRaw) : null,
+      temp: tempRaw ? Number(tempRaw) : null,
+      spo2: spo2Raw ? Number(spo2Raw) : null,
       dynamics: dynamics,
-      treatment: document.getElementById('note-treatment').value,
+      treatment: treatment,
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
     };
 
@@ -1827,21 +1902,16 @@
       const res = await fetch('/api/doctor/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patient_id: p.id,
-          doctor_id: state.authenticatedDoctor?.staff_id,
-          condition: newNote.condition,
-          bp: newNote.bp,
-          pulse: newNote.pulse,
-          temp: newNote.temp,
-          spo2: newNote.spo2,
-          dynamics: newNote.dynamics,
-          treatment_changes: newNote.treatment
-        })
+        body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('API failed');
-      
-      if (!state.dailyNotesMap[p.id]) state.dailyNotesMap[p.id] = [];
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xatolik: Qaydni saqlab bo'lmadi", "error");
+        return;
+      }
+
+      // One note per stay per day: saving again today replaces today's note.
+      state.dailyNotesMap[p.id] = (state.dailyNotesMap[p.id] || []).filter(n => normalizeNote(n).date !== todayStr);
       state.dailyNotesMap[p.id].unshift(newNote);
       localStorage.setItem(STORAGE_KEYS.DAILY_NOTES, JSON.stringify(state.dailyNotesMap));
 
@@ -1854,25 +1924,12 @@
       updateTabBadges();
       updateVitalsDashboard();
     } catch (err) {
-      showToast("Xatolik: Qaydni saqlab bo'lmadi", "error");
+      showToast("Server bilan aloqa yo'q. Qayd saqlanmadi.", "error");
     }
   }
 
-  function setNormalVitals() {
-    const bpEl = document.getElementById('note-bp');
-    const pulseEl = document.getElementById('note-pulse');
-    const tempEl = document.getElementById('note-temp');
-    const spo2El = document.getElementById('note-spo2');
-    const condEl = document.getElementById('note-condition');
-
-    if (bpEl) bpEl.value = '120/80';
-    if (pulseEl) pulseEl.value = 74;
-    if (tempEl) tempEl.value = 36.6;
-    if (spo2El) spo2El.value = 99;
-    if (condEl) condEl.value = 'satisfactory';
-
-    showToast("⚡ Me'yoriy klinik ko'rsatkichlar o'rnatildi (120/80, 74, 36.6°C, 99%)", "info");
-  }
+  // The one-click "normal values" button (120/80, 74, 36.6, 99%) was removed:
+  // it let a round be recorded with vitals nobody measured.
 
   function appendDynamicsPhrase(phrase) {
     const el = document.getElementById('note-dynamics');
@@ -1907,7 +1964,14 @@
     const savedEpi = (state.epicrisisMap && state.epicrisisMap[p.id]) || {};
     if (outcomeSel) outcomeSel.value = savedEpi.discharge_status || '';
     document.getElementById('epicrisis-patient').textContent = `${p.full_name} (${p.patient_code})`;
-    document.getElementById('epicrisis-home-rx').value = rxSummary || '';
+    // Show what was saved for THIS patient. The home-medicines box used to be
+    // overwritten with the inpatient list on every render, and the advice box
+    // was never touched, so the previous patient's advice stayed on screen
+    // and could be saved onto the next patient's discharge paper.
+    const hasSaved = Object.keys(savedEpi).length > 0;
+    document.getElementById('epicrisis-home-rx').value = hasSaved ? (savedEpi.home_prescriptions || '') : (rxSummary || '');
+    const psychoEl = document.getElementById('epicrisis-psycho');
+    if (psychoEl) psychoEl.value = hasSaved ? (savedEpi.psycho_recommendations || '') : '';
   }
 
   async function saveEpicrisis() {
@@ -1919,7 +1983,7 @@
       admission_id: p.active_admission ? p.active_admission.admission_id : null,
       doctor_id: (state.authenticatedDoctor && state.authenticatedDoctor.staff_id) || state.activeDoctorId,
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
-      epicrisis_date: new Date().toISOString().split('T')[0],
+      epicrisis_date: localDateStr(),
       diagnosis_final: state.epicrisisDiag || '',
       icd10_code: document.getElementById('anam-icd10')?.value || null,
       // Was always "the course was completed successfully" with outcome
@@ -1962,6 +2026,11 @@
     showToast(`📋 <strong>${p.full_name}</strong> chiqarish epikrizi MySQL bazasiga saqlandi!`);
   }
 
+  // "Auto-generate" used to paste a fixed list (Meksidol, Neyromultivit,
+  // Gepabene, Magne B6) and fixed advice for every patient, i.e. home
+  // medicines nobody prescribed. It now only copies this patient's own
+  // active prescriptions into an empty home-medicines box; the doctor edits
+  // from there. The advice box is left to the doctor.
   function autoGenerateEpicrisis() {
     const p = state.selectedPatient;
     if (!p) {
@@ -1969,30 +2038,22 @@
       return;
     }
 
-    const anam = state.anamnesisMap[p.id] || {};
-    const rxList = state.prescriptionsMap[p.id] || [];
-    
-    // Length of stay calculation
-    let stayDays = 7;
-    if (p.active_admission && p.active_admission.admission_date) {
-      const adDate = new Date(p.active_admission.admission_date);
-      const today = new Date();
-      const diffDays = Math.max(1, Math.floor((today - adDate) / (1000 * 60 * 60 * 24)) + 1);
-      stayDays = diffDays;
+    const rxList = (state.prescriptionsMap[p.id] || []).filter(r => r.status !== 'cancelled');
+    if (rxList.length === 0) {
+      showToast("Bemorda faol tayinlov yo'q. Uyga dori tavsiyalarini qo'lda yozing.", "warning");
+      return;
     }
 
-    const medNames = rxList.slice(0, 5).map(r => r.medication_name).join(', ');
-
-    const homeRxText = `1. Meksidol 125 mg tabletkasi — 1 tabletkadan kuniga 2 mahal (ertalab va tushlikda ovqatdan so'ng), 1 oy davomida.\n2. Neyromultivit (yoki B-kompleks) — 1 tabletkadan kuniga 1 mahal, 20 kun.\n3. Gepabene (yoki Essensiale Forte) — 1 kapsuladan kuniga 3 mahal, 1 oy.\n4. Magne B6 — 1 tabletkadan kechqurun, 15 kun.`;
-
-    const psychoText = `1. Spirtli ichimliklar va har qanday psixoaktiv moddalarni qat'iyan inkor qilish (mutlaq hushyorlik rejimi).\n2. Yashash joyi bo'yicha narkolog va psixoterapevt ambulator kuzatuvida bo'lish.\n3. Psixologik reabilitatsiya va oilaviy psixoterapiya mashg'ulotlariga haftada 1 marta qatnashish.\n4. Mehnat va dam olish gigiyenasiga rioya qilish, jismoniy zo'riqish va og'ir stresslardan saqlanish.\n5. Somatik yoki ruhiy holatda salbiy o'zgarishlar sezilsa, zudlik bilan klinikaga qayta murojaat qilish.`;
-
     const homeRxInput = document.getElementById('epicrisis-home-rx');
-    const psychoInput = document.getElementById('epicrisis-psycho');
-    if (homeRxInput) homeRxInput.value = homeRxText;
-    if (psychoInput) psychoInput.value = psychoText;
+    if (homeRxInput && homeRxInput.value.trim()) {
+      showToast("Uyga dorilar maydoni to'ldirilgan. Avval uni tozalang.", "warning");
+      return;
+    }
+    if (homeRxInput) {
+      homeRxInput.value = rxList.map((r, i) => `${i + 1}. ${r.medication_name} — ${r.dosage || ''} (${r.route || ''}, ${r.frequency || ''})`).join('\n');
+    }
 
-    showToast("⚡ Avtomatik epikriz va tavsiyalar shakllantirildi!", "success");
+    showToast("Bemorning faol tayinlovlari uyga dorilar maydoniga ko'chirildi. Tekshirib, tahrirlang.", "info");
   }
 
   function appendHomeRx(text) {
@@ -2044,7 +2105,10 @@
       } else if (docType === 'epicrisis') {
         window.FMH_Print.dischargeEpicrisis(p, epicrisis, activeDoc);
       } else {
-        window.FMH_Print.dischargeEpicrisis(p, epicrisis, activeDoc);
+        // The print engine has no history or dossier layout, and this branch
+        // printed the discharge summary instead. Those two documents come
+        // from the server PDF, which builds them from the saved record.
+        downloadPDF(docType);
       }
     } else {
       openOfficialDocModal(docType);
@@ -2052,19 +2116,19 @@
     }
   }
 
-  async function downloadPDF() {
+  async function downloadPDF(forcedType) {
     const p = state.selectedPatient;
     if (!p) {
       showToast('Iltimos, avval bemorni tanlang!', 'warning');
       return;
     }
-    const docType = document.getElementById('doc-type-select')?.value || 'prescriptions';
+    const docType = (typeof forcedType === 'string' && forcedType) || document.getElementById('doc-type-select')?.value || 'prescriptions';
     const filename = `FMH_${docType.toUpperCase()}_${p.patient_code || p.id}.pdf`;
 
     showToast('⏳ <strong>MySQL ma\'lumotlar bazasidan PDF yaratilmoqda...</strong>', 'info');
 
     try {
-      const pdfUrl = `/api/doctor/download-pdf/${p.id}?doc_type=${docType}`;
+      const pdfUrl = `/api/doctor/download-pdf/${encodeURIComponent(p.id)}?doc_type=${encodeURIComponent(docType)}`;
       const res = await fetch(pdfUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -2419,10 +2483,19 @@
       return;
     }
 
+    // Only remove the patient from screen once the server has. The answer
+    // used to be ignored, so a refused delete (e.g. no permission) still
+    // said "fully deleted" while the record stayed in the database.
     try {
-      await fetch('/api/patients/' + encodeURIComponent(p.id), { method: 'DELETE' });
+      const res = await fetch('/api/patients/' + encodeURIComponent(p.id), { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Bemorni o'chirib bo'lmadi.", 'danger');
+        return;
+      }
     } catch (e) {
-      console.warn('DELETE patient error:', e);
+      showToast("Server bilan aloqa yo'q. Bemor o'chirilmadi.", 'danger');
+      return;
     }
 
     state.patients = state.patients.filter(pt => pt.id !== p.id);
@@ -3163,7 +3236,6 @@
     deletePrescription,
     deleteCurrentPatient,
     addDailyNote,
-    setNormalVitals,
     appendDynamicsPhrase,
     setTreatmentPhrase,
     autoGenerateEpicrisis,

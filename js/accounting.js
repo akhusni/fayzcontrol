@@ -1253,12 +1253,11 @@
         }
       });
 
-      // Also sum patient collections in this month
-      (accountingData.patients_billing || []).forEach(p => {
-        if ((p.start_date || p.created_at || '').startsWith(mStr)) {
-          incomeData[3 - i] += (Number(p.total_paid) || 0);
-        }
-      });
+      // Patient payments are already in the transactions above: the
+      // payments trigger writes each one into accounting_transactions on the
+      // day it was paid. Adding the bills' total_paid as well counted every
+      // patient payment twice (and on the stay's start month, not the day
+      // the money came in).
     }
 
     const maxVal = Math.max(10000000, ...incomeData, ...expenseData) * 1.25;
