@@ -46,6 +46,7 @@ MODULES = {
     'duty':       "24/7 Navbatchilik jadvali va smenalar",
     'kitchen':    "Parhez va oshxona",
     'admin':      "Foydalanuvchilar, rollar va sozlamalar",
+    'owner':      "Klinika egasi: pul oqimi hisoboti",
 }
 
 # ---------------------------------------------------------------------------
@@ -140,6 +141,14 @@ ROLES = {
         'home': '/building_management.html',
     },
 
+    # The owner follows the money from a phone: every income and expense,
+    # read-only. Accounting stays the place where money is entered.
+    'owner': {
+        'label': 'Klinika egasi',
+        'permissions': ['owner', 'accounting:read'],
+        'home': '/owner.html',
+    },
+
     # 24/7 Ward sanitation & shift duty roster view.
     'sanitar': {
         'label': 'Sanitarka (Navbatchilik)',
@@ -223,6 +232,7 @@ API_RULES = [
     ('/api/accounting/transaction',   'accounting', None),
     ('/api/accounting/data',          'accounting', 'read'),
     ('/api/accounting/medicine-usage', 'accounting', 'read'),
+    ('/api/owner/summary',            'owner',      'read'),
     ('/api/accounting/medicine-links', 'accounting', None),
     ('/api/financial-ledger',         'accounting', 'read'),
     ('/api/payments',                 'accounting', None),
@@ -282,6 +292,7 @@ PAGE_RULES = {
     '/building_management.html':  ('facility',   'read'),
     '/crm.html':                  ('crm',        'read'),
     '/accounting.html':           ('accounting', 'read'),
+    '/owner.html':                ('owner',      'read'),
     '/hr.html':                   ('hr',         'read'),
     '/medical_blank.html':        ('doctors',    'write'),
     '/database_report.html':      ('admin',      'read'),

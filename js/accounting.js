@@ -958,7 +958,7 @@
         <tr>
           <td><strong>${esc(r.name)}</strong><br><small style="color: var(--text-muted);">${esc(r.form)}</small></td>
           <td>${r.doses}</td>
-          <td>${r.units_taken}${shortfall > 0 ? ` <small style="color: var(--warning);">(${shortfall} ta ombor bo'sh paytda)</small>` : ''}</td>
+          <td>${r.units_taken}${shortfall > 0 ? ` <small style="color: var(--warning);">(${shortfall} tasi uchun omborda qoldiq yo'q edi)</small>` : ''}</td>
           <td>${formatUZS(r.cost)}</td>
           <td style="color: ${low ? 'var(--warning)' : 'inherit'}; font-weight: 700;">${r.stock_quantity}</td>
         </tr>`;
@@ -1013,7 +1013,8 @@
         window.FMH_Toast(body.error || `Bog'lab bo'lmadi (${res.status})`, 'danger');
         return;
       }
-      window.FMH_Toast(`"${name}" ombor bilan bog'landi. Keyingi dozalar ombordan ayiriladi.`, 'success');
+      const past = Number(body.settled_doses) || 0;
+      window.FMH_Toast(`"${name}" ombor bilan bog'landi.${past ? ` Avval berilgan ${past} doza ham ombordan ayirildi.` : ''} Keyingi dozalar avtomatik ayiriladi.`, 'success');
       loadMedicineUsage();
     } catch (e) {
       window.FMH_Toast("Server bilan aloqa yo'q", 'danger');

@@ -332,6 +332,7 @@ import auth
 import audit
 import permissions
 import nursery
+import owner_report
 import consultation
 
 
@@ -1448,6 +1449,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(acc_data, ensure_ascii=False).encode('utf-8'))
 
             # 7b. /api/accounting/medication-purchases -> List all medication purchases
+            # 7d. /api/owner/summary -> the owner's phone report: money in by
+            # source, money out by purpose, per day, per payment method.
+            elif path == '/api/owner/summary':
+                start_d, end_d, err = validate_date_range(
+                    query.get('start', [''])[0], query.get('end', [''])[0])
+                if err:
+                    self._send_validation_error(err, 'start')
+                    return
+                if (end_d - start_d).days > 400:
+                    self._send_validation_error("Davr 400 kundan oshmasligi kerak", 'start')
+                    return
+                report = owner_report.summary(conn, start_d, end_d)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(report, ensure_ascii=False).encode('utf-8'))
+
             # 7c. /api/accounting/medicine-usage -> medicines given on the ward,
             # what they took from stock and what they cost.
             elif path == '/api/accounting/medicine-usage':
@@ -2387,12 +2403,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_validation_error("Ombordagi dorini tanlang", 'medication_id')
                     return
                 try:
-                    key = nursery.link_medicine_name(conn, med_name, med_id)
+                    key, settled = nursery.link_medicine_name(conn, med_name, med_id)
                 except LookupError:
                     self._send_validation_error("Bunday dori omborda topilmadi", 'medication_id')
                     return
+                except RuntimeError:
+                    self._send_validation_error("Ombor hisobi o'chiq: ma'lumotlar bazasini yangilab bo'lmadi. Administratorga murojaat qiling.", 'medication_id')
+                    return
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps({'message': "Dori ombor bilan bog'landi", 'alias': key, 'medication_id': med_id}, ensure_ascii=False).encode('utf-8'))
+                self.wfile.write(json.dumps({'message': "Dori ombor bilan bog'landi", 'alias': key, 'medication_id': med_id, 'settled_doses': settled}, ensure_ascii=False).encode('utf-8'))
 
             elif path == '/api/accounting/medication-purchases':
                 ensure_medication_purchases(conn)

@@ -52,6 +52,7 @@ _AS_NEEDED_PATTERNS = (
 )
 
 _schema_checked = False
+_stock_ready = False
 
 
 def ensure_schema(conn):
@@ -100,12 +101,23 @@ def ensure_schema(conn):
                     ON UPDATE CASCADE ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
-        _ensure_stock_columns(cur)
         conn.commit()
         _schema_checked = True
     except Exception as e:
         print(f"[!] Could not prepare medication_administrations: {e}")
         _schema_checked = True
+    # Separate step: if the stock columns cannot be added (say the database
+    # user may not ALTER), doses must still be recorded -- just without
+    # taking stock -- rather than every dose failing on a missing column.
+    global _stock_ready
+    try:
+        cur = conn.cursor()
+        _ensure_stock_columns(cur)
+        conn.commit()
+        _stock_ready = True
+    except Exception as e:
+        print(f"[!] Medicine stock tracking is off: {e}")
+        _stock_ready = False
 
 
 # Stock columns on a dose. A given dose takes one unit off the shelf; the row
@@ -162,10 +174,13 @@ def resolve_stock_item(cur, medication_id, medication_name):
     key = alias_key(medication_name)
     if not key:
         return None
-    cur.execute("SELECT id, unit_price FROM medications_catalog WHERE LOWER(TRIM(name)) = ? LIMIT 1", (key,))
-    row = cur.fetchone()
-    if row:
-        return row
+    # Compared in Python so both names are normalised the same way (SQL TRIM
+    # would leave a double space inside a catalog name unmatched). The
+    # catalogue is a few hundred rows at most.
+    cur.execute("SELECT id, name, unit_price FROM medications_catalog")
+    for row in cur.fetchall():
+        if alias_key(row['name']) == key:
+            return row
     cur.execute("""
         SELECT mc.id, mc.unit_price FROM medication_aliases ma
         JOIN medications_catalog mc ON mc.id = ma.medication_id
@@ -576,6 +591,24 @@ def record_dose(conn, prescription_id, day, slot_index, status,
     if status == 'given':
         administered_at = _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    if not _stock_ready:
+        cur.execute("""
+            INSERT INTO medication_administrations
+                (prescription_id, admission_id, patient_id, scheduled_date,
+                 slot_index, slot_label, status, administered_at,
+                 administered_by_staff_id, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                status = VALUES(status),
+                slot_label = VALUES(slot_label),
+                administered_at = VALUES(administered_at),
+                administered_by_staff_id = VALUES(administered_by_staff_id),
+                notes = VALUES(notes)
+        """, (prescription_id, rx['admission_id'], rx['patient_id'], day.isoformat(),
+              int(slot_index), slot_label, status, administered_at, staff_id, notes))
+        conn.commit()
+        return True
+
     # Stock: what this dose took before, and what it should take now.
     cur.execute("""
         SELECT stock_medication_id, stock_units FROM medication_administrations
@@ -633,6 +666,9 @@ def medicine_usage(conn, start, end):
     that match no stock item, so accounting can link them.
     """
     ensure_schema(conn)
+    if not _stock_ready:
+        return {'start': start, 'end': end, 'linked': [], 'unlinked': [],
+                'total_cost': 0.0, 'total_doses': 0, 'stock_tracking': False}
     cur = conn.cursor()
     cur.execute("""
         SELECT mc.id AS medication_id, mc.name, mc.form, mc.stock_quantity,
@@ -670,6 +706,7 @@ def medicine_usage(conn, start, end):
         'unlinked': unlinked,
         'total_cost': round(sum(r['cost'] for r in linked), 2),
         'total_doses': sum(r['doses'] for r in linked) + sum(r['doses'] for r in unlinked),
+        'stock_tracking': True,
     }
 
 
@@ -683,12 +720,39 @@ def link_medicine_name(conn, medication_name, medication_id):
     cur.execute("SELECT id FROM medications_catalog WHERE id = ?", (medication_id,))
     if not cur.fetchone():
         raise LookupError(medication_id)
+    if not _stock_ready:
+        raise RuntimeError('stock tracking is off')
     cur.execute("""
         INSERT INTO medication_aliases (alias_key, medication_id) VALUES (?, ?)
         ON DUPLICATE KEY UPDATE medication_id = VALUES(medication_id)
     """, (key, medication_id))
+
+    # Doses already given under this name were used from the shelf too: take
+    # them off now, so linking leaves the stock count right and the name stops
+    # showing as unlinked.
+    cur.execute("SELECT unit_price FROM medications_catalog WHERE id = ?", (medication_id,))
+    cost = cur.fetchone()['unit_price']
+    cur.execute("""
+        SELECT ma.id, rx.medication_name FROM medication_administrations ma
+        JOIN prescriptions rx ON rx.id = ma.prescription_id
+        WHERE ma.status = 'given' AND ma.stock_medication_id IS NULL
+    """)
+    pending = [r['id'] for r in cur.fetchall() if alias_key(r['medication_name']) == key]
+    settled = 0
+    for adm_id in pending:
+        cur.execute("""
+            UPDATE medications_catalog SET stock_quantity = stock_quantity - 1
+            WHERE id = ? AND stock_quantity > 0
+        """, (medication_id,))
+        units = 1 if cur.rowcount else 0
+        cur.execute("""
+            UPDATE medication_administrations
+            SET stock_medication_id = ?, stock_units = ?, stock_unit_cost = ?
+            WHERE id = ?
+        """, (medication_id, units, cost, adm_id))
+        settled += 1
     conn.commit()
-    return key
+    return key, settled
 
 
 # Vitals, and the range each one is believable in. The table carries the same

@@ -3068,14 +3068,110 @@ class MedicineStock(ApiTest):
         st, res = self.api.post('/api/accounting/medicine-links', {
             'medication_name': rx_name, 'medication_id': item['id']})
         self.assertEqual(st, 200, res)
-        self._give(rx, 1)
+        # The dose already given came off the shelf too, and the name is no
+        # longer offered for linking.
+        self.assertEqual(res['settled_doses'], 1)
         self.assertEqual(int(self._find_stock(stock_name)['stock_quantity']), int(item['stock_quantity']) - 1)
+        self.assertNotIn(rx_name, [u['medication_name'] for u in self._usage()['unlinked']])
+
+        self._give(rx, 1)
+        self.assertEqual(int(self._find_stock(stock_name)['stock_quantity']), int(item['stock_quantity']) - 2)
 
     def test_link_refuses_unknown_stock_item(self):
         st, res = self.api.post('/api/accounting/medicine-links', {
             'medication_name': 'Nimadir', 'medication_id': 'MED-NOT-THERE'})
         self.assertEqual(st, 400, res)
         self.assertEqual(res.get('field'), 'medication_id')
+
+
+class OwnerReport(ApiTest):
+    """The owner follows all money from a phone, read-only."""
+    _account = RoleAuthorization._account
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def _summary(self, client=None):
+        today = _dt.date.today().isoformat()
+        st, body = (client or self.api).get(f'/api/owner/summary?start={today}&end={today}')
+        self.assertEqual(st, 200, body)
+        return body
+
+    @staticmethod
+    def _group(rows, key):
+        return next((r['amount'] for r in rows if r['key'] == key), 0.0)
+
+    def test_income_and_spending_are_grouped_and_transfers_left_out(self):
+        before = self._summary()
+        for payload in (
+            {'type': 'income', 'category': 'emergency_call', 'amount': 5000, 'title': 'Suite probe: call-out'},
+            {'type': 'expense', 'category': 'salary', 'amount': 3000, 'title': 'Suite probe: salary'},
+            {'type': 'expense', 'category': 'incasso', 'amount': 1000, 'title': 'Suite probe: cash to bank'},
+        ):
+            st, res = self.api.post('/api/accounting/transaction', dict(payload, payment_method='cash'))
+            self.assertEqual(st, 201, res)
+        after = self._summary()
+
+        self.assertAlmostEqual(after['income'] - before['income'], 5000, delta=0.01)
+        # Moving cash to the bank is not spending.
+        self.assertAlmostEqual(after['expense'] - before['expense'], 3000, delta=0.01)
+        self.assertAlmostEqual(after['transfers'] - before['transfers'], 1000, delta=0.01)
+        self.assertAlmostEqual(
+            self._group(after['income_by_source'], 'emergency_call')
+            - self._group(before['income_by_source'], 'emergency_call'), 5000, delta=0.01)
+        self.assertAlmostEqual(
+            self._group(after['expense_by_category'], 'salary')
+            - self._group(before['expense_by_category'], 'salary'), 3000, delta=0.01)
+
+    def test_patient_payment_is_split_by_what_the_invoice_charged(self):
+        pid = self.make_patient('Egasi Sinov')
+        start = _dt.date.today()
+        _, adm = self.admit(pid, BED_C, start.isoformat(), (start + _dt.timedelta(days=3)).isoformat())
+        before = self._summary()
+        st, pay = self.api.post('/api/payments', {
+            'admission_id': adm['admission_id'], 'amount': 100000, 'payment_method': 'cash'})
+        self.assertEqual(st, 201, pay)
+        after = self._summary()
+        self.assertAlmostEqual(
+            self._group(after['income_by_source'], 'bed_stay')
+            - self._group(before['income_by_source'], 'bed_stay'), 100000, delta=1)
+        entry = next(e for e in after['entries'] if e['type'] == 'income' and e['group'] == 'bed_stay'
+                     and e['who'] == 'Egasi Sinov')
+        self.assertAlmostEqual(entry['amount'], 100000, delta=1)
+
+    def test_a_booking_not_yet_begun_is_not_debt(self):
+        """The invoice holds the whole planned stay from the day it is booked."""
+        before = self._summary()['debts']
+        pid = self.make_patient('Kelajak Bron')
+        start = _dt.date.today() + _dt.timedelta(days=40)
+        self.admit(pid, BED_A, start.isoformat(), (start + _dt.timedelta(days=5)).isoformat())
+        after = self._summary()['debts']
+        self.assertEqual(after['count'], before['count'])
+        self.assertAlmostEqual(after['total'], before['total'], delta=0.01)
+
+    def test_period_is_required(self):
+        st, body = self.api.get('/api/owner/summary')
+        self.assertEqual(st, 400, body)
+
+    def test_owner_reads_money_but_cannot_change_it(self):
+        owner = self._account('owner')
+        self._summary(owner)
+        st, _ = owner.post('/api/accounting/transaction', {
+            'type': 'expense', 'category': 'salary', 'amount': 1, 'title': 'X'})
+        self.assertEqual(st, 403)
+        self.assertEqual(owner.get('/api/crm/patients')[0], 403)
+
+    def test_accountant_does_not_see_the_owner_report(self):
+        accountant = self._account('accountant')
+        today = _dt.date.today().isoformat()
+        st, _ = accountant.get(f'/api/owner/summary?start={today}&end={today}')
+        self.assertEqual(st, 403)
 
 
 if __name__ == '__main__':
