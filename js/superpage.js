@@ -84,23 +84,13 @@
   };
 
   // Dynamic Pricing Configuration
-  let pricingConfig = {
-    packages: {
-      statsionar_shared: { daily_rate: 720000, name_uz: "Statsionar (1 karavot / 2 kishilik xona)" },
-      statsionar_full_room: { daily_rate: 1100000, name_uz: "Statsionar Butun Xona (VIP Solo)" },
-      kunlik_statsionar: { daily_rate: 630000, name_uz: "Kunlik Statsionar (Kunduzgi o'rin)" },
-      ambulator_1: { daily_rate: 310000, name_uz: "Ambulator (1 mahal)" },
-      ambulator_2: { daily_rate: 500000, name_uz: "Ambulator (2 mahal)" }
-    },
-    additional_services: [
-      { id: "SRV-PLZ-01", name: "Plazmaferez membranali", category: "Muolaja", price: 650000 },
-      { id: "SRV-OZN-01", name: "Ozonoterapiya tomchilab", category: "Muolaja", price: 180000 },
-      { id: "SRV-BLK-01", name: "Paravertebral blokada", category: "Muolaja", price: 250000 },
-      { id: "SRV-EKG-01", name: "12-kanalli EKG xulosasi", category: "Diagnostika", price: 80000 },
-      { id: "SRV-UZI-01", name: "Qorin bo'shlig'i UZI", category: "Diagnostika", price: 150000 },
-      { id: "SRV-LAB-01", name: "Kengaytirilgan bioximik qon tahlili", category: "Laboratoriya", price: 220000 }
-    ]
-  };
+  // Filled from the one price list (js/fmh_pricing.js) by loadPricingConfig.
+  // This page used to start from its own hardcoded copy, whose extra
+  // services did not even match the server's (plasmapheresis 650 000 here,
+  // 450 000 in the file), and a save made while the server was unreachable
+  // said "saved locally" although nothing was saved anywhere.
+  let pricingConfig = window.FMH_Pricing ? window.FMH_Pricing.get()
+                                         : { packages: {}, additional_services: [] };
 
   let clinicRoomsData = null;
   let pharmacologyData = null;
@@ -148,37 +138,41 @@
   // DYNAMIC PRICING ENGINE & RBAC HELPERS
   // =========================================================================
   async function loadPricingConfig() {
-    try {
-      const res = await fetch('/api/settings/pricing');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.packages) {
-          pricingConfig = data;
-        }
-      }
-    } catch (e) {
-      console.warn("Pricing config load warning:", e);
-    }
+    if (!window.FMH_Pricing) return;
+    await window.FMH_Pricing.ready;
+    pricingConfig = window.FMH_Pricing.get();
   }
 
-  function getDailyRateForProgram(program, defaultRate = 720000) {
-    if (!pricingConfig || !pricingConfig.packages) return defaultRate;
-    const pk = pricingConfig.packages;
-    if (!program) return pk.statsionar_shared ? pk.statsionar_shared.daily_rate : defaultRate;
+  function listedRate(id) {
+    const pk = (pricingConfig && pricingConfig.packages) || {};
+    return (pk[id] && Number(pk[id].daily_rate)) || 0;
+  }
+
+  function getDailyRateForProgram(program, defaultRate) {
+    const fallback = Number(defaultRate) || listedRate('statsionar_shared');
+    if (!pricingConfig || !pricingConfig.packages) return fallback;
+    if (!program) return listedRate('statsionar_shared') || fallback;
+    // A stay booked from the desk carries the package id itself
+    // ('statsionar_full_room', 'kunlik_statsionar', 'ambulator_2'); the text
+    // guesses below matched none of them, so those stays were costed at the
+    // shared rate.
+    if (pricingConfig.packages[program] && program !== 'consultation') {
+      return listedRate(program);
+    }
     const p = program.toLowerCase();
     if (p.includes('vip') || p.includes('butun xona') || p.includes('solo') || p.includes('1.1') || p.includes('1100000')) {
-      return pk.statsionar_full_room ? pk.statsionar_full_room.daily_rate : 1100000;
+      return listedRate('statsionar_full_room');
     }
     if (p.includes('kunduzgi') || p.includes('daycare') || p.includes('630')) {
-      return pk.kunlik_statsionar ? pk.kunlik_statsionar.daily_rate : 630000;
+      return listedRate('kunlik_statsionar');
     }
     if (p.includes('ambulator') && (p.includes('2 mahal') || p.includes('500'))) {
-      return pk.ambulator_2 ? pk.ambulator_2.daily_rate : 500000;
+      return listedRate('ambulator_2');
     }
     if (p.includes('ambulator') || p.includes('310')) {
-      return pk.ambulator_1 ? pk.ambulator_1.daily_rate : 310000;
+      return listedRate('ambulator_1');
     }
-    return pk.statsionar_shared ? pk.statsionar_shared.daily_rate : defaultRate;
+    return listedRate('statsionar_shared') || fallback;
   }
 
   function updateHeaderUserWidget() {
@@ -385,11 +379,12 @@
                 patient_phone: adm.patient_phone || '+998 90 000 00 00',
                 doctor: adm.doctor_name || 'Shifokor biriktirilmagan',
                 program: adm.program_type || 'Statsionar davolanish',
-                daily_rate: adm.daily_price || 720000,
+                daily_rate: adm.daily_price || listedRate('statsionar_shared'),
                 start_date: adm.start_date,
                 end_date: adm.planned_end_date,
                 status: 'active',
-                is_full_room: adm.daily_price >= 1100000
+                is_full_room: adm.program_type === 'statsionar_full_room' ||
+                  (listedRate('statsionar_full_room') > 0 && adm.daily_price >= listedRate('statsionar_full_room'))
               };
               if (existingIdx >= 0) {
                 bookings[existingIdx] = { ...bookings[existingIdx], ...admBooking };
@@ -741,9 +736,9 @@
       const end = new Date(b.end_date);
       const days = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)));
       
-      let dailyRate = 720000;
-      if (b.program && (b.program.includes("1.1 mln") || b.program.includes("Butun Xona"))) dailyRate = 1100000;
-      else if (b.program && b.program.includes("630 ming")) dailyRate = 630000;
+      let dailyRate = listedRate('statsionar_shared');
+      if (b.program && (b.program.includes("1.1 mln") || b.program.includes("Butun Xona"))) dailyRate = listedRate('statsionar_full_room');
+      else if (b.program && b.program.includes("630 ming")) dailyRate = listedRate('kunlik_statsionar');
 
       const totalBill = days * dailyRate;
       const matchingTx = transactions.filter(t => t.type === 'kirim' && t.patient.toLowerCase().includes(b.patient_name.toLowerCase()));
@@ -762,7 +757,7 @@
           <td><strong style="color: var(--success); font-family: var(--font-mono);">${formatUZS(totalPaid)}</strong></td>
           <td><strong style="color: ${remainingDebt > 0 ? 'var(--danger)' : 'var(--success)'}; font-family: var(--font-mono);">${remainingDebt > 0 ? formatUZS(remainingDebt) : '0 so\'m (To\'liq)'}</strong></td>
           <td>
-            <button class="btn-super btn-super-success" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openPaymentModal('${b.patient_name} (${b.bed_id})', ${remainingDebt > 0 ? remainingDebt : 720000})">
+            <button class="btn-super btn-super-success" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openPaymentModal('${b.patient_name} (${b.bed_id})', ${remainingDebt > 0 ? remainingDebt : listedRate('statsionar_shared')})">
               <i class="fas fa-coins"></i> To'lov
             </button>
           </td>
@@ -1443,19 +1438,35 @@
   }
 
   // --- 1. PRICING & TARIFFS ---
-  function renderAdminPricingTab() {
-    const pk = pricingConfig.packages || {};
-    const inShared = document.getElementById('price-standard-shared');
-    const inVip = document.getElementById('price-vip-solo');
-    const inDaycare = document.getElementById('price-daycare');
-    const inAmb1 = document.getElementById('price-ambulator-1');
-    const inAmb2 = document.getElementById('price-ambulator-2');
+  // Editor inputs -> package ids of the one price list.
+  const PRICE_INPUTS = {
+    'price-standard-shared': 'statsionar_shared',
+    'price-vip-solo': 'statsionar_full_room',
+    'price-daycare': 'kunlik_statsionar',
+    'price-ambulator-1': 'ambulator_1',
+    'price-ambulator-2': 'ambulator_2',
+    'price-consultation': 'consultation'
+  };
 
-    if (inShared) inShared.value = pk.statsionar_shared ? pk.statsionar_shared.daily_rate : 720000;
-    if (inVip) inVip.value = pk.statsionar_full_room ? pk.statsionar_full_room.daily_rate : 1100000;
-    if (inDaycare) inDaycare.value = pk.kunlik_statsionar ? pk.kunlik_statsionar.daily_rate : 630000;
-    if (inAmb1) inAmb1.value = pk.ambulator_1 ? pk.ambulator_1.daily_rate : 310000;
-    if (inAmb2) inAmb2.value = pk.ambulator_2 ? pk.ambulator_2.daily_rate : 500000;
+  function spacedAmount(n) {
+    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function renderAdminPricingTab() {
+    // The inputs show the listed prices; there is no second set of numbers
+    // to fall back on any more.
+    Object.keys(PRICE_INPUTS).forEach(inputId => {
+      const el = document.getElementById(inputId);
+      if (el) el.value = listedRate(PRICE_INPUTS[inputId]);
+    });
+    // The hints under the inputs were typed in ("Hozirgi standart: 720 000")
+    // and went stale after the first edit; they now show the listed price.
+    document.querySelectorAll('[data-price-hint]').forEach(el => {
+      const rate = listedRate(el.getAttribute('data-price-hint'));
+      el.textContent = el.textContent
+        .replace(/^(Hozirgi standart: )[\d ]+/, `$1${spacedAmount(rate)}`)
+        .replace(/(10 kunlik kurs: )[\d ]+/, `$1${spacedAmount(rate * 10)}`);
+    });
 
     renderAdminServicesTable();
   }
@@ -1482,24 +1493,38 @@
     `).join('');
   }
 
+  // Returns true only when the server has stored the list. The old version
+  // filled an empty or 0 price with a hardcoded default, ignored the
+  // server's reason for a refusal, and on a network error said the prices
+  // were "saved locally" although nothing was saved anywhere.
   async function savePricingSettings(e) {
     if (e) e.preventDefault();
-    const shared = Number(document.getElementById('price-standard-shared').value) || 720000;
-    const vip = Number(document.getElementById('price-vip-solo').value) || 1100000;
-    const daycare = Number(document.getElementById('price-daycare').value) || 630000;
-    const amb1 = Number(document.getElementById('price-ambulator-1').value) || 310000;
-    const amb2 = Number(document.getElementById('price-ambulator-2').value) || 500000;
+    if (window.FMH_Pricing && window.FMH_Pricing.isFallback()) {
+      showToast("Narxlar serverdan yuklanmagan. Sahifani yangilang, so'ng qayta saqlang.", 'danger');
+      return false;
+    }
 
+    const packages = {};
+    for (const inputId of Object.keys(PRICE_INPUTS)) {
+      const el = document.getElementById(inputId);
+      if (!el) continue;
+      const raw = String(el.value || '').trim();
+      const value = Number(raw);
+      if (raw === '' || !Number.isFinite(value) || value < 0) {
+        showToast("Narx to'g'ri kiritilmagan.", 'warning');
+        el.focus();
+        return false;
+      }
+      const pkgId = PRICE_INPUTS[inputId];
+      packages[pkgId] = { daily_rate: value };
+      const name = pricingConfig.packages && pricingConfig.packages[pkgId] && pricingConfig.packages[pkgId].name_uz;
+      if (name) packages[pkgId].name_uz = name;
+    }
+
+    // updated_by is taken from the session on the server.
     const payload = {
-      packages: {
-        statsionar_shared: { daily_rate: shared, name_uz: "Statsionar (1 karavot / 2 kishilik xona)" },
-        statsionar_full_room: { daily_rate: vip, name_uz: "Statsionar Butun Xona (VIP Solo)" },
-        kunlik_statsionar: { daily_rate: daycare, name_uz: "Kunlik Statsionar (Kunduzgi o'rin)" },
-        ambulator_1: { daily_rate: amb1, name_uz: "Ambulator (1 mahal)" },
-        ambulator_2: { daily_rate: amb2, name_uz: "Ambulator (2 mahal)" }
-      },
-      additional_services: pricingConfig.additional_services || [],
-      updated_by: currentUser ? currentUser.username : 'superadmin'
+      packages,
+      additional_services: pricingConfig.additional_services || []
     };
 
     try {
@@ -1508,29 +1533,50 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        pricingConfig.packages = payload.packages;
-        showToast("✅ Yangi narxlar va tariflar tizimga saqlandi!", "success");
-        renderActiveDepartment();
-      } else {
-        showToast("Narxlarni saqlashda xatolik yuz berdi", "danger");
+      let body = null;
+      try { body = await res.json(); } catch (_) { body = null; }
+      if (!res.ok) {
+        showToast((body && body.error) || "Narxlarni saqlashda xatolik yuz berdi", "danger");
+        await loadPricingConfig();
+        renderAdminPricingTab();
+        return false;
       }
-    } catch (err) {
-      pricingConfig.packages = payload.packages;
-      showToast("Narxlar mahalliy xotirada saqlandi", "info");
+      if (window.FMH_Pricing) {
+        await window.FMH_Pricing.reload();
+        await loadPricingConfig();
+      } else if (body && body.pricing) {
+        pricingConfig = body.pricing;
+      }
+      showToast("✅ Yangi narxlar va tariflar tizimga saqlandi!", "success");
       renderActiveDepartment();
+      return true;
+    } catch (err) {
+      showToast("Server bilan bog'lanishda xatolik: narxlar saqlanmadi.", "danger");
+      await loadPricingConfig();
+      renderAdminPricingTab();
+      return false;
     }
   }
 
   async function promptAddService() {
+    if (window.FMH_Pricing && window.FMH_Pricing.isFallback()) {
+      showToast("Narxlar serverdan yuklanmagan. Sahifani yangilang.", 'danger');
+      return;
+    }
     const name = prompt("Yangi qo'shimcha xizmat yoki muolaja nomi:");
     if (!name || !name.trim()) return;
     const category = prompt("Kategoriya (Muolaja, Diagnostika, Laboratoriya):", "Muolaja") || "Muolaja";
-    const priceStr = prompt("Xizmat narxi (so'mda):", "150000");
-    const price = Number((priceStr || '').replace(/[^0-9]/g, '')) || 100000;
+    const priceStr = prompt("Xizmat narxi (so'mda):", "");
+    const digits = (priceStr || '').replace(/[^0-9]/g, '');
+    // An empty price used to become 100 000; a price nobody typed is not saved.
+    if (!digits) {
+      showToast("Xizmat narxi kiritilmadi.", 'warning');
+      return;
+    }
+    const price = Number(digits);
 
     const newService = {
-      id: `SRV-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: `SRV-${Date.now().toString(36).toUpperCase()}`,
       name: name.trim(),
       category: category.trim(),
       price: price
@@ -1539,9 +1585,9 @@
     if (!pricingConfig.additional_services) pricingConfig.additional_services = [];
     pricingConfig.additional_services.push(newService);
 
-    await savePricingSettings();
+    const saved = await savePricingSettings();
     renderAdminServicesTable();
-    showToast(`✅ "${name}" xizmati narxlar katalogiga qo'shildi!`);
+    if (saved) showToast(`✅ "${name}" xizmati narxlar katalogiga qo'shildi!`);
   }
 
   async function deleteService(serviceId) {
@@ -1554,9 +1600,9 @@
     });
     if (!okService) return;
     pricingConfig.additional_services = (pricingConfig.additional_services || []).filter(s => s.id !== serviceId);
-    await savePricingSettings();
+    const saved = await savePricingSettings();
     renderAdminServicesTable();
-    showToast("🗑️ Xizmat narxlar ro'yxatidan o'chirildi");
+    if (saved) showToast("🗑️ Xizmat narxlar ro'yxatidan o'chirildi");
   }
 
   // --- 2. ROOMS & BEDS INFRASTRUCTURE ---
@@ -1581,7 +1627,7 @@
         fl.rooms.forEach(r => {
           const bedsList = (r.beds || []).map(b => `
             <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; margin: 2px; border: 1px solid var(--border-color); font-size: 0.76rem;">
-              🛏️ <strong>${b.bed_number || b.bed_id}</strong> (${formatUZS(b.daily_rate || 720000)})
+              🛏️ <strong>${b.bed_number || b.bed_id}</strong> (${formatUZS(b.daily_rate || listedRate('statsionar_shared'))})
               <button type="button" title="Karavotni ajratish (Detach)" onclick="window.FMH_Super.detachBed('${b.bed_id}')" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 0 2px;">&times;</button>
             </span>
           `).join('');
@@ -1641,7 +1687,7 @@
     if (e) e.preventDefault();
     const roomId = document.getElementById('attach-bed-room-select').value;
     const bedCode = document.getElementById('attach-bed-code').value.trim();
-    const dailyRate = Number(document.getElementById('attach-bed-rate').value) || 720000;
+    const dailyRate = Number(document.getElementById('attach-bed-rate').value) || listedRate('statsionar_shared');
 
     if (!roomId || !bedCode) return;
 
@@ -1659,7 +1705,7 @@
       if (res.ok) {
         showToast(`🛏️ <strong>${bedCode}</strong> karavot muvaffaqiyatli biriktirildi!`);
         document.getElementById('admin-attach-bed-form').reset();
-        document.getElementById('attach-bed-rate').value = pricingConfig.packages?.statsionar_shared?.daily_rate || 720000;
+        document.getElementById('attach-bed-rate').value = listedRate('statsionar_shared');
         await loadMasterDatabases();
         renderAdminRoomsTab();
         renderActiveDepartment();

@@ -98,6 +98,61 @@ ma'lumotlar olib tashlandi.
 
 8 ta yangi test qo'shildi, jami 190 ta test o'tadi.
 
+### 2026-10-08: 2-bosqich — tekshiruv natijalari, kirish, menyu, narxlar
+
+1-bosqich o'zgarishlari qayta tekshirildi (har bir topilma ikki marta
+alohida tasdiqlandi), so'ng qolgan jiddiy xatolar tuzatildi.
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Kirish | `?next=` havolasi orqali kirgandan keyin boshqa saytga yuborish mumkin edi | Faqat shu saytdagi va xodimga ruxsat berilgan sahifa ochiladi |
+| Kirish | Har kim Super-Portalga tushardi (`/`, `index.html` ham) | Har bir lavozim o'z bosh sahifasiga tushadi (hamshira → Hamshira posti va h.k.) |
+| Kirish | Bosh sahifasi ruxsatsiz bo'lgan hisob cheksiz yo'naltirishga tushib qolardi | Har doim ochish mumkin bo'lgan sahifa beriladi |
+| Barcha sahifalar | Parolni o'zgartirish uchun havola yo'q edi | Yuqoridagi ism yonida kalit belgisi; sahifada "Ortga qaytish" |
+| Barcha sahifalar | Logotip ba'zi lavozimlarda yo'qolib qolardi | Logotip xodimning bosh sahifasiga olib boradi |
+| Barcha sahifalar | Har sahifada boshqacha menyu (3–11 tugma, nomlari har xil) | Bitta menyu: bir xil nom va tartib, bo'limlar bo'yicha, lavozimga qarab |
+| Shifokor | Ko'rik yozuvidagi matn sahifada kod sifatida ishlashi mumkin edi (xavfsizlik) | Oddiy matn sifatida ko'rsatiladi |
+| Shifokor | Epikrizda yozilgan, lekin saqlanmagan tavsiya anamnez saqlanganda o'chib ketardi | Saqlanib qoladi |
+| Shifokor | Qayta yotqizilgan bemorda oldingi yotishning epikrizi to'ldirilib turardi | Faqat joriy yotishniki ko'rsatiladi |
+| Shifokor | "Avto epikriz" hech qachon ishlamasdi; tugagan/to'xtatilgan dorilarni ham ko'chirardi | Bo'sh maydonga faqat faol tayinlovlar ko'chiriladi |
+| Shifokor | Hujjat oynasida "Chop Etish" har doim retsept varag'ini chiqarardi | Tanlangan hujjat chiqadi |
+| Shifokor | Ambulator bemorga bir kunda bir nechta ko'rik yozuvi to'planardi | Kuniga bitta, tuzatish shu yozuvni yangilaydi |
+| Shifokor | Bir kunda qayta saqlangan epikrizdan eskisi ochilishi mumkin edi | Eng oxirgisi ochiladi (PDF ham) |
+| PDF | Matnda `<` belgisi bo'lsa PDF umuman chiqmasdi | Chiqadi |
+| PDF | Shifokor yozilmagan bo'lsa ham "Klinik Shifokor, Narkolog-Psixiatr" imzosi | "Qayd etilmagan" |
+| Qabulxona | Bekor qilingan yozuv faqat ekrandan o'chardi; bo'shagan vaqtni qayta band qilib bo'lmasdi | Serverda bekor qilinadi (tasdiqlash so'raladi), vaqt bo'shaydi |
+| Qabulxona | Click/Payme avansi bank hisobiga yozilardi | Click/Payme hisobiga (buxgalteriya bilan bir xil) |
+| Qabulxona | Avans saqlanmasa, qabul bo'lgan bo'lsa ham xato chiqardi va qayta yuborilardi | Qabul saqlanadi; avansni buxgalteriyada kiritish so'raladi |
+| Buxgalteriya | Shifokor oyligi 0 so'm bo'lib yozilardi va "to'landi" deyilardi | Haqiqiy summa yuboriladi; rad etilsa xato ko'rsatiladi |
+| Buxgalteriya | Kassa operatsiyalari (kirim/chiqim, inkassatsiya) rad etilsa ham saqlandi deyilardi | Server javobi tekshiriladi |
+| Buxgalteriya | Hisobga qo'shilgan xizmat/dori 4 soniyada yo'qolardi | Serverda saqlanadi, narxni server narxlar ro'yxati yoki ombordan oladi, dori ombordan ayiriladi |
+| Navbatchilik | 2026-13-45 kabi mavjud bo'lmagan sana saqlanardi | Rad etiladi |
+| CRM | Tez boshqa bemorga o'tilganda oldingi bemorning epikriz xatosi ko'rinardi | Faqat ochiq bemorniki ko'rsatiladi |
+| Bemorni o'chirish | Kunlik qaydlar va karavot ko'chishlari bazada qolib ketardi | Ular ham o'chiriladi |
+| Texnik hisobotlar | Ikki texnik sahifa ishlab turgan server manzili va baza ma'lumotlarini ko'rsatardi | Saytdan olindi (`docs/` papkasida hujjat sifatida qoldi), Super-Portaldagi havolalar olib tashlandi |
+| Buxgalteriya | Maosh to'langani 4 soniyadan keyin "Hisoblangan"ga qaytardi, bir kishiga ikki marta to'lash mumkin edi | To'lov xodimga bog'lanadi; shu oy to'langan bo'lsa qayta to'lanmaydi |
+| Statsionar | Qabul / tahrirlash / karavot almashtirish oynasi hech narsani saqlamasdi | Qabul faqat Qabulxonada; karta oynasi faqat ko'rish uchun |
+| Statsionar | Karavot almashtirish yo'q edi | "Karavotni almashtirish" serverda saqlanadi (tasdiqlash so'raladi) |
+| Statsionar | Ko'chirilgan bemor qolgan kunlar uchun 720 000 dan qayta hisoblanardi (butun xona / chegirma yo'qolardi) | Kelishilgan narx saqlanadi (rahbar tasdiqlashi kerak, pastda) |
+| Statsionar | Ta'mirdagi karavot bo'sh ko'rinardi | "TA'MIRDA" kartasi, "Ta'mirga yuborish" / "Ta'mirlandi" tugmalari |
+| Statsionar | Server javob bermasa barcha karavotlar bo'sh ko'rinib qolardi | Oxirgi ma'lumot qoladi, ogohlantirish chiqadi |
+| Statsionar | "Chiqarish" tugmasi xato bilan to'xtardi | Ishlaydi |
+| Statsionar | Bemor ismi sahifada kod sifatida ishlashi mumkin edi (xavfsizlik) | Oddiy matn |
+| Narxlar | Har sahifada o'z narxlari yozilgan edi (720 000 / 1 100 000 / 630 000 ...) | Qabulxona, Buxgalteriya, Shifokor, Super-Portal va Statsionar bitta narxlar ro'yxatidan o'qiydi |
+| Narxlar | Konsultatsiya narxi Qabulxonada statsionar dastur bo'lib chiqardi | Chiqmaydi; konsultatsiya narxi tahrirlanadi |
+| Narxlar | Narx saqlashda hech narsa tekshirilmasdi; tarmoq xatosida "saqlandi" deyilardi | Har narx tekshiriladi; saqlanmasa aniq aytiladi |
+| Narxlar | Narxsiz qabul 720 000 dan hisoblanardi | Dastur narxi olinadi |
+
+**Rahbar qarori kerak:** (1) Bemor boshqa karavotga ko'chirilsa narx o'zgarmasinmi? Hozir
+o'zgarmaydi. (2) Server sahifa yuborgan narxni narxlar ro'yxati bilan solishtirib rad etsinmi?
+Hozir sahifa narxi qabul qilinadi. (3) Uyga chaqiruv narxi qancha? Ro'yxatda yo'q.
+
+Hali qolgan: Qabulxonada karavot tanlanganda kunlik/ambulator dastur narxi karavot narxiga
+almashadi; HR va navbatchilik smena narxlari (300/350/400 ming) hali sahifada yozilgan.
+
+27 ta yangi test qo'shildi, jami 217 ta test o'tadi.
+
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |

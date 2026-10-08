@@ -75,13 +75,34 @@
     };
   }
 
+  // The rates come from the one price list (js/fmh_pricing.js). This table
+  // used to carry its own 720 000 / 1 100 000 / ..., and those figures were
+  // sent as the daily price of a new bill, so a price changed in the editor
+  // never reached accounting.
+  function listedRate(id) {
+    return (window.FMH_Pricing && window.FMH_Pricing.rate(id)) || 0;
+  }
+
   const OFFICIAL_RATES = {
-    "statsionar_shared": { name: "Statsionar (1 karavot / 720 ming)", rate: 720000, desc: "2 kishilik xonada 1 ta o'rin" },
-    "statsionar_full_room": { name: "Statsionar Butun Xona (1 kishi / VIP Solo)", rate: 1100000, desc: "Butun xona 1 kishi uchun (2-o'rin berilmaydi)" },
-    "kunlik_statsionar": { name: "Kunlik Statsionar (Kunduzgi o'rin)", rate: 630000, desc: "Faqat kunduzgi vaqtda muolaja olish" },
-    "ambulator_1": { name: "Ambulator (Kuniga 1 mahal muolaja)", rate: 310000, desc: "Kuniga 1 mahal qatnab muolaja" },
-    "ambulator_2": { name: "Ambulator (Kuniga 2 mahal muolaja)", rate: 500000, desc: "Kuniga 2 mahal qatnab muolaja" }
+    "statsionar_shared": { name: "Statsionar (1 karavot / 720 ming)", get rate() { return listedRate('statsionar_shared'); }, desc: "2 kishilik xonada 1 ta o'rin" },
+    "statsionar_full_room": { name: "Statsionar Butun Xona (1 kishi / VIP Solo)", get rate() { return listedRate('statsionar_full_room'); }, desc: "Butun xona 1 kishi uchun (2-o'rin berilmaydi)" },
+    "kunlik_statsionar": { name: "Kunlik Statsionar (Kunduzgi o'rin)", get rate() { return listedRate('kunlik_statsionar'); }, desc: "Faqat kunduzgi vaqtda muolaja olish" },
+    "ambulator_1": { name: "Ambulator (Kuniga 1 mahal muolaja)", get rate() { return listedRate('ambulator_1'); }, desc: "Kuniga 1 mahal qatnab muolaja" },
+    "ambulator_2": { name: "Ambulator (Kuniga 2 mahal muolaja)", get rate() { return listedRate('ambulator_2'); }, desc: "Kuniga 2 mahal qatnab muolaja" }
   };
+
+  // The new-bill <select> in accounting.html has the prices typed into its
+  // option text; they are rewritten from the price list once it is loaded.
+  function applyListedPackageLabels() {
+    document.querySelectorAll('#newbill-package-select option').forEach(opt => {
+      const rate = listedRate(opt.value);
+      const cut = opt.textContent.lastIndexOf(' — ');
+      if (rate > 0 && cut > 0) {
+        const spaced = String(Math.round(rate)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        opt.textContent = `${opt.textContent.slice(0, cut)} — ${spaced} so'm / kun`;
+      }
+    });
+  }
 
   // Format currency helper (e.g. 720 000 so'm)
   function formatUZS(amount) {
@@ -233,6 +254,9 @@
         if (liveAcc.medication_purchases && Array.isArray(liveAcc.medication_purchases)) {
           accountingData.medication_purchases = liveAcc.medication_purchases;
         }
+        if (Array.isArray(liveAcc.invoice_items)) {
+          accountingData.invoice_items = liveAcc.invoice_items;
+        }
         if (liveAcc.pharmacy_stock && Array.isArray(liveAcc.pharmacy_stock)) {
           accountingData.pharmacy_stock = liveAcc.pharmacy_stock.map(m => ({
             id: m.id,
@@ -261,7 +285,12 @@
             role: d.specialty || d.role || 'Shifokor',
             base_salary: d.role === 'chief_doctor' ? 12000000 : 8500000,
             commission_rate: d.role === 'chief_doctor' ? 10 : 8,
-            status: 'calculated'
+            // Paid this month if the journal holds a salary payout for this
+            // person. The badge used to be set only in the browser and went
+            // back to "calculated" on the next sync, inviting a second payout.
+            status: (accountingData.transactions || []).some(t =>
+              t.category === 'salary' && t.related_staff_id === d.id &&
+              String(t.date || '').slice(0, 7) === getTodayISO().slice(0, 7)) ? 'paid' : 'calculated'
           }));
         }
       }
@@ -279,12 +308,18 @@
               patient_phone: row.patient_phone || '+998 (90) --- -- --',
               patient_city: 'Toshkent sh.',
               program: row.program_type || 'Statsionar',
-              package_type: row.daily_price >= 1100000 ? 'statsionar_full_room' : 'statsionar_shared',
+              // The stay's own programme decides the package; the price is
+              // only a guess for a programme that is not a package id.
+              package_type: OFFICIAL_RATES[row.program_type] ? row.program_type
+                : ((listedRate('statsionar_full_room') > 0 &&
+                    Number(row.daily_price) >= listedRate('statsionar_full_room'))
+                   ? 'statsionar_full_room' : 'statsionar_shared'),
               doctor: row.doctor_name || 'Shifokor biriktirilmagan',
               start_date: row.start_date || getTodayISO(),
               end_date: row.end_date || getOffsetDateStr(10),
               days_count: row.total_days || 10,
-              daily_rate: row.daily_price || 720000,
+              // A stay with no stored rate shows 0, not an invented 720 000.
+              daily_rate: Number(row.daily_price) || 0,
               gross_due: Number(row.total_billed) || 0,
               discount_amount: Number(row.discount_amount) || 0,
               total_due: row.net_amount || row.total_billed,
@@ -294,7 +329,20 @@
               paid_bank: 0,
               total_paid: row.total_paid || 0,
               debt_remaining: row.balance_due || 0,
-              extra_services: [],
+              // Saved bill lines from the server; the totals above already
+              // include them (the invoice triggers add them up).
+              extra_services: (accountingData.invoice_items || [])
+                .filter(it => it.invoice_id === row.invoice_id)
+                .map(it => ({
+                  id: it.id,
+                  name: it.service_name,
+                  type: it.item_type,
+                  unit_price: Number(it.unit_price) || 0,
+                  qty: Number(it.quantity) || 1,
+                  total: Number(it.total_amount) || 0,
+                  notes: '',
+                  added_at: it.created_at
+                })),
               status: row.payment_status || 'unpaid',
               created_at: row.created_at || new Date().toISOString()
             };
@@ -332,16 +380,16 @@
         let bill = accountingData.patients_billing.find(b => b.booking_id === String(booking.id));
 
         // Determine rate
-        let dailyRate = 720000;
+        let dailyRate = listedRate('statsionar_shared');
         let progName = "Statsionar (1 karavot / 720 ming)";
         let packageKey = "statsionar_shared";
 
         if (booking.is_full_room || (booking.program && (booking.program.includes("Butun Xona") || booking.program.includes("1.1 mln"))) || (booking.notes && booking.notes.includes("Butun xona"))) {
-          dailyRate = 1100000;
+          dailyRate = listedRate('statsionar_full_room');
           progName = "Statsionar Butun Xona (1 kishi / VIP Solo)";
           packageKey = "statsionar_full_room";
         } else if (booking.program && (booking.program.includes("Kunlik") || booking.program.includes("630 ming"))) {
-          dailyRate = 630000;
+          dailyRate = listedRate('kunlik_statsionar');
           progName = "Kunlik Statsionar (Kunduzgi o'rin)";
           packageKey = "kunlik_statsionar";
         }
@@ -669,8 +717,8 @@
         extraServicesHTML = `
           <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
             ${b.extra_services.map(s => `
-              <span class="extra-service-pill" title="${s.notes || ''}">
-                <i class="fas fa-plus-circle"></i> ${s.name} (${s.qty}x = +${formatShortUZS(s.total)})
+              <span class="extra-service-pill" title="${esc(s.notes || '')}">
+                <i class="fas fa-plus-circle"></i> ${esc(s.name)} (${s.qty}x = +${formatShortUZS(s.total)})
               </span>
             `).join('')}
           </div>
@@ -847,6 +895,11 @@
       const revenueGen = myPatients.reduce((sum, p) => sum + (Number(p.total_due) || 0), 0);
       const commissionEarned = Math.round(revenueGen * ((Number(doc.commission_rate) || 0) / 100));
       const totalPayable = (Number(doc.base_salary) || 0) + commissionEarned;
+      // The payout reads these. They lived only in this function, so the
+      // payout sent no amount and recorded 0 so'm.
+      doc.patients_count_month = patientCount;
+      doc.commission_earned = commissionEarned;
+      doc.total_payable = totalPayable;
 
       return `
         <div class="doctor-payroll-card">
@@ -1402,7 +1455,7 @@
         itemRows += `
           <tr>
             <td>${i + 2}</td>
-            <td><strong>${s.name}</strong><br><small style="color: #64748b;">Qo'shimcha tayinlangan muolaja / dori (${s.notes || 'Shifokor ko\'rsatmasi'})</small></td>
+            <td><strong>${esc(s.name)}</strong><br><small style="color: #64748b;">Qo'shimcha tayinlangan muolaja / dori (${esc(s.notes || 'Shifokor ko\'rsatmasi')})</small></td>
             <td style="text-align: center; font-weight: 700;">${s.qty} ta</td>
             <td style="text-align: right;">${formatUZS(s.unit_price)}</td>
             <td style="text-align: right; font-weight: 700; color: #a855f7;">${formatUZS(s.total)}</td>
@@ -1684,8 +1737,52 @@
     document.getElementById('addsvc-qty-input').value = 1;
     document.getElementById('addsvc-notes-input').value = '';
 
+    fillAddServiceOptions();
     updateAddServiceCalculation();
     modal.classList.add('active');
+  }
+
+  // The choice list used to be 8 fixed demo medicines (ids no stock item
+  // has) and 5 services at prices typed into the page. It is now the real
+  // stock with its prices, and the services from the one price list.
+  let addSvcPricing = null;
+  function fillAddServiceOptions() {
+    const select = document.getElementById('addsvc-item-select');
+    if (!select) return;
+    const build = () => {
+      const meds = (accountingData.pharmacy_stock || []).filter(m => m.id);
+      const svcs = (addSvcPricing && Array.isArray(addSvcPricing.additional_services))
+        ? addSvcPricing.additional_services : null;
+      const keepServices = svcs ? null : select.querySelector('optgroup[data-group="services"]') ||
+        Array.from(select.querySelectorAll('optgroup')).find(g => g.querySelector('option[value^="srv-"]'));
+      const parts = [];
+      parts.push('<optgroup label="Dorixona Ombordagi Dorilar (Ombordan hisobdan chiqariladi)">' +
+        (meds.length ? meds.map(m =>
+          `<option value="MED:${esc(m.id)}" data-price="${Number(m.unit_price) || 0}" data-type="pharmacy"${m.stock > 0 ? '' : ' disabled'}>` +
+          `💊 ${esc(m.name)}${m.form ? ' (' + esc(m.form) + ')' : ''} — ${formatUZS(Number(m.unit_price) || 0)} · qoldiq ${Number(m.stock) || 0}</option>`
+        ).join('') : '<option value="" disabled>Ombor ma\'lumoti yuklanmagan</option>') +
+        '</optgroup>');
+      if (svcs) {
+        parts.push('<optgroup data-group="services" label="Qo\'shimcha Tibbiy Muolajalar & Tekshiruvlar">' +
+          svcs.map(s => `<option value="${esc(s.id)}" data-price="${Number(s.price) || 0}" data-type="procedure">` +
+            `${esc(s.name)} — ${formatUZS(Number(s.price) || 0)}</option>`).join('') +
+          '</optgroup>');
+      } else if (keepServices) {
+        keepServices.setAttribute('data-group', 'services');
+        parts.push(keepServices.outerHTML);
+      }
+      select.innerHTML = parts.join('');
+      const first = select.querySelector('option:not([disabled])');
+      if (first) select.value = first.value;
+      updateAddServiceCalculation();
+    };
+    build();
+    if (!addSvcPricing) {
+      fetch('/api/settings/pricing', { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(p => { if (p && Array.isArray(p.additional_services)) { addSvcPricing = p; build(); } })
+        .catch(() => {});
+    }
   }
 
   function updateAddServiceCalculation() {
@@ -1694,6 +1791,7 @@
     if (!select) return;
 
     const opt = select.selectedOptions[0];
+    if (!opt) return;
     const unitPrice = Number(opt.dataset.price) || 0;
     const total = unitPrice * qty;
 
@@ -1703,65 +1801,45 @@
     }
   }
 
-  function handleAddServiceSubmit(e) {
+  // The bill line is saved on the server, which sets the price (price list
+  // or stock) and takes medicine off the shelf. The line used to live only
+  // in this page's copy of the bill and vanished on the next 4-second sync.
+  async function handleAddServiceSubmit(e) {
     e.preventDefault();
     const billId = document.getElementById('addsvc-bill-id').value;
     const select = document.getElementById('addsvc-item-select');
     const qty = Number(document.getElementById('addsvc-qty-input').value) || 1;
     const notes = document.getElementById('addsvc-notes-input').value.trim();
 
-    if (!billId || !select) return;
+    if (!billId || !select || !select.value) return;
 
     const bill = accountingData.patients_billing.find(b => b.id === billId);
     if (!bill) return;
 
     const opt = select.selectedOptions[0];
-    const itemCode = select.value;
-    const unitPrice = Number(opt.dataset.price) || 0;
-    const itemType = opt.dataset.type || 'pharmacy';
     const rawName = opt.textContent.split('—')[0].trim();
-    const lineTotal = unitPrice * qty;
-
-    // Deduct stock if from pharmacy
-    if (itemType === 'pharmacy') {
-      const stockItem = accountingData.pharmacy_stock.find(m => m.id === itemCode);
-      if (stockItem) {
-        if (stockItem.stock < qty) {
-          showToast(`Omborda yetarli qoldiq yo'q! Mavjud: ${stockItem.stock} ${stockItem.unit}`, 'danger');
-          return;
-        }
-        stockItem.stock -= qty;
-        if (stockItem.stock <= 15) {
-          stockItem.status = 'low';
-        }
+    const submitBtn = e.submitter || null;
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/accounting/invoice-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice_id: bill.id, service_code: select.value, quantity: qty, notes: notes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Xizmat qo'shilmadi (${res.status})`, 'danger');
+        return;
       }
+      closeAllModals();
+      await syncWithLedgerAndBackend(false);
+      renderAll();
+      showToast(`💊 <strong>${esc(data.service_name || rawName)}</strong> (${qty}x) ${esc(bill.patient_name)} hisobiga qo'shildi.`);
+    } catch (err) {
+      showToast("Server bilan aloqa yo'q — xizmat qo'shilmadi.", 'danger');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
-
-    if (!bill.extra_services) {
-      bill.extra_services = [];
-    }
-
-    bill.extra_services.push({
-      id: `EX-${Date.now()}`,
-      item_id: itemCode,
-      name: rawName,
-      type: itemType,
-      unit_price: unitPrice,
-      qty: qty,
-      total: lineTotal,
-      notes: notes,
-      added_at: new Date().toISOString()
-    });
-
-    // Update bill total due & remaining debt
-    bill.total_due += lineTotal;
-    bill.debt_remaining = Math.max(0, bill.total_due - bill.total_paid);
-    bill.status = bill.debt_remaining === 0 ? 'paid' : (bill.total_paid > 0 ? 'partial' : 'unpaid');
-
-    saveData();
-    closeAllModals();
-    renderAll();
-    showToast(`💊 <strong>${rawName}</strong> (${qty}x) ${bill.patient_name} hisobiga qo'shildi va ombordan chiqarildi!`);
   }
 
   // ==========================================================================
@@ -1834,13 +1912,9 @@
       notes: `${bank} bank hisob raqamiga topshirildi. ${notes}`
     };
 
-    try {
-      await fetch('/api/accounting/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTxn)
-      });
-    } catch (e) {}
+    const savedId = await postTransaction(newTxn);
+    if (!savedId) return;
+    newTxn.id = savedId;
 
     accountingData.transactions.unshift(newTxn);
     saveData();
@@ -2003,19 +2077,37 @@
       notes: notes
     };
 
-    try {
-      await fetch('/api/accounting/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTxn)
-      });
-    } catch (e) {}
+    const savedId = await postTransaction(newTxn);
+    if (!savedId) return;
+    newTxn.id = savedId;
 
     accountingData.transactions.unshift(newTxn);
     saveData();
     closeAllModals();
     renderAll();
     showToast(type === 'income' ? `✅ Yangi tushum (${formatUZS(amount)}) qo'shildi!` : `💸 Yangi xarajat (${formatUZS(amount)}) qayd etildi!`, type === 'income' ? 'success' : 'info');
+  }
+
+  // Saves one cash-journal entry and returns the server's id, or null after
+  // showing why it was refused. The three callers ignored the answer, so a
+  // refused entry was shown as saved until the next sync quietly dropped it.
+  async function postTransaction(txn) {
+    try {
+      const res = await fetch('/api/accounting/transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(txn)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Operatsiya saqlanmadi (${res.status})`, 'danger');
+        return null;
+      }
+      return data.id || txn.id;
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — operatsiya saqlanmadi.", 'danger');
+      return null;
+    }
   }
 
   // ==========================================================================
@@ -2025,6 +2117,14 @@
   async function payoutDoctorSalary(docId) {
     const doc = accountingData.doctors_payroll.find(d => d.id === docId);
     if (!doc) return;
+    if (doc.status === 'paid') {
+      showToast(`${esc(doc.name)} uchun shu oy maosh allaqachon to'langan.`, 'warning');
+      return;
+    }
+    if (!(Number(doc.total_payable) > 0)) {
+      showToast("To'lanadigan summa 0 so'm. Avval xodimning oylik maoshini kiriting.", 'warning');
+      return;
+    }
 
     const confirmed = await fmhConfirm({
       title: "Maosh To'lovini Tasdiqlash",
@@ -2037,8 +2137,6 @@
       return;
     }
 
-    doc.status = 'paid';
-
     // Record expense transaction
     const newTxn = {
       id: `TXN-2026-${Date.now().toString().slice(-6)}`,
@@ -2046,6 +2144,7 @@
       category: "salary",
       title: `Shifokor oyligi va gonorari (${doc.name})`,
       amount: doc.total_payable,
+      related_staff_id: doc.id,
       payment_method: "bank",
       patient_name: null,
       bill_id: null,
@@ -2055,13 +2154,10 @@
       notes: `${doc.name} maoshi (${formatUZS(doc.base_salary)}) + ${doc.patients_count_month} ta bemor uchun gonorari (${formatUZS(doc.commission_earned)})`
     };
 
-    try {
-      await fetch('/api/accounting/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTxn)
-      });
-    } catch (e) {}
+    const savedId = await postTransaction(newTxn);
+    if (!savedId) return;
+    newTxn.id = savedId;
+    doc.status = 'paid';
 
     accountingData.transactions.unshift(newTxn);
     saveData();
@@ -2763,6 +2859,8 @@
 
     const newBillPkgSelect = document.getElementById('newbill-package-select');
     if (newBillPkgSelect) newBillPkgSelect.addEventListener('change', updateNewBillCalculation);
+    applyListedPackageLabels();
+    if (window.FMH_Pricing) window.FMH_Pricing.ready.then(applyListedPackageLabels);
 
     const newBillDaysInput = document.getElementById('newbill-days-input');
     if (newBillDaysInput) newBillDaysInput.addEventListener('input', updateNewBillCalculation);

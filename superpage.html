@@ -18,11 +18,12 @@
   <!-- Stylesheets -->
   <link rel="stylesheet" href="css/superpage.css?v=3.1">
   <link rel="stylesheet" href="css/building_management.css?v=3.1">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.1">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.3"></script>
+  <script src="js/fmh_dialogs.js?v=1.4"></script>
+  <script src="js/fmh_pricing.js?v=1.0"></script>
 </head>
 <body class="super-portal-page">
 
@@ -209,12 +210,6 @@
           </a>
           <a href="crm.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none; border-color: rgba(244, 63, 94, 0.4);">
             <i class="fas fa-address-book" style="color: #f43f5e;"></i> 📂 Bemorlar CRM Portali
-          </a>
-          <a href="grand_total_report.html" target="_blank" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
-            <i class="fas fa-file-invoice" style="color: #38bdf8;"></i> 📊 Grand Total DB Hisobot
-          </a>
-          <a href="Fayz_Database_Grand_Total_Report.pdf" target="_blank" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
-            <i class="fas fa-file-pdf" style="color: #f43f5e;"></i> 📑 Grand Total PDF Hisobot
           </a>
           <a href="https://fayzmedical.uz" target="_blank" rel="noopener noreferrer" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
             <i class="fas fa-external-link-alt" style="color: var(--purple);"></i> 🌐 Rasmiy Veb-Sayt
@@ -1150,31 +1145,37 @@
                 <div>
                   <label class="super-form-label">Statsionar Standart (2 kishilik xonada 1 karavot) *</label>
                   <input type="number" id="price-standard-shared" class="super-input" required>
-                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 720 000 so'm / kun (10 kunlik kurs: 7 200 000)</small>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="statsionar_shared">Hozirgi standart: 720 000 so'm / kun (10 kunlik kurs: 7 200 000)</small>
                 </div>
 
                 <div>
                   <label class="super-form-label">Statsionar Butun Xona (VIP Solo / 1 kishi) *</label>
                   <input type="number" id="price-vip-solo" class="super-input" required>
-                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 1 100 000 so'm / kun (2-karavot to'liq yopiladi)</small>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="statsionar_full_room">Hozirgi standart: 1 100 000 so'm / kun (2-karavot to'liq yopiladi)</small>
                 </div>
 
                 <div>
                   <label class="super-form-label">Kunlik Statsionar (Kunduzgi o'rin) *</label>
                   <input type="number" id="price-daycare" class="super-input" required>
-                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 630 000 so'm / kun</small>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="kunlik_statsionar">Hozirgi standart: 630 000 so'm / kun</small>
                 </div>
 
                 <div>
                   <label class="super-form-label">Ambulator (Kuniga 1 mahal muolaja) *</label>
                   <input type="number" id="price-ambulator-1" class="super-input" required>
-                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 310 000 so'm / kun</small>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="ambulator_1">Hozirgi standart: 310 000 so'm / kun</small>
                 </div>
 
                 <div>
                   <label class="super-form-label">Ambulator (Kuniga 2 mahal muolaja) *</label>
                   <input type="number" id="price-ambulator-2" class="super-input" required>
-                  <small style="color: var(--text-muted); font-size: 0.72rem;">Hozirgi standart: 500 000 so'm / kun</small>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="ambulator_2">Hozirgi standart: 500 000 so'm / kun</small>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Shifokor Konsultatsiyasi (bir martalik) *</label>
+                  <input type="number" id="price-consultation" class="super-input" min="0" required>
+                  <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="consultation">Hozirgi standart: 250 000 so'm</small>
                 </div>
 
                 <button type="submit" class="btn-super btn-super-success" style="margin-top: 8px;">
@@ -1448,7 +1449,7 @@
   <script src="js/xlsx.full.min.js"></script>
     <script src="js/unified_print_engine.js?v=5.3"></script>
     <script src="js/med_search_engine.js?v=4.0"></script>
-<script src="js/superpage.js?v=8.2"></script>
+<script src="js/superpage.js?v=8.3"></script>
   <div id="print-area"></div>
 </body>
 </html>

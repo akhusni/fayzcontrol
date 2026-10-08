@@ -188,6 +188,90 @@ def write_json_atomic(path, data):
 
 
 # ----------------------------------------------------------------------------
+# The one price list
+#
+# data/pricing_config.json is the only place a tariff is set. Every page used
+# to carry its own copy of the numbers (reception, accounting, the doctor
+# wizard and superpage each had one), and the GET endpoint had a fifth copy
+# that lacked the consultation fee, so a price changed in the editor reached
+# some screens and not others. DEFAULT_PRICING is the single fallback: it
+# fills in a package the file does not have, and stands in for a file that is
+# missing or unreadable, so no reader ever sees an empty price list.
+# ----------------------------------------------------------------------------
+PRICING_FILE = os.path.join(BASE_DIR, 'data', 'pricing_config.json')
+
+DEFAULT_PRICING = {
+    "packages": {
+        "statsionar_shared": {"daily_rate": 720000, "name_uz": "Statsionar (1 karavot / 2 kishilik xona)"},
+        "statsionar_full_room": {"daily_rate": 1100000, "name_uz": "Statsionar Butun Xona (VIP Solo)"},
+        "kunlik_statsionar": {"daily_rate": 630000, "name_uz": "Kunlik Statsionar (Kunduzgi o'rin)"},
+        "ambulator_1": {"daily_rate": 310000, "name_uz": "Ambulator (1 mahal)"},
+        "ambulator_2": {"daily_rate": 500000, "name_uz": "Ambulator (2 mahal)"},
+        "consultation": {"daily_rate": 250000, "name_uz": "Shifokor Konsultatsiyasi (Birlamchi ko'rik)"},
+    },
+    "additional_services": [],
+}
+
+# The consultation fee is kept as a package key, but it is a one-off fee, not
+# a programme a patient is admitted on.
+NON_PROGRAM_PACKAGES = ('consultation',)
+
+
+def load_pricing():
+    """
+    The price list with every known package present.
+
+    A broken file is not raised here (unlike read_json_file): GET used to answer
+    {} for it, which left every page without prices. Readers get the defaults
+    instead; the save path reads the raw file itself and refuses to overwrite
+    one it cannot parse.
+    """
+    try:
+        data = read_json_file(PRICING_FILE, None)
+    except Exception as e:
+        print("pricing_config.json is unreadable, serving defaults:", e)
+        data = None
+    if not isinstance(data, dict):
+        data = {}
+    result = dict(data)
+    packages = data.get('packages') if isinstance(data.get('packages'), dict) else {}
+    merged = {}
+    for pid, default_pkg in DEFAULT_PRICING['packages'].items():
+        pkg = packages.get(pid)
+        if isinstance(pkg, dict):
+            filled = dict(default_pkg)
+            filled.update(pkg)
+            merged[pid] = filled
+        else:
+            merged[pid] = dict(default_pkg)
+    for pid, pkg in packages.items():
+        if pid not in merged and isinstance(pkg, dict):
+            merged[pid] = dict(pkg)
+    result['packages'] = merged
+    services = data.get('additional_services')
+    result['additional_services'] = services if isinstance(services, list) else []
+    return result
+
+
+def package_daily_rate(program_type, pricing=None):
+    """
+    The listed daily rate for a programme id, for a stay sent without a price.
+
+    A programme that is not in the list (the doctor wizard's free-text
+    'Statsionar davolanish', the desk's old 'detox' default) gets the shared
+    inpatient rate, which is what the hardcoded 720 000 fallback stood for.
+    """
+    packages = (pricing or load_pricing()).get('packages') or {}
+    pkg = packages.get(str(program_type or ''))
+    if not isinstance(pkg, dict) or str(program_type) in NON_PROGRAM_PACKAGES:
+        pkg = packages.get('statsionar_shared') or DEFAULT_PRICING['packages']['statsionar_shared']
+    try:
+        return float(pkg.get('daily_rate') or 0)
+    except (TypeError, ValueError):
+        return float(DEFAULT_PRICING['packages']['statsionar_shared']['daily_rate'])
+
+
+# ----------------------------------------------------------------------------
 # Input validation
 #
 # Requests used to reach the database unchecked, so a mistake came back as the
@@ -394,6 +478,18 @@ def account_source_for(method):
     if method == 'terminal':
         return 'terminal_bank'
     return 'main_bank_account'
+
+
+def payment_destination_for(method):
+    """
+    Which account a patient payment paid by `method` lands in. The accounting
+    page books Click/Payme to the merchant account; the desk advance used
+    account_source_for and filed the same money under the main bank account,
+    so per-account balances disagreed between the two pages.
+    """
+    if method == 'payme_click':
+        return 'click_payme_merchant'
+    return account_source_for(method)
 
 
 def new_record_id(cur, table, prefix):
@@ -853,9 +949,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
             return
 
-        if path in ('/', ''):
+        if path in ('/', '', '/index.html'):
+            # Each role lands on its own home, not on the Super-Portal, which
+            # most roles may not open (they were bounced a second time).
+            sess = self.current_session() or {}
             self.send_response(302)
-            self.send_header('Location', '/superpage.html')
+            self.send_header('Location', permissions.home_for(sess.get('user')))
             self.end_headers()
             return
 
@@ -1402,9 +1501,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 7. /api/accounting/data -> 100% Dynamic MySQL-Powered Accounting Dataset
             elif path == '/api/accounting/data' or path == '/api/accounting':
-                # Services catalog
-                cur.execute("SELECT id, name, category, unit_price AS rate, description FROM services_catalog WHERE is_active = 1")
-                pricing_catalog = [dict(r) for r in cur.fetchall()]
+                # services_catalog (MySQL) is not sent any more. Nothing ever
+                # wrote to it and no page read it, and its seeded prices
+                # disagreed with pricing_config.json (ECG 80 000 vs 120 000),
+                # so it was a third price list waiting to be trusted by
+                # mistake. Extra services come from the one price list
+                # (GET /api/settings/pricing -> additional_services). The
+                # table is left in place.
 
                 # Pharmacy stock
                 cur.execute("SELECT id, name, category, form, standard_dosage, unit_price, stock_quantity, min_stock_level FROM medications_catalog WHERE is_active = 1")
@@ -1414,11 +1517,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("SELECT * FROM v_financial_ledger")
                 patients_billing = [dict(r) for r in cur.fetchall()]
 
+                # Lines added to bills besides the stay itself, so the page
+                # can show them after a reload instead of only until the
+                # next sync.
+                cur.execute(
+                    "SELECT id, invoice_id, service_name, quantity, unit_price, total_amount, "
+                    "item_type, created_at FROM invoice_items WHERE item_type != 'bed_stay' "
+                    "ORDER BY created_at, id")
+                invoice_items = [dict(r) for r in cur.fetchall()]
+
                 # Transactions (single-source from accounting_transactions)
                 transactions = []
                 cur.execute("""
                     SELECT id, transaction_type AS type, category, description AS title,
                            amount, payment_method, account_source, related_invoice_id AS invoice_id,
+                           related_staff_id,
                            transaction_date AS date, '12:00' AS time, 'Kassir' AS cashier, description AS notes
                     FROM accounting_transactions
                     ORDER BY transaction_date DESC, id DESC
@@ -1464,9 +1577,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "phone": "+998 71 200-44-00",
                         "telegram": "@fayz_medical_house"
                     },
-                    "pricing_catalog": pricing_catalog,
                     "pharmacy_stock": pharmacy_stock,
                     "patients_billing": patients_billing,
+                    "invoice_items": invoice_items,
                     "transactions": transactions,
                     "doctors_payroll": doctors_payroll,
                     "medication_purchases": medication_purchases,
@@ -1653,8 +1766,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("SELECT id, full_name AS name, specialty, role, phone FROM staff WHERE role IN ('doctor', 'chief_doctor') AND is_active = 1")
                 doctors = [dict(r) for r in cur.fetchall()]
 
-                cur.execute("SELECT id, name, unit_price, category FROM services_catalog WHERE is_active = 1")
-                services = [dict(r) for r in cur.fetchall()]
+                # services_catalog is no longer read here: reception.js never
+                # used it and its prices disagreed with the one price list
+                # (see /api/accounting/data). The table is left in place.
 
                 # The desk needs the tariff list and the referral sources
                 # to render its intake form, and neither was ever in this
@@ -1666,10 +1780,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # the HTML however the desk chose. The prices are read from
                 # the same pricing_config.json the accounting page edits,
                 # so the desk and the invoice cannot drift apart.
-                pricing_file = os.path.join(BASE_DIR, 'data', 'pricing_config.json')
-                packages = (read_json_file(pricing_file, {}) or {}).get('packages') or {}
+                _pricing = load_pricing()
+                packages = _pricing.get('packages') or {}
                 program_types = []
                 for _pid, _pkg in packages.items():
+                    # The consultation fee is a package key too, and it used to
+                    # reach the desk as a sixth inpatient programme priced
+                    # "250 000 so'm/kun". It is sent on its own below.
+                    if _pid in NON_PROGRAM_PACKAGES:
+                        continue
                     _pkg = _pkg or {}
                     program_types.append({
                         "id": _pid,
@@ -1689,12 +1808,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "call_logs": call_logs,
                     "doctors": doctors,
                     "program_types": program_types,
-                    # The billable services catalogue is not the same thing
-                    # as the desk's four intake modes, which is what
-                    # service_types means to reception.js. Sending the
-                    # catalogue under that name replaced them with rows that
-                    # have no name_uz, icon or colour.
-                    "services": services,
+                    # The desk shows the doctor's consultation fee, which is
+                    # the 'consultation' package of the price list.
+                    "consultation_fee": float(
+                        ((packages.get('consultation') or {}).get('daily_rate')) or 0),
+                    # (service_types -- the desk's four intake modes -- is not
+                    # sent: overwriting it with billable services once left
+                    # the intake modes with no name_uz, icon or colour.)
                     "walk_ins": [a for a in appointments if a.get('service_type') in ('outpatient', 'home_visit')]
                 }
                 self._set_json_headers(200)
@@ -1954,7 +2074,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     patient['daily_notes'] = [dict(r) for r in cur.fetchall()]
 
                     # Epicrisis
-                    cur.execute("SELECT * FROM discharge_epicrises WHERE patient_id = ? ORDER BY epicrisis_date DESC LIMIT 1", (actual_id,))
+                    # Newest save first, with a tiebreak: several saves on one day picked
+                    # an arbitrary one, so a corrected summary could revert.
+                    cur.execute("SELECT * FROM discharge_epicrises WHERE patient_id = ? ORDER BY epicrisis_date DESC, updated_at DESC, created_at DESC LIMIT 1", (actual_id,))
                     epi_row = cur.fetchone()
                     patient['discharge_epicrisis'] = dict(epi_row) if epi_row else None
 
@@ -2014,24 +2136,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 16. /api/settings/pricing -> Dynamic Pricing Config
             elif path == '/api/settings/pricing':
-                pricing_file = os.path.join(BASE_DIR, 'data', 'pricing_config.json')
-                if os.path.exists(pricing_file):
-                    try:
-                        with open(pricing_file, 'r', encoding='utf-8') as f:
-                            p_data = json.load(f)
-                    except Exception:
-                        p_data = {}
-                else:
-                    p_data = {
-                        "packages": {
-                            "statsionar_shared": {"daily_rate": 720000, "name_uz": "Statsionar (1 karavot / 2 kishilik xona)"},
-                            "statsionar_full_room": {"daily_rate": 1100000, "name_uz": "Statsionar Butun Xona (VIP Solo)"},
-                            "kunlik_statsionar": {"daily_rate": 630000, "name_uz": "Kunlik Statsionar (Kunduzgi o'rin)"},
-                            "ambulator_1": {"daily_rate": 310000, "name_uz": "Ambulator (1 mahal)"},
-                            "ambulator_2": {"daily_rate": 500000, "name_uz": "Ambulator (2 mahal)"}
-                        },
-                        "additional_services": []
-                    }
+                # Every signed-in role reads this (permissions.API_READ_EXEMPT):
+                # it is the one list each page takes its prices from.
+                p_data = load_pricing()
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(p_data, ensure_ascii=False).encode('utf-8'))
 
@@ -2147,8 +2254,16 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if _err:
                     self._send_validation_error(_err, 'planned_end_date')
                     return
-                daily_price, _err = validate_amount(
-                    body.get('daily_price', 720000.0), field='Kunlik narx')
+                # A stay sent without a price is billed at its programme's
+                # rate from the one price list; it used to be a hardcoded
+                # 720 000 whatever the programme. An explicit daily_price
+                # from the page is still accepted as before: whether the
+                # server should refuse a rate that differs from the list
+                # is an owner decision that is still open.
+                _raw_price = body.get('daily_price')
+                if _raw_price in (None, ''):
+                    _raw_price = package_daily_rate(body.get('program_type'))
+                daily_price, _err = validate_amount(_raw_price, field='Kunlik narx')
                 if _err:
                     self._send_validation_error(_err, 'daily_price')
                     return
@@ -2247,14 +2362,27 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             (discount_amount, res_data.get('invoice_id')))
                         conn.commit()
 
+                # The stay and its invoice are already committed. A failed
+                # advance used to turn that into a 500, so the desk resubmitted
+                # and created a second patient for a bed now taken. Answer 201
+                # with no advance instead; the page then tells the desk to
+                # enter the advance in accounting.
                 advance_payment_id = None
                 if advance_amount > 0 and res_data.get('invoice_id'):
-                    advance_payment_id = self._record_payment(
-                        conn, cur, res_data.get('invoice_id'), advance_amount,
-                        advance_method, account_source_for(advance_method),
-                        datetime.date.today().isoformat(),
-                        'Birlamchi qabul avans to`lovi',
-                        self._actor_staff_id(body, 'received_by_staff_id'))
+                    try:
+                        advance_payment_id = self._record_payment(
+                            conn, cur, res_data.get('invoice_id'), advance_amount,
+                            advance_method, payment_destination_for(advance_method),
+                            datetime.date.today().isoformat(),
+                            'Birlamchi qabul avans to`lovi',
+                            self._actor_staff_id(body, 'received_by_staff_id'))
+                    except Exception:
+                        traceback.print_exc()
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        advance_payment_id = None
 
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
@@ -2293,15 +2421,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # 1c. POST /api/admissions/<id>/transfer or /api/admissions/transfer
             elif '/transfer' in path:
                 adm_id = body.get('admission_id') or (path.split('/')[3] if len(path.split('/')) > 3 else None)
-                new_bed_id = body.get('new_bed_id')
-                transfer_date = (body.get('transfer_date') or datetime.date.today().isoformat())[:10]
-                reason = body.get('reason') or "Palata ko'chirildi"
+                new_bed_id = str(body.get('new_bed_id') or '').strip()
+                raw_transfer_date = body.get('transfer_date')
+                transfer_date = (str(raw_transfer_date).strip() if raw_transfer_date
+                                 else datetime.date.today().isoformat())[:10]
+                reason = str(body.get('reason') or '').strip()[:1000] or "Palata ko'chirildi"
                 staff_id = self._actor_staff_id(body)
 
+                if not adm_id:
+                    self._send_validation_error("Yotqizish (admission) ko'rsatilmagan.", 'admission_id')
+                    return
+                if not new_bed_id:
+                    self._send_validation_error("Yangi karavotni tanlang.", 'new_bed_id')
+                    return
+
+                # transfer_patient_bed returns (False, message) only for
+                # refusals written for staff in Uzbek. Unexpected failures are
+                # re-raised and reach the generic 500 handler of this method,
+                # which logs the traceback; str(e) used to be sent to the
+                # browser here, database internals included.
                 success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id)
                 if not success:
-                    self._set_json_headers(400)
-                    self.wfile.write(json.dumps({'error': str(res_data)}, ensure_ascii=False).encode('utf-8'))
+                    self._send_validation_error(str(res_data))
                     return
 
                 self._set_json_headers(200)
@@ -2396,18 +2537,39 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 3. POST /api/accounting/transaction (Create Expense / Incasso / Operational Cash Flow)
             elif path == '/api/accounting/transaction':
-                trx_id = body.get('id') or new_record_id(cur, 'accounting_transactions', 'TRX-2026')
-                amount = float(body.get('amount', 0))
+                # The salary payout sent no amount at all (the figure lived
+                # only in the page's render code), and this stored 0 so'm, or
+                # failed the amount > 0 CHECK with a 500 that the page
+                # reported as paid. The id is always ours: the page's
+                # TXN-2026-<time> ids are not unique.
+                amount, _aerr = validate_amount(body.get('amount'))
+                if _aerr:
+                    self._send_validation_error(_aerr, 'amount')
+                    return
+                if amount <= 0:
+                    self._send_validation_error("Summa noldan katta bo'lishi kerak.", 'amount')
+                    return
                 txn_type = body.get('type', 'expense')
+                if txn_type not in ('income', 'expense'):
+                    self._send_validation_error("Operatsiya turi noto'g'ri (income yoki expense).", 'type')
+                    return
+                trx_id = new_record_id(cur, 'accounting_transactions', 'TRX-2026')
                 category = body.get('category', 'operational_expense')
                 method = normalize_payment_method(body.get('payment_method', 'cash'))
                 account_source = account_source_for(method)
                 date_str = (body.get('date') or datetime.date.today().isoformat())[:10]
                 desc = body.get('title') or body.get('description') or 'Kassa operatsiyasi'
 
+                # Which employee a salary was paid to; the journal held only
+                # free text, so a payout could not be traced to the person.
+                _staff_ref = str(body.get('related_staff_id') or '').strip()[:64] or None
+                if _staff_ref:
+                    cur.execute("SELECT id FROM staff WHERE id = ?", (_staff_ref,))
+                    if not cur.fetchone():
+                        _staff_ref = None
                 cur.execute("""
-                    INSERT INTO accounting_transactions (id, transaction_type, category, amount, payment_method, account_source, description, transaction_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO accounting_transactions (id, transaction_type, category, amount, payment_method, account_source, description, transaction_date, related_staff_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     trx_id,
                     txn_type,
@@ -2416,7 +2578,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     method,
                     account_source,
                     desc,
-                    date_str
+                    date_str,
+                    _staff_ref
                 ))
                 conn.commit()
                 if telegram_service:
@@ -2436,6 +2599,100 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.close()
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({'message': 'Transaction saved', 'id': trx_id}, ensure_ascii=False).encode('utf-8'))
+
+            # 3b. POST /api/accounting/invoice-items -- add a service or a
+            # medicine from stock to a patient's bill.
+            #
+            # There was no such route: the page added the line to its own copy
+            # of the bill and the next 4-second sync dropped it, with the
+            # charge and the "taken from stock" it claimed. The price is
+            # looked up here (price list or stock), not taken from the page;
+            # the invoice triggers then rebalance the bill.
+            elif path == '/api/accounting/invoice-items':
+                invoice_id = str(body.get('invoice_id') or '').strip()
+                code = str(body.get('service_code') or '').strip()
+                try:
+                    qty = int(body.get('quantity') or 0)
+                except (TypeError, ValueError):
+                    qty = 0
+                if not invoice_id:
+                    self._send_validation_error("Hisob tanlanmagan.", 'invoice_id')
+                    return
+                if not code:
+                    self._send_validation_error("Xizmat yoki dorini tanlang.", 'service_code')
+                    return
+                if qty < 1 or qty > 50:
+                    self._send_validation_error("Miqdor 1 dan 50 gacha bo'lishi kerak.", 'quantity')
+                    return
+                cur.execute("SELECT id, payment_status FROM invoices WHERE id = ?", (invoice_id,))
+                inv = cur.fetchone()
+                if not inv:
+                    self._send_validation_error("Hisob topilmadi.", 'invoice_id')
+                    return
+                # A refund in progress or done: a new line would quietly eat
+                # into the money owed back to the patient.
+                if inv['payment_status'] in ('refund_due', 'refunded'):
+                    self._send_validation_error(
+                        "Qaytarish jarayonidagi hisobga xizmat qo'shib bo'lmaydi.", 'invoice_id')
+                    return
+
+                med_id = None
+                if code.startswith('MED:'):
+                    med_id = code[4:]
+                    cur.execute(
+                        "SELECT id, name, form, unit_price, stock_quantity FROM medications_catalog "
+                        "WHERE id = ? AND is_active = 1 FOR UPDATE", (med_id,))
+                    med = cur.fetchone()
+                    if not med:
+                        self._send_validation_error("Dori omborda topilmadi.", 'service_code')
+                        return
+                    if int(med['stock_quantity'] or 0) < qty:
+                        self._send_validation_error(
+                            f"Omborda yetarli qoldiq yo'q. Mavjud: {int(med['stock_quantity'] or 0)}.",
+                            'quantity')
+                        return
+                    item_name = med['name'] + (f" ({med['form']})" if med.get('form') else '')
+                    unit_price = float(med['unit_price'] or 0)
+                    item_type = 'medication'
+                else:
+                    pricing = load_pricing()
+                    svc = next((s for s in (pricing.get('additional_services') or [])
+                                if isinstance(s, dict) and str(s.get('id')) == code), None)
+                    if not svc:
+                        self._send_validation_error("Xizmat narxlar ro'yxatida topilmadi.", 'service_code')
+                        return
+                    item_name = str(svc.get('name') or code)
+                    unit_price, _perr = validate_amount(svc.get('price'))
+                    if _perr:
+                        self._send_validation_error("Xizmat narxi noto'g'ri.", 'service_code')
+                        return
+                    _cat = str(svc.get('category') or '').lower()
+                    item_type = 'lab_test' if 'labor' in _cat else 'procedure'
+
+                notes = str(body.get('notes') or '').strip()[:200]
+                if notes:
+                    item_name = f"{item_name} — {notes}"
+                cur.execute(
+                    "INSERT INTO invoice_items (invoice_id, service_name, quantity, unit_price, item_type, "
+                    "service_start_date) VALUES (?, ?, ?, ?, ?, ?)",
+                    (invoice_id, item_name[:255], qty, unit_price, item_type,
+                     datetime.date.today().isoformat()))
+                item_id = cur.lastrowid
+                if med_id:
+                    cur.execute(
+                        "UPDATE medications_catalog SET stock_quantity = stock_quantity - ? WHERE id = ?",
+                        (qty, med_id))
+                conn.commit()
+                cur.execute("SELECT total_billed, net_amount, total_paid, balance_due, payment_status "
+                            "FROM invoices WHERE id = ?", (invoice_id,))
+                totals = dict(cur.fetchone() or {})
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'message': "Xizmat hisobga qo'shildi",
+                    'id': item_id, 'invoice_id': invoice_id, 'service_name': item_name,
+                    'quantity': qty, 'unit_price': unit_price, 'total': unit_price * qty,
+                    'item_type': item_type, 'invoice': totals,
+                }, ensure_ascii=False).encode('utf-8'))
 
             # 3a. POST /api/accounting/medication-purchases (Record Medication Purchase Expense & Restock)
             # 3c. POST /api/accounting/medicine-links -> link a prescribed
@@ -2698,11 +2955,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 for sh in (saved.get('shifts') or []):
                     if isinstance(sh, dict) and sh.get('date'):
                         merged[str(sh['date'])] = sh
+                # A real calendar day only. The pattern alone let 2026-13-45
+                # (and a date with a trailing newline) in, and since saves
+                # now merge instead of replacing, no save could remove it.
                 for sh in body['shifts']:
-                    if not sh.get('date') or not re.match(r'^\d{4}-\d{2}-\d{2}$', str(sh.get('date'))):
+                    _d = sh.get('date') if isinstance(sh, dict) else None
+                    try:
+                        _ok = (isinstance(_d, str) and len(_d) == 10 and
+                               datetime.date.fromisoformat(_d).isoformat() == _d)
+                    except ValueError:
+                        _ok = False
+                    if not _ok:
                         self._send_validation_error("Smena sanasi noto'g'ri", 'shifts')
                         return
-                    merged[str(sh['date'])] = sh
+                    merged[_d] = sh
                 saved['shifts'] = [merged[d] for d in sorted(merged)]
                 if isinstance(body.get('sanitarkas'), list):
                     saved['sanitarkas'] = body['sanitarkas']
@@ -3305,21 +3571,40 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if 'treatment_adjustments' in body:
                     _upd.append('treatment_adjustments')
                 _clause = ', '.join(f"{c} = VALUES({c})" for c in _upd)
-                cur.execute(f"""
-                    INSERT INTO doctor_daily_notes (
-                        patient_id, admission_id, doctor_id, note_date,
-                        patient_condition, vital_bp_systolic, vital_bp_diastolic,
-                        vital_pulse, vital_temp, vital_spo2,
-                        dynamics_notes, treatment_adjustments)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE {_clause}
-                """, (
-                    pid, adm_id, doc_id, day.isoformat(), condition,
-                    vitals.get('vital_bp_systolic'), vitals.get('vital_bp_diastolic'),
-                    vitals.get('vital_pulse'), vitals.get('vital_temp'),
-                    vitals.get('vital_spo2'), dynamics,
-                    (body.get('treatment_adjustments') or '').strip() or None,
-                ))
+                _treat = (body.get('treatment_adjustments') or '').strip() or None
+                # The unique key is (admission_id, note_date), and NULLs never
+                # collide, so for a patient with no stay every save added
+                # another row for the same day. Update that day's row instead.
+                _existing = None
+                if adm_id is None:
+                    cur.execute(
+                        "SELECT id FROM doctor_daily_notes WHERE patient_id = ? "
+                        "AND admission_id IS NULL AND note_date = ? ORDER BY id DESC LIMIT 1",
+                        (pid, day.isoformat()))
+                    _existing = cur.fetchone()
+                if _existing:
+                    _vals = {'doctor_id': doc_id, 'patient_condition': condition,
+                             'dynamics_notes': dynamics, 'treatment_adjustments': _treat}
+                    _vals.update(vitals)
+                    cur.execute(
+                        "UPDATE doctor_daily_notes SET " + ', '.join(f"{c} = ?" for c in _upd) +
+                        " WHERE id = ?",
+                        tuple(_vals.get(c) for c in _upd) + (_existing['id'],))
+                else:
+                    cur.execute(f"""
+                        INSERT INTO doctor_daily_notes (
+                            patient_id, admission_id, doctor_id, note_date,
+                            patient_condition, vital_bp_systolic, vital_bp_diastolic,
+                            vital_pulse, vital_temp, vital_spo2,
+                            dynamics_notes, treatment_adjustments)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE {_clause}
+                    """, (
+                        pid, adm_id, doc_id, day.isoformat(), condition,
+                        vitals.get('vital_bp_systolic'), vitals.get('vital_bp_diastolic'),
+                        vitals.get('vital_pulse'), vitals.get('vital_temp'),
+                        vitals.get('vital_spo2'), dynamics, _treat,
+                    ))
                 conn.commit()
                 audit.record(conn, 'doctor_daily_notes', adm_id or pid, 'WARD_ROUND',
                              user=(sess['user'] if sess else None),
@@ -3509,7 +3794,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     prog_type = inpatient_info.get('program_type') or 'Statsionar davolanish'
                     start_date = (inpatient_info.get('start_date') or datetime.date.today().isoformat())[:10]
                     end_date = (inpatient_info.get('end_date') or datetime.date.today().isoformat())[:10]
-                    daily_price = float(inpatient_info.get('daily_price') or 720000.0)
+                    # No price from the wizard: the programme's rate from the
+                    # one price list, not a hardcoded 720 000. An explicit
+                    # price is still taken as sent (owner decision pending
+                    # on enforcing the list server-side).
+                    daily_price = float(inpatient_info.get('daily_price')
+                                        or package_daily_rate(prog_type))
 
                     if bed_id:
                         success, res_data = admit_patient(
@@ -3643,28 +3933,116 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 12. POST /api/settings/pricing (Superadmin updates any price dynamically)
             elif path == '/api/settings/pricing':
-                pricing_file = os.path.join(BASE_DIR, 'data', 'pricing_config.json')
-                existing = read_json_file(pricing_file, {})
-                
+                # Nothing here was checked: any package name was merged in,
+                # a price could be text or negative and was then billed, and
+                # updated_by was whatever the browser typed. Every value is
+                # validated before the file is touched.
+                new_packages = None
                 if 'packages' in body:
-                    if 'packages' not in existing:
-                        existing['packages'] = {}
-                    existing['packages'].update(body['packages'])
-                if 'additional_services' in body:
-                    existing['additional_services'] = body['additional_services']
-                existing['updated_at'] = datetime.datetime.now().isoformat()
-                existing['updated_by'] = body.get('updated_by', 'superadmin')
+                    if not isinstance(body.get('packages'), dict):
+                        self._send_validation_error("Narxlar ro'yxati noto'g'ri.", 'packages')
+                        return
+                    new_packages = {}
+                    for pid, pkg in body['packages'].items():
+                        if pid not in DEFAULT_PRICING['packages']:
+                            self._send_validation_error(
+                                f"Noma'lum tarif: {str(pid)[:60]}.", f'packages.{str(pid)[:60]}')
+                            return
+                        if not isinstance(pkg, dict) or 'daily_rate' not in pkg:
+                            self._send_validation_error(
+                                "Tarif narxi kiritilmagan.", f'packages.{pid}.daily_rate')
+                            return
+                        raw_rate = pkg.get('daily_rate')
+                        rate, _err = (None, "Narx raqam bo'lishi kerak.") \
+                            if isinstance(raw_rate, bool) or raw_rate in (None, '') \
+                            else validate_amount(raw_rate, field='Narx')
+                        if not _err and rate != rate:   # NaN passes float()
+                            _err = "Narx raqam bo'lishi kerak."
+                        if _err:
+                            self._send_validation_error(_err, f'packages.{pid}.daily_rate')
+                            return
+                        entry = {'daily_rate': int(rate) if float(rate).is_integer() else rate}
+                        name_uz = str(pkg.get('name_uz') or '').strip()[:120]
+                        if name_uz:
+                            entry['name_uz'] = name_uz
+                        new_packages[pid] = entry
 
-                write_json_atomic(pricing_file, existing)
+                new_services = None
+                if 'additional_services' in body:
+                    if not isinstance(body.get('additional_services'), list):
+                        self._send_validation_error(
+                            "Qo'shimcha xizmatlar ro'yxati noto'g'ri.", 'additional_services')
+                        return
+                    new_services = []
+                    seen_ids = set()
+                    for i, svc in enumerate(body['additional_services']):
+                        fld = f'additional_services.{i}'
+                        if not isinstance(svc, dict):
+                            self._send_validation_error("Xizmat ma'lumoti noto'g'ri.", fld)
+                            return
+                        sid = str(svc.get('id') or '').strip()[:60]
+                        sname = str(svc.get('name') or '').strip()[:200]
+                        if not sid:
+                            self._send_validation_error("Xizmat identifikatori kiritilmagan.", fld + '.id')
+                            return
+                        if sid in seen_ids:
+                            self._send_validation_error(
+                                f"Xizmat identifikatori takrorlangan: {sid}.", fld + '.id')
+                            return
+                        if not sname:
+                            self._send_validation_error("Xizmat nomi kiritilmagan.", fld + '.name')
+                            return
+                        raw_price = svc.get('price')
+                        price, _err = (None, "Narx raqam bo'lishi kerak.") \
+                            if isinstance(raw_price, bool) or raw_price in (None, '') \
+                            else validate_amount(raw_price, field='Narx')
+                        if not _err and price != price:
+                            _err = "Narx raqam bo'lishi kerak."
+                        if _err:
+                            self._send_validation_error(_err, fld + '.price')
+                            return
+                        seen_ids.add(sid)
+                        row = {'id': sid, 'name': sname,
+                               'price': int(price) if float(price).is_integer() else price}
+                        for opt in ('category', 'description'):
+                            val = str(svc.get(opt) or '').strip()[:300]
+                            if val:
+                                row[opt] = val
+                        new_services.append(row)
+
+                # The raw file is read (not load_pricing) so that a file that
+                # cannot be parsed fails this request instead of being
+                # overwritten with defaults.
+                existing = read_json_file(PRICING_FILE, {})
+                if not isinstance(existing, dict):
+                    existing = {}
+                if new_packages is not None:
+                    if not isinstance(existing.get('packages'), dict):
+                        existing['packages'] = {}
+                    for pid, entry in new_packages.items():
+                        merged_pkg = dict(existing['packages'].get(pid) or {})
+                        merged_pkg.update(entry)
+                        if not merged_pkg.get('name_uz'):
+                            merged_pkg['name_uz'] = DEFAULT_PRICING['packages'][pid]['name_uz']
+                        existing['packages'][pid] = merged_pkg
+                if new_services is not None:
+                    existing['additional_services'] = new_services
+                existing['updated_at'] = datetime.datetime.now().isoformat()
+                _sess = self.current_session() or {}
+                _suser = _sess.get('user') or {}
+                existing['updated_by'] = (_suser.get('full_name') or _suser.get('username') or '')[:120]
+
+                write_json_atomic(PRICING_FILE, existing)
 
                 # Also update MySQL beds default_daily_rate if shared rate updated
-                if 'packages' in body and 'statsionar_shared' in body['packages']:
+                if new_packages and 'statsionar_shared' in new_packages:
                     try:
-                        new_shared = float(body['packages']['statsionar_shared'].get('daily_rate', 720000))
+                        new_shared = float(new_packages['statsionar_shared']['daily_rate'])
                         cur.execute("UPDATE beds SET default_daily_rate = ? WHERE bed_type = 'standard'", (new_shared,))
                         conn.commit()
                     except Exception as e_pr:
                         print("Error updating beds daily_rate:", e_pr)
+                existing = load_pricing()
 
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': "Narxlar muvaffaqiyatli saqlandi va barcha bo'limlarga tatbiq etildi", 'pricing': existing}, ensure_ascii=False).encode('utf-8'))
@@ -4246,6 +4624,33 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': 'Prescription status updated', 'status': new_status}).encode('utf-8'))
 
+            # PUT /api/reception/appointment/<id>/cancel
+            #
+            # Cancelling only changed the desk's own screen; the row stayed
+            # 'confirmed'. Once the server began refusing a second booking of
+            # the same doctor, date and time, a cancelled slot looked free on
+            # the grid but could never be booked again.
+            elif path.startswith('/api/reception/appointment/') and path.endswith('/cancel'):
+                parts = [p for p in path.split('/') if p]
+                if len(parts) != 5:
+                    self._send_validation_error("Noma'lum amal.", 'id')
+                    return
+                apt_id = urllib.parse.unquote(parts[3])
+                cur.execute("SELECT id, status FROM appointments WHERE id = ?", (apt_id,))
+                row = cur.fetchone()
+                if not row:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Yozuv topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                if row['status'] in ('completed', 'cancelled'):
+                    self._send_validation_error(
+                        f"Bu yozuvni bekor qilib bo'lmaydi (holati: {row['status']}).", 'status')
+                    return
+                cur.execute("UPDATE appointments SET status = 'cancelled' WHERE id = ?", (apt_id,))
+                conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'message': 'Yozuv bekor qilindi', 'id': apt_id, 'status': 'cancelled'}, ensure_ascii=False).encode('utf-8'))
+
             # PUT /api/crm/patients/<id> -- the CRM edit form.
             #
             # There was no such route: the CRM sent its edits here, got a 404,
@@ -4309,15 +4714,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # PUT /api/admissions/<id>/transfer
             elif '/transfer' in path:
                 adm_id = body.get('admission_id') or (path.split('/')[3] if len(path.split('/')) > 3 else None)
-                new_bed_id = body.get('new_bed_id')
-                transfer_date = (body.get('transfer_date') or datetime.date.today().isoformat())[:10]
-                reason = body.get('reason') or "Palata ko'chirildi"
+                new_bed_id = str(body.get('new_bed_id') or '').strip()
+                raw_transfer_date = body.get('transfer_date')
+                transfer_date = (str(raw_transfer_date).strip() if raw_transfer_date
+                                 else datetime.date.today().isoformat())[:10]
+                reason = str(body.get('reason') or '').strip()[:1000] or "Palata ko'chirildi"
                 staff_id = self._actor_staff_id(body)
 
+                if not adm_id:
+                    self._send_validation_error("Yotqizish (admission) ko'rsatilmagan.", 'admission_id')
+                    return
+                if not new_bed_id:
+                    self._send_validation_error("Yangi karavotni tanlang.", 'new_bed_id')
+                    return
+
+                # transfer_patient_bed returns (False, message) only for
+                # refusals written for staff in Uzbek. Unexpected failures are
+                # re-raised and reach the generic 500 handler of this method,
+                # which logs the traceback; str(e) used to be sent to the
+                # browser here, database internals included.
                 success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id)
                 if not success:
-                    self._set_json_headers(400)
-                    self.wfile.write(json.dumps({'error': str(res_data)}, ensure_ascii=False).encode('utf-8'))
+                    self._send_validation_error(str(res_data))
                     return
 
                 self._set_json_headers(200)
@@ -4470,6 +4888,16 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
                         cur.execute(f"DELETE FROM invoices WHERE id IN ({_marks})", tuple(_inv_ids))
                     cur.execute("DELETE FROM medication_administrations WHERE patient_id = ?", (tid,))
+                    # These key on the stay, not the patient, and with
+                    # FOREIGN_KEY_CHECKS off nothing cascades: a later stay
+                    # given the same id would inherit the deleted patient's
+                    # logs and bed moves. Same as the single-stay delete.
+                    cur.execute("SELECT id FROM admissions WHERE patient_id = ?", (tid,))
+                    _adm_ids = [r['id'] for r in cur.fetchall()]
+                    if _adm_ids:
+                        _am = ','.join(['?'] * len(_adm_ids))
+                        cur.execute(f"DELETE FROM daily_logs WHERE admission_id IN ({_am})", tuple(_adm_ids))
+                        cur.execute(f"DELETE FROM bed_transfers WHERE admission_id IN ({_am})", tuple(_adm_ids))
                     # 'operational', not 'available': the latter is a value the
                     # v_bed_live_status view derives, and beds.status rejects it.
                     cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE patient_id = ?)", (tid,))

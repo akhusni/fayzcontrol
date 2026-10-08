@@ -601,12 +601,16 @@
     let epi = null;
     try {
       const res = await fetch(`/api/doctor/epicrisis/${encodeURIComponent(p.id)}`);
+      // Another patient may have been opened while this was loading; its
+      // pane must not be overwritten by this one's answer or error.
+      if (state.selectedPatient !== p) return;
       if (res.status === 403) {
         pane.innerHTML = empty("Epikrizni ko'rish uchun shifokor ruxsati kerak.");
         return;
       }
       if (res.ok) epi = await res.json();
     } catch (e) {
+      if (state.selectedPatient !== p) return;
       pane.innerHTML = empty("Server bilan aloqa yo'q. Epikriz yuklanmadi.");
       return;
     }

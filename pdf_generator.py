@@ -11,6 +11,16 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, HRFlowable
 from db import get_db
+from xml.sax.saxutils import escape as _xml_escape
+
+
+def _x(value):
+    """
+    Text from the database, made safe for ReportLab's Paragraph markup.
+    A note such as "Hb<norma" made the parser raise, and the route answered
+    "patient not found", so the PDF of that patient could not be printed.
+    """
+    return _xml_escape('' if value is None else str(value))
 
 def generate_patient_pdf(*args, **kwargs):
     doc_type = kwargs.get('doc_type', 'prescriptions')
@@ -62,7 +72,7 @@ def generate_patient_pdf(*args, **kwargs):
     daily_notes = [dict(r) for r in cur.fetchall()]
 
     # 6. Fetch Discharge Epicrisis
-    cur.execute("SELECT * FROM discharge_epicrises WHERE patient_id = ? ORDER BY updated_at DESC LIMIT 1", (actual_id,))
+    cur.execute("SELECT * FROM discharge_epicrises WHERE patient_id = ? ORDER BY epicrisis_date DESC, updated_at DESC, created_at DESC LIMIT 1", (actual_id,))
     epicrisis_row = cur.fetchone()
     epicrisis = dict(epicrisis_row) if epicrisis_row else {}
 
@@ -155,10 +165,10 @@ def generate_patient_pdf(*args, **kwargs):
     allergy_color = '#10b981' if allergies.lower() == "yo'q" else ('#64748b' if allergies == NOT_RECORDED else '#f43f5e')
 
     pt_grid_data = [
-        [Paragraph(f"<b>Bemor F.I.SH.:</b> {pt.get('full_name', '')}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {pt.get('patient_code', '')}", body_style)],
-        [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {room_str}", body_style)],
-        [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {primary_diag}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {icd10}", body_style)],
-        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{allergies}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {(adm or {}).get('doctor_name') or NOT_RECORDED}", body_style)]
+        [Paragraph(f"<b>Bemor F.I.SH.:</b> {_x(pt.get('full_name', ''))}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {_x(pt.get('patient_code', ''))}", body_style)],
+        [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style)],
+        [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {_x(primary_diag)}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {_x(icd10)}", body_style)],
+        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {_x((adm or {}).get('doctor_name') or NOT_RECORDED)}", body_style)]
     ]
 
     pt_grid_table = Table(pt_grid_data, colWidths=[260, 260])
@@ -177,10 +187,10 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(Paragraph("<b>BEMOR SHIKOYATLARI & ANAMNEZI</b>", section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
         
-        complaints_text = anam.get('complaints') or NOT_RECORDED
-        morbi_text = anam.get('anamnesis_morbi') or NOT_RECORDED
-        somatic_text = anam.get('somatic_status') or NOT_RECORDED
-        psych_text = anam.get('psychiatric_status') or NOT_RECORDED
+        complaints_text = _x(anam.get('complaints') or NOT_RECORDED)
+        morbi_text = _x(anam.get('anamnesis_morbi') or NOT_RECORDED)
+        somatic_text = _x(anam.get('somatic_status') or NOT_RECORDED)
+        psych_text = _x(anam.get('psychiatric_status') or NOT_RECORDED)
 
         anam_data = [
             [Paragraph("<b>Shikoyat va Anamnez:</b>", bold_style), Paragraph(complaints_text, body_style)],
@@ -211,10 +221,10 @@ def generate_patient_pdf(*args, **kwargs):
                 status_lbl = "Bajarildi" if r.get('status') == 'completed' else ("Bekor" if r.get('status') == 'cancelled' else "Faol")
                 rx_rows.append([
                     Paragraph(str(idx), body_style),
-                    Paragraph(f"<b>{r.get('medication_name', '')}</b><br/><font color='#64748b' size='7'>{r.get('form', '')}</font>", body_style),
-                    Paragraph(f"<b>{r.get('dosage', '')}</b>", body_style),
-                    Paragraph(r.get('route', ''), body_style),
-                    Paragraph(f"{r.get('frequency', '')}<br/><font color='#64748b' size='7'>{r.get('timing', '')}</font>", body_style),
+                    Paragraph(f"<b>{_x(r.get('medication_name', ''))}</b><br/><font color='#64748b' size='7'>{_x(r.get('form', ''))}</font>", body_style),
+                    Paragraph(f"<b>{_x(r.get('dosage', ''))}</b>", body_style),
+                    Paragraph(_x(r.get('route', '')), body_style),
+                    Paragraph(f"{_x(r.get('frequency', ''))}<br/><font color='#64748b' size='7'>{_x(r.get('timing', ''))}</font>", body_style),
                     Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
                     Paragraph(f"<font color='{status_color}'><b>{status_lbl}</b></font>", body_style)
                 ])
@@ -246,10 +256,10 @@ def generate_patient_pdf(*args, **kwargs):
             _temp = f"{dn.get('vital_temp')}°C" if dn.get('vital_temp') is not None else "—"
             vitals = f"BP: {_bp}<br/>P: {_pulse}<br/>T: {_temp}"
             dn_rows.append([
-                Paragraph(f"<b>{dn.get('note_date', '')}</b>", body_style),
+                Paragraph(f"<b>{_x(dn.get('note_date', ''))}</b>", body_style),
                 Paragraph(vitals, body_style),
-                Paragraph(dn.get('dynamics_notes') or '—', body_style),
-                Paragraph(dn.get('treatment_adjustments') or '—', body_style)
+                Paragraph(_x(dn.get('dynamics_notes') or '—'), body_style),
+                Paragraph(_x(dn.get('treatment_adjustments') or '—'), body_style)
             ])
 
         dn_table = Table(dn_rows, colWidths=[65, 85, 240, 130])
@@ -267,9 +277,10 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(Paragraph("<b>CHIQARISH EPIKRIZI VA TAVSIYALAR</b>", section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
 
-        summary_text = epicrisis.get('treatment_summary') or NOT_RECORDED
-        home_rx_text = epicrisis.get('home_prescriptions') or NOT_RECORDED
-        psycho_text = epicrisis.get('psycho_recommendations') or NOT_RECORDED
+        # Escaped before the newlines become <br/>, so those tags survive.
+        summary_text = _x(epicrisis.get('treatment_summary') or NOT_RECORDED)
+        home_rx_text = _x(epicrisis.get('home_prescriptions') or NOT_RECORDED)
+        psycho_text = _x(epicrisis.get('psycho_recommendations') or NOT_RECORDED)
 
         epi_data = [
             [Paragraph("<b>Klinik Xulosa:</b>", bold_style), Paragraph(summary_text, body_style)],
@@ -286,8 +297,10 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(Spacer(1, 10))
 
     # --- OFFICIAL FOOTER STAMP & SIGNATURE BLOCK ---
-    doc_name = adm.get('doctor_name') or "Klinik Shifokor"
-    doc_title = adm.get('doctor_title') or "Narkolog-Psixiatr"
+    # No attending doctor recorded means none is printed: the footer used to
+    # sign the paper as "Klinik Shifokor, Narkolog-Psixiatr" regardless.
+    doc_name = _x(adm.get('doctor_name') or "Qayd etilmagan")
+    doc_title = _x(adm.get('doctor_title') or '')
 
     sig_col1 = [
         Paragraph("<b>Mas'ul Shifokor:</b>", body_style),
@@ -303,7 +316,7 @@ def generate_patient_pdf(*args, **kwargs):
 
     sig_col3 = [
         Paragraph("<b>Hujjat Verifikatsiyasi:</b>", body_style),
-        Paragraph(f"<font size='7' color='#64748b'>Sertifikat kodi: EMR-{pt.get('patient_code', '')}-SQL</font>", body_style),
+        Paragraph(f"<font size='7' color='#64748b'>Sertifikat kodi: EMR-{_x(pt.get('patient_code', ''))}-SQL</font>", body_style),
         Paragraph(f"<font size='7' color='#64748b'>Generatsiya vaqti: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</font>", body_style),
         Spacer(1, 6),
         Paragraph("<font size='6.5' color='#94a3b8'>Ushbu PDF fayli MySQL 8.0 ma'lumotlar bazasidan avtomatik shakllantirilgan.</font>", body_style)
@@ -450,31 +463,31 @@ def generate_round_pdf(day):
 
     for p in round_data['patients']:
         block = [Paragraph(
-            f"{p['bed_code']} &nbsp; ({p['room_number']}-xona) &nbsp;&nbsp; "
-            f"<b>{p['patient_name']}</b> &nbsp; <font size='7' color='#64748b'>"
-            f"{p['patient_code']}</font>", bold)]
+            f"{_x(p['bed_code'])} &nbsp; ({_x(p['room_number'])}-xona) &nbsp;&nbsp; "
+            f"<b>{_x(p['patient_name'])}</b> &nbsp; <font size='7' color='#64748b'>"
+            f"{_x(p['patient_code'])}</font>", bold)]
 
         allergy = (p.get('medical_allergies') or '').strip()
         if allergy and allergy.lower() not in ("yo'q", "yoq", "-"):
             block.append(Paragraph(
-                f"<font color='#b91c1c'><b>ALLERGIYA:</b> {allergy}</font>", body))
+                f"<font color='#b91c1c'><b>ALLERGIYA:</b> {_x(allergy)}</font>", body))
 
         rows = [[Paragraph("<b>Vaqt</b>", body), Paragraph("<b>Dori</b>", body),
                  Paragraph("<b>Doza / yo'l</b>", body), Paragraph("<b>Holat</b>", body),
                  Paragraph("<b>Imzo</b>", body)]]
         for d in p['doses']:
             rows.append([
-                Paragraph(d['slot_label'] or '—', body),
-                Paragraph(d['medication_name'] or '—', body),
-                Paragraph(f"{d.get('dosage') or ''} {d.get('route') or ''}".strip() or '—', body),
+                Paragraph(_x(d['slot_label'] or '—'), body),
+                Paragraph(_x(d['medication_name'] or '—'), body),
+                Paragraph(_x(f"{d.get('dosage') or ''} {d.get('route') or ''}".strip() or '—'), body),
                 Paragraph(_ROUND_STATE_UZ.get(d['state'], d['state']), body),
                 Paragraph('', body),
             ])
         for o in p.get('as_needed', []):
             rows.append([
                 Paragraph("<i>zarurat</i>", body),
-                Paragraph(o.get('medication_name') or '—', body),
-                Paragraph(f"{o.get('dosage') or ''} {o.get('route') or ''}".strip() or '—', body),
+                Paragraph(_x(o.get('medication_name') or '—'), body),
+                Paragraph(_x(f"{o.get('dosage') or ''} {o.get('route') or ''}".strip() or '—'), body),
                 Paragraph("Zaruratga ko'ra", body),
                 Paragraph('', body),
             ])
@@ -499,7 +512,7 @@ def generate_round_pdf(day):
             f"Ko'rsatkichlar: AB {_v('vital_bp_systolic')}/{_v('vital_bp_diastolic')} mm &nbsp;·&nbsp; "
             f"Puls {_v('vital_pulse')} &nbsp;·&nbsp; Harorat {_v('vital_temp', '°C')} &nbsp;·&nbsp; "
             f"SpO2 {_v('vital_spo2', '%')}"
-            + (f" &nbsp;·&nbsp; {v['nurse_notes']}" if v.get('nurse_notes') else ''),
+            + (f" &nbsp;·&nbsp; {_x(v['nurse_notes'])}" if v.get('nurse_notes') else ''),
             small))
         block.append(Spacer(1, 9))
         story.append(KeepTogether(block))

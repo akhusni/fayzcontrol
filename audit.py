@@ -241,6 +241,7 @@ _ENTITY_BY_PREFIX = [
     ('/api/crm/payments', 'payments'),
     ('/api/accounting/medication-purchases', 'medication_purchases'),
     ('/api/accounting/medicine-links', 'medication_aliases'),
+    ('/api/accounting/invoice-items', 'invoice_items'),
     ('/api/accounting/transaction', 'accounting_transactions'),
     ('/api/admissions', 'admissions'),
     ('/api/payments', 'payments'),

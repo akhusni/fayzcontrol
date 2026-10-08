@@ -130,6 +130,43 @@
 
   let liveBedsData = [];
 
+  // HTML-escape anything typed by staff (names, notes, server messages)
+  // before it goes into innerHTML.
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Readable names for the programme ids reception stores in
+  // admissions.program_type; an unknown id is shown as stored.
+  const PROGRAM_NAMES = {
+    statsionar_shared: "Statsionar (1 karavot / 2 kishilik xona)",
+    statsionar_full_room: "Statsionar Butun Xona — VIP Solo (1 kishi)",
+    kunlik_statsionar: "Kunlik Statsionar (Kunduzgi o'rin)"
+  };
+
+  // All admissions start at Reception. The board used to open its own
+  // "new patient" form here, but that form only wrote to this page's memory
+  // and localStorage: the 4-second refresh replaced it with the server's
+  // admissions, so a patient "admitted" on the board vanished right after the
+  // success toast and no invoice or bed booking ever existed.
+  function goToReception() {
+    showToast("Qabul Qabulxonada rasmiylashtiriladi. Qabulxona sahifasi ochilmoqda...", 'info');
+    setTimeout(() => { window.location.href = 'reception.html'; }, 700);
+  }
+
+  // Set once a refresh fails, so the "showing last known data" warning is
+  // given once per outage instead of every 4 seconds.
+  let liveFetchFailed = false;
+
+  function noteLiveFetchFailure() {
+    if (!liveFetchFailed) {
+      liveFetchFailed = true;
+      showToast("Server bilan aloqa uzildi — oxirgi ma'lumotlar ko'rsatilmoqda.", 'warning');
+    }
+  }
+
   async function fetchLiveBedsAndAdmissions() {
     try {
       const [bedsRes, admRes] = await Promise.all([
@@ -143,28 +180,35 @@
 
       if (admRes.ok) {
         const liveAdmissions = await admRes.json();
+        // A missing phone or rate stays empty: showing a made-up number
+        // ('+998 90 000 00 00', 720 000) looked like real patient data.
         bookings = liveAdmissions.filter(adm => adm.status === 'active').map(adm => ({
           id: adm.id,
           bed_id: adm.bed_id,
           patient_id: adm.patient_id,
+          patient_code: adm.patient_code || '',
           patient_name: adm.patient_name || 'Bemor',
-          patient_phone: adm.patient_phone || '+998 90 000 00 00',
+          patient_phone: adm.patient_phone || '',
           doctor: adm.doctor_name || 'Shifokor biriktirilmagan',
           program: adm.program_type || 'Statsionar davolanish',
-          daily_rate: adm.daily_price || 720000,
+          daily_rate: (adm.daily_price === null || adm.daily_price === undefined || adm.daily_price === '') ? null : Number(adm.daily_price),
           start_date: adm.start_date,
           end_date: adm.planned_end_date,
+          notes: adm.admission_notes || '',
           status: 'active',
-          is_full_room: adm.daily_price >= 1100000
+          // The server decides "whole room" by programme; the price test is
+          // kept for stays booked before the programme id existed.
+          is_full_room: adm.program_type === 'statsionar_full_room' || Number(adm.daily_price) >= 1100000
         }));
         saveBookings();
+        if (bedsRes.ok) liveFetchFailed = false;
       } else {
-        bookings = [];
-        saveBookings();
+        // Keep the last good list. Clearing it made every bed flash "free"
+        // whenever one refresh failed (server restart, lost session, Wi-Fi).
+        noteLiveFetchFailure();
       }
     } catch (e) {
-      bookings = [];
-      saveBookings();
+      noteLiveFetchFailure();
     }
   }
 
@@ -181,6 +225,7 @@
       refreshBedStatuses();
       setupEventListeners();
       renderDashboard();
+      if (window.FMH_Pricing) window.FMH_Pricing.ready.then(() => renderDashboard());
 
       // Real-time periodic refresh every 4s
       setInterval(async () => {
@@ -229,6 +274,7 @@
       const bedIdClean = String(bed.bed_id).toUpperCase();
       const partnerBedId = getPartnerBedId(bed.bed_id);
       const partnerClean = partnerBedId ? String(partnerBedId).toUpperCase() : null;
+      bed.under_repair = false;
 
       // 1. Partner full-room active booking TODAY (Takes absolute FIRST priority for twin locking!)
       const partnerActiveFullRoom = partnerClean ? bookings.find(b =>
@@ -330,9 +376,14 @@
           check_out: activeBooking.end_date,
           notes: activeBooking.notes
         };
-      } else if (liveBed && (liveBed.physical_bed_status === 'cleaning' || liveBed.status === 'cleaning')) {
-        // Clinical sanitation in progress!
+      } else if (liveBed && (liveBed.physical_bed_status === 'cleaning' || liveBed.status === 'cleaning' ||
+                             liveBed.physical_bed_status === 'maintenance' || liveBed.physical_bed_status === 'out_of_service')) {
+        // Clinical sanitation or repair in progress. A bed under repair used
+        // to render as free, so the desk could pick a bed the server then
+        // refused. It shares the cleaning card (and the "cleaning" filter and
+        // counter) but is labelled TA'MIRDA and returned with "Ta'mirlandi".
         bed.status = 'cleaning';
+        bed.under_repair = liveBed.physical_bed_status === 'maintenance' || liveBed.physical_bed_status === 'out_of_service';
         bed.is_locked_by_partner = false;
         bed.locked_by_booking = null;
         bed.current_patient = null;
@@ -343,6 +394,7 @@
       } else {
         // TODAY THE BED IS FREE / AVAILABLE!
         bed.status = 'available';
+        bed.under_repair = false;
         bed.is_locked_by_partner = false;
         bed.locked_by_booking = null;
         bed.current_patient = null;
@@ -426,10 +478,11 @@
       });
     }
 
-    // New Booking Trigger Button
+    // "Yangi Qabul" header button: admissions are registered at Reception.
     const newBookingBtn = document.getElementById('new-booking-btn');
     if (newBookingBtn) {
-      newBookingBtn.addEventListener('click', () => openBookingModal(null));
+      newBookingBtn.title = "Qabul Qabulxonada rasmiylashtiriladi";
+      newBookingBtn.addEventListener('click', goToReception);
     }
 
     // Modal Close
@@ -445,84 +498,25 @@
       });
     }
 
-    // Form Submit
+    // The modal is a read-only view of an admission; nothing in it submits.
+    // Without this, Enter in a field would reload the page.
     const bookingForm = document.getElementById('booking-form');
     if (bookingForm) {
-      bookingForm.addEventListener('submit', handleBookingSubmit);
+      bookingForm.addEventListener('submit', e => e.preventDefault());
     }
 
-    // Dynamic dropdown update when dates change in modal
-    const startDateInput = document.getElementById('booking-start-date');
-    const endDateInput = document.getElementById('booking-end-date');
-    const bookingIdInput = document.getElementById('booking-id-input');
-
-    if (startDateInput) {
-      startDateInput.addEventListener('change', () => {
-        const startVal = startDateInput.value;
-        if (startVal && endDateInput) {
-          const endVal = endDateInput.value;
-          if (!endVal || endVal <= startVal) {
-            const d = new Date(startVal + 'T00:00:00');
-            d.setDate(d.getDate() + 10);
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            endDateInput.value = `${y}-${m}-${day}`;
-          }
-        }
-        updateBedSelectOptions(bookingIdInput ? bookingIdInput.value : null);
-      });
-      startDateInput.addEventListener('input', () => {
-        updateBedSelectOptions(bookingIdInput ? bookingIdInput.value : null);
+    // Transfer section: the list of free beds depends on the move date.
+    const transferDateInput = document.getElementById('transfer-date-input');
+    if (transferDateInput) {
+      transferDateInput.addEventListener('change', () => {
+        const idInput = document.getElementById('booking-id-input');
+        const booking = idInput ? bookings.find(b => String(b.id) === String(idInput.value)) : null;
+        if (booking) updateTransferBedOptions(booking);
       });
     }
-
-    if (endDateInput) {
-      endDateInput.addEventListener('change', () => {
-        updateBedSelectOptions(bookingIdInput ? bookingIdInput.value : null);
-      });
-      endDateInput.addEventListener('input', () => {
-        updateBedSelectOptions(bookingIdInput ? bookingIdInput.value : null);
-      });
-    }
-
-    // Auto-adjust start date when picking a bed that is currently occupied
-    const bedSelectInput = document.getElementById('booking-bed-select');
-    if (bedSelectInput) {
-      bedSelectInput.addEventListener('change', () => {
-        const selectedBedId = bedSelectInput.value;
-        const isNew = !bookingIdInput || !bookingIdInput.value;
-
-        if (isNew && selectedBedId) {
-          const sDate = startDateInput ? startDateInput.value : getTodayStr();
-          const eDate = endDateInput ? endDateInput.value : getOffsetDateStr(10);
-          
-          const bedIdClean = String(selectedBedId).toUpperCase();
-          const partnerBedId = getPartnerBedId(selectedBedId);
-          const partnerClean = partnerBedId ? String(partnerBedId).toUpperCase() : null;
-
-          const conflict = bookings.find(b =>
-            (String(b.bed_id).toUpperCase() === bedIdClean || (partnerClean && String(b.bed_id).toUpperCase() === partnerClean && isFullRoomBooking(b))) &&
-            b.status !== 'cancelled' && b.status !== 'completed' &&
-            datesOverlap(sDate, eDate, b.start_date, b.end_date)
-          );
-
-          if (conflict && startDateInput && endDateInput) {
-            const nextFreeStart = conflict.end_date;
-            startDateInput.value = nextFreeStart;
-            
-            const dEnd = new Date(nextFreeStart + 'T00:00:00');
-            dEnd.setDate(dEnd.getDate() + 10);
-            const y = dEnd.getFullYear();
-            const m = String(dEnd.getMonth() + 1).padStart(2, '0');
-            const d = String(dEnd.getDate()).padStart(2, '0');
-            endDateInput.value = `${y}-${m}-${d}`;
-
-            showToast(`ℹ️ Karavot <strong>${conflict.end_date}</strong>gacha band (${conflict.patient_name}). Kirish sanasi avtomatik <strong>${conflict.end_date}</strong> qilib belgilandi!`, 'info');
-            updateBedSelectOptions(null, selectedBedId);
-          }
-        }
-      });
+    const transferBtn = document.getElementById('btn-transfer-action');
+    if (transferBtn) {
+      transferBtn.addEventListener('click', transferCurrentBooking);
     }
 
     // Calendar / Gantt Nav
@@ -577,38 +571,6 @@
         }
       }
     });
-  }
-
-  function applyDurationPreset(days) {
-    const startInput = document.getElementById('booking-start-date');
-    const endInput = document.getElementById('booking-end-date');
-    const bookingIdInput = document.getElementById('booking-id-input');
-    if (!startInput || !endInput) return;
-
-    const startVal = startInput.value || getTodayStr();
-    const d = new Date(startVal + 'T00:00:00');
-    d.setDate(d.getDate() + Number(days));
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    endInput.value = `${year}-${month}-${day}`;
-
-    // Highlight active preset button
-    document.querySelectorAll('.duration-preset-btn').forEach(btn => {
-      if (Number(btn.getAttribute('data-days')) === Number(days)) {
-        btn.classList.add('active');
-        btn.style.borderColor = 'var(--cad-cyan)';
-        btn.style.color = 'var(--cad-cyan)';
-        btn.style.fontWeight = '700';
-      } else {
-        btn.classList.remove('active');
-        btn.style.borderColor = '';
-        btn.style.color = '';
-        btn.style.fontWeight = '';
-      }
-    });
-
-    updateBedSelectOptions(bookingIdInput ? bookingIdInput.value : null);
   }
 
   function renderDashboard() {
@@ -716,7 +678,7 @@
           futureText = `${bed.future_booking.patient_name} ${bed.future_booking.patient_phone} ${bed.future_booking.patient_code}`.toLowerCase();
         }
         if (bed.future_lock) {
-          futureText += ` ${bed.future_lock.patient_name}`;
+          futureText += ` ${esc(bed.future_lock.patient_name)}`;
         }
         const fullMatchStr = `${bedText} ${patientText} ${futureText}`;
         if (!fullMatchStr.includes(searchQuery)) {
@@ -740,12 +702,12 @@
             <div class="bed-pod-body locked-pod-body">
               <div class="locked-icon-bubble"><i class="fas fa-user-lock"></i></div>
               <div class="locked-main-text">2-Karavot Qulflangan</div>
-              <div class="locked-sub-text">Ushbu xona <strong>${pBooking.patient_name}</strong> tomonidan <em>Butun xona (Yakka)</em> rejimida band qilingan.</div>
+              <div class="locked-sub-text">Ushbu xona <strong>${esc(pBooking.patient_name)}</strong> tomonidan <em>Butun xona (Yakka)</em> rejimida band qilingan.</div>
               <div class="locked-booking-chip"><i class="fas fa-user-shield"></i> Asosiy karavot: ${partnerBed ? partnerBed.simple_name : '1-karavot'}</div>
             </div>
             <div class="bed-pod-footer" style="display: flex; gap: 4px;">
               <button class="btn-smart-action" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${pBooking.id}')"><i class="fas fa-eye"></i> Bronni Ko'rish</button>
-              <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}', '${bed.next_free_date}')" title="${bed.next_free_date} sanasidan keyinga yangi bron yarating"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
+              <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi (karavot ${bed.next_free_date} dan bo'sh)"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
             </div>
           </div>
         `;
@@ -787,14 +749,14 @@
             </div>
             <div class="bed-pod-body occupied-pod-body">
               <div class="patient-profile-strip">
-                <div class="patient-avatar-wrap" style="border-color: ${progColor};">${initials}</div>
+                <div class="patient-avatar-wrap" style="border-color: ${progColor};">${esc(initials)}</div>
                 <div class="patient-details">
-                  <div class="patient-name-line" title="${p.name}">${p.name} ${isFR ? '<i class="fas fa-user-lock" style="color: #38bdf8;" title="Butun Xona (Solo)"></i>' : ''}</div>
-                  <div class="patient-sub-line">${p.patient_code || 'FMH-BEMOR'} &bull; ${p.phone || '+998 -- --- -- --'}</div>
+                  <div class="patient-name-line" title="${esc(p.name)}">${esc(p.name)} ${isFR ? '<i class="fas fa-user-lock" style="color: #38bdf8;" title="Butun Xona (Solo)"></i>' : ''}</div>
+                  <div class="patient-sub-line">${esc(p.patient_code || 'FMH-BEMOR')} &bull; ${esc(p.phone || '+998 -- --- -- --')}</div>
                 </div>
               </div>
               <div class="program-tag-line">
-                <span class="program-badge" style="border-left: 3px solid ${progColor};">${progName}</span>
+                <span class="program-badge" style="border-left: 3px solid ${progColor};">${esc(progName)}</span>
               </div>
               <div class="dates-period-box">
                 <div class="dates-period-text"><i class="fas fa-calendar-alt"></i> ${sDate} ➔ ${eDate}</div>
@@ -805,12 +767,12 @@
               </div>
               <div class="doctor-badge-row">
                 <i class="fas fa-user-md" style="color: var(--cad-cyan);"></i>
-                <span>${docName}</span>
+                <span>${esc(docName)}</span>
               </div>
             </div>
             <div class="bed-pod-footer" style="display: flex; gap: 4px;">
-              <button class="btn-smart-action btn-edit" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${p.booking_id}')" title="Bemor ma'lumotlarini tahrirlash"><i class="fas fa-edit"></i> Tahrirlash</button>
-              <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}', '${bed.next_free_date}')" title="${bed.next_free_date} sanasidan keyinga yangi kelgusi bron yaratish"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
+              <button class="btn-smart-action btn-edit" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${p.booking_id}')" title="Ma'lumotlarni ko'rish va karavotni almashtirish"><i class="fas fa-eye"></i> Ko'rish</button>
+              <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi (karavot ${bed.next_free_date} dan bo'sh)"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
               <button class="btn-smart-action btn-discharge" onclick="event.stopPropagation(); window.FMH_Building.dischargeCurrentPatient('${p.booking_id}')" title="Bemorni chiqarish"><i class="fas fa-sign-out-alt"></i> Chiqarish</button>
             </div>
           </div>
@@ -822,7 +784,7 @@
         const b = bookings.find(x => String(x.id) === String(p.booking_id));
         const sDate = (b && b.start_date) ? b.start_date : '';
         const eDate = (b && b.end_date) ? b.end_date : '';
-        const docName = (b && b.doctor) ? b.doctor : 'Klinik Shifokor';
+        const docName = (b && b.doctor) ? b.doctor : 'Shifokor biriktirilmagan';
         const progName = (b && b.program) ? b.program : 'Bron qilingan';
         const initials = p.name ? p.name.split(' ').slice(0, 2).map(n => n[0]).join('') : 'BR';
 
@@ -834,26 +796,26 @@
             </div>
             <div class="bed-pod-body reserved-pod-body">
               <div class="patient-profile-strip">
-                <div class="patient-avatar-wrap" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: #f59e0b;">${initials}</div>
+                <div class="patient-avatar-wrap" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: #f59e0b;">${esc(initials)}</div>
                 <div class="patient-details">
-                  <div class="patient-name-line" title="${p.name}">${p.name}</div>
-                  <div class="patient-sub-line">${p.patient_code || 'FMH-BRON'} &bull; ${p.phone || '+998 -- --- -- --'}</div>
+                  <div class="patient-name-line" title="${esc(p.name)}">${esc(p.name)}</div>
+                  <div class="patient-sub-line">${esc(p.patient_code || 'FMH-BRON')} &bull; ${esc(p.phone || '+998 -- --- -- --')}</div>
                 </div>
               </div>
               <div class="program-tag-line">
-                <span class="program-badge" style="border-left: 3px solid #f59e0b;">${progName}</span>
+                <span class="program-badge" style="border-left: 3px solid #f59e0b;">${esc(progName)}</span>
               </div>
               <div class="dates-period-box" style="background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25);">
                 <div class="dates-period-text" style="color: #fbbf24;"><i class="fas fa-calendar-check"></i> Rejalashtirilgan kirish: ${sDate} ➔ ${eDate}</div>
               </div>
               <div class="doctor-badge-row">
                 <i class="fas fa-user-md" style="color: #fbbf24;"></i>
-                <span>${docName}</span>
+                <span>${esc(docName)}</span>
               </div>
             </div>
             <div class="bed-pod-footer" style="display: flex; gap: 4px;">
-              <button class="btn-smart-action" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${p.booking_id}')"><i class="fas fa-edit"></i> Tahrirlash</button>
-              <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}', '${bed.next_free_date}')" title="${bed.next_free_date} sanasidan keyinga yangi kelgusi bron yaratish"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
+              <button class="btn-smart-action" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${p.booking_id}')" title="Ma'lumotlarni ko'rish va karavotni almashtirish"><i class="fas fa-eye"></i> Ko'rish</button>
+              <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi (karavot ${bed.next_free_date} dan bo'sh)"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
             </div>
           </div>
         `;
@@ -866,26 +828,43 @@
           </div>
         ` : '';
 
+        // Same card for cleaning and repair; only the words, icon and the
+        // action that returns the bed to service differ.
+        const repair = !!bed.under_repair;
+        const badgeHTML = repair
+          ? `<i class="fas fa-tools"></i> TA'MIRDA`
+          : `<i class="fas fa-broom"></i> TOZALANMOQDA`;
+        const iconClass = repair ? 'fa-tools' : 'fa-hands-wash';
+        const mainText = repair ? "Ta'mirlash ishlari" : 'Sanitar Dezinfeksiya';
+        const subText = repair
+          ? "Karavot ta'mirga yuborilgan. Ta'mir tugaguncha bemor qabul qilinmaydi."
+          : "Bemor chiqarilgan / ko'chirilgan. Xona va to'shak dezinfeksiya qilinmoqda.";
+        const actionHTML = repair
+          ? `<button class="btn-smart-action" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; width: 100%; justify-content: center;" onclick="event.stopPropagation(); window.FMH_Building.markBedRepaired('${bed.bed_id}')">
+                <i class="fas fa-check-circle"></i> Ta'mirlandi (Qabulga Ochish)
+              </button>`
+          : `<button class="btn-smart-action" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; width: 100%; justify-content: center;" onclick="event.stopPropagation(); window.FMH_Building.markBedClean('${bed.bed_id}')">
+                <i class="fas fa-check-circle"></i> Tozalandi (Qabulga Ochish)
+              </button>`;
+
         return `
           <div class="smart-bed-pod is-cleaning ${opacityClass}">
             <div class="bed-pod-header">
               <div class="bed-pod-id"><i class="fas fa-bed" style="color: #f59e0b;"></i> ${bed.simple_name}</div>
-              <span class="smart-status-badge badge-cleaning"><i class="fas fa-broom"></i> TOZALANMOQDA</span>
+              <span class="smart-status-badge badge-cleaning">${badgeHTML}</span>
             </div>
             <div class="bed-pod-body" style="text-align: center; padding: 1.25rem 0.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
               <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(245, 158, 11, 0.15); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 0.75rem; border: 1px solid rgba(245, 158, 11, 0.35);">
-                <i class="fas fa-hands-wash"></i>
+                <i class="fas ${iconClass}"></i>
               </div>
-              <div style="font-weight: 800; color: var(--text-primary); font-size: 0.98rem;">Sanitar Dezinfeksiya</div>
+              <div style="font-weight: 800; color: var(--text-primary); font-size: 0.98rem;">${mainText}</div>
               <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4; max-width: 220px;">
-                Bemor chiqarilgan / ko'chirilgan. Xona va to'shak dezinfeksiya qilinmoqda.
+                ${subText}
               </div>
               ${nextResDateInfo}
             </div>
             <div class="bed-pod-footer">
-              <button class="btn-smart-action" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; width: 100%; justify-content: center;" onclick="event.stopPropagation(); window.FMH_Building.markBedClean('${bed.bed_id}')">
-                <i class="fas fa-check-circle"></i> Tozalandi (Qabulga Ochish)
-              </button>
+              ${actionHTML}
             </div>
           </div>
         `;
@@ -893,33 +872,33 @@
 
       // Available Bed
       let futureInfoHTML = '';
-      let footerButtonsHTML = `<button class="btn-smart-action btn-add-patient"><i class="fas fa-user-plus"></i> Bemor Qabuli</button>`;
+      let footerButtonsHTML = `<button class="btn-smart-action btn-add-patient" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi"><i class="fas fa-user-plus"></i> Bemor Qabuli</button>`;
 
       if (bed.future_booking) {
         const extraCount = bed.future_bookings_count > 1 ? ` (+${bed.future_bookings_count - 1} ta bron)` : '';
         futureInfoHTML = `
           <div class="future-booking-banner" style="background: rgba(245, 158, 11, 0.12); border: 1px dashed #f59e0b; padding: 4px 8px; border-radius: 6px; font-size: 0.73rem; color: #fbbf24; margin-top: 6px; line-height: 1.3;">
             <i class="fas fa-calendar-alt"></i> <strong>${bed.future_booking.start_date} gacha bo'sh</strong>
-            <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Kelgusi bron: ${bed.future_booking.patient_name}${extraCount}</div>
+            <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Kelgusi bron: ${esc(bed.future_booking.patient_name)}${extraCount}</div>
           </div>
         `;
         footerButtonsHTML = `
-          <button class="btn-smart-action btn-add-patient" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}')"><i class="fas fa-user-plus"></i> Bugun Qabul</button>
+          <button class="btn-smart-action btn-add-patient" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi"><i class="fas fa-user-plus"></i> Bugun Qabul</button>
           <button class="btn-smart-action" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${bed.future_booking.id}')" title="Mavjud kelgusi bronni ko'rish/tahrirlash"><i class="fas fa-eye"></i> Bron (${bed.future_bookings_count})</button>
-          <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}', '${bed.next_free_date}')" title="${bed.next_free_date} sanasidan keyinga yangi kelgusi bron yaratish"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
+          <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi (karavot ${bed.next_free_date} dan bo'sh)"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
         `;
       } else if (bed.future_lock) {
         const extraLockCount = bed.future_locks_count > 1 ? ` (+${bed.future_locks_count - 1} ta bron)` : '';
         futureInfoHTML = `
           <div class="future-booking-banner" style="background: rgba(168, 85, 247, 0.12); border: 1px dashed #a855f7; padding: 4px 8px; border-radius: 6px; font-size: 0.73rem; color: #c084fc; margin-top: 6px; line-height: 1.3;">
             <i class="fas fa-lock"></i> <strong>${bed.future_lock.start_date} gacha bo'sh</strong>
-            <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Kelgusi Solo: ${bed.future_lock.patient_name}${extraLockCount}</div>
+            <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Kelgusi Solo: ${esc(bed.future_lock.patient_name)}${extraLockCount}</div>
           </div>
         `;
         footerButtonsHTML = `
-          <button class="btn-smart-action btn-add-patient" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}')"><i class="fas fa-user-plus"></i> Bugun Qabul</button>
+          <button class="btn-smart-action btn-add-patient" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi"><i class="fas fa-user-plus"></i> Bugun Qabul</button>
           <button class="btn-smart-action" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${bed.future_lock.id}')" title="Solo bronni ko'rish"><i class="fas fa-eye"></i> Bron (${bed.future_locks_count})</button>
-          <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal(null, '${bed.bed_id}', '${bed.next_free_date}')" title="${bed.next_free_date} sanasidan keyinga yangi kelgusi bron yaratish"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
+          <button class="btn-smart-action" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" onclick="event.stopPropagation(); window.FMH_Building.goToReception()" title="Qabul Qabulxonada rasmiylashtiriladi (karavot ${bed.next_free_date} dan bo'sh)"><i class="fas fa-plus-circle"></i> Keyinga Bron</button>
         `;
       } else if (bed.next_reserved_date) {
         futureInfoHTML = `
@@ -939,7 +918,7 @@
           <div class="bed-pod-body available-pod-body">
             <div class="avail-cta-orb"><i class="fas fa-plus"></i></div>
             <div class="avail-main-title">Qabulga Tayyor</div>
-            <div class="avail-price-badge">720 000 so'm / kun</div>
+            <div class="avail-price-badge">${sharedRateText()}</div>
             ${futureInfoHTML}
             <div class="avail-amenities-tags" style="margin-top: 6px;">
               <span><i class="fas fa-tv"></i> Smart TV</span>
@@ -949,6 +928,7 @@
           </div>
           <div class="bed-pod-footer" style="display: flex; gap: 5px;">
             ${footerButtonsHTML}
+            <button class="btn-smart-action" style="background: rgba(148, 163, 184, 0.12); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); flex: 0 0 auto;" onclick="event.stopPropagation(); window.FMH_Building.markBedRepair('${bed.bed_id}')" title="Ta'mirga yuborish" aria-label="Ta'mirga yuborish"><i class="fas fa-tools"></i>${(bed.future_booking || bed.future_lock) ? '' : " Ta'mirga yuborish"}</button>
           </div>
         </div>
       `;
@@ -1052,7 +1032,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> 55" TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f1Beds.find(b => b.bed_id === 'BED-1A') || { simple_name: '1A Karavot', status: 'available' })}
@@ -1070,7 +1050,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> 55" TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f1Beds.find(b => b.bed_id === 'BED-2A') || { simple_name: '2A Karavot', status: 'available' })}
@@ -1101,7 +1081,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-21A') || { simple_name: '21A Karavot', status: 'available' })}
@@ -1119,7 +1099,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-22A') || { simple_name: '22A Karavot', status: 'available' })}
@@ -1137,7 +1117,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-23A') || { simple_name: '23A Karavot', status: 'available' })}
@@ -1155,7 +1135,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-24A') || { simple_name: '24A Karavot', status: 'available' })}
@@ -1173,7 +1153,7 @@
                     <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
                   </div>
                 </div>
-                <div class="room-rate-badge">720 000 so'm / kun</div>
+                <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
                 ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-25A') || { simple_name: '25A Karavot', status: 'available' })}
@@ -1325,8 +1305,8 @@
               const badge = isFR ? '<i class="fas fa-user-lock" style="color: #38bdf8; margin-right: 4px;"></i> ' : '<i class="fas fa-user-circle" style="margin-right: 4px;"></i> ';
 
               slotContent = `
-                <div class="gantt-booking-block" style="background: ${booking.program_color || '#0284c7'}; width: ${widthPx}px;" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${booking.id}')" title="Bosib o'zgartirish: ${booking.patient_name} (${booking.program})">
-                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${badge}${booking.patient_name}</span>
+                <div class="gantt-booking-block" style="background: ${booking.program_color || '#0284c7'}; width: ${widthPx}px;" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${booking.id}')" title="Bosib ko'rish: ${esc(booking.patient_name)} (${esc(booking.program)})">
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${badge}${esc(booking.patient_name)}</span>
                   <span class="gantt-delete-quick" onclick="event.stopPropagation(); window.FMH_Building.deleteBooking('${booking.id}')" title="Bronni o'chirish (Delete)">&times;</span>
                 </div>
               `;
@@ -1337,8 +1317,8 @@
               const widthPx = daysDiff * 46;
 
               slotContent = `
-                <div class="gantt-booking-block gantt-locked-block" style="width: ${widthPx}px;" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${partnerBooking.id}')" title="2-karavot qulflangan: ${partnerBooking.patient_name} (Butun Xona Solo)">
-                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><i class="fas fa-lock" style="margin-right: 4px;"></i> [Qulflangan] ${partnerBooking.patient_name}</span>
+                <div class="gantt-booking-block gantt-locked-block" style="width: ${widthPx}px;" onclick="event.stopPropagation(); window.FMH_Building.openBookingModal('${partnerBooking.id}')" title="2-karavot qulflangan: ${esc(partnerBooking.patient_name)} (Butun Xona Solo)">
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><i class="fas fa-lock" style="margin-right: 4px;"></i> [Qulflangan] ${esc(partnerBooking.patient_name)}</span>
                 </div>
               `;
             }
@@ -1346,7 +1326,7 @@
             const isSlotActive = booking || partnerBooking;
 
             return `
-              <td class="gantt-slot ${isSlotActive ? 'is-slot-active' : ''}" onclick="window.FMH_Building.handleSlotClick('${bed.bed_id}', '${dateISO}')" title="${booking ? `Bosib o'zgartirish: ${booking.patient_name}` : (partnerBooking ? `2-karavot qulflangan: ${partnerBooking.patient_name}` : 'Yangi bemor qabuli qo\'shish')}">
+              <td class="gantt-slot ${isSlotActive ? 'is-slot-active' : ''}" onclick="window.FMH_Building.handleSlotClick('${bed.bed_id}', '${dateISO}')" title="${booking ? `Bosib ko'rish: ${esc(booking.patient_name)}` : (partnerBooking ? `2-karavot qulflangan: ${esc(partnerBooking.patient_name)}` : 'Qabul Qabulxonada rasmiylashtiriladi')}">
                 ${slotContent}
               </td>
             `;
@@ -1371,21 +1351,24 @@
         });
 
     if (filteredBookings.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2.5rem; color: var(--text-muted);"><i class="fas fa-inbox" style="font-size: 1.5rem; display: block; margin-bottom: 0.5rem; opacity: 0.5;"></i>Hozircha hech qanday bron mavjud emas. Yangi bemor qabuli tugmasini bosing.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2.5rem; color: var(--text-muted);"><i class="fas fa-inbox" style="font-size: 1.5rem; display: block; margin-bottom: 0.5rem; opacity: 0.5;"></i>Hozircha hech qanday bron mavjud emas. Yangi qabul Qabulxonada rasmiylashtiriladi.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = filteredBookings.map(b => {
       const bed = getAllBeds().find(x => String(x.bed_id).toUpperCase() === String(b.bed_id).toUpperCase());
       const bedLabel = bed ? bed.simple_name : b.bed_id;
-      const isBand = b.status === 'active';
+      // Every listed stay is an active admission; it is "Bron" until its
+      // first night. The pill used to be a button that flipped the status in
+      // this browser only (the server never heard of it), so it is plain text.
+      const isBand = !b.start_date || b.start_date <= getTodayStr();
       const isFR = isFullRoomBooking(b);
       const partnerBedId = getPartnerBedId(b.bed_id);
       const partnerBed = partnerBedId ? getAllBeds().find(x => String(x.bed_id).toUpperCase() === String(partnerBedId).toUpperCase()) : null;
 
       const statusBadge = isBand 
-        ? `<button class="bed-status-pill pill-occupied" style="border: none; cursor: pointer;" onclick="window.FMH_Building.toggleBookingStatus('${b.id}')" title="Bosib holatni almashtirish">Band</button>`
-        : `<button class="bed-status-pill pill-reserved" style="border: none; cursor: pointer;" onclick="window.FMH_Building.toggleBookingStatus('${b.id}')" title="Bosib holatni almashtirish">Bron</button>`;
+        ? `<span class="bed-status-pill pill-occupied">Band</span>`
+        : `<span class="bed-status-pill pill-reserved">Bron</span>`;
 
       const fullRoomBadge = isFR 
         ? `<div style="font-size: 0.72rem; color: #c084fc; margin-top: 2px;"><i class="fas fa-lock"></i> 2-karavot (${partnerBed ? partnerBed.bed_number : 'sherik'}) qulflangan</div>` 
@@ -1394,16 +1377,16 @@
       return `
         <tr>
           <td><strong style="color: var(--cad-cyan);">${b.patient_code || b.id}</strong></td>
-          <td><strong style="color: var(--text-primary);">${b.patient_name}</strong><div style="font-size: 0.72rem; color: var(--text-muted);">${b.patient_phone}</div></td>
+          <td><strong style="color: var(--text-primary);">${esc(b.patient_name)}</strong><div style="font-size: 0.72rem; color: var(--text-muted);">${esc(b.patient_phone)}</div></td>
           <td><strong style="color: var(--text-primary);"><i class="fas fa-bed" style="color: var(--cad-cyan); margin-right: 4px;"></i>${bedLabel}</strong>${fullRoomBadge}</td>
-          <td><span style="border-left: 3px solid ${b.program_color || '#38bdf8'}; padding-left: 6px; color: var(--text-primary);">${b.program}</span></td>
+          <td><span style="border-left: 3px solid ${b.program_color || '#38bdf8'}; padding-left: 6px; color: var(--text-primary);">${esc(b.program)}</span></td>
           <td style="color: var(--text-primary);">${b.start_date} ➔ ${b.end_date}</td>
-          <td style="color: var(--text-primary);">${b.doctor}</td>
+          <td style="color: var(--text-primary);">${esc(b.doctor)}</td>
           <td>${statusBadge}</td>
           <td>
             <div style="display: flex; gap: 4px; align-items: center;">
-              <button class="btn-portal btn-outline-portal" style="padding: 4px 10px; font-size: 0.76rem;" onclick="window.FMH_Building.openBookingModal('${b.id}')" title="O'zgartirish va Tahrirlash">
-                <i class="fas fa-edit"></i> O'zgartirish
+              <button class="btn-portal btn-outline-portal" style="padding: 4px 10px; font-size: 0.76rem;" onclick="window.FMH_Building.openBookingModal('${b.id}')" title="Ma'lumotlarni ko'rish va karavotni almashtirish">
+                <i class="fas fa-eye"></i> Ko'rish
               </button>
               <button class="btn-portal" style="padding: 4px 10px; font-size: 0.76rem; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35);" onclick="window.FMH_Building.deleteBooking('${b.id}')" title="Bronni butunlay o'chirish">
                 <i class="fas fa-trash-alt"></i> O'chirish
@@ -1437,10 +1420,10 @@
     if (activeBooking) {
       openBookingModal(activeBooking.id);
     } else if (partnerActiveFullRoom) {
-      showToast(`🔒 Ushbu karavot <strong>${partnerActiveFullRoom.patient_name}</strong> tomonidan "Butun Xona (Solo)" sifatida to'liq band qilingan.`, 'info');
+      showToast(`🔒 Ushbu karavot <strong>${esc(partnerActiveFullRoom.patient_name)}</strong> tomonidan "Butun Xona (Solo)" sifatida to'liq band qilingan.`, 'info');
       openBookingModal(partnerActiveFullRoom.id);
     } else {
-      openBookingModal(null, bedId, todayStr);
+      goToReception();
     }
   }
 
@@ -1467,186 +1450,154 @@
     if (existingBooking) {
       openBookingModal(existingBooking.id);
     } else if (partnerBooking) {
-      showToast(`🔒 Ushbu xona <strong>${partnerBooking.patient_name}</strong> tomonidan "Butun Xona (Solo)" sifatida to'liq band qilingan.`, 'info');
+      showToast(`🔒 Ushbu xona <strong>${esc(partnerBooking.patient_name)}</strong> tomonidan "Butun Xona (Solo)" sifatida to'liq band qilingan.`, 'info');
       openBookingModal(partnerBooking.id);
     } else {
-      openBookingModal(null, bedId, dateStr);
+      goToReception();
     }
   }
 
-  // Dynamic dropdown updater: enables picking any bed for future reservations!
-  function updateBedSelectOptions(currentBookingId = null, preselectedBedId = null) {
-    const bedSelect = document.getElementById('booking-bed-select');
-    const startDateInput = document.getElementById('booking-start-date');
-    const endDateInput = document.getElementById('booking-end-date');
-    if (!bedSelect) return;
-
-    const startDate = startDateInput && startDateInput.value ? startDateInput.value : getTodayStr();
-    const endDate = endDateInput && endDateInput.value ? endDateInput.value : getOffsetDateStr(10);
-
-    const allBeds = getAllBeds();
-    const currentSelected = preselectedBedId || bedSelect.value;
-
-    let optionsHTML = '';
-    allBeds.forEach(bed => {
-      const bedIdClean = String(bed.bed_id).toUpperCase();
-      const partnerBedId = getPartnerBedId(bed.bed_id);
-
-      // Check direct collision on selected dates
-      const directBooking = bookings.find(b =>
-        String(b.id) !== String(currentBookingId) &&
-        String(b.bed_id).toUpperCase() === bedIdClean &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        datesOverlap(startDate, endDate, b.start_date, b.end_date)
-      );
-
-      // Check partner full-room collision on selected dates
-      const partnerFullRoom = partnerBedId ? bookings.find(b =>
-        String(b.id) !== String(currentBookingId) &&
-        String(b.bed_id).toUpperCase() === String(partnerBedId).toUpperCase() &&
-        isFullRoomBooking(b) &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        datesOverlap(startDate, endDate, b.start_date, b.end_date)
-      ) : null;
-
-      let isOccupiedOnDates = !!directBooking;
-      let isLockedByFullRoomOnDates = !!partnerFullRoom;
-
-      let label = `🟢 ${bed.simple_name} (Tanlangan sanalarda bo'sh)`;
-      let styleAttr = 'font-weight: 600; color: #10b981;';
-
-      if (isOccupiedOnDates) {
-        label = `📅 ${bed.simple_name} [BAND: ${directBooking.patient_name} (${directBooking.start_date} ➔ ${directBooking.end_date})] — Tanlang va kelgusi sanaga o'tkaziladi`;
-        styleAttr = 'color: #f43f5e; font-weight: 700;';
-      } else if (isLockedByFullRoomOnDates) {
-        label = `🔒 ${bed.simple_name} [BUTUN XONA SOLO: ${partnerFullRoom.patient_name} (${partnerFullRoom.start_date} ➔ ${partnerFullRoom.end_date})] — Tanlang va kelgusi sanaga o'tkaziladi`;
-        styleAttr = 'color: #c084fc; font-weight: 700;';
-      }
-
-      const isSelected = currentSelected && String(currentSelected).toUpperCase() === bedIdClean;
-      optionsHTML += `<option value="${bed.bed_id}" ${isSelected ? 'selected' : ''} style="${styleAttr}">${label}</option>`;
-    });
-
-    bedSelect.innerHTML = optionsHTML;
+  // The board never had its own formatter: the discharge dialog called an
+  // undefined formatMoney(), threw a ReferenceError while building its text,
+  // and so "Chiqarish" silently did nothing on this page.
+  // The free-bed price follows the one price list (it was typed into the
+  // cards as 720 000 and stayed there whatever the editor said).
+  function sharedRateText() {
+    const r = window.FMH_Pricing ? window.FMH_Pricing.rate('statsionar_shared') : 0;
+    return r > 0 ? formatMoney(r) + ' / kun' : '—';
   }
 
-  function openBookingModal(bookingId = null, preselectedBedId = null, preselectedDate = null) {
-    const modalBackdrop = document.getElementById('booking-modal-backdrop');
-    const modalTitleEl = document.getElementById('modal-title-text');
-    const submitBtnText = document.getElementById('booking-submit-btn-text');
+  function formatMoney(amount) {
+    const n = Number(amount);
+    if (!isFinite(n)) return '—';
+    return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + " so'm";
+  }
 
+  function bedLabel(bedId) {
+    const bed = getAllBeds().find(x => String(x.bed_id).toUpperCase() === String(bedId).toUpperCase());
+    return bed ? bed.simple_name : String(bedId || '');
+  }
+
+  // A bed whose physical state is not 'operational' cannot take a patient;
+  // the server refuses it (transfer_patient_bed), so it is not offered.
+  function isBedPhysicallyUsable(bed) {
+    const live = liveBedsData.find(lb =>
+      String(lb.bed_id).toUpperCase() === String(bed.bed_id).toUpperCase() ||
+      String(lb.bed_code).toUpperCase() === String(bed.bed_id).toUpperCase()
+    );
+    const phys = live ? (live.physical_bed_status || live.status) : (bed.physical_bed_status || 'operational');
+    return !phys || phys === 'operational' || phys === 'available' || phys === 'occupied' || phys === 'reserved';
+  }
+
+  // Destination beds for "Karavotni almashtirish": only beds free from the
+  // move date to the end of the stay, by the same two rules the server
+  // applies (find_booking_conflict): the bed itself is free, and no
+  // whole-room stay holds its room-mate (or, when this stay is whole-room,
+  // the room-mate is empty too). The server re-checks all of it.
+  function updateTransferBedOptions(booking) {
+    const select = document.getElementById('transfer-bed-select');
+    const dateInput = document.getElementById('transfer-date-input');
+    const btn = document.getElementById('btn-transfer-action');
+    if (!select || !booking) return;
+
+    const fromDate = (dateInput && dateInput.value) ? dateInput.value : getTodayStr();
+    const toDate = booking.end_date > fromDate ? booking.end_date : getOffsetDateStr(1);
+    const movingIsFullRoom = isFullRoomBooking(booking);
+    const others = bookings.filter(b =>
+      String(b.id) !== String(booking.id) &&
+      b.status !== 'cancelled' && b.status !== 'completed' &&
+      datesOverlap(fromDate, toDate, b.start_date, b.end_date)
+    );
+
+    let optionsHTML = '';
+    getAllBeds().forEach(bed => {
+      const bedIdClean = String(bed.bed_id).toUpperCase();
+      if (bedIdClean === String(booking.bed_id).toUpperCase()) return;
+      if (!isBedPhysicallyUsable(bed)) return;
+
+      const partnerId = getPartnerBedId(bed.bed_id);
+      const partnerClean = partnerId ? String(partnerId).toUpperCase() : null;
+      const directClash = others.some(b => String(b.bed_id).toUpperCase() === bedIdClean);
+      const partnerClash = partnerClean ? others.some(b =>
+        String(b.bed_id).toUpperCase() === partnerClean && (movingIsFullRoom || isFullRoomBooking(b))
+      ) : false;
+      if (directClash || partnerClash) return;
+
+      optionsHTML += `<option value="${esc(bed.bed_id)}">${esc(bed.simple_name)}</option>`;
+    });
+
+    if (optionsHTML) {
+      select.innerHTML = `<option value="">— Yangi karavotni tanlang —</option>` + optionsHTML;
+      select.disabled = false;
+      if (btn) btn.disabled = false;
+    } else {
+      select.innerHTML = `<option value="">Bu sanalarda bo'sh karavot yo'q</option>`;
+      select.disabled = true;
+      if (btn) btn.disabled = true;
+    }
+  }
+
+  // Read-only view of an existing admission. It used to be an edit form whose
+  // changes lived only in this browser and were wiped by the next refresh;
+  // admission details are changed at Reception, and the only change made
+  // here is a real, server-side bed transfer.
+  function openBookingModal(bookingId = null) {
+    const modalBackdrop = document.getElementById('booking-modal-backdrop');
     if (!modalBackdrop) return;
+
+    const booking = bookingId ? bookings.find(b => String(b.id) === String(bookingId)) : null;
+    if (!booking) {
+      goToReception();
+      return;
+    }
 
     const form = document.getElementById('booking-form');
     if (form) form.reset();
 
-    const bookingIdInput = document.getElementById('booking-id-input');
-    const startDateInput = document.getElementById('booking-start-date');
-    const endDateInput = document.getElementById('booking-end-date');
+    const setVal = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.value = (value === null || value === undefined) ? '' : value;
+    };
+
+    const modalTitleEl = document.getElementById('modal-title-text');
+    if (modalTitleEl) modalTitleEl.innerHTML = '<i class="fas fa-procedures" style="color: #38bdf8;"></i> Yotqizish Ma\'lumotlari';
+
+    setVal('booking-id-input', booking.id);
+    setVal('booking-patient-name', booking.patient_name || '');
+    setVal('booking-patient-phone', booking.patient_phone || '—');
+    setVal('booking-patient-code', booking.patient_code || '');
+    setVal('booking-bed-current', bedLabel(booking.bed_id));
+    setVal('booking-program-view', PROGRAM_NAMES[booking.program] || booking.program || '');
+    setVal('booking-rate-view', booking.daily_rate === null || booking.daily_rate === undefined ? '—' : formatMoney(booking.daily_rate) + ' / kun');
+    setVal('booking-doctor-view', booking.doctor || '');
+    setVal('booking-start-date', booking.start_date || '');
+    setVal('booking-end-date', booking.end_date || '');
+    setVal('booking-notes', booking.notes || '');
+
+    // Transfer defaults: today in local time (toISOString is UTC and gave
+    // yesterday's date before 05:00 in Tashkent), but never before arrival.
+    const today = getTodayStr();
+    const minDate = booking.start_date && booking.start_date > today ? booking.start_date : today;
+    const dateInput = document.getElementById('transfer-date-input');
+    if (dateInput) {
+      dateInput.value = minDate;
+      if (booking.start_date) dateInput.min = booking.start_date;
+      if (booking.end_date) {
+        const lastNight = new Date(booking.end_date + 'T00:00:00');
+        lastNight.setDate(lastNight.getDate() - 1);
+        const y = lastNight.getFullYear();
+        const m = String(lastNight.getMonth() + 1).padStart(2, '0');
+        const d = String(lastNight.getDate()).padStart(2, '0');
+        dateInput.max = `${y}-${m}-${d}`;
+      }
+    }
+    setVal('transfer-reason-input', '');
+    updateTransferBedOptions(booking);
+
     const dischargeBtn = document.getElementById('btn-discharge-action');
     const deleteBtn = document.getElementById('btn-delete-booking-action');
-
-    // Dynamically load staff doctors
-    fetch('/api/staff').then(res => res.json()).then(staffList => {
-      if (Array.isArray(staffList)) {
-        const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || s.full_name.toLowerCase().includes('dr'));
-        const docSelect = document.getElementById('booking-doctor-select');
-        if (docSelect) {
-          if (docStaff.length > 0) {
-            docSelect.innerHTML = docStaff.map(d => `<option value="${d.full_name} (${d.specialty || d.role})">${d.full_name} (${d.specialty || d.role})</option>`).join('');
-          } else {
-            docSelect.innerHTML = `<option value="">— Shifokor biriktirilmagan —</option>`;
-          }
-          if (bookingId) {
-            const booking = bookings.find(b => String(b.id) === String(bookingId));
-            if (booking && booking.doctor) docSelect.value = booking.doctor;
-          }
-        }
-      }
-    }).catch(() => {});
-
-    if (bookingId) {
-      const booking = bookings.find(b => String(b.id) === String(bookingId));
-      if (booking) {
-        if (modalTitleEl) modalTitleEl.innerHTML = '<i class="fas fa-edit" style="color: #38bdf8;"></i> Bronni Tahrirlash & O\'zgartirish';
-        if (submitBtnText) submitBtnText.textContent = "O'zgarishlarni Saqlash";
-
-        if (bookingIdInput) bookingIdInput.value = booking.id;
-        document.getElementById('booking-patient-name').value = booking.patient_name || '';
-        document.getElementById('booking-patient-phone').value = booking.patient_phone || '';
-        document.getElementById('booking-patient-code').value = booking.patient_code || '';
-        document.getElementById('booking-program-select').value = booking.program || 'Statsionar (1 karavot / 720 ming)';
-        document.getElementById('booking-doctor-select').value = booking.doctor || '';
-        if (startDateInput) startDateInput.value = booking.start_date;
-        if (endDateInput) endDateInput.value = booking.end_date;
-        document.getElementById('booking-notes').value = booking.notes || '';
-
-        updateBedSelectOptions(booking.id, booking.bed_id);
-
-        if (dischargeBtn) dischargeBtn.style.display = 'inline-flex';
-        if (deleteBtn) deleteBtn.style.display = 'inline-flex';
-      }
-    } else {
-      if (modalTitleEl) modalTitleEl.innerHTML = '<i class="fas fa-plus-circle" style="color: #38bdf8;"></i> Yangi Bemor Qabuli & Bron (Standart 10 kun)';
-      if (submitBtnText) submitBtnText.textContent = "Saqlash & O'ringa Biriktirish";
-
-      if (bookingIdInput) bookingIdInput.value = '';
-      
-      // Default Start Date: ALWAYS Today's Local Date (or clicked slot date)
-      const start = preselectedDate || getTodayStr();
-      const dEnd = new Date(start + 'T00:00:00');
-      dEnd.setDate(dEnd.getDate() + 10); // Standard 10-day course
-      const endYear = dEnd.getFullYear();
-      const endMonth = String(dEnd.getMonth() + 1).padStart(2, '0');
-      const endDay = String(dEnd.getDate()).padStart(2, '0');
-      const end = `${endYear}-${endMonth}-${endDay}`;
-
-      let calculatedEnd = end;
-      if (preselectedBedId) {
-        const targetBed = getAllBeds().find(x => String(x.bed_id).toUpperCase() === String(preselectedBedId).toUpperCase());
-        if (targetBed) {
-          const nextLock = targetBed.future_booking || targetBed.future_lock;
-          if (nextLock && nextLock.start_date && nextLock.start_date > start && nextLock.start_date < end) {
-            calculatedEnd = nextLock.start_date;
-          }
-        }
-      }
-
-      if (startDateInput) {
-        startDateInput.value = start;
-        startDateInput.disabled = false;
-        startDateInput.readOnly = false;
-      }
-      if (endDateInput) {
-        endDateInput.value = calculatedEnd;
-        endDateInput.disabled = false;
-        endDateInput.readOnly = false;
-      }
-
-      // Highlight 10-day preset
-      document.querySelectorAll('.duration-preset-btn').forEach(btn => {
-        if (Number(btn.getAttribute('data-days')) === 10) {
-          btn.classList.add('active');
-          btn.style.borderColor = 'var(--cad-cyan)';
-          btn.style.color = 'var(--cad-cyan)';
-          btn.style.fontWeight = '700';
-        } else {
-          btn.classList.remove('active');
-          btn.style.borderColor = '';
-          btn.style.color = '';
-          btn.style.fontWeight = '';
-        }
-      });
-
-      document.getElementById('booking-patient-code').value = `FMH-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      updateBedSelectOptions(null, preselectedBedId);
-
-      if (dischargeBtn) dischargeBtn.style.display = 'none';
-      if (deleteBtn) deleteBtn.style.display = 'none';
-    }
+    if (dischargeBtn) dischargeBtn.style.display = 'inline-flex';
+    if (deleteBtn) deleteBtn.style.display = 'inline-flex';
 
     modalBackdrop.classList.add('active');
   }
@@ -1656,146 +1607,69 @@
     if (modalBackdrop) modalBackdrop.classList.remove('active');
   }
 
-  function handleBookingSubmit(e) {
-    e.preventDefault();
-
-    const bookingId = document.getElementById('booking-id-input').value.trim();
-    const bedId = document.getElementById('booking-bed-select').value;
-    const patientName = document.getElementById('booking-patient-name').value.trim();
-    const patientPhone = document.getElementById('booking-patient-phone').value.trim();
-    const patientCode = document.getElementById('booking-patient-code').value.trim();
-    const program = document.getElementById('booking-program-select').value;
-    const doctor = document.getElementById('booking-doctor-select').value;
-    const startDate = document.getElementById('booking-start-date').value;
-    const endDate = document.getElementById('booking-end-date').value;
-    const notes = document.getElementById('booking-notes').value.trim();
-
-    if (!patientName || !startDate || !endDate) {
-      showToast("⚠️ Iltimos, bemor ismi va sanalarni to'liq kiriting!", 'warning');
+  // POST /api/admissions/<id>/transfer. The server moves the stay, splits the
+  // invoice line at the move date, keeps the agreed daily price and sends the
+  // old bed to cleaning. The board changes only after the server agrees; on a
+  // refusal the modal stays open with the server's reason.
+  async function transferCurrentBooking() {
+    const idInput = document.getElementById('booking-id-input');
+    const bookingId = idInput ? String(idInput.value || '').trim() : '';
+    const booking = bookings.find(b => String(b.id) === bookingId);
+    if (!booking) {
+      showToast("Yotqizish topilmadi. Sahifani yangilang.", 'warning');
       return;
     }
 
-    if (startDate >= endDate) {
-      showToast("⚠️ Chiqish sanasi kirish sanasidan keyin bo'lishi shart!", 'warning');
+    const select = document.getElementById('transfer-bed-select');
+    const dateInput = document.getElementById('transfer-date-input');
+    const reasonInput = document.getElementById('transfer-reason-input');
+    const newBedId = select ? select.value : '';
+    const transferDate = dateInput ? dateInput.value : '';
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (!newBedId) {
+      showToast("Yangi karavotni tanlang.", 'warning');
+      return;
+    }
+    if (!transferDate) {
+      showToast("Ko'chirish sanasini kiriting.", 'warning');
       return;
     }
 
-    const isFullRoom = isFullRoomBooking({ program });
-    const partnerBedId = getPartnerBedId(bedId);
-    const bedIdClean = String(bedId).toUpperCase();
-    const bed = getAllBeds().find(x => String(x.bed_id).toUpperCase() === bedIdClean);
+    const ok = await fmhConfirm({
+      title: "Karavotni Almashtirish",
+      message: `<strong>${esc(booking.patient_name)}</strong>: ${esc(bedLabel(booking.bed_id))} ➔ <strong>${esc(bedLabel(newBedId))}</strong>, ${esc(transferDate)} sanasidan.<br>Avvalgi karavot tozalashga yuboriladi. Kunlik narx o'zgarmaydi.`,
+      confirmText: "Ko'chirish",
+      cancelText: "Bekor Qilish",
+      type: 'primary'
+    });
+    if (!ok) return;
 
-    // 1. Check direct bed collision on exact dates
-    const collision = bookings.find(b => 
-      String(b.id) !== String(bookingId) &&
-      String(b.bed_id).toUpperCase() === bedIdClean &&
-      b.status !== 'cancelled' &&
-      b.status !== 'completed' &&
-      datesOverlap(startDate, endDate, b.start_date, b.end_date)
-    );
-
-    if (collision) {
-      showToast(`❌ Karavot (${bed ? bed.simple_name : bedId}) "${collision.patient_name}" tomonidan band!`, 'danger');
-      return;
-    }
-
-    // 2. Check if partner bed was previously booked as Full Room (Solo)
-    if (partnerBedId) {
-      const partnerClean = String(partnerBedId).toUpperCase();
-      const fullRoomLock = bookings.find(b =>
-        String(b.id) !== String(bookingId) &&
-        String(b.bed_id).toUpperCase() === partnerClean &&
-        isFullRoomBooking(b) &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        datesOverlap(startDate, endDate, b.start_date, b.end_date)
-      );
-
-      if (fullRoomLock) {
-        showToast(`❌ Xona "${fullRoomLock.patient_name}" tomonidan Butun Xona (Solo) sifatida band!`, 'danger');
+    const btn = document.getElementById('btn-transfer-action');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/admissions/' + encodeURIComponent(booking.id) + '/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_bed_id: newBedId, transfer_date: transferDate, reason: reason })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(`❌ ${esc(data.error || "Karavotni almashtirib bo'lmadi.")}`, 'danger');
         return;
       }
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q. Bemor ko'chirilmadi.", 'danger');
+      return;
+    } finally {
+      if (btn) btn.disabled = false;
     }
 
-    // 3. Check if booking THIS bed as Full Room while partner bed is already occupied by someone
-    if (isFullRoom && partnerBedId) {
-      const partnerClean = String(partnerBedId).toUpperCase();
-      const partnerCollision = bookings.find(b =>
-        String(b.id) !== String(bookingId) &&
-        String(b.bed_id).toUpperCase() === partnerClean &&
-        b.status !== 'cancelled' &&
-        b.status !== 'completed' &&
-        datesOverlap(startDate, endDate, b.start_date, b.end_date)
-      );
-
-      if (partnerCollision) {
-        showToast(`❌ Xonadagi 2-karavotda boshqa bemor (${partnerCollision.patient_name}) yotibdi!`, 'danger');
-        return;
-      }
-    }
-
-    const progColors = {
-      "Statsionar (1 karavot / 720 ming)": "#38bdf8",
-      "Statsionar Butun Xona (1 kishi / Solo 1.1 mln)": "#a855f7",
-      "Kunlik Statsionar (Kunduzgi o'rin 630 ming)": "#10b981",
-      "Intensiv Detoksikatsiya": "#f43f5e",
-      "Standart Detoks": "#38bdf8",
-      "Butun Xona Psixoreabilitatsiya": "#a855f7",
-      "Gepatoprotektiv Tiklanish": "#10b981",
-      "Narkologik Kodlash": "#f59e0b"
-    };
-
-    const floorNum = bed ? bed.floor_num : 1;
-
-    if (bookingId) {
-      const idx = bookings.findIndex(b => String(b.id) === String(bookingId));
-      if (idx !== -1) {
-        bookings[idx] = {
-          ...bookings[idx],
-          bed_id: bedId,
-          floor: floorNum,
-          patient_name: patientName,
-          patient_phone: patientPhone,
-          patient_code: patientCode,
-          program: program,
-          is_full_room: isFullRoom,
-          program_color: progColors[program] || (isFullRoom ? '#a855f7' : '#38bdf8'),
-          doctor: doctor,
-          start_date: startDate,
-          end_date: endDate,
-          status: startDate <= getTodayStr() ? 'active' : 'confirmed',
-          notes: notes
-        };
-        showToast(`✅ <strong>${patientName}</strong> uchun bron muvaffaqiyatli o'zgartirildi!`);
-      }
-    } else {
-      const newBooking = {
-        id: `BOOK-${Date.now().toString().slice(-4)}`,
-        bed_id: bedId,
-        floor: floorNum,
-        patient_name: patientName,
-        patient_phone: patientPhone,
-        patient_code: patientCode,
-        program: program,
-        is_full_room: isFullRoom,
-        program_color: progColors[program] || (isFullRoom ? '#a855f7' : '#38bdf8'),
-        doctor: doctor,
-        start_date: startDate,
-        end_date: endDate,
-        status: startDate <= getTodayStr() ? 'active' : 'confirmed',
-        notes: notes
-      };
-      bookings.push(newBooking);
-      showToast(isFullRoom 
-        ? `🔒 <strong>${patientName}</strong> uchun butun xona (Solo) biriktirildi! 2-karavot avtomatik qulflandi.` 
-        : `✅ <strong>${patientName}</strong> muvaffaqiyatli qabul qilindi va karavotga biriktirildi!`
-      );
-    }
-
-    saveBookings();
-    refreshBedStatuses();
     closeBookingModal();
+    await fetchLiveBedsAndAdmissions();
+    refreshBedStatuses();
     renderDashboard();
+    showToast(`✅ <strong>${esc(booking.patient_name)}</strong> ${esc(bedLabel(newBedId))} karavotiga ko'chirildi. Avvalgi karavot tozalashga yuborildi.`);
   }
 
   // FMH_ConfirmDialog now lives in js/fmh_dialogs.js so every portal shares one
@@ -1828,7 +1702,8 @@
 
     // The stay's own stored rate is what billing uses; guessing it from the
     // programme text showed day-care stays at 720 000 instead of 630 000.
-    const dailyPrice = Number(booking.daily_rate) || ((booking.program && (booking.program.includes("1.1 mln") || booking.is_full_room)) ? 1100000 : (booking.program && booking.program.includes("630 ming") ? 630000 : 720000));
+    const _rate = id => (window.FMH_Pricing ? window.FMH_Pricing.rate(id) : 0);
+    const dailyPrice = Number(booking.daily_rate) || ((booking.program && (booking.program.includes("1.1 mln") || booking.is_full_room)) ? _rate('statsionar_full_room') : (booking.program && booking.program.includes("630 ming") ? _rate('kunlik_statsionar') : _rate('statsionar_shared')));
     const calculatedTotal = actualDays * dailyPrice;
 
     window.FMH_ConfirmDialog({
@@ -1923,17 +1798,6 @@
   function deleteCurrentBooking() {
     const bookingId = document.getElementById('booking-id-input').value.trim();
     deleteBooking(bookingId);
-  }
-
-  function toggleBookingStatus(bookingId) {
-    const booking = bookings.find(b => String(b.id) === String(bookingId));
-    if (!booking) return;
-
-    booking.status = booking.status === 'active' ? 'confirmed' : 'active';
-    saveBookings();
-    refreshBedStatuses();
-    renderDashboard();
-    showToast(`🔄 <strong>${booking.patient_name}</strong> holati <strong>${booking.status === 'active' ? 'Band' : 'Bron'}</strong>ga o'zgartirildi!`);
   }
 
   function exportBedsToExcel() {
@@ -2034,6 +1898,57 @@
     }
   }
 
+  // Send a free bed to repair / return it to service. Same pattern as
+  // markBedClean: confirm, POST the physical status, change the board only
+  // after the server agrees. Before this a broken bed could not be taken out
+  // of service from the board, and one already in 'maintenance' showed as free.
+  async function setBedPhysicalStatus(bedId, status, dialog, successText) {
+    const cleanId = String(bedId).trim();
+    const ok = await fmhConfirm(dialog);
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/beds/${encodeURIComponent(cleanId)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast(successText, 'success');
+        await fetchLiveBedsAndAdmissions();
+        refreshBedStatuses();
+        renderDashboard();
+      } else {
+        showToast(`❌ Xatolik: ${esc(data.error || 'Karavot holatini o\'zgartirib bo\'lmadi')}`, 'danger');
+      }
+    } catch (e) {
+      showToast("❌ Server bilan aloqa yo'q. Karavot holati o'zgarmadi.", 'danger');
+    }
+  }
+
+  function markBedRepair(bedId) {
+    const label = esc(bedLabel(bedId));
+    return setBedPhysicalStatus(bedId, 'maintenance', {
+      title: "Ta'mirga Yuborish",
+      message: `<strong>${label}</strong> ta'mirga yuborilsinmi?<br>Ta'mir tugaguncha bu karavotga bemor qabul qilinmaydi.`,
+      confirmText: "Ta'mirga yuborish",
+      cancelText: "Bekor Qilish",
+      type: 'primary'
+    }, `🔧 <strong>${label}</strong> ta'mirga yuborildi.`);
+  }
+
+  function markBedRepaired(bedId) {
+    const label = esc(bedLabel(bedId));
+    return setBedPhysicalStatus(bedId, 'operational', {
+      title: "Ta'mir Yakuni",
+      message: `<strong>${label}</strong> ta'mirlandimi?<br>Karavot qabulga ochiladi.`,
+      confirmText: "Tasdiqlash",
+      cancelText: "Bekor Qilish",
+      type: 'primary'
+    }, `✅ <strong>${label}</strong> ta'mirlandi va qabulga ochildi!`);
+  }
+
   window.FMH_Building = {
     switchFloor,
     applyTheme,
@@ -2046,8 +1961,10 @@
     markBedClean,
     deleteBooking,
     deleteCurrentBooking,
-    toggleBookingStatus,
-    applyDurationPreset,
+    goToReception,
+    transferCurrentBooking,
+    markBedRepair,
+    markBedRepaired,
     exportBedsToExcel
   };
 

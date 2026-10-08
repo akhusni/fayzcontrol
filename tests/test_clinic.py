@@ -20,6 +20,7 @@ creates. Point it at a scratch database — it writes real records.
 import datetime as _dt
 import json
 import os
+import re
 import sys
 import threading
 import unittest
@@ -91,6 +92,9 @@ class Client:
 
     def post(self, p, payload):
         return self.call('POST', p, payload)
+
+    def put(self, p, payload):
+        return self.call('PUT', p, payload)
 
     def delete(self, p):
         return self.call('DELETE', p)
@@ -3267,6 +3271,544 @@ class FrontDeskSafety(ApiTest):
         self.assertEqual(st, 200)
         self.assertTrue(any(r.get('id') == pid for r in rows),
                         'a delete by name removed the patient')
+
+
+class BedBoardTransfer(ApiTest):
+    """
+    The bed board's "change bed" only rewrote the page's own memory, and the
+    real transfer route re-priced the rest of the stay at the destination
+    bed's list rate and would move a patient who had already left.
+    """
+
+    SOLO = 'statsionar_full_room'
+
+    def _db_one(self, sql, params):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            return cur.fetchone()
+        finally:
+            conn.close()
+
+    def _admit_at(self, pid, bed, start, end, price, program='statsionar_shared'):
+        """Admit with an explicit agreed daily_price (the admit() helper
+        sends daily_rate, which the server ignores in favour of the list)."""
+        status, body = self.api.post('/api/admissions', {
+            'patient_id': pid, 'bed_id': bed, 'program_type': program,
+            'start_date': start, 'planned_end_date': end,
+            'attending_doctor_id': DOCTOR, 'daily_price': price,
+        })
+        self.assertEqual(status, 201, f"admit returned {status}: {body}")
+        self._admissions.append(body['admission_id'])
+        return body['admission_id']
+
+    def _transfer(self, adm_id, bed, date, **extra):
+        payload = {'new_bed_id': bed, 'transfer_date': date}
+        payload.update(extra)
+        return self.api.post(f"/api/admissions/{adm_id}/transfer", payload)
+
+    def test_transfer_moves_the_stay_and_cleans_the_old_bed(self):
+        pid = self.make_patient('Transfer Board Bemor')
+        adm = self._admit_at(pid, BED_C, '2029-05-01', '2029-05-11', RATE)
+        status, body = self._transfer(adm, 'BED-23A', '2029-05-04',
+                                      reason='regression suite')
+        self.assertEqual(status, 200, f"transfer failed: {body}")
+
+        row = self._db_one("SELECT bed_id, status FROM admissions WHERE id = ?", (adm,))
+        self.assertEqual(row['bed_id'], 'BED-23A')
+        self.assertEqual(row['status'], 'active')
+        old_bed = self._db_one("SELECT status FROM beds WHERE id = ?", (BED_C,))
+        self.assertEqual(old_bed['status'], 'cleaning',
+                         'the vacated bed was not sent to cleaning')
+        moved = self._db_one("SELECT COUNT(*) AS n FROM bed_transfers "
+                             "WHERE admission_id = ? AND to_bed_id = 'BED-23A'", (adm,))
+        self.assertEqual(int(moved['n']), 1, 'no bed_transfers row was written')
+        # Length of stay is unchanged: 3 nights + 7 nights at the same rate.
+        self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']),
+                               10 * RATE, delta=0.01)
+
+    def test_a_whole_room_stay_keeps_its_rate_after_a_transfer(self):
+        """A 1 100 000 whole-room stay was re-billed at the bed's 720 000 list rate."""
+        pid = self.make_patient('Solo Transfer Rate')
+        adm = self._admit_at(pid, 'BED-22B', '2029-06-01', '2029-06-11', 1100000,
+                             program=self.SOLO)
+        status, body = self._transfer(adm, BED_A, '2029-06-04')
+        self.assertEqual(status, 200, f"whole-room transfer failed: {body}")
+        self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']),
+                               10 * 1100000, delta=0.01,
+                               msg='the agreed whole-room rate changed after the move')
+        row = self._db_one("SELECT daily_price FROM admissions WHERE id = ?", (adm,))
+        self.assertAlmostEqual(float(row['daily_price']), 1100000, delta=0.01)
+
+    def test_a_custom_rate_survives_a_transfer(self):
+        pid = self.make_patient('Custom Rate Transfer')
+        adm = self._admit_at(pid, BED_A, '2029-07-01', '2029-07-11', 650000)
+        status, body = self._transfer(adm, BED_C, '2029-07-06')
+        self.assertEqual(status, 200, f"transfer failed: {body}")
+        self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']),
+                               10 * 650000, delta=0.01)
+
+    def test_a_same_day_transfer_keeps_the_rate(self):
+        """A move on the arrival day rewrites the only line instead of splitting it."""
+        pid = self.make_patient('Same Day Transfer')
+        adm = self._admit_at(pid, BED_B, '2029-08-01', '2029-08-06', 650000)
+        status, body = self._transfer(adm, BED_C, '2029-08-01')
+        self.assertEqual(status, 200, f"transfer failed: {body}")
+        self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']),
+                               5 * 650000, delta=0.01)
+
+    def test_a_discharged_stay_cannot_be_transferred(self):
+        pid = self.make_patient('Discharged Then Moved')
+        adm = self._admit_at(pid, BED_A, '2029-09-01', '2029-09-11', RATE)
+        status, body = self.api.post(f"/api/admissions/{adm}/discharge",
+                                     {'discharge_date': '2029-09-05', 'summary': 'regression suite'})
+        self.assertEqual(status, 200, f"discharge failed: {body}")
+        self.release_beds()
+        billed = float(self.invoice_for(adm)['total_billed'])
+
+        status, body = self._transfer(adm, BED_C, '2029-09-03')
+        self.assertEqual(status, 400, f"a discharged patient was moved: {body}")
+        self.assertIn("faol", body.get('error', ''))
+        self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']), billed,
+                               delta=0.01, msg='the refused move still changed the bill')
+        bed = self._db_one("SELECT status FROM beds WHERE id = ?", (BED_C,))
+        self.assertEqual(bed['status'], 'operational')
+
+    def test_a_transfer_onto_an_occupied_bed_is_refused_and_changes_nothing(self):
+        sitting = self.make_patient('Sitting In 22A')
+        mover = self.make_patient('Wants 22A')
+        self._admit_at(sitting, BED_C, '2029-10-01', '2029-10-11', RATE)
+        adm = self._admit_at(mover, 'BED-23A', '2029-10-02', '2029-10-09', RATE)
+        status, body = self._transfer(adm, BED_C, '2029-10-04')
+        self.assertEqual(status, 400, f"transfer overlapped an occupied bed: {body}")
+        row = self._db_one("SELECT bed_id FROM admissions WHERE id = ?", (adm,))
+        self.assertEqual(row['bed_id'], 'BED-23A')
+        bed = self._db_one("SELECT status FROM beds WHERE id = ?", ('BED-23A',))
+        self.assertEqual(bed['status'], 'operational',
+                         'a refused move still sent the bed to cleaning')
+
+    def test_bad_requests_get_an_uzbek_400_not_a_raw_error(self):
+        pid = self.make_patient('Bad Transfer Input')
+        adm = self._admit_at(pid, BED_A, '2029-11-01', '2029-11-11', RATE)
+        status, body = self._transfer(adm, '', '2029-11-03')
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body.get('field'), 'new_bed_id')
+        status, body = self._transfer(adm, 'BED-NOPE', '2029-11-03')
+        self.assertEqual(status, 400, body)
+        self.assertIn('topilmadi', body.get('error', ''))
+        status, body = self._transfer('ADM-NOPE', BED_C, '2029-11-03')
+        self.assertEqual(status, 400, body)
+        self.assertIn('topilmadi', body.get('error', ''))
+        status, body = self._transfer(adm, BED_C, 'not-a-date')
+        self.assertEqual(status, 400, body)
+        # A move outside the stay would bill a night that does not exist.
+        status, body = self._transfer(adm, BED_C, '2029-11-11')
+        self.assertEqual(status, 400, body)
+        status, body = self._transfer(adm, BED_C, '2029-10-30')
+        self.assertEqual(status, 400, body)
+
+
+class OnePriceList(ApiTest):
+    """
+    Every page used to carry its own copy of the tariffs, and the API's own
+    default lacked the consultation fee. data/pricing_config.json, served by
+    /api/settings/pricing, is now the one list; these pin how it is read,
+    saved and used for a stay sent without a price.
+    """
+
+    _account = RoleAuthorization._account
+    PRICING = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data',
+                           'pricing_config.json')
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+        # A tracked file the save rewrites; put its exact bytes back afterwards.
+        self._pricing_bytes = None
+        if os.path.exists(self.PRICING):
+            with open(self.PRICING, 'rb') as f:
+                self._pricing_bytes = f.read()
+
+    def tearDown(self):
+        if self._pricing_bytes is not None:
+            with open(self.PRICING, 'wb') as f:
+                f.write(self._pricing_bytes)
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def test_every_role_can_read_the_list(self):
+        """Reception, the doctor and the nurse all show prices, so all of them must read it."""
+        for role in ('receptionist', 'doctor', 'nurse'):
+            client = self._account(role)
+            st, body = client.get('/api/settings/pricing')
+            self.assertEqual(st, 200, f"{role}: {body}")
+            self.assertIn('statsionar_shared', body.get('packages', {}), role)
+
+    def test_the_list_always_has_the_consultation_fee(self):
+        st, body = self.api.get('/api/settings/pricing')
+        self.assertEqual(st, 200, body)
+        consult = body['packages'].get('consultation')
+        self.assertIsNotNone(consult, 'consultation fee missing from the price list')
+        self.assertGreater(float(consult['daily_rate']), 0)
+        self.assertIsInstance(body.get('additional_services'), list)
+
+    def test_receptionist_cannot_change_prices(self):
+        desk = self._account('receptionist')
+        st, _ = desk.post('/api/settings/pricing',
+                          {'packages': {'ambulator_1': {'daily_rate': 1}}})
+        self.assertEqual(st, 403)
+
+    def test_a_bad_amount_is_refused_with_its_field(self):
+        for bad in ('ikki yuz', -5, None, 'nan'):
+            st, body = self.api.post('/api/settings/pricing',
+                                     {'packages': {'ambulator_1': {'daily_rate': bad}}})
+            self.assertEqual(st, 400, f"{bad!r}: {body}")
+            self.assertEqual(body.get('field'), 'packages.ambulator_1.daily_rate', body)
+        st, body = self.api.post('/api/settings/pricing',
+                                 {'packages': {'mystery_pkg': {'daily_rate': 1000}}})
+        self.assertEqual(st, 400, body)
+        st, body = self.api.post('/api/settings/pricing', {'additional_services': [
+            {'id': 'x1', 'name': 'A', 'price': 1000}, {'id': 'x1', 'name': 'B', 'price': 2000}]})
+        self.assertEqual(st, 400, body)
+        self.assertEqual(body.get('field'), 'additional_services.1.id', body)
+        st, body = self.api.post('/api/settings/pricing', {'additional_services': [
+            {'id': 'x2', 'name': '', 'price': 1000}]})
+        self.assertEqual(st, 400, body)
+        # Nothing was written by any refused request.
+        with open(self.PRICING, 'rb') as f:
+            self.assertEqual(f.read(), self._pricing_bytes)
+
+    def test_a_save_without_consultation_keeps_it(self):
+        st, before = self.api.get('/api/settings/pricing')
+        consult = before['packages']['consultation']['daily_rate']
+        amb1 = before['packages']['ambulator_1']['daily_rate']
+        st, body = self.api.post('/api/settings/pricing',
+                                 {'packages': {'ambulator_1': {'daily_rate': amb1 + 1000}},
+                                  'updated_by': 'someone else'})
+        self.assertEqual(st, 200, body)
+        st, after = self.api.get('/api/settings/pricing')
+        self.assertEqual(after['packages']['ambulator_1']['daily_rate'], amb1 + 1000)
+        self.assertEqual(after['packages']['consultation']['daily_rate'], consult)
+        self.assertTrue(after['packages']['ambulator_1'].get('name_uz'))
+        # The author comes from the session, not the request body.
+        self.assertNotEqual(after.get('updated_by'), 'someone else')
+        self.assertTrue(after.get('updated_by'))
+
+    def test_reception_programmes_do_not_include_the_consultation(self):
+        """The fee reached the desk as a sixth inpatient programme priced per day."""
+        st, body = self.api.get('/api/reception/data')
+        self.assertEqual(st, 200, body)
+        ids = [p['id'] for p in body.get('program_types', [])]
+        self.assertNotIn('consultation', ids)
+        self.assertIn('statsionar_shared', ids)
+        st, pricing = self.api.get('/api/settings/pricing')
+        self.assertEqual(float(body.get('consultation_fee')),
+                         float(pricing['packages']['consultation']['daily_rate']))
+
+    def test_a_stay_without_a_price_gets_its_package_rate(self):
+        """A missing daily_price was billed at a hardcoded 720 000 whatever the programme."""
+        st, pricing = self.api.get('/api/settings/pricing')
+        listed = float(pricing['packages']['kunlik_statsionar']['daily_rate'])
+        start = (_dt.date.today() + _dt.timedelta(days=470)).isoformat()
+        end = (_dt.date.today() + _dt.timedelta(days=473)).isoformat()
+        st, body = self.api.post('/api/admissions', {
+            'patient_name': 'Narx Probe Bemor', 'bed_id': BED_A,
+            'program_type': 'kunlik_statsionar',
+            'start_date': start, 'planned_end_date': end,
+            'attending_doctor_id': DOCTOR,
+        })
+        self.assertEqual(st, 201, body)
+        self._admissions.append(body['admission_id'])
+        self._patients.append(body['patient_id'])
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT daily_price FROM admissions WHERE id = ?", (body['admission_id'],))
+            self.assertAlmostEqual(float(cur.fetchone()['daily_price']), listed, delta=0.01)
+        finally:
+            conn.close()
+        self.assertAlmostEqual(float(self.invoice_for(body['admission_id'])['total_billed']),
+                               3 * listed, delta=0.01)
+
+
+class SecondPassFixes(ApiTest):
+    """Faults found by the review of the first overhaul pass (2026-10-08)."""
+
+    _account = RoleAuthorization._account
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def _db(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        return get_db()
+
+    def _invoice_id(self, admission_id):
+        conn = self._db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM invoices WHERE admission_id = ?", (admission_id,))
+            return cur.fetchone()['id']
+        finally:
+            conn.close()
+
+    # --- appointments -----------------------------------------------------
+
+    def test_a_cancelled_slot_can_be_booked_again(self):
+        """Cancel changed only the desk's screen, so the server kept refusing the freed slot."""
+        day = (_dt.date.today() + _dt.timedelta(days=430)).isoformat()
+        first = {'patient_name': 'Cancel Probe Bir', 'patient_phone': '+998900000301',
+                 'doctor_id': DOCTOR, 'date': day, 'time': '14:30',
+                 'service_type': 'consultation'}
+        st, body = self.api.post('/api/reception/appointment', first)
+        self.assertIn(st, (200, 201), body)
+        self._patients.append(body['patient_id'])
+        apt = body['id']
+
+        st, res = self.api.put(f'/api/reception/appointment/{apt}/cancel', {})
+        self.assertEqual(st, 200, res)
+        st, res = self.api.put(f'/api/reception/appointment/{apt}/cancel', {})
+        self.assertEqual(st, 400, 'a cancelled booking was cancelled twice')
+
+        second = dict(first, patient_name='Cancel Probe Ikki', patient_phone='+998900000302')
+        st, body2 = self.api.post('/api/reception/appointment', second)
+        self.assertIn(st, (200, 201), body2)
+        self._patients.append(body2['patient_id'])
+
+    def test_cancelling_an_unknown_appointment_is_404(self):
+        st, _ = self.api.put('/api/reception/appointment/APT-NOPE/cancel', {})
+        self.assertEqual(st, 404)
+
+    # --- landing page -----------------------------------------------------
+
+    def test_each_role_lands_on_its_own_home(self):
+        """Login, / and index.html all sent everyone to the Super-Portal."""
+        nurse = self._account('nurse')
+        st, sess = nurse.get('/api/auth/session')
+        self.assertEqual(sess.get('home'), '/nurse.html')
+        opener = urllib.request.build_opener(NoRedirect)
+        for path in ('/', '/index.html'):
+            req = urllib.request.Request(BASE + path)
+            req.add_header('Cookie', nurse.cookie)
+            try:
+                opener.open(req)
+                self.fail(f'{path} did not redirect')
+            except urllib.error.HTTPError as e:
+                self.assertEqual(e.code, 302)
+                self.assertEqual(e.headers.get('Location'), '/nurse.html', path)
+
+    def test_a_home_the_user_cannot_open_is_never_sent(self):
+        """A refused page redirects to the home; a home outside the user's rights looped forever."""
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import permissions
+        narrowed = {'role': 'doctor', 'permissions': ['nursery:read']}
+        home = permissions.home_for(narrowed)
+        self.assertNotEqual(home, '/doctor.html')
+        self.assertTrue(permissions.authorize_page(narrowed, home)[0], home)
+        self.assertEqual(permissions.home_for({'role': 'nobody', 'permissions': ['x:read']}),
+                         '/change-password.html')
+
+    # --- money ------------------------------------------------------------
+
+    def test_a_journal_entry_needs_a_real_amount(self):
+        """The salary payout sent no amount, and 0 so'm was stored or a 500 was shown as paid."""
+        for payload, field in (
+            ({'type': 'expense', 'category': 'salary', 'title': 'Suite probe: no amount'}, 'amount'),
+            ({'type': 'expense', 'category': 'salary', 'amount': 0, 'title': 'Suite probe: zero'}, 'amount'),
+            ({'type': 'gift', 'category': 'salary', 'amount': 10, 'title': 'Suite probe: type'}, 'type'),
+        ):
+            st, body = self.api.post('/api/accounting/transaction', dict(payload, payment_method='cash'))
+            self.assertEqual(st, 400, body)
+            self.assertEqual(body.get('field'), field)
+
+    def test_a_salary_payout_names_the_employee(self):
+        """Payouts held only free text, so the 'paid' badge reset and the same doctor could be paid twice."""
+        st, res = self.api.post('/api/accounting/transaction', {
+            'type': 'expense', 'category': 'salary', 'amount': 1000, 'payment_method': 'cash',
+            'title': 'Suite probe: salary link', 'related_staff_id': DOCTOR})
+        self.assertEqual(st, 201, res)
+        try:
+            st, data = self.api.get('/api/accounting/data')
+            txn = next(t for t in data['transactions'] if t['id'] == res['id'])
+            self.assertEqual(txn.get('related_staff_id'), DOCTOR)
+        finally:
+            conn = self._db()
+            try:
+                conn.cursor().execute("DELETE FROM accounting_transactions WHERE id = ?", (res['id'],))
+                conn.commit()
+            finally:
+                conn.close()
+
+    def test_an_online_advance_lands_in_the_merchant_account(self):
+        """The desk filed Click/Payme advances under the main bank account; accounting files them as merchant."""
+        start = (_dt.date.today() + _dt.timedelta(days=440)).isoformat()
+        end = (_dt.date.today() + _dt.timedelta(days=443)).isoformat()
+        st, body = self.api.post('/api/admissions', {
+            'patient_name': 'Online Avans Probe', 'patient_phone': '+998900000311',
+            'bed_id': BED_A, 'program_type': 'statsionar_shared',
+            'start_date': start, 'planned_end_date': end,
+            'attending_doctor_id': DOCTOR, 'daily_price': RATE,
+            'advance_amount': 50000, 'advance_method': 'online',
+        })
+        self.assertEqual(st, 201, body)
+        self._admissions.append(body['admission_id'])
+        self._patients.append(body['patient_id'])
+        conn = self._db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT account_destination FROM payments WHERE id = ?",
+                        (body['advance_payment_id'],))
+            self.assertEqual(cur.fetchone()['account_destination'], 'click_payme_merchant')
+        finally:
+            conn.close()
+
+    def test_an_extra_service_stays_on_the_bill(self):
+        """Lines added in accounting lived only in the page and vanished on the next sync."""
+        start = (_dt.date.today() + _dt.timedelta(days=450)).isoformat()
+        end = (_dt.date.today() + _dt.timedelta(days=453)).isoformat()
+        pid = self.make_patient('Xizmat Probe Bemor')
+        _, adm = self.admit(pid, BED_A, start, end)
+        inv = self._invoice_id(adm['admission_id'])
+        before = float(self.invoice_for(adm['admission_id'])['total_billed'])
+
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data',
+                               'pricing_config.json'), encoding='utf-8') as f:
+            svc = json.load(f)['additional_services'][0]
+        st, body = self.api.post('/api/accounting/invoice-items', {
+            'invoice_id': inv, 'service_code': svc['id'], 'quantity': 2,
+            'unit_price': 1,   # ignored: the server prices it
+        })
+        self.assertEqual(st, 201, body)
+        self.assertAlmostEqual(body['unit_price'], float(svc['price']), delta=0.01)
+        after = float(self.invoice_for(adm['admission_id'])['total_billed'])
+        self.assertAlmostEqual(after - before, 2 * float(svc['price']), delta=0.01)
+
+        st, data = self.api.get('/api/accounting/data')
+        self.assertTrue(any(i['invoice_id'] == inv for i in data.get('invoice_items', [])),
+                        'the saved line is not returned to the page')
+
+        for payload, field in (
+            ({'invoice_id': inv, 'service_code': 'srv-nope', 'quantity': 1}, 'service_code'),
+            ({'invoice_id': inv, 'service_code': svc['id'], 'quantity': 0}, 'quantity'),
+            ({'invoice_id': 'INV-NOPE', 'service_code': svc['id'], 'quantity': 1}, 'invoice_id'),
+        ):
+            st, res = self.api.post('/api/accounting/invoice-items', payload)
+            self.assertEqual(st, 400, res)
+            self.assertEqual(res.get('field'), field)
+
+        desk = self._account('receptionist')
+        st, _ = desk.post('/api/accounting/invoice-items',
+                          {'invoice_id': inv, 'service_code': svc['id'], 'quantity': 1})
+        self.assertEqual(st, 403)
+
+    def test_a_medicine_added_to_a_bill_comes_off_the_shelf(self):
+        st, data = self.api.get('/api/accounting/data')
+        med = next((m for m in data.get('pharmacy_stock', [])
+                    if int(m.get('stock_quantity') or 0) >= 2), None)
+        if not med:
+            self.skipTest('no stock item with 2 or more units')
+        start = (_dt.date.today() + _dt.timedelta(days=460)).isoformat()
+        end = (_dt.date.today() + _dt.timedelta(days=462)).isoformat()
+        pid = self.make_patient('Dori Hisob Probe')
+        _, adm = self.admit(pid, BED_A, start, end)
+        inv = self._invoice_id(adm['admission_id'])
+        stock = int(med['stock_quantity'])
+        try:
+            st, body = self.api.post('/api/accounting/invoice-items', {
+                'invoice_id': inv, 'service_code': 'MED:' + med['id'], 'quantity': 2})
+            self.assertEqual(st, 201, body)
+            self.assertEqual(body['item_type'], 'medication')
+            st, res = self.api.post('/api/accounting/invoice-items', {
+                'invoice_id': inv, 'service_code': 'MED:' + med['id'], 'quantity': stock + 50})
+            self.assertEqual(st, 400, 'more than the shelf holds was billed')
+            conn = self._db()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT stock_quantity FROM medications_catalog WHERE id = ?", (med['id'],))
+                self.assertEqual(int(cur.fetchone()['stock_quantity']), stock - 2)
+            finally:
+                conn.close()
+        finally:
+            conn = self._db()
+            try:
+                cur = conn.cursor()
+                cur.execute("UPDATE medications_catalog SET stock_quantity = ? WHERE id = ?",
+                            (stock, med['id']))
+                conn.commit()
+            finally:
+                conn.close()
+
+    # --- clinical records ------------------------------------------------
+
+    def test_an_outpatient_gets_one_note_per_day(self):
+        """With no stay the unique key never matched, so every save added another note for the day."""
+        pid = self.make_patient('Ambulator Kundalik Probe')
+        for text in ('Birinchi yozuv', 'Tuzatilgan yozuv'):
+            st, body = self.api.post('/api/doctor/notes', {
+                'patient_id': pid, 'patient_condition': 'satisfactory', 'dynamics_notes': text})
+            self.assertEqual(st, 201, body)
+        conn = self._db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT dynamics_notes FROM doctor_daily_notes WHERE patient_id = ? "
+                        "AND admission_id IS NULL", (pid,))
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual(rows[0]['dynamics_notes'], 'Tuzatilgan yozuv')
+
+    def test_a_pdf_prints_text_with_angle_brackets(self):
+        """'Hb<norma' broke ReportLab's markup parser and the route said 'patient not found'."""
+        pid = self.make_patient('PDF Belgi Probe')
+        st, res = self.api.post('/api/doctor/anamnesis', {
+            'patient_id': pid, 'complaints': 'Hb<norma, ALT>40 & <b>qalin</b>'})
+        self.assertIn(st, (200, 201), res)
+        req = urllib.request.Request(BASE + '/api/doctor/download-pdf/' + pid + '?doc_type=anamnesis')
+        req.add_header('Cookie', self.api.cookie)
+        with urllib.request.urlopen(req) as r:
+            self.assertEqual(r.status, 200)
+            self.assertTrue(r.read().startswith(b'%PDF'))
+
+    def test_every_menu_entry_is_a_real_page_rule(self):
+        """The shared menu lists pages by path; one missing from PAGE_RULES would be open to everyone."""
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import permissions
+        js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'js',
+                               'fmh_dialogs.js'), encoding='utf-8').read()
+        keys = re.findall(r"key: '(/[a-z_]+\.html)'", js)
+        self.assertGreaterEqual(len(keys), 10, 'menu list not found')
+        for k in keys:
+            self.assertIn(k, permissions.PAGE_RULES, k)
+            self.assertTrue(os.path.exists(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), '..', k.lstrip('/'))), k)
+
+    def test_an_impossible_roster_date_is_refused(self):
+        """Only the pattern was checked, and merged saves could never remove a junk day."""
+        roster = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'duty_schedule.json')
+        keep = open(roster, 'rb').read() if os.path.exists(roster) else None
+        try:
+            for bad in ('2031-13-45', '2031-02-30', '2031-01-15\n'):
+                st, res = self.api.post('/api/duty-schedule', {
+                    'shifts': [{'date': bad, 'sanitar_primary': 'Suite Probe'}]})
+                self.assertEqual(st, 400, (bad, res))
+        finally:
+            if keep is not None:
+                with open(roster, 'wb') as f:
+                    f.write(keep)
 
 
 class PdfHonesty(ApiTest):

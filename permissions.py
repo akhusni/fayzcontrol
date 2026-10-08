@@ -230,6 +230,7 @@ API_RULES = [
     # --- money ------------------------------------------------------------
     ('/api/accounting/medication-purchases', 'accounting', None),
     ('/api/accounting/transaction',   'accounting', None),
+    ('/api/accounting/invoice-items', 'accounting', 'write'),
     ('/api/accounting/data',          'accounting', 'read'),
     ('/api/accounting/medicine-usage', 'accounting', 'read'),
     ('/api/owner/summary',            'owner',      'read'),
@@ -295,6 +296,9 @@ PAGE_RULES = {
     '/owner.html':                ('owner',      'read'),
     '/hr.html':                   ('hr',         'read'),
     '/medical_blank.html':        ('doctors',    'write'),
+    # Both reports now live in docs/ and are not served (nested .html is
+    # refused). The rules stay so that a copy put back at the top level is
+    # still admin-only: a page missing here is open to everyone signed in.
     '/database_report.html':      ('admin',      'read'),
     '/grand_total_report.html':   ('admin',      'read'),
 }
@@ -323,10 +327,18 @@ def permissions_for(user):
 
 def home_for(user):
     """Where this user should land after signing in."""
+    # The home must be a page this user may open. The 302 sent for a refused
+    # page points here, so a role home outside the user's permissions (an
+    # explicit permissions list, or an unknown role) used to bounce the
+    # browser between the home and itself forever. change-password.html has
+    # no page rule and never redirects, so it is the safe last resort.
     role = ROLES.get((user or {}).get('role'))
-    if role:
+    if role and authorize_page(user, role['home'])[0]:
         return role['home']
-    return '/superpage.html'
+    pages = visible_pages(user)
+    if pages:
+        return pages[0]
+    return '/change-password.html'
 
 
 def can(user, module, action='read'):

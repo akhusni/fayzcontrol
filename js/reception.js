@@ -132,6 +132,51 @@ window.FMH_Reception = (function () {
     return p ? p.name_uz : id;
   }
 
+  // Every tariff on this page comes from the one price list
+  // (js/fmh_pricing.js -> GET /api/settings/pricing). The page used to carry
+  // its own 720 000 / 1 100 000 / 250 000 ... in a dozen places, so a price
+  // changed in the editor still reached the desk's form and the bill at the
+  // old figure.
+  function listedRate(id) {
+    return (window.FMH_Pricing && window.FMH_Pricing.rate(id)) || 0;
+  }
+
+  function spacedAmount(n) {
+    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function withListedRates(data) {
+    (data.program_types || []).forEach(p => {
+      if (!(Number(p.default_rate) > 0)) p.default_rate = listedRate(p.id);
+    });
+    return data;
+  }
+
+  // Fills the fee inputs and price labels written into reception.html with
+  // the listed prices. A value the desk has already typed over is kept.
+  function applyListedPrices() {
+    const setIfUntouched = (id, value) => {
+      const el = document.getElementById(id);
+      if (!el || !(value > 0)) return;
+      if (el.value === el.defaultValue) el.value = value;
+      el.defaultValue = String(value);
+    };
+    const consult = window.FMH_Pricing ? window.FMH_Pricing.consultationFee() : 0;
+    setIfUntouched('intake-consultation-fee', consult);
+    setIfUntouched('intake-outpatient-fee', listedRate('ambulator_1'));
+    setIfUntouched('intake-daily-rate', listedRate(
+      document.getElementById('intake-program-select')?.value || 'statsionar_shared'));
+    const hint = document.getElementById('intake-consultation-fee-hint');
+    if (hint && consult > 0) hint.textContent = `Standart shifokor konsultatsiyasi: ${spacedAmount(consult)} so'm`;
+    document.querySelectorAll('#apt-program option').forEach(opt => {
+      const rate = listedRate(opt.value);
+      const cut = opt.textContent.lastIndexOf(' — ');
+      if (rate > 0 && cut > 0) {
+        opt.textContent = `${opt.textContent.slice(0, cut)} — ${spacedAmount(rate)} so'm/kun`;
+      }
+    });
+  }
+
   function sourceIcon(id) {
     const map = {
       hotline: 'fa-phone', telegram: 'fa-paper-plane', instagram: 'fa-camera',
@@ -166,11 +211,12 @@ window.FMH_Reception = (function () {
       { id: 'consultation', name_uz: 'Shifokor Konsultatsiyasi', icon: 'fa-user-doctor', color: '#818cf8' }
     ],
     program_types: [
-      { id: 'statsionar_shared', name_uz: "Statsionar (1 karavot / 2 kishilik xona)", default_days: 10, default_rate: 720000, package_type: 'inpatient' },
-      { id: 'statsionar_full_room', name_uz: "Statsionar Butun Xona — VIP Solo (1 kishi)", default_days: 10, default_rate: 1100000, package_type: 'inpatient' },
-      { id: 'kunlik_statsionar', name_uz: "Kunlik Statsionar (Kunduzgi o'rin)", default_days: 10, default_rate: 630000, package_type: 'inpatient' },
-      { id: 'ambulator_1', name_uz: "Ambulator — Kuniga 1 mahal muolaja", default_days: 10, default_rate: 310000, package_type: 'outpatient' },
-      { id: 'ambulator_2', name_uz: "Ambulator — Kuniga 2 mahal muolaja", default_days: 10, default_rate: 500000, package_type: 'outpatient' }
+      // default_rate 0 = "take it from the price list" (withListedRates).
+      { id: 'statsionar_shared', name_uz: "Statsionar (1 karavot / 2 kishilik xona)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'statsionar_full_room', name_uz: "Statsionar Butun Xona — VIP Solo (1 kishi)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'kunlik_statsionar', name_uz: "Kunlik Statsionar (Kunduzgi o'rin)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'ambulator_1', name_uz: "Ambulator — Kuniga 1 mahal muolaja", default_days: 10, default_rate: 0, package_type: 'outpatient' },
+      { id: 'ambulator_2', name_uz: "Ambulator — Kuniga 2 mahal muolaja", default_days: 10, default_rate: 0, package_type: 'outpatient' }
     ],
     doctors: [],
     referral_sources: [
@@ -201,7 +247,7 @@ window.FMH_Reception = (function () {
     });
 
     // 1. Synchronously populate default resilient state so UI is never blank
-    State.data = JSON.parse(JSON.stringify(DEFAULT_RECEPTION_DATA));
+    State.data = withListedRates(JSON.parse(JSON.stringify(DEFAULT_RECEPTION_DATA)));
     // The bed grid stays on its loading state until the server answers. It
     // used to be filled in from a guess first, which showed the desk a ward
     // that was free by default.
@@ -221,7 +267,10 @@ window.FMH_Reception = (function () {
 
     // 3. Asynchronously load external JSON or REST APIs if available
     try {
-      await Promise.all([loadReceptionData(), loadApiData()]);
+      await Promise.all([loadReceptionData(), loadApiData(),
+                         window.FMH_Pricing ? window.FMH_Pricing.ready : null]);
+      State.data = withListedRates(State.data);
+      applyListedPrices();
       renderKPIs();
       renderIntakeTab();
       renderAppointmentsTab();
@@ -294,7 +343,7 @@ window.FMH_Reception = (function () {
           Array.isArray(merged[key]) && merged[key].length) return;
       merged[key] = value;
     });
-    return merged;
+    return withListedRates(merged);
   }
 
   async function loadReceptionData() {
@@ -630,7 +679,7 @@ window.FMH_Reception = (function () {
             const ambOpt = Array.from(sel.options).find(o => o.value.includes('ambulator'));
             if (ambOpt) {
               sel.value = ambOpt.value;
-              if (rateInput) rateInput.value = ambOpt.dataset.rate || 310000;
+              if (rateInput) rateInput.value = ambOpt.dataset.rate || listedRate(ambOpt.value);
             }
           }
           State.intake.selectedBed = null;
@@ -769,7 +818,7 @@ window.FMH_Reception = (function () {
       const isSelected = State.intake.selectedBed === b.bed_id;
       const isAvail = status === 'available';
       const isPartial = status === 'partial_conflict';
-      const rate = b.default_daily_rate || 720000;
+      const rate = b.default_daily_rate || listedRate('statsionar_shared');
 
       let cls = `bed-slot ${status}`;
       if (isSelected) cls += ' selected';
@@ -1168,7 +1217,11 @@ window.FMH_Reception = (function () {
     const isLux = sel?.value === 'statsionar_full_room';
     
     if (rateInput) {
-      rateInput.value = isLux ? 1100000 : (rate || 720000);
+      // NOTE: any other programme takes the bed's own rate here, so a
+      // day-care stay on a bed shows the bed rate, not 'kunlik_statsionar'.
+      // Left as it was (owner to confirm); only the numbers are now listed.
+      rateInput.value = isLux ? listedRate('statsionar_full_room')
+                              : (rate || listedRate('statsionar_shared'));
     }
     // Set bed type label
     const bedTypeEl = document.getElementById('intake-bed-type-label');
@@ -1364,13 +1417,16 @@ window.FMH_Reception = (function () {
     if (!sel) return;
     const programs = State.data.program_types || [];
     sel.innerHTML = programs.map(p => `<option value="${p.id}" data-type="${p.package_type || 'inpatient'}" data-days="${p.default_days}" data-rate="${p.default_rate}">${p.name_uz} — ${Number(p.default_rate).toLocaleString('uz-UZ')} so'm/kun</option>`).join('');
+    // The rich picker's price tags were typed in; they now show the listed
+    // rate in the same "720,000 so'm/kun" form.
+    const priceTag = id => `${Math.round(listedRate(id)).toLocaleString('en-US')} so'm/kun`;
 
     const richItems = [
       {
         value: 'statsionar_shared',
         title: "Statsionar (1 karavot / 2 kishilik xona)",
         desc: "24 soatlik to'liq nazorat, 4 mahal parhez taomnoma",
-        priceTag: "720,000 so'm/kun",
+        priceTag: priceTag('statsionar_shared'),
         icon: '<i class="fas fa-bed"></i>',
         iconBg: 'rgba(16, 185, 129, 0.2)',
         iconColor: '#10b981',
@@ -1380,7 +1436,7 @@ window.FMH_Reception = (function () {
         value: 'statsionar_full_room',
         title: "Statsionar Butun Xona — VIP Solo (1 kishi)",
         desc: "100% maxfiy, xonada yolg'iz, 2-karavot avtomatik bloklanadi",
-        priceTag: "1,100,000 so'm/kun",
+        priceTag: priceTag('statsionar_full_room'),
         icon: '<i class="fas fa-crown"></i>',
         iconBg: 'rgba(168, 85, 247, 0.2)',
         iconColor: '#c084fc',
@@ -1390,7 +1446,7 @@ window.FMH_Reception = (function () {
         value: 'kunlik_statsionar',
         title: "Kunlik Statsionar (Kunduzgi o'rin)",
         desc: "Kunduzgi muolajalar va dam olish, kechasi qolmaydi",
-        priceTag: "630,000 so'm/kun",
+        priceTag: priceTag('kunlik_statsionar'),
         icon: '<i class="fas fa-sun"></i>',
         iconBg: 'rgba(245, 158, 11, 0.2)',
         iconColor: '#fbbf24',
@@ -1400,7 +1456,7 @@ window.FMH_Reception = (function () {
         value: 'ambulator_1',
         title: "Ambulator — Kuniga 1 mahal muolaja",
         desc: "Klinikaga kuniga 1 mahal kelib kapelnitsa va inyeksiya",
-        priceTag: "310,000 so'm/kun",
+        priceTag: priceTag('ambulator_1'),
         icon: '<i class="fas fa-tint"></i>',
         iconBg: 'rgba(56, 189, 248, 0.2)',
         iconColor: '#38bdf8',
@@ -1410,7 +1466,7 @@ window.FMH_Reception = (function () {
         value: 'ambulator_2',
         title: "Ambulator — Kuniga 2 mahal muolaja",
         desc: "Ertalab va kechqurun, intensiv ambulator kursi",
-        priceTag: "500,000 so'm/kun",
+        priceTag: priceTag('ambulator_2'),
         icon: '<i class="fas fa-bolt"></i>',
         iconBg: 'rgba(244, 63, 94, 0.2)',
         iconColor: '#f43f5e',
@@ -1428,7 +1484,7 @@ window.FMH_Reception = (function () {
       const rateInput = document.getElementById('intake-daily-rate');
       if (daysInput && Number(opt.dataset.days) > 0) daysInput.value = opt.dataset.days;
       
-      const rate = Number(opt.dataset.rate) || 720000;
+      const rate = Number(opt.dataset.rate) || listedRate(opt.value);
       if (rateInput) rateInput.value = rate;
 
       const val = opt.value;
@@ -1528,10 +1584,10 @@ window.FMH_Reception = (function () {
     const startDateInput = document.getElementById('intake-start-date')?.value;
 
     if (type === 'consultation') {
-      rate = parseFloat(document.getElementById('intake-consultation-fee')?.value) || 250000;
+      rate = parseFloat(document.getElementById('intake-consultation-fee')?.value) || listedRate('consultation');
       days = 1;
     } else if (type === 'outpatient') {
-      rate = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || 310000;
+      rate = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || listedRate('ambulator_1');
     }
 
     if (startDateInput) {
@@ -1622,7 +1678,7 @@ window.FMH_Reception = (function () {
       const program = document.getElementById('intake-program-select')?.value || 'statsionar_shared';
       const doctorId = document.getElementById('intake-doctor-select')?.value || null;
       const days = parseInt(document.getElementById('intake-days')?.value) || 7;
-      const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 720000;
+      const rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || listedRate(program);
       const advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
       const discount = parseFloat(document.getElementById('intake-discount')?.value) || 0;
       const payMethod = document.getElementById('intake-pay-method')?.value || 'cash';
@@ -1718,7 +1774,7 @@ window.FMH_Reception = (function () {
         }, 500);
 
       } else if (type === 'outpatient') {
-        const fee = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || 310000;
+        const fee = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || listedRate('ambulator_1');
         const aptRes = await fetch('/api/reception/appointment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1754,7 +1810,7 @@ window.FMH_Reception = (function () {
           document.getElementById('intake-doctor-select')?.focus();
           return;
         }
-        const fee = parseFloat(document.getElementById('intake-consultation-fee')?.value) || 250000;
+        const fee = parseFloat(document.getElementById('intake-consultation-fee')?.value) || listedRate('consultation');
         const consultTime = document.getElementById('intake-consultation-time')?.value || new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
         const aptRes = await fetch('/api/reception/appointment', {
           method: 'POST',
@@ -1931,7 +1987,7 @@ window.FMH_Reception = (function () {
       program_type: data.program || 'statsionar_shared',
       start_date: startDateStr,
       end_date: endDateStr,
-      daily_price: parseFloat(data.rate) || 720000.0,
+      daily_price: parseFloat(data.rate) || listedRate(data.program || 'statsionar_shared'),
       notes: data.notes || '',
       referral_source: data.referral || 'reception',
       advance_amount: data.advance > 0 ? data.advance : 0,
@@ -2229,9 +2285,33 @@ window.FMH_Reception = (function () {
     }).join('');
   }
 
-  function cancelAppointment(aptId) {
+  // Cancelling used to change only this screen; the server still held the
+  // booking, so the freed slot could never be booked again.
+  async function cancelAppointment(aptId) {
     const apt = (State.data.appointments || []).find(a => a.id === aptId);
     if (!apt) return;
+    const ok = window.fmhConfirm
+      ? await window.fmhConfirm({
+          title: 'Yozuvni bekor qilish',
+          message: 'Bu yozuv bekor qilinadi va vaqt boshqa bemor uchun bo\'shaydi.',
+          confirmText: 'Bekor qilish', cancelText: 'Ortga', type: 'warning' })
+      : true;
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/reception/appointment/${encodeURIComponent(aptId)}/cancel`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Yozuv bekor qilinmadi (${res.status})`, 'danger');
+        return;
+      }
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — yozuv bekor qilinmadi.", 'danger');
+      return;
+    }
     apt.status = 'cancelled';
     // Remove from booked slots
     const key = apt.doctor_id + '_' + apt.date;

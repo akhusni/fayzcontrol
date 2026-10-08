@@ -1958,3 +1958,21 @@ body.day-mode .form-input:focus, body.day-mode .form-select:focus {
 .btn-smart-action {
   min-height: 26px;
 }
+
+/* Bed board admission view is read-only (details change at Reception).
+   A dashed border and no focus glow tell staff these fields cannot be typed
+   in, in both themes, without changing their colours. */
+.reservation-modal .form-input[readonly],
+.reservation-modal .form-textarea[readonly] {
+  border-style: dashed;
+  cursor: default;
+}
+.reservation-modal .form-input[readonly]:focus,
+.reservation-modal .form-textarea[readonly]:focus {
+  box-shadow: none;
+}
+.reservation-modal .form-select:disabled,
+.reservation-modal #btn-transfer-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

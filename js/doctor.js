@@ -1812,26 +1812,29 @@
       return;
     }
 
+    // Notes now come from the server, typed on this page, the ward round or
+    // by another doctor. Put into innerHTML as they were, a note containing
+    // markup ran as script in every doctor's session that opened the tab.
     container.innerHTML = notes.map(normalizeNote).map(n => {
       const condBadge = n.condition === 'satisfactory' ? '<span class="status-pill status-active">Qoniqarli</span>' : (n.condition === 'critical' ? '<span class="status-pill status-cancelled">Kritik</span>' : (n.condition === 'severe' ? '<span class="status-pill status-cancelled">Og\'ir</span>' : (n.condition === 'moderate' ? '<span class="status-pill status-completed">O\'rta og\'ir</span>' : '')));
       return `
         <div class="diary-entry-card">
           <div class="diary-top-row">
-            <div class="diary-date"><i class="fas fa-calendar-check"></i> ${n.date} • ${n.doctor_name || '—'}</div>
+            <div class="diary-date"><i class="fas fa-calendar-check"></i> ${escapeHtml(n.date)} • ${escapeHtml(n.doctor_name || '—')}</div>
             ${condBadge}
           </div>
           <div class="diary-vitals-box">
-            <span><strong>Qon bosimi:</strong> ${n.bp || '—'} mm Hg</span>
-            <span><strong>Puls:</strong> ${n.pulse || '—'} ur/min</span>
-            <span><strong>Harorat:</strong> ${n.temp || '—'} °C</span>
-            <span><strong>SpO2:</strong> ${n.spo2 ? n.spo2 + '%' : '—'}</span>
+            <span><strong>Qon bosimi:</strong> ${escapeHtml(n.bp || '—')} mm Hg</span>
+            <span><strong>Puls:</strong> ${escapeHtml(n.pulse || '—')} ur/min</span>
+            <span><strong>Harorat:</strong> ${escapeHtml(n.temp || '—')} °C</span>
+            <span><strong>SpO2:</strong> ${n.spo2 ? escapeHtml(n.spo2) + '%' : '—'}</span>
           </div>
           <div style="font-size: 0.88rem; color: var(--text-primary); margin-bottom: 6px; line-height: 1.5;">
-            <strong>Dinamika va holat:</strong> ${n.dynamics}
+            <strong>Dinamika va holat:</strong> ${escapeHtml(n.dynamics)}
           </div>
           ${n.treatment ? `
             <div style="font-size: 0.82rem; color: var(--doctor-cyan-light); background: rgba(6, 182, 212, 0.08); padding: 6px 10px; border-radius: 6px;">
-              <strong>Korreksiya:</strong> ${n.treatment}
+              <strong>Korreksiya:</strong> ${escapeHtml(n.treatment)}
             </div>
           ` : ''}
         </div>
@@ -1957,21 +1960,39 @@
     // and was saved as the final diagnosis on the discharge paper.
     const diag = anam.diagnosis_primary || '';
     state.epicrisisDiag = diag;
-    const rxSummary = rxList.map(r => `• ${r.medication_name} — ${r.dosage} (${r.route}, ${r.frequency})`).join('\n');
 
     document.getElementById('epicrisis-diag').textContent = diag || '—';
     const outcomeSel = document.getElementById('epicrisis-outcome');
     const savedEpi = (state.epicrisisMap && state.epicrisisMap[p.id]) || {};
-    if (outcomeSel) outcomeSel.value = savedEpi.discharge_status || '';
     document.getElementById('epicrisis-patient').textContent = `${p.full_name} (${p.patient_code})`;
     // Show what was saved for THIS patient. The home-medicines box used to be
     // overwritten with the inpatient list on every render, and the advice box
     // was never touched, so the previous patient's advice stayed on screen
     // and could be saved onto the next patient's discharge paper.
-    const hasSaved = Object.keys(savedEpi).length > 0;
-    document.getElementById('epicrisis-home-rx').value = hasSaved ? (savedEpi.home_prescriptions || '') : (rxSummary || '');
-    const psychoEl = document.getElementById('epicrisis-psycho');
-    if (psychoEl) psychoEl.value = hasSaved ? (savedEpi.psycho_recommendations || '') : '';
+    //
+    // The saved summary counts only when it belongs to the current stay: the
+    // server sends the latest one from any stay, so a readmitted patient
+    // opened with last stay's home medicines, advice and outcome filled in.
+    //
+    // The boxes are filled only when the patient or the saved record changes.
+    // This runs on every workstation re-render (each anamnesis save), which
+    // wiped advice the doctor had typed but not yet saved.
+    //
+    // The home-medicines box starts empty when nothing is saved; it used to
+    // be pre-filled with every prescription, including stopped ones, which
+    // also left "Auto epikriz" nothing to fill.
+    const curAdm = p.active_admission ? p.active_admission.admission_id : null;
+    const sameStay = Object.keys(savedEpi).length > 0 &&
+      (!curAdm || savedEpi.admission_id === curAdm);
+    const marker = state.epicrisisRendered || {};
+    const savedRef = (state.epicrisisMap && state.epicrisisMap[p.id]) || null;
+    if (marker.id !== p.id || marker.saved !== savedRef) {
+      if (outcomeSel) outcomeSel.value = sameStay ? (savedEpi.discharge_status || '') : '';
+      document.getElementById('epicrisis-home-rx').value = sameStay ? (savedEpi.home_prescriptions || '') : '';
+      const psychoEl = document.getElementById('epicrisis-psycho');
+      if (psychoEl) psychoEl.value = sameStay ? (savedEpi.psycho_recommendations || '') : '';
+      state.epicrisisRendered = { id: p.id, saved: savedRef };
+    }
   }
 
   async function saveEpicrisis() {
@@ -2038,7 +2059,9 @@
       return;
     }
 
-    const rxList = (state.prescriptionsMap[p.id] || []).filter(r => r.status !== 'cancelled');
+    // Only orders still running: 'completed' (a finished IV course) and
+    // 'held' were listed as home medicines too.
+    const rxList = (state.prescriptionsMap[p.id] || []).filter(r => (r.status || 'active') === 'active');
     if (rxList.length === 0) {
       showToast("Bemorda faol tayinlov yo'q. Uyga dori tavsiyalarini qo'lda yozing.", "warning");
       return;
@@ -2250,10 +2273,10 @@
         <tbody>
           ${dailyNotes.length > 0 ? dailyNotes.map(n => `
             <tr>
-              <td><strong>${n.date}</strong></td>
-              <td>Bosim: ${n.bp || '—'}<br>Puls: ${n.pulse || '—'}<br>Temp: ${n.temp || '—'}°C</td>
-              <td>${n.dynamics}</td>
-              <td>${n.treatment || '—'}</td>
+              <td><strong>${escapeHtml(n.date)}</strong></td>
+              <td>Bosim: ${escapeHtml(n.bp || '—')}<br>Puls: ${escapeHtml(n.pulse || '—')}<br>Temp: ${escapeHtml(n.temp || '—')}°C</td>
+              <td>${escapeHtml(n.dynamics)}</td>
+              <td>${escapeHtml(n.treatment || '—')}</td>
             </tr>
           `).join('') : '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Kundalik ko\'rik qaydlari mavjud emas.</td></tr>'}
         </tbody>
@@ -3094,7 +3117,12 @@
         program_type: `${roomType} Statsionar davolash kursi`,
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date(Date.now() + stayDays * 86400000).toISOString().split('T')[0],
-        daily_price: roomType === 'VIP' ? 1100000 : 720000
+        // The rate comes from the one price list (js/fmh_pricing.js), not
+        // a typed-in 1 100 000 / 720 000. A 0 (list not loaded) is left to
+        // the server, which then bills the listed shared rate.
+        daily_price: (window.FMH_Pricing
+          ? window.FMH_Pricing.rate(roomType === 'VIP' ? 'statsionar_full_room' : 'statsionar_shared')
+          : 0) || null
       } : null,
       anamnesis: {
         complaints: complaints,

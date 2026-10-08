@@ -487,31 +487,72 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
     4. Opens new segment from transfer_date to planned_end_date.
     5. Sets previous bed to 'cleaning' status for clinical sanitation.
     6. Records entry in bed_transfers and updates admission.
+
+    Returns (False, message) for every refusal the staff should read; the
+    message is ready-to-show Uzbek. Any other failure is rolled back and
+    re-raised, so the route's generic 500 handler logs the traceback instead
+    of handing a raw database error (table names, SQL) to the browser.
     """
     try:
         cur = conn.cursor()
-        t_date = datetime.strptime(str(transfer_date), '%Y-%m-%d').date()
+        try:
+            t_date = datetime.strptime(str(transfer_date), '%Y-%m-%d').date()
+        except ValueError:
+            return False, "Ko'chirish sanasi noto'g'ri (YYYY-MM-DD ko'rinishida bo'lishi kerak)."
 
         # 1. Fetch admission & old bed info
-        cur.execute("SELECT patient_id, bed_id, start_date, planned_end_date, actual_end_date, program_type FROM admissions WHERE id = ?", (admission_id,))
+        cur.execute("SELECT patient_id, bed_id, start_date, planned_end_date, actual_end_date, program_type, status, daily_price FROM admissions WHERE id = ?", (admission_id,))
         adm = cur.fetchone()
         if not adm:
-            return False, f"Admission {admission_id} not found."
+            return False, f"Yotqizish ({admission_id}) topilmadi."
         adm_program = _row_get(adm, 'program_type', 5)
-        
+
+        # Only a patient who is in the bed now can be moved. A discharged or
+        # cancelled stay used to be "transferred" anyway: its closed invoice
+        # gained a fresh bed-stay line, so a patient who had already left was
+        # billed again, and the bed they never used was put into cleaning.
+        adm_status = _row_get(adm, 'status', 6)
+        if adm_status != 'active':
+            return False, ("Faqat faol yotqizilgan bemorni boshqa karavotga ko'chirish mumkin "
+                           f"(holati: {adm_status}).")
+
+        # The stay keeps the price agreed at admission (whole-room tariff,
+        # discount or any custom rate). Previously the remainder of the stay
+        # was re-priced at the destination bed's default_daily_rate, so a
+        # 1 100 000 whole-room or a discounted stay was silently re-billed at
+        # 720 000 after a move. OWNER PRODUCT DECISION PENDING CONFIRMATION:
+        # "a transfer never changes the agreed daily price". If the owner
+        # wants moves to a dearer/cheaper room re-priced, that must become an
+        # explicit price field on the transfer form, not the bed default.
+        agreed_rate = _row_get(adm, 'daily_price', 7)
+
+        old_start = datetime.strptime(str(_row_get(adm, 'start_date', 2)), '%Y-%m-%d').date()
+
         old_bed_id = adm['bed_id'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[1]
         raw_end = adm['actual_end_date'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[4]
         if not raw_end:
             raw_end = adm['planned_end_date'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[3]
         d_end = datetime.strptime(str(raw_end), '%Y-%m-%d').date()
 
-        # 2. Fetch new bed tariff & status
+        # A move dated before arrival or on/after the leaving day has no
+        # nights left to bill: the segment maths below would clamp it to one
+        # extra night and add it to the invoice. A same-day stay still holds
+        # one night (as in find_booking_conflict), so it may move that day.
+        if t_date < old_start or t_date >= max(d_end, old_start + timedelta(days=1)):
+            return False, (f"Ko'chirish sanasi yotqizish muddati ichida bo'lishi kerak "
+                           f"({old_start.isoformat()} — {d_end.isoformat()}, oxirgi kun kirmaydi).")
+
+        if str(new_bed_id) == str(old_bed_id):
+            return False, "Bemor allaqachon shu karavotda."
+
+        # 2. Fetch new bed code & status (its default rate is no longer used,
+        # see agreed_rate above)
         cur.execute("SELECT bed_code, default_daily_rate, status FROM beds WHERE id = ?", (new_bed_id,))
         new_bed = cur.fetchone()
         if not new_bed:
-            return False, f"Target bed {new_bed_id} not found."
+            return False, f"Ko'chiriladigan karavot ({new_bed_id}) topilmadi."
         new_code = new_bed['bed_code'] if isinstance(new_bed, dict) or hasattr(new_bed, 'keys') else new_bed[0]
-        new_rate = new_bed['default_daily_rate'] if isinstance(new_bed, dict) or hasattr(new_bed, 'keys') else new_bed[1]
+        new_rate = agreed_rate
         new_status = new_bed['status'] if isinstance(new_bed, dict) or hasattr(new_bed, 'keys') else new_bed[2]
 
         if new_status in ('cleaning', 'maintenance', 'out_of_service'):
@@ -601,9 +642,9 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
 
         conn.commit()
         return True, {"old_bed_days": elapsed_days, "new_bed_days": remaining_days, "new_rate": new_rate}
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        return False, str(e)
+        raise
 
 
 _patient_columns_checked = False
