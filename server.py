@@ -1448,6 +1448,23 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(acc_data, ensure_ascii=False).encode('utf-8'))
 
             # 7b. /api/accounting/medication-purchases -> List all medication purchases
+            # 7c. /api/accounting/medicine-usage -> medicines given on the ward,
+            # what they took from stock and what they cost.
+            elif path == '/api/accounting/medicine-usage':
+                start_raw = query.get('start', [''])[0]
+                end_raw = query.get('end', [''])[0]
+                if not start_raw and not end_raw:
+                    today = datetime.date.today()
+                    start_d, end_d = today.replace(day=1), today
+                else:
+                    start_d, end_d, err = validate_date_range(start_raw, end_raw)
+                    if err:
+                        self._send_validation_error(err, 'start')
+                        return
+                usage = nursery.medicine_usage(conn, start_d.isoformat(), end_d.isoformat())
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(usage, ensure_ascii=False).encode('utf-8'))
+
             elif path == '/api/accounting/medication-purchases' or path.startswith('/api/accounting/medication-purchases?'):
                 ensure_medication_purchases(conn)
                 cur.execute("""
@@ -2358,6 +2375,25 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'message': 'Transaction saved', 'id': trx_id}, ensure_ascii=False).encode('utf-8'))
 
             # 3a. POST /api/accounting/medication-purchases (Record Medication Purchase Expense & Restock)
+            # 3c. POST /api/accounting/medicine-links -> link a prescribed
+            # medicine name to a stock item so its doses come off the shelf.
+            elif path == '/api/accounting/medicine-links':
+                med_name = str(body.get('medication_name') or '').strip()
+                med_id = str(body.get('medication_id') or '').strip()
+                if not med_name:
+                    self._send_validation_error("Dori nomi ko'rsatilishi shart", 'medication_name')
+                    return
+                if not med_id:
+                    self._send_validation_error("Ombordagi dorini tanlang", 'medication_id')
+                    return
+                try:
+                    key = nursery.link_medicine_name(conn, med_name, med_id)
+                except LookupError:
+                    self._send_validation_error("Bunday dori omborda topilmadi", 'medication_id')
+                    return
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'message': "Dori ombor bilan bog'landi", 'alias': key, 'medication_id': med_id}, ensure_ascii=False).encode('utf-8'))
+
             elif path == '/api/accounting/medication-purchases':
                 ensure_medication_purchases(conn)
                 purchase_date = (body.get('purchase_date') or datetime.date.today().isoformat())[:10]

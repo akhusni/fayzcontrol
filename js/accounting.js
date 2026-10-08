@@ -914,6 +914,112 @@
     renderPharmacyInventory();
   }
 
+  // ------------------------------------------------------------
+  // MEDICINE USE: doses the nurses marked "given", what they took
+  // from stock and what that cost at the buying price.
+  // ------------------------------------------------------------
+  function isoDay(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  async function loadMedicineUsage() {
+    const startEl = document.getElementById('med-usage-start');
+    const endEl = document.getElementById('med-usage-end');
+    const tbody = document.getElementById('med-usage-tbody');
+    if (!startEl || !endEl || !tbody) return;
+    if (!startEl.value || !endEl.value) {
+      const now = new Date();
+      startEl.value = isoDay(new Date(now.getFullYear(), now.getMonth(), 1));
+      endEl.value = isoDay(now);
+    }
+    let usage;
+    try {
+      const res = await fetch(`/api/accounting/medicine-usage?start=${encodeURIComponent(startEl.value)}&end=${encodeURIComponent(endEl.value)}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.FMH_Toast(body.error || `Dori sarfini yuklab bo'lmadi (${res.status})`, 'danger');
+        return;
+      }
+      usage = body;
+    } catch (e) {
+      window.FMH_Toast("Server bilan aloqa yo'q", 'danger');
+      return;
+    }
+
+    const summary = document.getElementById('med-usage-summary');
+    if (summary) {
+      summary.innerHTML = `Jami berilgan dozalar: <strong>${usage.total_doses}</strong> • Ombordagi dorilar tannarxi: <strong>${formatUZS(usage.total_cost)}</strong>`;
+    }
+
+    tbody.innerHTML = usage.linked.length ? usage.linked.map(r => {
+      const low = r.stock_quantity <= r.min_stock_level;
+      const shortfall = r.doses - r.units_taken;
+      return `
+        <tr>
+          <td><strong>${esc(r.name)}</strong><br><small style="color: var(--text-muted);">${esc(r.form)}</small></td>
+          <td>${r.doses}</td>
+          <td>${r.units_taken}${shortfall > 0 ? ` <small style="color: var(--warning);">(${shortfall} ta ombor bo'sh paytda)</small>` : ''}</td>
+          <td>${formatUZS(r.cost)}</td>
+          <td style="color: ${low ? 'var(--warning)' : 'inherit'}; font-weight: 700;">${r.stock_quantity}</td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Bu davrda ombordagi dorilardan berilmagan</td></tr>`;
+
+    const box = document.getElementById('med-unlinked-box');
+    if (!box) return;
+    if (!usage.unlinked.length) {
+      box.innerHTML = '';
+      return;
+    }
+    const stock = Array.isArray(accountingData && accountingData.pharmacy_stock) ? accountingData.pharmacy_stock : [];
+    const options = stock.map(m => `<option value="${esc(m.id)}">${esc(m.name)} (${esc(m.form)})</option>`).join('');
+    box.innerHTML = `
+      <div style="font-weight: 700; margin-bottom: 0.5rem; color: var(--warning);">
+        <i class="fas fa-link"></i> Ombor bilan bog'lanmagan dorilar
+      </div>
+      <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+        Shifokor yozgan nom ombordagi nomga mos kelmadi, shuning uchun bu dozalar ombordan ayirilmadi. Bir marta bog'lang — keyingi dozalar avtomatik hisoblanadi.
+      </div>
+      ${usage.unlinked.map((u, i) => `
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; border-top: 1px solid var(--border-color);">
+          <span style="flex: 1 1 200px;"><strong>${esc(u.medication_name)}</strong> — ${u.doses} doza</span>
+          <select class="form-input med-link-select" data-idx="${i}" style="flex: 1 1 200px; width: auto;">
+            <option value="">Ombordagi dorini tanlang...</option>${options}
+          </select>
+          <button type="button" class="btn-portal btn-primary-portal med-link-btn" data-idx="${i}">Bog'lash</button>
+        </div>`).join('')}
+    `;
+    box.querySelectorAll('.med-link-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.idx);
+        const sel = box.querySelector(`.med-link-select[data-idx="${idx}"]`);
+        linkMedicineName(usage.unlinked[idx].medication_name, sel ? sel.value : '');
+      });
+    });
+  }
+
+  async function linkMedicineName(name, medicationId) {
+    if (!medicationId) {
+      window.FMH_Toast("Ombordagi dorini tanlang", 'warning');
+      return;
+    }
+    try {
+      const res = await fetch('/api/accounting/medicine-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medication_name: name, medication_id: medicationId })
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.FMH_Toast(body.error || `Bog'lab bo'lmadi (${res.status})`, 'danger');
+        return;
+      }
+      window.FMH_Toast(`"${name}" ombor bilan bog'landi. Keyingi dozalar ombordan ayiriladi.`, 'success');
+      loadMedicineUsage();
+    } catch (e) {
+      window.FMH_Toast("Server bilan aloqa yo'q", 'danger');
+    }
+  }
+
   function renderMedicationPurchases() {
     const tbody = document.getElementById('med-purchases-tbody');
     if (!tbody || !accountingData) return;
@@ -2545,6 +2651,7 @@
     } else if (tabId === 'pharmacy') {
       renderMedicationPurchases();
       renderPharmacyInventory();
+      loadMedicineUsage();
     }
   }
 
@@ -3018,6 +3125,7 @@
     deleteMedPurchase,
     filterMedPurchases,
     filterPharmacyStock,
+    loadMedicineUsage,
     exportMedPurchasesToExcel,
     payoutDoctorSalary,
     exportToCSV: exportAllToExcel,

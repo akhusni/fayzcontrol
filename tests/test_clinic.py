@@ -3001,6 +3001,83 @@ class AnamnesisDoesNotWriteConsultation(ApiTest):
         self.assertEqual(cons['consultations'], [])
 
 
+class MedicineStock(ApiTest):
+    """
+    Stock only ever went up (purchases) and never down when medicine was given,
+    so the shelf count drifted further from the truth every day.
+    """
+    _order = NurseStation._order
+    _admitted_patient = NurseStation._admitted_patient
+
+    def _stock_item(self, name, qty=5, price=2000):
+        st, res = self.api.post('/api/accounting/medication-purchases', {
+            'items': [{'medication_name': name, 'form': 'ampula', 'quantity': qty, 'unit_price': price}],
+        })
+        self.assertEqual(st, 201, res)
+        self.addCleanup(self.api.delete, '/api/accounting/medication-purchases/' + res['purchase_ids'][0])
+        return self._find_stock(name)
+
+    def _find_stock(self, name):
+        st, data = self.api.get('/api/accounting/data')
+        self.assertEqual(st, 200)
+        return next(m for m in data['pharmacy_stock'] if m['name'] == name)
+
+    def _usage(self):
+        today = _dt.date.today().isoformat()
+        st, usage = self.api.get(f'/api/accounting/medicine-usage?start={today}&end={today}')
+        self.assertEqual(st, 200, usage)
+        return usage
+
+    def _give(self, rx, slot, status='given'):
+        st, body = self.api.post('/api/nursery/administer', {
+            'prescription_id': rx, 'slot_index': slot, 'status': status})
+        self.assertIn(st, (200, 201), body)
+
+    def test_given_dose_takes_one_unit_and_a_correction_puts_it_back(self):
+        name = f'Suite Stock Med {os.getpid()}'
+        item = self._stock_item(name, qty=5, price=2000)
+        start = int(item['stock_quantity'])
+        pid, adm = self._admitted_patient('Ombor Sinov', BED_A)
+        rx = self._order(pid, adm, name=name, frequency='Kuniga 2 mahal')
+
+        self._give(rx, 0)
+        self.assertEqual(int(self._find_stock(name)['stock_quantity']), start - 1)
+        row = next(r for r in self._usage()['linked'] if r['name'] == name)
+        self.assertEqual(row['doses'], 1)
+        self.assertEqual(row['units_taken'], 1)
+        self.assertEqual(row['cost'], 2000.0)
+
+        # Recording the same dose again is an amendment, not a second unit.
+        self._give(rx, 0)
+        self.assertEqual(int(self._find_stock(name)['stock_quantity']), start - 1)
+
+        self._give(rx, 0, status='missed')
+        self.assertEqual(int(self._find_stock(name)['stock_quantity']), start)
+
+    def test_unmatched_name_is_listed_until_accounting_links_it(self):
+        stock_name = f'Suite Linked Stock {os.getpid()}'
+        rx_name = f'suite  doctor name {os.getpid()}'
+        item = self._stock_item(stock_name, qty=3)
+        pid, adm = self._admitted_patient('Bog`lash Sinov', BED_B)
+        rx = self._order(pid, adm, name=rx_name, frequency='Kuniga 2 mahal')
+
+        self._give(rx, 0)
+        self.assertEqual(int(self._find_stock(stock_name)['stock_quantity']), int(item['stock_quantity']))
+        self.assertIn(rx_name, [u['medication_name'] for u in self._usage()['unlinked']])
+
+        st, res = self.api.post('/api/accounting/medicine-links', {
+            'medication_name': rx_name, 'medication_id': item['id']})
+        self.assertEqual(st, 200, res)
+        self._give(rx, 1)
+        self.assertEqual(int(self._find_stock(stock_name)['stock_quantity']), int(item['stock_quantity']) - 1)
+
+    def test_link_refuses_unknown_stock_item(self):
+        st, res = self.api.post('/api/accounting/medicine-links', {
+            'medication_name': 'Nimadir', 'medication_id': 'MED-NOT-THERE'})
+        self.assertEqual(st, 400, res)
+        self.assertEqual(res.get('field'), 'medication_id')
+
+
 if __name__ == '__main__':
     argv = [sys.argv[0]]
     verbose = '-v' in sys.argv or '--verbose' in sys.argv

@@ -100,11 +100,78 @@ def ensure_schema(conn):
                     ON UPDATE CASCADE ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+        _ensure_stock_columns(cur)
         conn.commit()
         _schema_checked = True
     except Exception as e:
         print(f"[!] Could not prepare medication_administrations: {e}")
         _schema_checked = True
+
+
+# Stock columns on a dose. A given dose takes one unit off the shelf; the row
+# remembers which stock item it took and how many units were really removed,
+# so correcting the dose (given -> missed) puts back exactly that, never more.
+_STOCK_COLUMNS = (
+    ('stock_medication_id', "VARCHAR(64) NULL"),
+    ('stock_units', "INT NOT NULL DEFAULT 0"),
+    ('stock_unit_cost', "DECIMAL(14,2) NULL"),
+)
+
+
+def _ensure_stock_columns(cur):
+    for name, ddl in _STOCK_COLUMNS:
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'medication_administrations'
+              AND COLUMN_NAME = ?
+        """, (name,))
+        if not cur.fetchone()['n']:
+            cur.execute(f"ALTER TABLE medication_administrations ADD COLUMN {name} {ddl}")
+    # Doctors type medicine names freely and accounting names the stock items
+    # it buys, so the two rarely match letter for letter. Accounting links a
+    # prescribed name to a stock item once; every later dose follows the link.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS medication_aliases (
+            alias_key VARCHAR(255) PRIMARY KEY,
+            medication_id VARCHAR(64) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (medication_id) REFERENCES medications_catalog(id)
+                ON UPDATE CASCADE ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """)
+
+
+def alias_key(name):
+    """How a medicine name is compared: trimmed, single-spaced, lower case."""
+    return re.sub(r'\s+', ' ', (name or '').strip()).lower()
+
+
+def resolve_stock_item(cur, medication_id, medication_name):
+    """
+    The stock item a prescription draws from, or None.
+
+    Order: the prescription's own catalog id, a catalog item with the same
+    name, then a link accounting made for that name.
+    """
+    if medication_id:
+        cur.execute("SELECT id, unit_price FROM medications_catalog WHERE id = ?", (medication_id,))
+        row = cur.fetchone()
+        if row:
+            return row
+    key = alias_key(medication_name)
+    if not key:
+        return None
+    cur.execute("SELECT id, unit_price FROM medications_catalog WHERE LOWER(TRIM(name)) = ? LIMIT 1", (key,))
+    row = cur.fetchone()
+    if row:
+        return row
+    cur.execute("""
+        SELECT mc.id, mc.unit_price FROM medication_aliases ma
+        JOIN medications_catalog mc ON mc.id = ma.medication_id
+        WHERE ma.alias_key = ?
+    """, (key,))
+    return cur.fetchone()
 
 
 # ---------------------------------------------------------------------------
@@ -497,7 +564,8 @@ def record_dose(conn, prescription_id, day, slot_index, status,
 
     cur = conn.cursor()
     cur.execute("""
-        SELECT rx.id, rx.patient_id, rx.admission_id, rx.status
+        SELECT rx.id, rx.patient_id, rx.admission_id, rx.status,
+               rx.medication_id, rx.medication_name
         FROM prescriptions rx WHERE rx.id = ?
     """, (prescription_id,))
     rx = cur.fetchone()
@@ -508,22 +576,119 @@ def record_dose(conn, prescription_id, day, slot_index, status,
     if status == 'given':
         administered_at = _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    # Stock: what this dose took before, and what it should take now.
+    cur.execute("""
+        SELECT stock_medication_id, stock_units FROM medication_administrations
+        WHERE prescription_id = ? AND scheduled_date = ? AND slot_index = ?
+        FOR UPDATE
+    """, (prescription_id, day.isoformat(), int(slot_index)))
+    prev = cur.fetchone()
+    if prev and prev['stock_medication_id'] and prev['stock_units']:
+        cur.execute("UPDATE medications_catalog SET stock_quantity = stock_quantity + ? WHERE id = ?",
+                    (int(prev['stock_units']), prev['stock_medication_id']))
+
+    stock_id, stock_units, stock_cost = None, 0, None
+    if status == 'given':
+        item = resolve_stock_item(cur, rx['medication_id'], rx['medication_name'])
+        if item:
+            stock_id, stock_cost = item['id'], item['unit_price']
+            # An empty shelf still records the dose (the nurse gave it from
+            # somewhere); it just removes nothing, so a later correction
+            # cannot put back a unit that was never taken.
+            cur.execute("""
+                UPDATE medications_catalog SET stock_quantity = stock_quantity - 1
+                WHERE id = ? AND stock_quantity > 0
+            """, (stock_id,))
+            stock_units = 1 if cur.rowcount else 0
+
     cur.execute("""
         INSERT INTO medication_administrations
             (prescription_id, admission_id, patient_id, scheduled_date,
              slot_index, slot_label, status, administered_at,
-             administered_by_staff_id, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             administered_by_staff_id, notes,
+             stock_medication_id, stock_units, stock_unit_cost)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             status = VALUES(status),
             slot_label = VALUES(slot_label),
             administered_at = VALUES(administered_at),
             administered_by_staff_id = VALUES(administered_by_staff_id),
-            notes = VALUES(notes)
+            notes = VALUES(notes),
+            stock_medication_id = VALUES(stock_medication_id),
+            stock_units = VALUES(stock_units),
+            stock_unit_cost = VALUES(stock_unit_cost)
     """, (prescription_id, rx['admission_id'], rx['patient_id'], day.isoformat(),
-          int(slot_index), slot_label, status, administered_at, staff_id, notes))
+          int(slot_index), slot_label, status, administered_at, staff_id, notes,
+          stock_id, stock_units, stock_cost))
     conn.commit()
     return True
+
+
+def medicine_usage(conn, start, end):
+    """
+    Medicines given between start and end (inclusive ISO dates).
+
+    `linked` rows are stock items with doses, units taken off the shelf and
+    their cost at the buying price of the time; `unlinked` are prescribed names
+    that match no stock item, so accounting can link them.
+    """
+    ensure_schema(conn)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT mc.id AS medication_id, mc.name, mc.form, mc.stock_quantity,
+               mc.min_stock_level,
+               COUNT(*) AS doses,
+               COALESCE(SUM(ma.stock_units), 0) AS units_taken,
+               COALESCE(SUM(ma.stock_unit_cost), 0) AS cost
+        FROM medication_administrations ma
+        JOIN medications_catalog mc ON mc.id = ma.stock_medication_id
+        WHERE ma.status = 'given' AND ma.scheduled_date BETWEEN ? AND ?
+        GROUP BY mc.id, mc.name, mc.form, mc.stock_quantity, mc.min_stock_level
+        ORDER BY cost DESC, doses DESC
+    """, (start, end))
+    linked = [dict(r) for r in cur.fetchall()]
+    cur.execute("""
+        SELECT rx.medication_name, COUNT(*) AS doses
+        FROM medication_administrations ma
+        JOIN prescriptions rx ON rx.id = ma.prescription_id
+        WHERE ma.status = 'given' AND ma.stock_medication_id IS NULL
+          AND ma.scheduled_date BETWEEN ? AND ?
+        GROUP BY rx.medication_name
+        ORDER BY doses DESC
+    """, (start, end))
+    unlinked = [dict(r) for r in cur.fetchall()]
+    for row in linked:
+        for k in ('cost',):
+            row[k] = float(row[k] or 0)
+        for k in ('doses', 'units_taken', 'stock_quantity', 'min_stock_level'):
+            row[k] = int(row[k] or 0)
+    for row in unlinked:
+        row['doses'] = int(row['doses'] or 0)
+    return {
+        'start': start, 'end': end,
+        'linked': linked,
+        'unlinked': unlinked,
+        'total_cost': round(sum(r['cost'] for r in linked), 2),
+        'total_doses': sum(r['doses'] for r in linked) + sum(r['doses'] for r in unlinked),
+    }
+
+
+def link_medicine_name(conn, medication_name, medication_id):
+    """Point a prescribed name at a stock item for all doses from now on."""
+    ensure_schema(conn)
+    key = alias_key(medication_name)
+    if not key:
+        raise ValueError('medication_name')
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM medications_catalog WHERE id = ?", (medication_id,))
+    if not cur.fetchone():
+        raise LookupError(medication_id)
+    cur.execute("""
+        INSERT INTO medication_aliases (alias_key, medication_id) VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE medication_id = VALUES(medication_id)
+    """, (key, medication_id))
+    conn.commit()
+    return key
 
 
 # Vitals, and the range each one is believable in. The table carries the same

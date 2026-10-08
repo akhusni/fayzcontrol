@@ -222,6 +222,8 @@ API_RULES = [
     ('/api/accounting/medication-purchases', 'accounting', None),
     ('/api/accounting/transaction',   'accounting', None),
     ('/api/accounting/data',          'accounting', 'read'),
+    ('/api/accounting/medicine-usage', 'accounting', 'read'),
+    ('/api/accounting/medicine-links', 'accounting', None),
     ('/api/financial-ledger',         'accounting', 'read'),
     ('/api/payments',                 'accounting', None),
     # Price list: everyone quoting a price needs to read it; only the office
