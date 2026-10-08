@@ -2043,13 +2043,6 @@ window.FMH_Reception = (function () {
     }
   }
 
-  function openHomeVisitConfirmModal(data) {
-    const address = document.getElementById('intake-home-address')?.value.trim();
-    const landmark = document.getElementById('intake-home-landmark')?.value.trim();
-    const fee = document.getElementById('intake-home-fee')?.value || 850000;
-    showToast(`Uyga chaqiruv qayd etildi: ${data.name || 'Anonim'} — ${address}`, 'success');
-  }
-
   // ============================================================
   // TAB 2: APPOINTMENTS
   // ============================================================
@@ -2858,7 +2851,6 @@ window.FMH_Reception = (function () {
     confirmAdmission,
     openBookingModal,
     openAdmissionConfirmModal,
-    openHomeVisitConfirmModal,
     openNewCallModal,
     openEditCallModal,
     submitCallLog,

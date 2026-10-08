@@ -143,14 +143,16 @@ alohida tasdiqlandi), so'ng qolgan jiddiy xatolar tuzatildi.
 | Narxlar | Narx saqlashda hech narsa tekshirilmasdi; tarmoq xatosida "saqlandi" deyilardi | Har narx tekshiriladi; saqlanmasa aniq aytiladi |
 | Narxlar | Narxsiz qabul 720 000 dan hisoblanardi | Dastur narxi olinadi |
 
-**Rahbar qarori kerak:** (1) Bemor boshqa karavotga ko'chirilsa narx o'zgarmasinmi? Hozir
-o'zgarmaydi. (2) Server sahifa yuborgan narxni narxlar ro'yxati bilan solishtirib rad etsinmi?
-Hozir sahifa narxi qabul qilinadi. (3) Uyga chaqiruv narxi qancha? Ro'yxatda yo'q.
+**PO qarorlari (2026-10-08):** (1) Ko'chirilganda kelishilgan narx qoladi, lekin
+"Yangi kunlik narx (ixtiyoriy)" maydonida yangi narx yozish mumkin — u ko'chirish
+sanasidan qo'llanadi. (2) Server ro'yxatdan farq qiladigan narxni rad etmaydi.
+(3) Uyga chaqiruv hozircha yo'q: yozuv turidan olib tashlandi, o'ylab topilgan
+850 000 narx o'chirildi (eski yozuvlar o'zgarmaydi).
 
 Hali qolgan: Qabulxonada karavot tanlanganda kunlik/ambulator dastur narxi karavot narxiga
 almashadi; HR va navbatchilik smena narxlari (300/350/400 ming) hali sahifada yozilgan.
 
-27 ta yangi test qo'shildi, jami 217 ta test o'tadi.
+29 ta yangi test qo'shildi, jami 219 ta test o'tadi.
 
 
 ## 2. Interfeys va foydalanish qulayligi

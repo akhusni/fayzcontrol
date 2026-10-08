@@ -478,7 +478,8 @@ def admit_patient(conn, patient_id, bed_id, attending_doctor_id, program_type,
         return False, str(e)
 
 
-def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer_reason=None, performed_by_staff_id=None):
+def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer_reason=None, performed_by_staff_id=None,
+                         new_daily_price=None):
     """
     Atomic bed transfer and segmented billing (Dialect-agnostic):
     1. Validates destination bed against concurrent overlapping admissions.
@@ -520,11 +521,12 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
         # discount or any custom rate). Previously the remainder of the stay
         # was re-priced at the destination bed's default_daily_rate, so a
         # 1 100 000 whole-room or a discounted stay was silently re-billed at
-        # 720 000 after a move. OWNER PRODUCT DECISION PENDING CONFIRMATION:
-        # "a transfer never changes the agreed daily price". If the owner
-        # wants moves to a dearer/cheaper room re-priced, that must become an
-        # explicit price field on the transfer form, not the bed default.
+        # 720 000 after a move. Decided with the PO (2026-10-08): the agreed
+        # price stays unless staff type a new one on the transfer form
+        # (new_daily_price), which then applies from the move date.
         agreed_rate = _row_get(adm, 'daily_price', 7)
+        if new_daily_price is not None:
+            agreed_rate = new_daily_price
 
         old_start = datetime.strptime(str(_row_get(adm, 'start_date', 2)), '%Y-%m-%d').date()
 

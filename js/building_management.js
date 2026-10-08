@@ -1578,6 +1578,9 @@
     // yesterday's date before 05:00 in Tashkent), but never before arrival.
     const today = getTodayStr();
     const minDate = booking.start_date && booking.start_date > today ? booking.start_date : today;
+    // Empty by default: the stay keeps its agreed price unless staff type one.
+    const priceInput = document.getElementById('transfer-price-input');
+    if (priceInput) priceInput.value = '';
     const dateInput = document.getElementById('transfer-date-input');
     if (dateInput) {
       dateInput.value = minDate;
@@ -1626,6 +1629,13 @@
     const newBedId = select ? select.value : '';
     const transferDate = dateInput ? dateInput.value : '';
     const reason = reasonInput ? reasonInput.value.trim() : '';
+    const priceInput = document.getElementById('transfer-price-input');
+    const priceRaw = priceInput ? String(priceInput.value || '').trim() : '';
+    const newPrice = priceRaw === '' ? null : Number(priceRaw);
+    if (newPrice !== null && !(Number.isFinite(newPrice) && newPrice >= 0)) {
+      showToast("Kunlik narx noto'g'ri.", 'warning');
+      return;
+    }
 
     if (!newBedId) {
       showToast("Yangi karavotni tanlang.", 'warning');
@@ -1638,7 +1648,7 @@
 
     const ok = await fmhConfirm({
       title: "Karavotni Almashtirish",
-      message: `<strong>${esc(booking.patient_name)}</strong>: ${esc(bedLabel(booking.bed_id))} ➔ <strong>${esc(bedLabel(newBedId))}</strong>, ${esc(transferDate)} sanasidan.<br>Avvalgi karavot tozalashga yuboriladi. Kunlik narx o'zgarmaydi.`,
+      message: `<strong>${esc(booking.patient_name)}</strong>: ${esc(bedLabel(booking.bed_id))} ➔ <strong>${esc(bedLabel(newBedId))}</strong>, ${esc(transferDate)} sanasidan.<br>Avvalgi karavot tozalashga yuboriladi. ${newPrice === null ? "Kunlik narx o'zgarmaydi." : `Yangi kunlik narx: <strong>${esc(formatMoney(newPrice))}</strong> (ko'chirish sanasidan).`}`,
       confirmText: "Ko'chirish",
       cancelText: "Bekor Qilish",
       type: 'primary'
@@ -1651,7 +1661,8 @@
       const res = await fetch('/api/admissions/' + encodeURIComponent(booking.id) + '/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_bed_id: newBedId, transfer_date: transferDate, reason: reason })
+        body: JSON.stringify({ new_bed_id: newBedId, transfer_date: transferDate, reason: reason,
+                               new_daily_price: newPrice })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

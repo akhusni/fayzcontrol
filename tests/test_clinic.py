@@ -3351,6 +3351,25 @@ class BedBoardTransfer(ApiTest):
         self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']),
                                10 * 650000, delta=0.01)
 
+    def test_a_new_price_typed_on_the_move_applies_from_the_move_date(self):
+        """PO 2026-10-08: the agreed price stays, but staff may set a new one on the move."""
+        pid = self.make_patient('New Price Transfer')
+        adm = self._admit_at(pid, BED_A, '2029-09-01', '2029-09-11', 650000)
+        status, body = self._transfer(adm, BED_C, '2029-09-04', new_daily_price=900000)
+        self.assertEqual(status, 200, f"transfer failed: {body}")
+        # 3 nights at the old price, 7 at the new one.
+        self.assertAlmostEqual(float(self.invoice_for(adm)['total_billed']),
+                               3 * 650000 + 7 * 900000, delta=0.01)
+        row = self._db_one("SELECT daily_price FROM admissions WHERE id = ?", (adm,))
+        self.assertAlmostEqual(float(row['daily_price']), 900000, delta=0.01)
+
+    def test_a_bad_new_price_is_refused(self):
+        pid = self.make_patient('Bad Price Transfer')
+        adm = self._admit_at(pid, BED_A, '2029-10-01', '2029-10-06', 650000)
+        status, body = self._transfer(adm, BED_C, '2029-10-02', new_daily_price=-5)
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body.get('field'), 'new_daily_price')
+
     def test_a_same_day_transfer_keeps_the_rate(self):
         """A move on the arrival day rewrites the only line instead of splitting it."""
         pid = self.make_patient('Same Day Transfer')

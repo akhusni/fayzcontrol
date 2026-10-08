@@ -2259,7 +2259,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # 720 000 whatever the programme. An explicit daily_price
                 # from the page is still accepted as before: whether the
                 # server should refuse a rate that differs from the list
-                # is an owner decision that is still open.
+                # was decided with the PO (2026-10-08): no, it is kept.
                 _raw_price = body.get('daily_price')
                 if _raw_price in (None, ''):
                     _raw_price = package_daily_rate(body.get('program_type'))
@@ -2434,13 +2434,22 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if not new_bed_id:
                     self._send_validation_error("Yangi karavotni tanlang.", 'new_bed_id')
                     return
+                # Optional: a new daily price from the move date. Left empty,
+                # the stay keeps its agreed price (PO, 2026-10-08).
+                new_daily_price = None
+                if body.get('new_daily_price') not in (None, ''):
+                    new_daily_price, _perr = validate_amount(body.get('new_daily_price'), field='Kunlik narx')
+                    if _perr:
+                        self._send_validation_error(_perr, 'new_daily_price')
+                        return
 
                 # transfer_patient_bed returns (False, message) only for
                 # refusals written for staff in Uzbek. Unexpected failures are
                 # re-raised and reach the generic 500 handler of this method,
                 # which logs the traceback; str(e) used to be sent to the
                 # browser here, database internals included.
-                success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id)
+                success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id,
+                                                         new_daily_price=new_daily_price)
                 if not success:
                     self._send_validation_error(str(res_data))
                     return
@@ -3796,8 +3805,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     end_date = (inpatient_info.get('end_date') or datetime.date.today().isoformat())[:10]
                     # No price from the wizard: the programme's rate from the
                     # one price list, not a hardcoded 720 000. An explicit
-                    # price is still taken as sent (owner decision pending
-                    # on enforcing the list server-side).
+                    # price is taken as sent (PO, 2026-10-08: the server
+                    # does not refuse a price that differs from the list).
                     daily_price = float(inpatient_info.get('daily_price')
                                         or package_daily_rate(prog_type))
 
@@ -4727,13 +4736,22 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if not new_bed_id:
                     self._send_validation_error("Yangi karavotni tanlang.", 'new_bed_id')
                     return
+                # Optional: a new daily price from the move date. Left empty,
+                # the stay keeps its agreed price (PO, 2026-10-08).
+                new_daily_price = None
+                if body.get('new_daily_price') not in (None, ''):
+                    new_daily_price, _perr = validate_amount(body.get('new_daily_price'), field='Kunlik narx')
+                    if _perr:
+                        self._send_validation_error(_perr, 'new_daily_price')
+                        return
 
                 # transfer_patient_bed returns (False, message) only for
                 # refusals written for staff in Uzbek. Unexpected failures are
                 # re-raised and reach the generic 500 handler of this method,
                 # which logs the traceback; str(e) used to be sent to the
                 # browser here, database internals included.
-                success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id)
+                success, res_data = transfer_patient_bed(conn, adm_id, new_bed_id, transfer_date, reason, staff_id,
+                                                         new_daily_price=new_daily_price)
                 if not success:
                     self._send_validation_error(str(res_data))
                     return

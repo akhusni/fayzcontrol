@@ -359,6 +359,10 @@
                   <label class="form-label" for="transfer-date-input">Ko'chirish sanasi</label>
                   <input type="date" id="transfer-date-input" class="form-input">
                 </div>
+                <div>
+                  <label class="form-label" for="transfer-price-input">Yangi kunlik narx (ixtiyoriy)</label>
+                  <input type="number" id="transfer-price-input" class="form-input" min="0" step="1000" placeholder="Bo'sh — kelishilgan narx qoladi">
+                </div>
                 <div class="form-group-full">
                   <label class="form-label" for="transfer-reason-input">Sabab (ixtiyoriy)</label>
                   <input type="text" id="transfer-reason-input" class="form-input" maxlength="500" placeholder="Masalan: bemor iltimosi, xonada ta'mir...">
@@ -390,6 +394,6 @@
 
   <script src="js/xlsx.full.min.js"></script>
   <script src="js/pharmacology_db.js"></script>
-  <script src="js/building_management.js?v=6.6"></script>
+  <script src="js/building_management.js?v=6.7"></script>
 </body>
 </html>
