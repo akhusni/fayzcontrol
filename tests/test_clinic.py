@@ -1906,6 +1906,63 @@ class PublicEnquiry(ApiTest):
             f"/api/reception/requests/{body['request_id']}/accept", self.slot(6))
         self.assertEqual(status, 201, f"accept failed: {result}")
 
+    def test_accepting_checks_the_doctor_the_day_and_the_service(self):
+        """
+        Any staff id was taken as the doctor, a past preferred day was booked
+        into yesterday's diary, 'home_visit' was booked although the clinic
+        makes none for now, and the phone alone picked the patient record.
+        """
+        _, body, _ = self.enquire({'full_name': 'Tekshiruv Bemor', 'phone': '+998931231231',
+                                   'service_type': 'home_visit'}, ip='203.0.113.28')
+        url = f"/api/reception/requests/{body['request_id']}/accept"
+        st, nurse = self.api.post('/api/staff', {'full_name': 'Suite Enquiry Hamshira',
+                                                 'role': 'nurse', 'base_salary': 0})
+        self.assertEqual(st, 201, nurse)
+        # Same phone, different person: must not be reused.
+        relative = self.make_patient('Boshqa Qarindosh', phone='+998931231231')
+        try:
+            good = self.slot(7)
+            yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+            for payload, field in ((dict(good, doctor_id=nurse['id']), 'doctor_id'),
+                                   (dict(good, appointment_date=yesterday), 'appointment_date')):
+                status, result = self.api.post(url, payload)
+                self.assertEqual((status, result.get('field')), (400, field), (payload, result))
+            status, result = self.api.post(url, good)
+            self.assertEqual(status, 201, result)
+            self.assertNotEqual(result['patient_id'], relative,
+                                'a relative sharing the phone was filed as this patient')
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from db import get_db
+            conn = get_db()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT service_type FROM appointments WHERE id = ?",
+                            (result['appointment_id'],))
+                self.assertEqual(cur.fetchone()['service_type'], 'outpatient')
+            finally:
+                conn.close()
+        finally:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from db import get_db
+            conn = get_db()
+            try:
+                conn.cursor().execute("DELETE FROM staff WHERE id = ?", (nurse['id'],))
+                conn.commit()
+            finally:
+                conn.close()
+
+    def test_a_bad_telegram_setting_does_not_disable_the_module(self):
+        """int() at import raised on a typo and silently turned every notice off."""
+        import subprocess
+        env = dict(os.environ, FMH_TELEGRAM_ENQUIRY_TOPIC='--5', FMH_TELEGRAM_CHAT_ID='abc',
+                   FMH_TELEGRAM_BOT_TOKEN='')
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        out = subprocess.run([sys.executable, '-c',
+                              'import telegram_service as t; print(t.TOPIC_ENQUIRIES, t.CHAT_ID)'],
+                             cwd=root, env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip().splitlines()[-1], 'None -1004441223890')
+
     def test_the_staff_group_is_told_only_what_it_needs(self):
         """
         A new enquiry is announced in the staff Telegram group so it is
@@ -2234,6 +2291,72 @@ class SessionsSurviveRestart(unittest.TestCase):
                                 marker.strftime('%Y-%m-%d %H:%M:%S'),
                                 'the throttled write never happened')
         finally:
+            self.auth.destroy_session(token)
+
+    def test_an_unchanged_last_seen_second_is_not_read_as_revoked(self):
+        """PyMySQL counts changed rows: rewriting the same second returned 0."""
+        token = self.auth.create_session(self._real_user())
+        try:
+            key = self.auth.token_hash(token)
+            now = self.auth._now().replace(microsecond=0)
+            self._sql("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
+                      (self.auth._db_time(now), key))
+            sess = self.auth._SESSIONS[key]
+            sess['db_seen'] = now - _dt.timedelta(seconds=self.auth.SESSION_TOUCH_SECONDS + 1)
+            self.assertTrue(self.auth._touch(key, sess, now), 'a live session was ended')
+            self.assertIn(key, self.auth._SESSIONS)
+        finally:
+            self.auth.destroy_session(token)
+
+    def test_a_logout_whose_delete_failed_is_not_restored(self):
+        token = self.auth.create_session(self._real_user())
+        real = self.db.get_db
+
+        def down():
+            raise ConnectionError('MySQL is down (simulated)')
+        self.db.get_db = down
+        try:
+            self.auth.destroy_session(token)
+        finally:
+            self.db.get_db = real
+        self.assertEqual(len(self._rows(token)), 1, 'precondition: the row survived the failed delete')
+        self.assertIsNone(self.auth.get_session(token), 'a signed-out session came back')
+        self.assertEqual(self._rows(token), [], 'the delete was not retried')
+
+    def test_a_session_held_during_sign_out_everywhere_ends(self):
+        probe = {'username': self.PROBE, 'role': 'nurse', 'id': 'U-PROBE'}
+        token = self.auth.create_session(probe)
+        key = self.auth.token_hash(token)
+        sess = self.auth._SESSIONS[key]
+        real = self.db.get_db
+
+        def down():
+            raise ConnectionError('MySQL is down (simulated)')
+        self.db.get_db = down
+        try:
+            self.auth.destroy_sessions_for_user(self.PROBE)
+        finally:
+            self.db.get_db = real
+        # A request that had already looked the session up carries on.
+        self.auth._SESSIONS[key] = sess
+        sess['persisted'] = False
+        self.assertIsNone(self.auth.get_session(token))
+        self.assertNotIn(key, self.auth._SESSIONS)
+        self._sql("DELETE FROM user_sessions WHERE token_hash = ?", (key,))
+
+    def test_a_missing_users_file_does_not_delete_sessions(self):
+        """iCloud renamed users.json once; restore deleted every row it met."""
+        token = self.auth.create_session(self._real_user())
+        real = self.auth.load_users
+        try:
+            self._forget(token)
+            self.auth.load_users = lambda: []
+            self.assertIsNone(self.auth.get_session(token))
+            self.assertEqual(len(self._rows(token)), 1, 'the row was deleted')
+            self.auth.load_users = real
+            self.assertTrue(self.auth.get_session(token), 'the session did not come back')
+        finally:
+            self.auth.load_users = real
             self.auth.destroy_session(token)
 
     def test_a_database_outage_never_raises_and_keeps_cached_sessions(self):
@@ -4371,8 +4494,21 @@ class ServerPayroll(ApiTest):
         self.assertEqual(st, 200)
         self.assertTrue(rows, 'the staff list came back empty')
         self.assertFalse(any('salary_base' in r for r in rows), 'the desk can read salaries')
+        self.assertFalse(any('detox_procedure_fee' in r for r in rows), 'the desk can read procedure fees')
         st, rows = self.api.get('/api/staff')
         self.assertTrue(any('salary_base' in r for r in rows))
+
+    def test_the_doctor_list_carries_no_pay(self):
+        """/api/doctors is open to every login and still sent salary_base."""
+        for role in ('receptionist', 'nurse'):
+            c = self._account(role)
+            st, rows = c.get('/api/doctors')
+            self.assertEqual(st, 200, rows)
+            self.assertTrue(rows, 'the doctor list came back empty')
+            for k in ('salary_base', 'detox_procedure_fee'):
+                self.assertFalse(any(k in r for r in rows), f'{role} can read {k} via /api/doctors')
+        st, rows = self.api.get('/api/doctors')
+        self.assertTrue(any('salary_base' in r for r in rows), 'HR-level callers lost the pay columns')
 
     def test_the_desk_cannot_read_payroll(self):
         desk = self._account('receptionist')
@@ -4480,7 +4616,7 @@ class HrAttendanceAndStaffRecords(ApiTest):
             ({'staff_id': 'STF-NOBODY-999'}, 'staff_id'),
             ({'work_date': ''}, 'work_date'),
             ({'work_date': '2026-13-01'}, 'work_date'),
-            ({'work_date': self._day(+1)}, 'work_date'),
+            ({'work_date': self._day(+2)}, 'work_date'),
             ({'status': 'scheduled_night'}, 'status'),
             ({'shift_type': 'evening'}, 'shift_type'),
             ({'check_in': '25:00'}, 'check_in'),
@@ -4495,6 +4631,14 @@ class HrAttendanceAndStaffRecords(ApiTest):
             self.assertEqual(body.get('field'), field, f'{change}: {body}')
             self.assertNotIn('Traceback', json.dumps(body))
         self.assertEqual(self._attendance(sid), [])
+
+    def test_the_server_tomorrow_is_accepted(self):
+        # A UTC server is a day behind Tashkent between 00:00 and 05:00, so
+        # the browser's today can be the server's tomorrow.
+        sid = self._staff_member()['id']
+        st, body = self.api.post('/api/hr/attendance', {
+            'staff_id': sid, 'work_date': self._day(+1), 'shift_type': 'day', 'status': 'present'})
+        self.assertEqual(st, 200, body)
 
     def test_only_hr_records_attendance(self):
         sid = self._staff_member()['id']
@@ -4586,13 +4730,36 @@ class HrAttendanceAndStaffRecords(ApiTest):
         self.assertEqual(row['status'], 'active')
         self.assertEqual(row['category'], '2-toifa', 'reactivation rewrote the record')
 
-        # Re-saving the record reactivates too (the older route).
+        # Editing a deactivated person keeps them inactive: the upsert used to
+        # set is_active = 1, so fixing a phone number silently put someone who
+        # had left back on the roster and the payroll.
         self.api.delete('/api/staff/' + sid)
         st, body = self.api.post('/api/staff', {'id': sid, 'full_name': 'Suite HR Qaytuvchi',
-                                                'role': 'nurse', 'base_salary': 0})
+                                                'role': 'nurse', 'base_salary': 0,
+                                                'phone': '+998900000001'})
         self.assertEqual(st, 201, body)
+        self.assertEqual(body['staff']['status'], 'inactive', body)
         row, _ = self._hr_staff(sid)
-        self.assertEqual(row['status'], 'active')
+        self.assertEqual(row['status'], 'inactive', 'an edit reactivated a deactivated employee')
+
+    def test_a_client_chosen_staff_id_must_be_a_plain_id(self):
+        # A quote in the id ran script from the Super-Portal fire button.
+        for bad in ("X');alert(1);//", 'a b', 'x' * 65, '<b>'):
+            st, body = self.api.post('/api/staff', {'id': bad, 'full_name': 'Suite HR Yomon Id',
+                                                    'role': 'nurse', 'base_salary': 0})
+            if st == 201:
+                self._staff.append(body['id'])
+            self.assertEqual(st, 400, f'{bad!r} was accepted: {body}')
+            self.assertEqual(body.get('field'), 'id', body)
+
+    def test_hr_free_text_refuses_markup(self):
+        for key in ('role_title_uz', 'telegram'):
+            st, body = self.api.post('/api/staff', {'full_name': 'Suite HR Belgi', 'role': 'nurse',
+                                                    'base_salary': 0, key: 'a<img src=x>'})
+            if st == 201:
+                self._staff.append(body['id'])
+            self.assertEqual(st, 400, f'{key} accepted markup: {body}')
+            self.assertEqual(body.get('field'), key, body)
 
     def test_reactivation_needs_hr_and_a_real_person(self):
         sid = self._staff_member()['id']
@@ -4676,6 +4843,115 @@ class AdminConsole(ApiTest):
         uid, _u = self._create('sanitar', 'san')
         st, users = self.api.get('/api/users')
         self.assertEqual(next(u for u in users if u['id'] == uid)['role'], 'sanitar')
+
+    # --- failed sign-ins ---------------------------------------------------------
+
+    def _failed_login_rows(self, since_id, entity_id):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM audit_logs WHERE action_type = 'LOGIN_FAILED' "
+                        "AND id > ? AND entity_id = ?", (since_id, entity_id))
+            return cur.fetchall()
+        finally:
+            conn.close()
+
+    def _last_audit_id(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT COALESCE(MAX(id), 0) AS n FROM audit_logs")
+            return int(cur.fetchone()['n'])
+        finally:
+            conn.close()
+
+    def test_a_failed_sign_in_for_an_unknown_login_is_masked(self):
+        """The typed text (often a password in the wrong box) was shown in the audit viewer."""
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import audit
+        typed = f'Parol-{os.getpid()}-xyz'.lower()
+        before = self._last_audit_id()
+        st, _ = Client().login(typed, 'wrong-password')
+        self.assertEqual(st, 401)
+        self.assertEqual(self._failed_login_rows(before, typed), [], 'the typed login was stored')
+        self.assertTrue(self._failed_login_rows(before, audit.UNKNOWN_LOGIN))
+        # A real account's name is kept: that is who was being tried.
+        _uid, uname = self._create('nurse', 'lf')
+        st, _ = Client().login(uname, 'wrong-password')
+        self.assertEqual(st, 401)
+        self.assertTrue(self._failed_login_rows(before, uname))
+
+    def test_old_failed_sign_ins_are_scrubbed_but_not_without_users(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import audit
+        import auth
+        from db import get_db
+        typed = f'zz-typed-{os.getpid()}'
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO audit_logs (entity_name, entity_id, action_type, new_data_json, "
+                        "timestamp) VALUES ('auth', ?, 'LOGIN_FAILED', '{}', NOW())", (typed,))
+            row_id = cur.lastrowid
+            conn.commit()
+            self.assertEqual(audit.scrub_unknown_logins(conn, []), 0,
+                             'an unreadable users.json masked everything')
+            names = [u.get('username') for u in auth.load_users()]
+            self.assertGreaterEqual(audit.scrub_unknown_logins(conn, names), 1)
+            cur.execute("SELECT entity_id FROM audit_logs WHERE id = ?", (row_id,))
+            self.assertEqual(cur.fetchone()['entity_id'], audit.UNKNOWN_LOGIN)
+            cur.execute("DELETE FROM audit_logs WHERE id = ?", (row_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    # --- account managers are not superadmins --------------------------------
+
+    def test_only_a_superadmin_grants_or_touches_superadmin_power(self):
+        # admin:write let a non-superadmin create a superadmin, grant '*' or
+        # reset another superadmin's password and sign in as them.
+        _mid, mgr_name = self._create('admin', 'mgr', permissions=['admin', 'reception'])
+        sa2_id, _sa2 = self._create('superadmin', 'sa2')
+        mgr = self._signed_in(mgr_name)
+
+        def _new(tag, **extra):
+            payload = {'username': f'suite_adm_{tag}_{os.getpid()}', 'password': self.PW,
+                       'full_name': f'Suite Admin {tag}', 'role': 'doctor'}
+            payload.update(extra)
+            st, body = mgr.post('/api/users', payload)
+            if st == 201:
+                self._temp_users.append(body['id'])
+            return st, body
+
+        for tag, extra in (('esa', {'role': 'superadmin'}), ('est', {'permissions': ['*']}),
+                           ('eaw', {'permissions': ['admin:write']}),
+                           ('eam', {'permissions': ['admin', 'crm']})):
+            st, body = _new(tag, **extra)
+            self.assertEqual(st, 403, f'{extra} granted by a non-superadmin: {body}')
+
+        st, body = mgr.post('/api/users/' + sa2_id + '/reset-password', {})
+        self.assertEqual(st, 403, f'a non-superadmin reset a superadmin: {body}')
+        st, body = mgr.put('/api/users/' + sa2_id, {'full_name': 'Hijacked'})
+        self.assertEqual(st, 403, f'a non-superadmin edited a superadmin: {body}')
+        st, body = self.api.put('/api/users/' + sa2_id, {'phone': '+998900000003'})
+        self.assertEqual(st, 200, f'a superadmin could not edit another superadmin: {body}')
+
+        st, body = _new('doc')
+        self.assertEqual(st, 201, body)
+        doc_id = body['user']['id']
+        st, body = mgr.put('/api/users/' + doc_id, {'role': 'superadmin'})
+        self.assertEqual(st, 403, f'a non-superadmin promoted to superadmin: {body}')
+        st, body = mgr.put('/api/users/' + doc_id, {'permissions': ['*']})
+        self.assertEqual(st, 403, body)
+        # Ordinary accounts stay manageable.
+        st, body = mgr.post('/api/users/' + doc_id + '/reset-password', {})
+        self.assertEqual(st, 200, body)
+        st, body = mgr.put('/api/users/' + doc_id, {'phone': '+998900000002'})
+        self.assertEqual(st, 200, body)
 
     # --- permissions -------------------------------------------------------
 
@@ -5018,6 +5294,113 @@ class AccountingMoney(ApiTest):
         self.assertEqual(st, 200, res)
         self.assertIn("to'lov olingan", res['message'])
         self.assertEqual(len(self._rows("SELECT id FROM invoices WHERE id = ?", (body['invoice_id'],))), 1)
+
+    def test_cancelling_a_visit_keeps_lines_added_later(self):
+        """Cancel deleted every line, including stock medicines added in Accounting."""
+        st, body = self._visit(patient_phone='+998900000438', time='10:30')
+        self.assertEqual(st, 201, body)
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data',
+                               'pricing_config.json'), encoding='utf-8') as f:
+            svc = json.load(f)['additional_services'][0]
+        st, added = self.api.post('/api/accounting/invoice-items', {
+            'invoice_id': body['invoice_id'], 'service_code': svc['id'], 'quantity': 1})
+        self.assertEqual(st, 201, added)
+        st, res = self.api.put(f"/api/reception/appointment/{body['id']}/cancel", {})
+        self.assertEqual(st, 200, res)
+        items = self._rows("SELECT id, item_type FROM invoice_items WHERE invoice_id = ?",
+                           (body['invoice_id'],))
+        self.assertEqual([i['id'] for i in items], [added['id']],
+                         'the visit fee should go and the added line stay')
+        inv = self._rows("SELECT total_billed FROM invoices WHERE id = ?", (body['invoice_id'],))
+        self.assertEqual(len(inv), 1, 'the invoice holding the added line was deleted')
+        self.assertAlmostEqual(float(inv[0]['total_billed']), float(svc['price']), delta=0.01)
+
+    def test_a_paid_visit_is_not_mistaken_for_a_retry(self):
+        """A second real consultation the same day was answered as a resend and never billed."""
+        st, first = self._visit(patient_phone='+998900000439', time='10:40', consultation_fee=250000)
+        self.assertEqual(st, 201, first)
+        st, pay = self.api.post('/api/payments', {'invoice_id': first['invoice_id'], 'amount': 250000,
+                                                  'payment_method': 'cash'})
+        self.assertEqual(st, 201, pay)
+        st, second = self._visit(patient_phone='+998900000439', time='15:40', consultation_fee=250000)
+        self.assertEqual(st, 201, second)
+        self.assertFalse(second.get('already_recorded'), second)
+        self.assertNotEqual(second['invoice_id'], first['invoice_id'])
+
+    def test_a_client_appointment_id_must_be_a_plain_id(self):
+        """The id was copied into INV-<id> and printed inside an onclick handler."""
+        st, body = self._visit(id="APT-1');alert(1);//", patient_phone='+998900000440', time='10:50')
+        self.assertEqual((st, body.get('field')), (400, 'id'), body)
+
+    # --- salary payouts ----------------------------------------------------------
+
+    def test_a_salary_is_paid_once_per_payroll_month(self):
+        """The paid-this-month guard lived only in the page and used the recording date."""
+        st, staff = self.api.post('/api/staff', {'full_name': 'Suite Maosh Xodim', 'role': 'nurse',
+                                                 'base_salary': 1000})
+        self.assertEqual(st, 201, staff)
+        sid = staff['id']
+        today = _dt.date.today()
+        this_month = today.strftime('%Y-%m')
+        prev = (today.replace(day=1) - _dt.timedelta(days=1))
+        prev_month = prev.strftime('%Y-%m')
+        older = (prev.replace(day=1) - _dt.timedelta(days=1))
+
+        def pay(**extra):
+            payload = {'type': 'expense', 'category': 'salary', 'amount': 1000,
+                       'related_staff_id': sid, 'payment_method': 'bank',
+                       'title': 'Suite maosh'}
+            payload.update(extra)
+            return self.api.post('/api/accounting/transaction', payload)
+
+        try:
+            st, b = pay(payroll_month=prev_month)
+            self.assertEqual(st, 201, b)
+            st, b = pay(payroll_month=prev_month)
+            self.assertEqual((st, b.get('field')), (409, 'payroll_month'), b)
+            # Paying last month's salary today does not use up this month.
+            st, b = pay(payroll_month=this_month)
+            self.assertEqual(st, 201, b)
+            # No month sent: the recording date's month, as before.
+            st, b = pay(date=today.isoformat())
+            self.assertEqual(st, 409, b)
+            # A payout written before payroll_month existed counts by its date.
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from db import get_db
+            conn = get_db()
+            try:
+                conn.cursor().execute(
+                    "INSERT INTO accounting_transactions (id, transaction_type, category, amount, "
+                    "payment_method, description, transaction_date, related_staff_id) "
+                    "VALUES (?, 'expense', 'salary', 1000, 'bank_wire', 'legacy', ?, ?)",
+                    (f'TRX-SUITE-{os.getpid()}', older.replace(day=10).isoformat(), sid))
+                conn.commit()
+            finally:
+                conn.close()
+            st, b = pay(payroll_month=older.strftime('%Y-%m'))
+            self.assertEqual(st, 409, b)
+            for bad in ('2026-13', '26-09', 'sentyabr'):
+                st, b = pay(payroll_month=bad)
+                self.assertEqual((st, b.get('field')), (400, 'payroll_month'), (bad, b))
+            future = (today.replace(day=28) + _dt.timedelta(days=40)).strftime('%Y-%m')
+            st, b = pay(payroll_month=future)
+            self.assertEqual((st, b.get('field')), (400, 'payroll_month'), b)
+
+            st, data = self.api.get('/api/accounting/data')
+            mine = [t for t in data['transactions'] if t.get('related_staff_id') == sid]
+            self.assertEqual(sorted(t.get('payroll_month') or '' for t in mine),
+                             sorted(['', prev_month, this_month]), mine)
+        finally:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from db import get_db
+            conn = get_db()
+            try:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM accounting_transactions WHERE related_staff_id = ?", (sid,))
+                cur.execute("DELETE FROM staff WHERE id = ?", (sid,))
+                conn.commit()
+            finally:
+                conn.close()
 
     # --- where the bill shows up ---------------------------------------------
 

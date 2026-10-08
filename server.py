@@ -606,6 +606,10 @@ def parse_staff_hr_fields(body):
         raw = None if raw in (None, '') else str(raw)
         if raw is not None and len(raw) > 255:
             return None, ("Lavozim nomi juda uzun (255 belgigacha).", 'role_title_uz')
+        # HR pages put these two straight into the staff cards; refusing
+        # markup characters here backs up the escaping done on the page.
+        if raw is not None and any(ch in raw for ch in '<>"'):
+            return None, ("Lavozim nomida < > \" belgilari bo'lishi mumkin emas.", 'role_title_uz')
         out['role_title_uz'] = raw
 
     if 'telegram' in body:
@@ -613,6 +617,8 @@ def parse_staff_hr_fields(body):
         raw = None if raw in (None, '') else str(raw).lstrip('@').strip() or None
         if raw is not None and len(raw) > 64:
             return None, ("Telegram nomi juda uzun.", 'telegram')
+        if raw is not None and any(ch in raw for ch in '<>"'):
+            return None, ("Telegram nomida < > \" belgilari bo'lishi mumkin emas.", 'telegram')
         out['telegram'] = raw
 
     if 'detox_procedure_fee' in body:
@@ -678,7 +684,11 @@ def parse_attendance(body):
             raise ValueError
     except Exception:
         return None, ("Sana YYYY-MM-DD ko'rinishida bo'lishi kerak.", 'work_date')
-    if work_date > _dt.date.today():
+    # One day of slack: the server may run on UTC while the clinic is on
+    # Tashkent time (UTC+5), so between 00:00 and 05:00 in Tashkent the
+    # browser's "today" is the server's tomorrow and the morning's attendance
+    # was refused as a future day.
+    if work_date > _dt.date.today() + _dt.timedelta(days=1):
         return None, ("Kelajakdagi kun uchun davomat kiritib bo'lmaydi.", 'work_date')
     if work_date.year < 2000:
         return None, ("Sana haqiqiy emas.", 'work_date')
@@ -785,6 +795,7 @@ from db import (
     ensure_staff_hr_columns,
     ensure_invoice_visit_link,
     ensure_user_sessions,
+    ensure_transaction_payroll_month,
     STAFF_HR_COLUMNS,
     STAFF_ROLES,
     load_config
@@ -887,6 +898,29 @@ def new_record_id(cur, table, prefix):
         if not cur.fetchone():
             return candidate
     return f"{prefix}-{int(datetime.datetime.now().timestamp() * 1000)}"
+
+
+CLIENT_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+
+def validate_client_id(raw, field='id'):
+    """
+    An id the page chose itself (an edit of an existing row, or a resend),
+    checked before it reaches the database.
+
+    Returns (id_or_None, error_or_None); None with no error means "not sent,
+    generate one". Ids typed by the caller were stored as given and later
+    printed inside inline onclick="...('<id>')" handlers and copied into
+    invoice ids (INV-<appointment id>), so an id holding a quote ran script
+    in the next viewer's browser -- the Super-Portal is a superadmin's. Every
+    id the server generates (PREFIX-####, STF-DOC-01) fits this pattern.
+    """
+    if raw in (None, ''):
+        return None, None
+    value = str(raw).strip() if isinstance(raw, (str, int)) and not isinstance(raw, bool) else None
+    if not value or not CLIENT_ID_RE.match(value):
+        return None, "Identifikator faqat lotin harflari, raqamlar, '-' va '_' dan iborat bo'lishi kerak (64 belgigacha)."
+    return value, None
 
 
 def new_patient_ids(cur, id_prefix='PAT-2026'):
@@ -1019,6 +1053,29 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.close()
         except Exception as e:
             print(f"[!] Could not audit {self.command} {path}: {e}")
+
+    # Staff columns that are someone's pay.
+    PAY_FIELDS = ('salary_base', 'detox_procedure_fee')
+
+    def _strip_pay_fields(self, rows):
+        """
+        Drop pay columns from staff rows unless the caller handles pay.
+
+        /api/staff and /api/doctors are readable by every login (doctor
+        pickers, menus), so they carried everyone's salary -- and, once HR
+        could save it, the detox procedure fee -- to the desk, nurses and
+        doctors. Pay is for HR, the cashier who pays it and the owner (the
+        desk has accounting:read for balances, which is not a reason to see
+        pay). One helper so the two routes cannot drift apart again.
+        """
+        _u = (self.current_session() or {}).get('user')
+        if (permissions.can(_u, 'hr') or permissions.can(_u, 'accounting', 'write')
+                or permissions.can(_u, 'owner')):
+            return rows
+        for r in rows:
+            for k in self.PAY_FIELDS:
+                r.pop(k, None)
+        return rows
 
     def _send_validation_error(self, message, field=None, cors=False):
         """
@@ -1722,6 +1779,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path == '/api/doctors':
                 cur.execute("SELECT * FROM staff WHERE role IN ('doctor', 'chief_doctor') AND is_active = 1 ORDER BY role, full_name")
                 rows = [dict(r) for r in cur.fetchall()]
+                self._strip_pay_fields(rows)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
@@ -1734,15 +1792,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 else:
                     cur.execute("SELECT * FROM staff WHERE is_active = 1 ORDER BY role, full_name")
                 rows = [dict(r) for r in cur.fetchall()]
-                # Every page reads this list (doctor pickers, menus), so it
-                # carried everyone's salary to every signed-in user. Pay is
-                # for HR, the cashier who pays it and the owner (the desk has
-                # accounting:read for balances, which is not a reason to see pay).
-                _u = (self.current_session() or {}).get('user')
-                if not (permissions.can(_u, 'hr') or permissions.can(_u, 'accounting', 'write')
-                        or permissions.can(_u, 'owner')):
-                    for r in rows:
-                        r.pop('salary_base', None)
+                self._strip_pay_fields(rows)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
@@ -1972,10 +2022,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 # Transactions (single-source from accounting_transactions)
                 transactions = []
+                ensure_transaction_payroll_month(conn)
                 cur.execute("""
                     SELECT id, transaction_type AS type, category, description AS title,
                            amount, payment_method, account_source, related_invoice_id AS invoice_id,
-                           related_staff_id,
+                           related_staff_id, payroll_month,
                            transaction_date AS date, '12:00' AS time, 'Kassir' AS cashier, description AS notes
                     FROM accounting_transactions
                     ORDER BY transaction_date DESC, id DESC
@@ -2984,7 +3035,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path == '/api/payments' or path == '/api/crm/payments':
                 # Same bounded random space as patient ids: probe for a free id so a
                 # collision cannot reject a real payment.
-                pay_id = body.get('id') or new_record_id(cur, 'payments', 'PAY-2026')
+                pay_id, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    self._send_validation_error(_id_err, 'id')
+                    return
+                pay_id = pay_id or new_record_id(cur, 'payments', 'PAY-2026')
                 inv_id = body.get('invoice_id')
                 amount = float(body.get('amount', 0))
 
@@ -3065,20 +3120,64 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     cur.execute("SELECT id FROM staff WHERE id = ?", (_staff_ref,))
                     if not cur.fetchone():
                         _staff_ref = None
-                cur.execute("""
-                    INSERT INTO accounting_transactions (id, transaction_type, category, amount, payment_method, account_source, description, transaction_date, related_staff_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    trx_id,
-                    txn_type,
-                    category,
-                    amount,
-                    method,
-                    account_source,
-                    desc,
-                    date_str,
-                    _staff_ref
-                ))
+
+                # The month a salary payout pays for, and one payout per
+                # person per month. The "already paid" guard lived only in
+                # the accounting page and looked at the recording date, so a
+                # second tab, a double click past the check or a payout made
+                # early next month paid the same salary twice.
+                payroll_month = None
+                if category == 'salary' and _staff_ref:
+                    ensure_transaction_payroll_month(conn)
+                    payroll_month = str(body.get('payroll_month') or date_str[:7]).strip()
+                    if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', payroll_month):
+                        self._send_validation_error(
+                            "Maosh oyi YYYY-MM ko'rinishida bo'lishi kerak.", 'payroll_month')
+                        return
+                    if payroll_month > (datetime.date.today() + datetime.timedelta(days=1)).isoformat()[:7]:
+                        self._send_validation_error(
+                            "Kelgusi oy uchun maosh to'lab bo'lmaydi.", 'payroll_month')
+                        return
+                    _y, _m = int(payroll_month[:4]), int(payroll_month[5:7])
+                    _m_start = f"{payroll_month}-01"
+                    _m_next = f"{_y + (_m // 12):04d}-{_m % 12 + 1:02d}-01"
+                    # Rows written before payroll_month existed count by the
+                    # day they were recorded, as the page used to.
+                    cur.execute("""
+                        SELECT id FROM accounting_transactions
+                        WHERE category = 'salary' AND related_staff_id = ?
+                          AND (payroll_month = ?
+                               OR (payroll_month IS NULL AND transaction_date >= ? AND transaction_date < ?))
+                        LIMIT 1
+                    """, (_staff_ref, payroll_month, _m_start, _m_next))
+                    _dup = cur.fetchone()
+                    if _dup:
+                        self._set_json_headers(409)
+                        self.wfile.write(json.dumps({
+                            'error': f"Bu xodimga {payroll_month} oyi uchun maosh allaqachon to'langan ({_dup['id']}).",
+                            'field': 'payroll_month'}, ensure_ascii=False).encode('utf-8'))
+                        return
+                if payroll_month:
+                    cur.execute("""
+                        INSERT INTO accounting_transactions (id, transaction_type, category, amount, payment_method, account_source, description, transaction_date, related_staff_id, payroll_month)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (trx_id, txn_type, category, amount, method, account_source, desc,
+                          date_str, _staff_ref, payroll_month))
+                else:
+                    cur.execute("""
+                        INSERT INTO accounting_transactions (id, transaction_type, category, amount, payment_method, account_source, description, transaction_date, related_staff_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        trx_id,
+                        txn_type,
+                        category,
+                        amount,
+                        method,
+                        account_source,
+                        desc,
+                        date_str,
+                        _staff_ref
+                    ))
                 conn.commit()
                 if telegram_service:
                     try:
@@ -3552,7 +3651,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 
                 prefix = 'DOC' if role in ('doctor', 'chief_doctor') else (
                     'NRS' if role == 'nurse' else ('SAN' if role == 'sanitar' else 'ADM'))
-                staff_id = str(body.get('id') or '').strip()[:64]
+                # A client-chosen id is checked (see validate_client_id): a
+                # quote in it ran script in the Super-Portal fire button.
+                staff_id, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    conn.close()
+                    self._send_validation_error(_id_err, 'id')
+                    return
                 if not staff_id:
                     # COUNT + 1 named an id that could already exist (after a
                     # deletion, or ids added by hand), and the upsert below then
@@ -3600,9 +3705,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         phone = excluded.phone,
                         email = excluded.email,
                         salary_base = excluded.salary_base,
-                        shift_type = excluded.shift_type,
-                        is_active = 1
+                        shift_type = excluded.shift_type
                 """, (staff_id, full_name, role, specialty, phone, email, salary_base, shift_db))
+                # An edit keeps is_active as it is. The upsert used to set it
+                # to 1, so correcting a phone number of someone who had left
+                # put them back on the roster and the payroll without anyone
+                # deciding it; reactivation is POST /api/staff/<id>/reactivate.
                 # Only the HR fields this request sent are written, so a save
                 # from a form that does not have them keeps what HR entered.
                 if hr_fields:
@@ -3627,8 +3735,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'base_salary': salary_base,
                     'salary_base': salary_base,
                     'shift_type': shift_raw,
-                    'is_active': 1,
-                    'status': 'active'
+                    'is_active': 1 if _saved.get('is_active', 1) else 0,
+                    'status': 'active' if _saved.get('is_active', 1) else 'inactive'
                 })
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
@@ -3645,7 +3753,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # free id in the same PAT-#### format, falling back to a millisecond
                 # timestamp if the random space is saturated. The code is probed
                 # with it (see new_patient_ids).
-                pid = body.get('id')
+                pid, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    self._send_validation_error(_id_err, 'id')
+                    return
                 pcode = body.get('patient_code')
                 if not pid:
                     pid, _pcode = new_patient_ids(cur, 'PAT')
@@ -3744,15 +3855,26 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if not doc_id:
                     self._send_validation_error("Shifokor tanlanmagan.", 'doctor_id')
                     return
-                cur.execute('SELECT id FROM staff WHERE id = ?', (doc_id,))
+                # Any staff id was accepted, so a visit could be booked with a
+                # nurse, the cashier or someone who had left.
+                cur.execute("SELECT id FROM staff WHERE id = ? AND role IN ('doctor', 'chief_doctor') "
+                            "AND is_active = 1", (doc_id,))
                 if not cur.fetchone():
-                    self._send_validation_error(f"Shifokor topilmadi ({doc_id}).", 'doctor_id')
+                    self._send_validation_error(f"Faol shifokor topilmadi ({doc_id}).", 'doctor_id')
                     return
                 apt_day, _derr = parse_date_param(
                     body.get('appointment_date') or str(row['preferred_date'] or '')[:10],
                     default_today=True, field='Qabul sanasi')
                 if _derr:
                     self._send_validation_error(_derr, 'appointment_date')
+                    return
+                # The website's preferred day is often already past when the
+                # desk gets to it; booking it put the visit in yesterday's
+                # diary where nobody would see it.
+                if apt_day < datetime.date.today():
+                    self._send_validation_error(
+                        "Qabul sanasi o'tib ketgan. Bugungi yoki keyingi kunni tanlang.",
+                        'appointment_date')
                     return
                 apt_date = apt_day.isoformat()
                 apt_time = (str(body.get('appointment_time') or '')).strip()
@@ -3778,13 +3900,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # The website's service field is free text; a value the
                 # appointments CHECK does not know made the insert fail with a
                 # 500 after the patient row was already built.
+                # No home visits for now (PO, 2026-10-08): an enquiry asking
+                # for one is booked as a visit to the clinic.
                 apt_service = row['service_type'] if row['service_type'] in APPOINTMENT_SERVICE_TYPES else 'outpatient'
+                if apt_service == 'home_visit':
+                    apt_service = 'outpatient'
 
                 phone = (row['phone'] or '').strip()
                 name = (row['full_name'] or '').strip() or 'Bemor'
                 patient_id = None
                 if phone:
-                    cur.execute('SELECT id FROM patients WHERE phone = ? LIMIT 1', (phone,))
+                    # Phone AND name, as at the desk (/api/reception/appointment).
+                    # The phone alone filed a relative who shares the family
+                    # phone into the other person's record and history.
+                    cur.execute('SELECT id FROM patients WHERE phone = ? AND full_name = ? LIMIT 1',
+                                (phone, name))
                     found = cur.fetchone()
                     if found:
                         patient_id = found['id']
@@ -3910,7 +4040,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         print(f"[Telegram Notify Error] {_e_notify}")
 
             elif path == '/api/reception/appointment':
-                apt_id = body.get('id') or new_record_id(cur, 'appointments', 'APT-2026')
+                apt_id, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    self._send_validation_error(_id_err, 'id')
+                    return
+                apt_id = apt_id or new_record_id(cur, 'appointments', 'APT-2026')
                 patient_name = (body.get('patient_name') or '').strip()
                 patient_phone = body.get('patient_phone', '')
                 doc_id = body.get('doctor_id')
@@ -3986,13 +4120,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # answer was lost) would book and bill the same visit again.
                 # The same patient, doctor, day and service already recorded
                 # with a bill is that visit: answer with it, write nothing.
+                # Only an unpaid bill written in the last 10 minutes counts.
+                # Matching any earlier visit that day treated a second real
+                # consultation (the patient came back in the afternoon, paid
+                # in the morning) as a retry, so it was never billed. The page
+                # sends no request id, and a retry comes seconds after the
+                # first send, before anyone could have paid.
                 if bill_visit and p_exist:
                     cur.execute("""
                         SELECT ap.id, inv.id AS invoice_id
                         FROM appointments ap
                         JOIN invoices inv ON inv.appointment_id = ap.id
                         WHERE ap.patient_id = ? AND ap.doctor_id = ? AND ap.appointment_date = ?
-                          AND ap.service_type = ? AND ap.status != 'cancelled'
+                          AND ap.service_type = ? AND ap.status NOT IN ('cancelled', 'completed')
+                          AND inv.payment_status = 'unpaid' AND inv.total_paid = 0
+                          AND inv.created_at >= NOW() - INTERVAL 10 MINUTE
                         LIMIT 1
                     """, (p_exist[0], doc_id, date_str, srv_type))
                     _same = cur.fetchone()
@@ -4093,7 +4235,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 7. POST /api/reception/call-log (Log Hotline / CRM Call)
             elif path == '/api/reception/call-log':
-                call_id = body.get('id') or new_record_id(cur, 'call_logs', 'CALL-2026')
+                call_id, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    self._send_validation_error(_id_err, 'id')
+                    return
+                call_id = call_id or new_record_id(cur, 'call_logs', 'CALL-2026')
                 cur.execute("""
                     INSERT INTO call_logs (id, caller_name, caller_phone, call_direction, source, category, priority, status, notes)
                     VALUES (?, ?, ?, 'inbound', ?, ?, ?, ?, ?)
@@ -4148,7 +4294,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         hid
                     ))
                 else:
-                    hid = body.get('id') or new_record_id(cur, 'medical_histories', 'MH-2026')
+                    hid, _id_err = validate_client_id(body.get('id'))
+                    if _id_err:
+                        self._send_validation_error(_id_err, 'id')
+                        return
+                    hid = hid or new_record_id(cur, 'medical_histories', 'MH-2026')
                     cur.execute("""
                         INSERT INTO medical_histories (id, patient_id, admission_id, doctor_id, complaints, anamnesis_morbi, anamnesis_vitae, allergic_status, somatic_status, psychiatric_status, diagnosis_primary, diagnosis_secondary, icd10_code)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -4192,7 +4342,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # no doctor wrote. Nothing clinical is invented now: what the
             # prescriber did not say is refused or left empty.
             elif path == '/api/doctor/prescriptions':
-                rx_id = body.get('id') or new_record_id(cur, 'prescriptions', 'RX-2026')
+                rx_id, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    self._send_validation_error(_id_err, 'id')
+                    return
+                rx_id = rx_id or new_record_id(cur, 'prescriptions', 'RX-2026')
 
                 med = (body.get('medication_name') or '').strip()
                 duration_days, _err = validate_prescription_fields(body)
@@ -4347,7 +4501,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # clinical findings are now required and the signature comes from
             # whoever is signed in.
             elif path == '/api/doctor/epicrisis':
-                epi_id = body.get('id') or new_record_id(cur, 'discharge_epicrises', 'EPI-2026')
+                epi_id, _id_err = validate_client_id(body.get('id'))
+                if _id_err:
+                    self._send_validation_error(_id_err, 'id')
+                    return
+                epi_id = epi_id or new_record_id(cur, 'discharge_epicrises', 'EPI-2026')
 
                 diagnosis = (body.get('diagnosis_final') or '').strip()
                 if not diagnosis:
@@ -4999,13 +5157,19 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 password = body.get('password') or ''
 
                 ip = self.client_ip()
+                found = auth.find_user(username)
+                # A failed sign-in for a login that does not exist is often a
+                # password typed into the login box. The audit viewer showed
+                # that text to every administrator, so it is masked; a real
+                # account's name is kept (that is the useful part).
+                audit_login = (username or '-') if (found or not username) else audit.UNKNOWN_LOGIN
 
                 # Refuse while locked out, before the password is even checked,
                 # so a throttled attacker learns nothing from the response.
                 locked = auth.lockout_remaining(username, ip)
                 if locked:
                     minutes = max(1, locked // 60)
-                    audit.record(conn, 'auth', username or '-', 'LOGIN_FAILED',
+                    audit.record(conn, 'auth', audit_login, 'LOGIN_FAILED',
                                  new_data={'reason': 'locked_out', 'seconds_remaining': locked},
                                  ip_address=ip)
                     self._set_json_headers(429)
@@ -5017,7 +5181,6 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     }, ensure_ascii=False).encode('utf-8'))
                     return
 
-                found = auth.find_user(username)
                 ok = bool(found) and found.get('is_active', True) and \
                     auth.verify_password(password, found.get('password'))
 
@@ -5047,10 +5210,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     print(f"[auth] login ok: {username} ({found.get('role')})")
                 else:
                     remaining = auth.note_login_failure(username, ip)
-                    print(f"[auth] login failed for {username!r} from {ip} "
+                    print(f"[auth] login failed for {audit_login!r} from {ip} "
                           f"({remaining} attempt(s) before lockout)")
                     audit.ensure_schema(conn)
-                    audit.record(conn, 'auth', username or '-', 'LOGIN_FAILED',
+                    audit.record(conn, 'auth', audit_login, 'LOGIN_FAILED',
                                  new_data={'attempts_remaining': remaining}, ip_address=ip)
                     self._set_json_headers(401)
                     # The message never distinguishes a wrong username from a
@@ -5175,8 +5338,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # least 8 characters when one is typed, a staff link that
                 # exists, and an id that is not taken. The old id was built
                 # from the user count and repeated after a deletion.
-                new_u, _issued_password, _err = user_admin.build_new_user(body, u_list, cur)
+                new_u, _issued_password, _err = user_admin.build_new_user(
+                    body, u_list, cur, (self.current_session() or {}).get('user'))
                 if _err:
+                    if len(_err) > 2:
+                        # Superadmin-only grant (role, '*', admin write).
+                        self._set_json_headers(_err[2])
+                        self.wfile.write(json.dumps({'error': _err[0], 'field': _err[1]},
+                                                    ensure_ascii=False).encode('utf-8'))
+                        return
                     self._send_validation_error(_err[0], _err[1])
                     return
                 u_list.append(new_u)
@@ -5421,8 +5591,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if _inv:
                     cur.execute("SELECT COUNT(*) AS n FROM payments WHERE invoice_id = ?", (_inv['id'],))
                     if int(cur.fetchone()['n'] or 0) == 0:
-                        cur.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (_inv['id'],))
-                        cur.execute("DELETE FROM invoices WHERE id = ?", (_inv['id'],))
+                        # Only the visit's own fee line goes: it is the first
+                        # line, written with the invoice when the visit was
+                        # booked. Deleting every line also erased medicines
+                        # and services added later in Accounting, whose stock
+                        # had already left the shelf -- the bill and the
+                        # stock count then disagreed with nothing to show why.
+                        cur.execute("SELECT id FROM invoice_items WHERE invoice_id = ? ORDER BY id LIMIT 1",
+                                    (_inv['id'],))
+                        _fee = cur.fetchone()
+                        if _fee:
+                            cur.execute("DELETE FROM invoice_items WHERE id = ?", (_fee['id'],))
+                        cur.execute("SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?", (_inv['id'],))
+                        if int(cur.fetchone()['n'] or 0) == 0:
+                            cur.execute("DELETE FROM invoices WHERE id = ?", (_inv['id'],))
+                        else:
+                            _msg = ("Yozuv bekor qilindi. Tashrif haqi hisobdan olib tashlandi; "
+                                    "hisobga keyin qo'shilgan dori va xizmatlar qoldi — ularni "
+                                    "buxgalteriya ko'rib chiqadi.")
                     else:
                         _msg = ("Yozuv bekor qilindi. Bu tashrif uchun to'lov olingan — "
                                 "pulni qaytarish buxgalteriyada rasmiylashtiriladi.")
@@ -5914,46 +6100,87 @@ def run_server():
     # keep working across the change because verification accepts both forms.
     auth.migrate_plaintext_passwords()
 
-    # Widen audit_logs.action_type so sign-ins and refusals can be recorded.
+    # Startup migrations and clean-ups. Each step has its own try: they used
+    # to share one, so a single failure (say the audit scrub) silently
+    # skipped every step after it -- user_sessions was never created and
+    # sign-ins stopped surviving restarts with nothing in the log saying why.
+    def _scrub_secrets(c):
+        # The user console's create request carried the typed password and
+        # the write hook stored the request as-is. New rows are masked in
+        # audit.record; this masks the ones written before.
+        n = audit.scrub_secrets(c)
+        if n:
+            print(f'[✓] Masked passwords in {n} old audit row(s).')
+
+    def _scrub_unknown_logins(c):
+        # Failed sign-ins for logins that are not accounts (often a
+        # password typed in the login box) are masked; see the login route.
+        try:
+            names = [u.get('username') for u in auth.load_users()]
+        except Exception as e:
+            print(f'[!] users.json unreadable; failed-login rows left as they are: {e}')
+            return
+        n = audit.scrub_unknown_logins(c, names)
+        if n:
+            print(f'[✓] Masked the typed login in {n} failed sign-in row(s).')
+
+    def _sessions(c):
+        # Sign-ins are kept in MySQL so a restart does not sign the whole
+        # clinic out; drop the ones that went idle meanwhile.
+        ensure_user_sessions(c)
+        auth.prune_expired_sessions()
+
+    _steps = (
+        # Widen audit_logs.action_type so sign-ins and refusals can be recorded.
+        ('audit_logs schema', audit.ensure_schema),
+        # Index the trail by time: without it a retention sweep, or any
+        # question about a date range, reads every row.
+        ('audit_logs index', audit.ensure_index),
+        ('audit password scrub', _scrub_secrets),
+        ('audit failed-login scrub', _scrub_unknown_logins),
+        # Adds patients.birth_date to a database made before it existed.
+        ('patients columns', ensure_patient_columns),
+        # One ward-round note per stay per day.
+        ('ward round schema', ensure_ward_round_schema),
+        # Where the public website's enquiries land.
+        ('appointment requests', ensure_appointment_requests),
+        # Table for clinic medication purchases and restock expenses.
+        ('medication purchases', ensure_medication_purchases),
+        # Older databases refuse 'consultation' appointments.
+        ('appointment service types', ensure_appointment_service_types),
+        # Sanitarkas need staff rows to be paid for duty shifts.
+        ('staff roles', ensure_staff_roles),
+        # HR form fields (hire date, category, ...) and attendance lateness
+        # had no columns and were lost on reload.
+        ('staff HR columns', ensure_staff_hr_columns),
+        ('roster sanitarkas', ensure_roster_sanitarkas),
+        # Desk visits (consultation, outpatient course) get invoices.
+        ('invoice visit link', ensure_invoice_visit_link),
+        # The month a salary payout pays for (one payout per month).
+        ('salary payroll month', ensure_transaction_payroll_month),
+        ('user sessions', _sessions),
+    )
+    _c = None
     try:
         _c = get_db()
-        try:
-            audit.ensure_schema(_c)
-            # Index the trail by time: without it a retention sweep, or
-            # any question about a date range, reads every row.
-            audit.ensure_index(_c)
-            # The user console's create request carried the typed password
-            # and the write hook stored the request as-is. New rows are
-            # masked in audit.record; this masks the ones written before.
-            _n = audit.scrub_secrets(_c)
-            if _n:
-                print(f'[✓] Masked passwords in {_n} old audit row(s).')
-            # Adds patients.birth_date to a database made before it existed.
-            ensure_patient_columns(_c)
-            # One ward-round note per stay per day.
-            ensure_ward_round_schema(_c)
-            # Where the public website's enquiries land.
-            ensure_appointment_requests(_c)
-            # Table for clinic medication purchases and restock expenses.
-            ensure_medication_purchases(_c)
-            # Older databases refuse 'consultation' appointments.
-            ensure_appointment_service_types(_c)
-            # Sanitarkas need staff rows to be paid for duty shifts.
-            ensure_staff_roles(_c)
-            # HR form fields (hire date, category, ...) and attendance
-            # lateness had no columns and were lost on reload.
-            ensure_staff_hr_columns(_c)
-            ensure_roster_sanitarkas(_c)
-            # Desk visits (consultation, outpatient course) get invoices.
-            ensure_invoice_visit_link(_c)
-            # Sign-ins are kept in MySQL so a restart does not sign the
-            # whole clinic out; drop the ones that went idle meanwhile.
-            ensure_user_sessions(_c)
-            auth.prune_expired_sessions()
-        finally:
-            _c.close()
     except Exception as _e:
-        print(f'[!] Could not prepare the audit trail: {_e}')
+        print(f'[!] Startup migrations skipped: database unreachable ({_e})')
+    if _c is not None:
+        try:
+            for _label, _step in _steps:
+                try:
+                    _step(_c)
+                except Exception as _e:
+                    print(f'[!] Startup step "{_label}" failed: {_e}')
+                    try:
+                        _c.rollback()
+                    except Exception:
+                        pass
+        finally:
+            try:
+                _c.close()
+            except Exception:
+                pass
 
     # Listen on loopback only by default.
     #

@@ -327,6 +327,32 @@ def _db_run(fn):
                 pass
 
 
+# Sessions revoked by this process, kept in memory as well as deleted from
+# user_sessions. If that DELETE failed (MySQL briefly away), the row stayed
+# and a later _restore -- or a _touch re-inserting a row it believed was
+# never written -- brought a signed-out session back. token hash -> when;
+# username -> "sessions created before this moment are revoked" (sign out
+# everywhere). Entries older than the idle limit are dropped: a session idle
+# that long is expired anyway.
+_REVOKED_TOKENS = {}
+_REVOKED_USERS = {}
+
+
+def _prune_revoked(now):
+    limit = _dt.timedelta(seconds=SESSION_IDLE_SECONDS)
+    for table in (_REVOKED_TOKENS, _REVOKED_USERS):
+        for k in [k for k, t in table.items() if now - t > limit]:
+            table.pop(k, None)
+
+
+def _is_revoked(key, username, created):
+    with _SESSION_LOCK:
+        if key in _REVOKED_TOKENS:
+            return True
+        after = _REVOKED_USERS.get((username or '').lower())
+    return bool(after and created and created < after)
+
+
 def _db_insert(key, sess):
     def run(cur):
         cur.execute(
@@ -388,6 +414,12 @@ def _touch(key, sess, now):
     (an operator cleared the table, or another process signed the user out),
     so the cached copy is dropped. Returns False when the session must end.
     """
+    # A session destroyed while this request was already holding it must not
+    # carry on, nor be written back below.
+    if _is_revoked(key, sess.get('username'), sess.get('created')):
+        with _SESSION_LOCK:
+            _SESSIONS.pop(key, None)
+        return False
     if (now - sess.get('db_seen', now)).total_seconds() < SESSION_TOUCH_SECONDS:
         return True
     # Stamp first, so a database outage costs one attempt a minute, not one
@@ -400,7 +432,13 @@ def _touch(key, sess, now):
     def run(cur):
         cur.execute("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
                     (_db_time(now), key))
-        return cur.rowcount
+        if cur.rowcount:
+            return True
+        # PyMySQL's rowcount counts rows *changed*: an UPDATE writing the
+        # last_seen second already stored reports 0, which read as "revoked"
+        # and signed the person out. Ask whether the row exists instead.
+        cur.execute("SELECT 1 FROM user_sessions WHERE token_hash = ?", (key,))
+        return bool(cur.fetchone())
     ok, rows = _db_run(run)
     if ok and not rows:
         with _SESSION_LOCK:
@@ -419,14 +457,28 @@ def _restore(key):
     if not ok or not row:
         return None
     now = _now()
+    if _is_revoked(key, row.get('username'), _from_db_time(row.get('created_at'))):
+        # Revoked here, but the DELETE did not reach the database: retry it.
+        _db_run(lambda cur: cur.execute(
+            "DELETE FROM user_sessions WHERE token_hash = ?", (key,)))
+        return None
     last_seen = _from_db_time(row.get('last_seen'))
     user = None
     if last_seen and (now - last_seen).total_seconds() <= SESSION_IDLE_SECONDS:
         try:
-            user = find_user(row.get('username'))
+            users = load_users()
         except Exception as e:
             print(f"[auth] could not read users.json to restore a session: {e}")
             return None
+        if not users:
+            # users.json missing or empty (iCloud once renamed it to
+            # data/users). That says nothing about this account, so refuse
+            # this request but keep the row: deleting it signed the whole
+            # clinic out for a file that was back a minute later.
+            print("[auth] users.json is missing or empty; session not restored, row kept.")
+            return None
+        uname = (row.get('username') or '').strip().lower()
+        user = next((u for u in users if (u.get('username') or '').lower() == uname), None) if uname else None
     if not user or not user.get('is_active', True):
         # Expired, or the account was deleted or blocked while the server
         # was down: the row is worthless, so remove it.
@@ -479,8 +531,11 @@ def destroy_session(token):
     if not token:
         return
     key = token_hash(token)
+    now = _now()
     with _SESSION_LOCK:
         _SESSIONS.pop(key, None)
+        _prune_revoked(now)
+        _REVOKED_TOKENS[key] = now
     _db_run(lambda cur: cur.execute(
         "DELETE FROM user_sessions WHERE token_hash = ?", (key,)))
 
@@ -499,9 +554,12 @@ def destroy_sessions_for_user(username):
     uname = (username or '').lower()
     if not uname:
         return
+    now = _now()
     with _SESSION_LOCK:
         for key in [k for k, s in _SESSIONS.items() if s.get('username') == uname]:
             _SESSIONS.pop(key, None)
+        _prune_revoked(now)
+        _REVOKED_USERS[uname] = now
     _db_run(lambda cur: cur.execute(
         "DELETE FROM user_sessions WHERE username = ?", (uname,)))
 

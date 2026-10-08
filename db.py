@@ -1029,6 +1029,41 @@ def ensure_invoice_visit_link(conn):
         print(f"[!] Could not link invoices to visits: {e}")
 
 
+_transaction_payroll_month_checked = False
+
+
+def ensure_transaction_payroll_month(conn):
+    """
+    Add accounting_transactions.payroll_month (CHAR(7) 'YYYY-MM', NULL for
+    anything that is not a salary payout).
+
+    A salary payout recorded only the day it was entered, so September's pay
+    handed out on 3 October looked like October's: the page then offered
+    September again, and October's real payout was refused as a repeat.
+    The month being paid is now its own column, so "already paid" can be
+    checked on the server against the month, not the recording date.
+    Idempotent: the column and index are added only when missing.
+    """
+    global _transaction_payroll_month_checked
+    if _transaction_payroll_month_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounting_transactions'
+              AND COLUMN_NAME = 'payroll_month'
+        """)
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE accounting_transactions ADD COLUMN payroll_month CHAR(7) NULL, "
+                        "ADD KEY idx_accounting_payroll (related_staff_id, payroll_month)")
+            print("[✓] accounting_transactions.payroll_month added.")
+        conn.commit()
+        _transaction_payroll_month_checked = True
+    except Exception as e:
+        print(f"[!] Could not add accounting_transactions.payroll_month: {e}")
+
+
 _medication_purchases_checked = False
 
 

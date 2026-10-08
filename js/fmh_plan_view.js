@@ -43,6 +43,7 @@
   }
 
   function close() {
+    requestSeq++;   // a request still on its way no longer has a window
     if (!backdrop) return;
     document.removeEventListener('keydown', onKey);
     backdrop.remove();
@@ -135,11 +136,21 @@
     return body;
   }
 
+  // Each show() gets a number; an answer that arrives after the window was
+  // reopened for another patient belongs to the old request and is dropped.
+  // Without this a slow plan for patient A could land in the window the
+  // nurse had just opened for patient B -- the wrong patient's medicines.
+  let requestSeq = 0;
+
   async function show(patientId, patientName) {
     if (!patientId) return;
+    // open() closes any earlier window first, which retires its request.
     open(`Davolash rejasi — ${patientName || ''}`.trim());
+    const seq = ++requestSeq;
+    const current = () => seq === requestSeq;
     try {
       const list = await readJson('/api/treatment-plans/patient/' + encodeURIComponent(patientId));
+      if (!current()) return;
       const plans = Array.isArray(list) ? list : [];
       // The live instruction is the active plan; saving a new one supersedes
       // the old, so there is at most one. Without one, show the latest.
@@ -149,8 +160,10 @@
         return;
       }
       const plan = await readJson('/api/treatment-plans/' + encodeURIComponent(pick.id));
+      if (!current()) return;
       setBody(renderPlan(plan));
     } catch (e) {
+      if (!current()) return;
       if (e.status === 401) { close(); return; }
       setBody(`<div class="plan-view-empty">${esc(e.message || "Rejani yuklab bo'lmadi")}</div>`);
     }

@@ -54,16 +54,58 @@ def _active_superadmins(users):
             if u.get('role') == 'superadmin' and u.get('is_active', True) is not False]
 
 
+# Holding admin:write lets a person manage accounts, but that alone must not
+# let them make themselves (or a friend) all-powerful: an "admin" given the
+# admin module could create a superadmin, grant '*', or reset a superadmin's
+# password and sign in as them. Only a superadmin grants these or touches an
+# account that holds them.
+ELEVATION_DENIED = ("Bosh administrator rolini, '*' yoki foydalanuvchilarni boshqarish "
+                    "(admin) ruxsatini faqat bosh administrator bera oladi.")
+TARGET_DENIED = ("Bosh administrator yoki foydalanuvchilarni boshqaradigan hisobni faqat "
+                 "bosh administrator o'zgartira oladi.")
+
+
+def grants_user_admin(role, perms):
+    """True when this role / explicit permission list can manage accounts."""
+    if role == 'superadmin':
+        return True
+    for p in perms or []:
+        if p in ('*', 'admin', 'admin:write'):
+            return True
+    return False
+
+
+def is_elevated(user):
+    """An account that is a superadmin or can manage accounts."""
+    if not user:
+        return False
+    return grants_user_admin(user.get('role'), permissions.permissions_for(user))
+
+
+def caller_is_superadmin(caller):
+    return '*' in permissions.permissions_for(caller or {})
+
+
 def protection_reason(target, caller, users, action):
     """
     Why `caller` may not perform `action` on `target`, or None.
 
-    action is one of 'delete', 'demote', 'block', 'reset', 'permissions'.
+    action is one of 'delete', 'demote', 'block', 'reset', 'permissions',
+    'edit'.
     """
     if not target:
         return None
     tname = (target.get('username') or '').lower()
     cname = ((caller or {}).get('username') or '').lower()
+    if action == 'edit':
+        # Name and phone: anyone may fix their own; a superadmin's or an
+        # account manager's only a superadmin may touch. Role, block and
+        # permission changes go through the stricter actions below.
+        if tname and tname == cname:
+            return None
+        if is_elevated(target) and not caller_is_superadmin(caller):
+            return TARGET_DENIED
+        return None
     if tname == PROTECTED_USERNAME:
         return ("Bosh administrator (superadmin) hisobini bu yerdan o'chirib, bloklab, "
                 "rolini yoki parolini o'zgartirib bo'lmaydi.")
@@ -71,6 +113,8 @@ def protection_reason(target, caller, users, action):
         if action == 'reset':
             return ("O'z parolingizni \"Parolni o'zgartirish\" sahifasida almashtiring.")
         return "O'z hisobingizni o'chirib, bloklab yoki rolini o'zgartirib bo'lmaydi."
+    if is_elevated(target) and not caller_is_superadmin(caller):
+        return TARGET_DENIED
     # The last working superadmin is the only account that can manage users;
     # removing it would leave nobody able to fix anything from the console.
     if (target.get('role') == 'superadmin' and action != 'reset'
@@ -116,11 +160,12 @@ def new_user_id(users, role):
     return f'{prefix}{n:02d}'
 
 
-def build_new_user(body, users, cur):
+def build_new_user(body, users, cur, caller=None):
     """
     Validate a POST /api/users body.
-    Returns (record, issued_password_or_None, None) or (None, None, (message, field)).
-    The record already holds the password hash.
+    Returns (record, issued_password_or_None, None) or
+    (None, None, (message, field[, status])). The record already holds the
+    password hash.
     """
     username = _clean_text(body.get('username'), 64).lower()
     if not username:
@@ -160,6 +205,8 @@ def build_new_user(body, users, cur):
     explicit, err = _check_permissions_list(body.get('permissions'))
     if err:
         return None, None, err
+    if grants_user_admin(role, explicit) and not caller_is_superadmin(caller):
+        return None, None, (ELEVATION_DENIED, 'role' if role == 'superadmin' else 'permissions', 403)
 
     uid = _clean_text(body.get('id'), 64)
     if uid:
@@ -201,6 +248,12 @@ def apply_update(target, body, caller, users, cur):
         return None, ("Parol bu yerda o'zgartirilmaydi: \"Parolni tiklash\" tugmasidan "
                       "foydalaning.", 'password', 400)
 
+    # Any change to a superadmin (or another account manager) needs a
+    # superadmin; the caller's own name or phone stays editable.
+    why = protection_reason(target, caller, users, 'edit')
+    if why:
+        return None, (why, None, 403)
+
     updates = {}
     if 'full_name' in body:
         name = _clean_text(body.get('full_name'), 120)
@@ -217,6 +270,8 @@ def apply_update(target, body, caller, users, cur):
             why = protection_reason(target, caller, users, 'demote')
             if why:
                 return None, (why, 'role', 403)
+            if role == 'superadmin' and not caller_is_superadmin(caller):
+                return None, (ELEVATION_DENIED, 'role', 403)
             updates['role'] = role
     if 'is_active' in body:
         raw = body.get('is_active')
@@ -240,6 +295,8 @@ def apply_update(target, body, caller, users, cur):
             why = protection_reason(target, caller, users, 'permissions')
             if why:
                 return None, (why, 'permissions', 403)
+            if grants_user_admin(None, explicit) and not caller_is_superadmin(caller):
+                return None, (ELEVATION_DENIED, 'permissions', 403)
         updates['permissions'] = explicit
     if not updates:
         return None, ("O'zgartirish uchun maydon yuborilmadi", None, 400)

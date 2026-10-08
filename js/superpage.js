@@ -652,7 +652,7 @@
       }
 
       return `
-        <div class="charming-bed-card card-status-${bed.status}" onclick="window.FMH_Super.openBookingModal('${p ? p.id : ''}', '${bed.bed_id}')">
+        <div class="charming-bed-card card-status-${bed.status}" onclick="window.FMH_Super.openBookingModal(${jsArg(p ? p.id : '')}, ${jsArg(bed.bed_id)})">
           <div class="bed-card-header">
             <div class="bed-badge-id"><i class="fas fa-bed" style="color: var(--primary);"></i> ${bed.simple_name}</div>
             <span class="pill-status pill-${bed.status}">${statusLabel}</span>
@@ -722,7 +722,7 @@
           <td>${t.patient}</td>
           <td><strong style="color: ${isKirim ? 'var(--success)' : 'var(--danger)'}; font-family: var(--font-mono); font-size: 0.95rem;">${isKirim ? '+' : '-'}${formatUZS(t.amount)}</strong></td>
           <td><span style="font-size: 0.78rem; background: var(--bg-hover); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border-color);">${t.method}</span></td>
-          <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.printInvoice('${t.id}')"><i class="fas fa-print"></i> Kvitansiya</button></td>
+          <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.printInvoice(${jsArg(t.id)})"><i class="fas fa-print"></i> Kvitansiya</button></td>
         </tr>
       `;
     }).join('');
@@ -757,7 +757,7 @@
           <td><strong style="color: var(--success); font-family: var(--font-mono);">${formatUZS(totalPaid)}</strong></td>
           <td><strong style="color: ${remainingDebt > 0 ? 'var(--danger)' : 'var(--success)'}; font-family: var(--font-mono);">${remainingDebt > 0 ? formatUZS(remainingDebt) : '0 so\'m (To\'liq)'}</strong></td>
           <td>
-            <button class="btn-super btn-super-success" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openPaymentModal('${b.patient_name} (${b.bed_id})', ${remainingDebt > 0 ? remainingDebt : listedRate('statsionar_shared')})">
+            <button class="btn-super btn-super-success" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openPaymentModal(${jsArg(b.patient_name + ' (' + b.bed_id + ')')},${remainingDebt > 0 ? remainingDebt : listedRate('statsionar_shared')})">
               <i class="fas fa-coins"></i> To'lov
             </button>
           </td>
@@ -826,7 +826,7 @@
           </div>
           <div style="border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
             <span style="font-family: var(--font-mono); font-weight: 700; color: var(--success); font-size: 0.88rem;">${formatUZS(d.price || 45000)}</span>
-            <button class="btn-super btn-super-primary" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.prescribeDrug('${d.name}')">+ Retsept</button>
+            <button class="btn-super btn-super-primary" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.prescribeDrug(${jsArg(d.name)})">+ Retsept</button>
           </div>
         </div>
       `;
@@ -887,7 +887,7 @@
         <td>${b.doctor}</td>
         <td>${b.start_date} ➔ ${b.end_date}</td>
         <td>
-          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal('${b.id}')"><i class="fas fa-edit"></i> Ko'rish</button>
+          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal(${jsArg(b.id)})"><i class="fas fa-edit"></i> Ko'rish</button>
         </td>
       </tr>
     `).join('');
@@ -939,7 +939,7 @@
         <td>${v.temp}°C</td>
         <td><span style="color: var(--success); font-weight: 700;">${v.spo2}</span></td>
         <td><span class="pill-status pill-available">${v.status}</span></td>
-        <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openVitalsModal('${v.bed}')"><i class="fas fa-plus"></i> O'lchash</button></td>
+        <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openVitalsModal(${jsArg(v.bed)})"><i class="fas fa-plus"></i> O'lchash</button></td>
       </tr>
     `).join('');
   }
@@ -962,9 +962,9 @@
           <td>Mol go'shti bulyoni, suli yormasi, kompot, qora non suxarisi</td>
           <td>
             <div style="display: flex; gap: 4px;">
-              <button class="super-preset-pill ${deliv.b ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal('${b.bed_id}', 'b')">Nonushta ${deliv.b ? '✓' : ''}</button>
-              <button class="super-preset-pill ${deliv.l ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal('${b.bed_id}', 'l')">Tushlik ${deliv.l ? '✓' : ''}</button>
-              <button class="super-preset-pill ${deliv.d ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal('${b.bed_id}', 'd')">Kechki ${deliv.d ? '✓' : ''}</button>
+              <button class="super-preset-pill ${deliv.b ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal(${jsArg(b.bed_id)}, 'b')">Nonushta ${deliv.b ? '✓' : ''}</button>
+              <button class="super-preset-pill ${deliv.l ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal(${jsArg(b.bed_id)}, 'l')">Tushlik ${deliv.l ? '✓' : ''}</button>
+              <button class="super-preset-pill ${deliv.d ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal(${jsArg(b.bed_id)}, 'd')">Kechki ${deliv.d ? '✓' : ''}</button>
             </div>
           </td>
           <td><span class="pill-status pill-available"><i class="fas fa-check"></i> Yetkazildi</span></td>
@@ -1017,7 +1017,7 @@
         </div>
         <div style="display: flex; gap: 6px; margin-top: 8px;">
           <a href="tel:${phone}" class="btn-super btn-super-outline" style="flex: 1; padding: 4px; font-size: 0.75rem; text-decoration: none;"><i class="fas fa-phone"></i> Qo'ng'iroq</a>
-          <button class="btn-super btn-super-primary" style="padding: 4px 10px; font-size: 0.75rem;" onclick="window.FMH_Super.showToast('✅ Navbatchilik tasdiqlandi: ${name}')">Navbatchilik</button>
+          <button class="btn-super btn-super-primary" style="padding: 4px 10px; font-size: 0.75rem;" onclick="window.FMH_Super.showToast(${jsArg('✅ Navbatchilik tasdiqlandi: ' + name)})">Navbatchilik</button>
         </div>
       </div>
       `;
@@ -1047,7 +1047,7 @@
         <td>${b.doctor}</td>
         <td><span class="pill-status pill-${b.status === 'active' ? 'occupied' : 'available'}">${b.status === 'active' ? 'Faol Davolanmoqda' : 'Yakunlangan'}</span></td>
         <td>
-          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal('${b.id}')"><i class="fas fa-folder-open"></i> Tarix</button>
+          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal(${jsArg(b.id)})"><i class="fas fa-folder-open"></i> Tarix</button>
         </td>
       </tr>
     `).join('');
@@ -1497,7 +1497,7 @@
         <td><span class="pill-status pill-purple">${s.category || 'Muolaja'}</span></td>
         <td><strong style="color: var(--success);">${formatUZS(s.price)}</strong></td>
         <td>
-          <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteService('${s.id}')" title="O'chirish">
+          <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteService(${jsArg(s.id)})" title="O'chirish">
             <i class="fas fa-trash"></i>
           </button>
         </td>
@@ -1655,7 +1655,7 @@
           const bedsList = (r.beds || []).map(b => `
             <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; margin: 2px; border: 1px solid var(--border-color); font-size: 0.76rem;">
               🛏️ <strong>${b.bed_number || b.bed_id}</strong> (${formatUZS(b.daily_rate || listedRate('statsionar_shared'))})
-              <button type="button" title="Karavotni ajratish (Detach)" onclick="window.FMH_Super.detachBed('${b.bed_id}')" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 0 2px;">&times;</button>
+              <button type="button" title="Karavotni ajratish (Detach)" onclick="window.FMH_Super.detachBed(${jsArg(b.bed_id)})" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 0 2px;">&times;</button>
             </span>
           `).join('');
 
@@ -1665,7 +1665,7 @@
               <td><strong>${r.room_number || r.name_uz}</strong> <span style="font-size: 0.72rem; color: var(--text-muted);">(${r.type})</span></td>
               <td>${bedsList || '<em style="color: var(--text-muted); font-size: 0.75rem;">Karavotlar yo\'q</em>'}</td>
               <td>
-                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteRoom('${r.id}')" title="Xonani o'chirish">
+                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteRoom(${jsArg(r.id)})" title="Xonani o'chirish">
                   <i class="fas fa-trash"></i>
                 </button>
               </td>
@@ -1833,7 +1833,7 @@
               <td>${esc(spec)}</td>
               <td><strong style="color: var(--warning);">${sal}</strong></td>
               <td>
-                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.fireStaff('${esc(staffId)}', '${esc(String(name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"))}')" title="Ishdan bo'shatish">
+                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.fireStaff(${jsArg(staffId)}, ${jsArg(name || '')})" title="Ishdan bo'shatish">
                   <i class="fas fa-user-minus"></i> Bo'shatish
                 </button>
               </td>
@@ -1929,6 +1929,15 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // A value passed to an inline onclick="f(...)" must be a JS string literal,
+  // not just HTML-escaped text: the browser decodes &#39; back to ' before the
+  // handler runs, so a staff or room id containing a quote used to end the
+  // string and run the rest as script with the viewer's (superadmin) rights.
+  // JSON.stringify makes a safe literal; esc() keeps it inside the attribute.
+  function jsArg(v) {
+    return esc(JSON.stringify(String(v)));
+  }
+
   let adminRoles = [];
   let adminUsers = [];
   let adminStaffOptions = [];
@@ -1963,20 +1972,38 @@
     }
   }
 
-  async function loadAdminStaffOptions() {
-    try {
-      const res = await fetch('/api/staff');
-      if (!res.ok) return;
-      adminStaffOptions = await res.json();
-      const opts = `<option value="">— Bog'lanmagan —</option>` + adminStaffOptions.map(s =>
-        `<option value="${esc(s.id)}">${esc(s.full_name || s.name || s.id)} — ${esc(s.role || '')} (${esc(s.id)})</option>`).join('');
-      ['reg-staff', 'user-edit-staff'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { const keep = el.value; el.innerHTML = opts; el.value = keep; }
-      });
-    } catch (e) {
-      console.error('Error loading staff for user links:', e);
+  // /api/staff lists active staff only. Rebuilding the picker used to drop
+  // the option for a user linked to an employee who has since been
+  // deactivated, so the picker fell back to "Bog'lanmagan" and the next
+  // save unlinked the account. The current link is always kept as an
+  // option. The load is a shared promise so the edit form waits for it
+  // instead of being rebuilt underneath (the load was not awaited).
+  let adminStaffLoad = null;
+  function keepStaffOption(el, value) {
+    if (!el || !value) return;
+    if (!Array.from(el.options).some(o => o.value === value)) {
+      el.insertAdjacentHTML('beforeend', `<option value="${esc(value)}">${esc(value)} (faol emas)</option>`);
     }
+    el.value = value;
+  }
+
+  function loadAdminStaffOptions() {
+    adminStaffLoad = (async () => {
+      try {
+        const res = await fetch('/api/staff');
+        if (!res.ok) return;
+        adminStaffOptions = await res.json();
+        const opts = `<option value="">— Bog'lanmagan —</option>` + adminStaffOptions.map(s =>
+          `<option value="${esc(s.id)}">${esc(s.full_name || s.name || s.id)} — ${esc(s.role || '')} (${esc(s.id)})</option>`).join('');
+        ['reg-staff', 'user-edit-staff'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { const keep = el.value; el.innerHTML = opts; el.value = keep; keepStaffOption(el, keep); }
+        });
+      } catch (e) {
+        console.error('Error loading staff for user links:', e);
+      }
+    })();
+    return adminStaffLoad;
   }
 
   let usersTableWired = false;
@@ -2123,6 +2150,7 @@
     const u = adminUsers.find(x => x.id === uid || x.username === uid);
     if (!u) return;
     if (!adminRoles.length) await loadAdminRoles();
+    await (adminStaffLoad || loadAdminStaffOptions());
     document.getElementById('user-edit-id').value = u.id || u.username;
     document.getElementById('user-edit-username').textContent = u.username || '';
     document.getElementById('user-edit-fullname').value = u.full_name || '';
@@ -2134,10 +2162,8 @@
     }
     roleSel.value = u.role || '';
     const staffSel = document.getElementById('user-edit-staff');
-    if (u.staff_id && !Array.from(staffSel.options).some(o => o.value === u.staff_id)) {
-      staffSel.insertAdjacentHTML('beforeend', `<option value="${esc(u.staff_id)}">${esc(u.staff_id)}</option>`);
-    }
-    staffSel.value = u.staff_id || '';
+    staffSel.value = '';
+    keepStaffOption(staffSel, u.staff_id || '');
     document.getElementById('user-edit-active').value = u.is_active === false ? '0' : '1';
     roleSel.disabled = !!u.protected;
     document.getElementById('user-edit-active').disabled = !!u.protected;

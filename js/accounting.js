@@ -28,6 +28,10 @@
   let statusFilter = 'all';
   let txnTypeFilter = 'all';
   let txnMethodFilter = 'all';
+  // The payroll month the salary section shows and pays (YYYY-MM). It was
+  // always the current calendar month, so last month's pay could not be paid
+  // once the month had turned. Empty until init picks the current month.
+  let payrollMonth = '';
 
   const UI_PAYMENT_METHODS = {
     cash: 'cash', cash_register: 'cash',
@@ -137,6 +141,15 @@
       .replace(/'/g, '&#39;');
   }
 
+  // A value passed to an inline onclick="f(...)" must be a JS string literal:
+  // the browser decodes the attribute before running it, so an id holding a
+  // quote (appointment ids were once copied from the request into invoice
+  // ids) ended the string and ran as script. JSON.stringify makes a safe
+  // literal; esc() keeps it inside the attribute.
+  function jsArg(v) {
+    return esc(JSON.stringify(String(v)));
+  }
+
   // Toast notification helper
   // Delegates to the shared toast in js/fmh_dialogs.js: that one announces
   // messages via aria-live, keeps errors on screen long enough to read,
@@ -213,9 +226,22 @@
       if (mBtn) {
         mBtn.textContent = `Shu Oy (${new Date().toLocaleDateString('uz-UZ', { month: 'long' })})`;
       }
-      const payrollTitle = document.getElementById('accounting-doctors-title');
-      if (payrollTitle) {
-        payrollTitle.innerHTML = `<i class="fas fa-user-md" style="color: var(--primary);"></i> Xodimlar Oylik Maoshi — Kadrlar hisobi (${new Date().toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' })})`;
+      updatePayrollTitle();
+      const monthInput = document.getElementById('accounting-payroll-month');
+      if (monthInput) {
+        monthInput.value = currentPayrollMonth();
+        monthInput.max = getTodayISO().slice(0, 7);
+        monthInput.addEventListener('change', async () => {
+          const v = String(monthInput.value || '');
+          if (!/^\d{4}-\d{2}$/.test(v) || v > getTodayISO().slice(0, 7)) {
+            monthInput.value = currentPayrollMonth();
+            return;
+          }
+          payrollMonth = v;
+          updatePayrollTitle();
+          await loadPayroll();
+          renderDoctorsPayroll();
+        });
       }
 
       setupEventListeners();
@@ -384,8 +410,21 @@
   // set), and paid that out -- a second pay formula next to HR's.
   // There is no recorded commission rate, so no commission is shown; the PO
   // decides whether doctors get one (CHANGES.md).
+  function currentPayrollMonth() {
+    if (!payrollMonth) payrollMonth = getTodayISO().slice(0, 7);
+    return payrollMonth;
+  }
+
+  function updatePayrollTitle() {
+    const payrollTitle = document.getElementById('accounting-doctors-title');
+    if (!payrollTitle) return;
+    const [y, m] = currentPayrollMonth().split('-').map(Number);
+    const label = new Date(y, m - 1, 1).toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' });
+    payrollTitle.innerHTML = `<i class="fas fa-user-md" style="color: var(--primary);"></i> Xodimlar Oylik Maoshi — Kadrlar hisobi (${esc(label)})`;
+  }
+
   async function loadPayroll() {
-    const month = getTodayISO().slice(0, 7);
+    const month = currentPayrollMonth();
     let res;
     try {
       res = await fetch('/api/hr/payroll?month=' + encodeURIComponent(month));
@@ -428,14 +467,17 @@
     };
   }
 
-  // Paid this month if the journal holds a salary payout for this person.
-  // Worked out on every render from the synced journal, so the badge cannot
-  // drift back to "calculated" and invite a second payout.
+  // Paid for the picked payroll month if the journal holds a salary payout
+  // for this person and that month. Worked out on every render from the
+  // synced journal, so the badge cannot drift back to "calculated" and invite
+  // a second payout. Older payouts carry no payroll_month and count by the
+  // day they were recorded; the server makes the same check and refuses a
+  // repeat, so this is only the early warning.
   function payrollPaid(staffId) {
-    const month = getTodayISO().slice(0, 7);
+    const month = currentPayrollMonth();
     return (accountingData.transactions || []).some(t =>
       t.category === 'salary' && t.related_staff_id === staffId &&
-      String(t.date || '').slice(0, 7) === month);
+      String(t.payroll_month || t.date || '').slice(0, 7) === month);
   }
 
   // ==========================================================================
@@ -697,31 +739,31 @@
         : `<td class="mono-val" style="color: ${b.debt_remaining > 0 ? 'var(--rose)' : 'var(--text-muted)'}; font-weight: 700;">${b.debt_remaining > 0 ? formatUZS(b.debt_remaining) : '— 0'}</td>`;
 
       const payButton = isRefundDue
-        ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" onclick="window.FMH_Accounting.openPaymentModal('${b.id}', true)" title="Bemorga ortiqcha to'langan pulni qaytarish (Refund Payout)">
+        ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" onclick="window.FMH_Accounting.openPaymentModal(${jsArg(b.id)}, true)" title="Bemorga ortiqcha to'langan pulni qaytarish (Refund Payout)">
              <i class="fas fa-undo"></i> Qaytarish
            </button>`
-        : `<button class="btn-portal btn-primary-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openPaymentModal('${b.id}')" title="To'lov Qabul Qilish">
+        : `<button class="btn-portal btn-primary-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openPaymentModal(${jsArg(b.id)})" title="To'lov Qabul Qilish">
              <i class="fas fa-hand-holding-usd"></i> To'lov
            </button>`;
 
       return `
         <tr>
-          <td class="mono-val" style="color: var(--primary); font-weight: 700;">${b.id}</td>
+          <td class="mono-val" style="color: var(--primary); font-weight: 700;">${esc(b.id)}</td>
           <td>
             <div class="patient-cell">
-              <span class="patient-name-bold">${b.patient_name}</span>
+              <span class="patient-name-bold">${esc(b.patient_name)}</span>
               <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${esc(b.patient_phone || '—')}${b.patient_city ? ' • ' + esc(b.patient_city) : ''}</span>
             </div>
           </td>
           <td>
             <div style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-              ${b.bed_name || 'Ambulator'} ${priceTag}
+              ${esc(b.bed_name || 'Ambulator')} ${priceTag}
             </div>
             <div class="patient-details-sub">${esc(b.program)} (${b.days_count ? b.days_count + ' kun' : (b.is_visit ? esc(b.start_date || '—') : '—')})</div>
             ${extraServicesHTML}
           </td>
           <td>
-            <span style="font-size: 0.8rem; color: var(--text-secondary);">${b.doctor || 'Shifokor biriktirilmagan'}</span>
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">${esc(b.doctor || 'Shifokor biriktirilmagan')}</span>
           </td>
           <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">
             ${formatUZS(b.total_due)}
@@ -734,10 +776,10 @@
           <td>
             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
               ${payButton}
-              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; color: var(--purple); border-color: rgba(168, 85, 247, 0.4);" onclick="window.FMH_Accounting.openAddServiceModal('${b.id}')" title="Qo'shimcha Dori/Xizmat Qo'shish">
+              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; color: var(--purple); border-color: rgba(168, 85, 247, 0.4);" onclick="window.FMH_Accounting.openAddServiceModal(${jsArg(b.id)})" title="Qo'shimcha Dori/Xizmat Qo'shish">
                 <i class="fas fa-plus"></i> Xizmat
               </button>
-              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openInvoiceReceipt('${b.id}')" title="Kvitansiya / Chek">
+              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openInvoiceReceipt(${jsArg(b.id)})" title="Kvitansiya / Chek">
                 <i class="fas fa-receipt"></i> Chek
               </button>
               ${b.patient_id ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" data-patient-id="${esc(b.patient_id)}" onclick="window.FMH_Accounting.openPatientInvoices(this.dataset.patientId)" title="Bemorning barcha hisoblari">
@@ -806,10 +848,10 @@
 
       return `
         <tr>
-          <td class="mono-val" style="color: var(--text-muted); font-size: 0.78rem;">${t.id}</td>
+          <td class="mono-val" style="color: var(--text-muted); font-size: 0.78rem;">${esc(t.id)}</td>
           <td>
-            <div style="font-weight: 600; color: var(--text-primary);">${t.title}</div>
-            <div class="patient-details-sub">${t.notes || ''}</div>
+            <div style="font-weight: 600; color: var(--text-primary);">${esc(t.title)}</div>
+            <div class="patient-details-sub">${esc(t.notes || '')}</div>
           </td>
           <td>${badge}</td>
           <td class="mono-val" style="font-weight: 800; font-size: 0.95rem; color: ${isIncome ? 'var(--emerald)' : 'var(--rose)'};">
@@ -823,7 +865,7 @@
             <div class="patient-details-sub"><i class="fas fa-user-check"></i> ${t.cashier || 'Buxgalter'}</div>
           </td>
           <td>
-            <button class="btn-portal btn-outline-portal" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.printTxnReceipt('${t.id}')">
+            <button class="btn-portal btn-outline-portal" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.printTxnReceipt(${jsArg(t.id)})">
               <i class="fas fa-receipt"></i> Kvitansiya
             </button>
           </td>
@@ -1133,12 +1175,12 @@
       }
 
       const receiptBtn = p.accounting_transaction_id
-        ? `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem;" onclick="window.FMH_Accounting.printTxnReceipt('${p.accounting_transaction_id}')" title="Kassa Cheki">
+        ? `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem;" onclick="window.FMH_Accounting.printTxnReceipt(${jsArg(p.accounting_transaction_id)})" title="Kassa Cheki">
              <i class="fas fa-receipt"></i> Chek
            </button>`
         : '';
 
-      const deleteBtn = `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" onclick="window.FMH_Accounting.deleteMedPurchase('${p.id}')" title="Xaridni bekor qilish">
+      const deleteBtn = `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" onclick="window.FMH_Accounting.deleteMedPurchase(${jsArg(p.id)})" title="Xaridni bekor qilish">
                            <i class="fas fa-trash-alt"></i>
                          </button>`;
 
@@ -1232,7 +1274,7 @@
           <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">${formatUZS(totalVal)}</td>
           <td>${badge}</td>
           <td>
-            <button class="btn-portal btn-outline-portal" style="padding: 2px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openMedPurchaseModal('${item.id}')" title="Ushbu dorini xarid qilish (Kirim)">
+            <button class="btn-portal btn-outline-portal" style="padding: 2px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openMedPurchaseModal(${jsArg(item.id)})" title="Ushbu dorini xarid qilish (Kirim)">
               <i class="fas fa-plus"></i> Xarid
             </button>
           </td>
@@ -1578,7 +1620,7 @@
           </div>
           <div style="display: flex; justify-content: space-between;">
             <span style="color: #64748b;">Tavsif:</span>
-            <span style="text-align: right; font-weight: 600;">${t.title}</span>
+            <span style="text-align: right; font-weight: 600;">${esc(t.title)}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
             <span style="color: #64748b;">To'lov Usuli:</span>
@@ -1905,7 +1947,9 @@
       id: `TXN-2026-${Date.now().toString().slice(-6)}`,
       type: "expense",
       category: "incasso",
-      title: `Bankka naqd pul inkassatsiyasi (${bank})`,
+      // The server keeps only the title (as the journal description), so
+      // the required collector name went nowhere; it is part of the title.
+      title: `Bankka naqd pul inkassatsiyasi (${bank}) — topshirdi: ${collector}${notes ? '. ' + notes : ''}`,
       amount: amount,
       payment_method: "cash",
       patient_name: null,
@@ -2102,7 +2146,8 @@
       bill_id: null,
       date: date,
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-      cashier: "Dilnoza Rahimova",
+      // Nobody at the clinic has this name; the journal shows who signed in.
+      cashier: '',
       notes: notes
     };
 
@@ -2250,7 +2295,7 @@
     const doc = (accountingData.payroll_lines || []).find(d => d.id === docId);
     if (!doc) return;
     if (payrollPaid(doc.id)) {
-      showToast(`${esc(doc.name)} uchun shu oy maosh allaqachon to'langan.`, 'warning');
+      showToast(`${esc(doc.name)} uchun ${esc(currentPayrollMonth())} oyi maoshi allaqachon to'langan.`, 'warning');
       return;
     }
     // The employee is handed the net figure. Income tax and pension are
@@ -2263,7 +2308,7 @@
       showToast("To'lanadigan summa 0 so'm. Avval Kadrlar bo'limida xodimning maoshini kiriting.", 'warning');
       return;
     }
-    const month = (accountingData.payroll_info && accountingData.payroll_info.month) || getTodayISO().slice(0, 7);
+    const month = (accountingData.payroll_info && accountingData.payroll_info.month) || currentPayrollMonth();
 
     const confirmed = await fmhConfirm({
       title: "Maosh To'lovini Tasdiqlash",
@@ -2285,6 +2330,7 @@
       title: `Oylik maosh ${month} — ${doc.name} (hisoblangan ${formatUZS(doc.gross)}, ushlab qolindi ${formatUZS(doc.deductions)})`,
       amount: amount,
       related_staff_id: doc.id,
+      payroll_month: month,
       payment_method: "bank",
       patient_name: null,
       bill_id: null,

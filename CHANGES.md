@@ -301,6 +301,38 @@ Serverdagi MySQL foydalanuvchisiga `user_sessions` jadvali uchun `CREATE` (birin
 
 9 ta yangi test qo'shildi, jami 278 ta test o'tadi.
 
+### 2026-10-09: 4-bosqich — tekshiruv tuzatishlari
+
+4-bosqich (A–E) kodini qayta tekshirishda topilgan xatolar.
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Super-Portal, HR, Buxgalteriya — tugmalar | Xodim, xona, hisob yoki tashrif ID'sida qo'shtirnoq (') bo'lsa, tugma bosilganda shu matn skript sifatida ishlardi (Super-Portalda — bosh administrator huquqi bilan) | Tugmalarga ID xavfsiz shaklda uzatiladi. Server ham sahifa o'zi tanlagan ID'ni faqat lotin harflari, raqam, `-` va `_` (64 belgigacha) bo'lsa qabul qiladi (xodim, tashrif, to'lov, bemor, qo'ng'iroq, anamnez, retsept, epikriz) |
+| Buxgalteriya — Hisoblar jadvali | Hisob raqami, bemor ismi, karavot, shifokor va jurnal yozuvlari tozalanmasdan chiqarilardi | Hammasi xavfsiz ko'rsatiladi |
+| Foydalanuvchilar (admin) | "admin" (yozish) ruxsati bor xodim o'zini yoki boshqani bosh administrator qila olardi, `*` ruxsatini bera olardi, boshqa bosh administratorning parolini tiklab, uning nomidan kira olardi | Bosh administrator rolini, `*` va "admin" yozish ruxsatini faqat bosh administrator beradi; bosh administrator (va foydalanuvchilarni boshqaradigan) hisobni faqat bosh administrator o'zgartiradi yoki parolini tiklaydi (aks holda 403) |
+| Buxgalteriya — Maosh | "Shu oy to'langan" tekshiruvi faqat brauzerda edi: ikkinchi oyna yoki takroriy bosish bir xodimga ikki marta maosh to'lardi | Server bir xodimga bir oy uchun ikkinchi maoshni rad etadi (409, sababi bilan) |
+| Buxgalteriya — Maosh oyi | Maoshni faqat joriy kalendar oy uchun to'lash mumkin edi; oy almashgach o'tgan oyning maoshini to'lab bo'lmasdi, tekshiruv yozilgan sanaga qarardi | Maosh bo'limida **"Maosh oyi"** tanlagichi bor (joriy oy — standart). Tanlangan oy hisobi yuklanadi va to'lov shu oy uchun yoziladi (`payroll_month` ustuni, avtomatik qo'shiladi). Eski yozuvlar sanasiga qarab hisoblanadi |
+| Qabulxona — Tashrifni bekor qilish | To'lanmagan tashrif bekor qilinsa, hisobdagi **hamma** qatorlar o'chardi — buxgalteriyada qo'shilgan dorilar ham (ombordan ayirilgan dori hisobdan yo'qolardi) | Faqat tashrif haqi qatori o'chadi. Boshqa qatorlar bo'lsa hisob qoladi va xabarda aytiladi |
+| Server — xodimlar ro'yxati | `/api/doctors` har bir xodimga shifokorlar okladini yuborardi; `/api/staff` protsedura haqini yashirmasdi | Oklad va protsedura haqi faqat HR, buxgalteriya (yozish) va klinika egasiga yuboriladi |
+| HR | Lavozim nomi, ism, telefon, Telegram tozalanmasdan kartochkalarga chiqarilardi | Xavfsiz ko'rsatiladi; server lavozim va Telegram maydonlarida `< > "` belgilarini rad etadi |
+| Audit jurnali | Mavjud bo'lmagan login bilan kirish urinishi yozilganda yozilgan matn (ko'pincha login maydoniga yozib yuborilgan parol) jurnalda ko'rinardi | Bunday urinish `[noma'lum login]` deb yoziladi; eski yozuvlar server ishga tushganda yashiriladi (mavjud xodimlar logini qoladi) |
+| Hamshira / Palata — Davolash rejasi | Sekin javob boshqa bemor uchun ochilgan oynaga tushishi mumkin edi (boshqa bemorning dorilari) | Kech kelgan javob tashlab yuboriladi |
+| Super-Portal — Foydalanuvchini tahrirlash | Faolsizlantirilgan xodimga bog'langan foydalanuvchi oynasida "Bog'lanmagan" chiqardi va saqlashda bog'lanish o'chib ketardi | Joriy bog'lanish "(faol emas)" belgisi bilan saqlanadi; ro'yxat yuklanib bo'lgach oyna to'ldiriladi |
+| HR — Xodimni tahrirlash | Faolsizlantirilgan xodimni tahrirlash (masalan, telefonni tuzatish) uni jimgina qayta faollashtirardi (jadval va maoshga qaytardi) | Tahrir holatni o'zgartirmaydi; qayta faollashtirish faqat "Qayta faollashtirish" tugmasi bilan |
+| Server ishga tushishi | Barcha avtomatik yangilanishlar bitta blokda edi: bittasi xato bersa, qolganlari jimgina bajarilmasdi | Har bir qadam alohida, xatosi logga yoziladi. Parollarni yashirish faqat hali yashirilmagan yozuvlarni o'qiydi (har safar 2 600+ yozuvni emas) |
+| Kirish (sessiyalar) | Faollik vaqti bir xil soniyaga yozilsa sessiya "bekor qilingan" deb tushunilib, xodim tizimdan chiqarilardi | Tuzatildi |
+| Kirish (sessiyalar) | "Chiqish" yoki "hamma joydan chiqarish" paytida baza vaqtincha ishlamasa, sessiya keyinroq qayta tiklanishi mumkin edi | Bekor qilingan sessiyalar xotirada ham eslab qolinadi va qaytarilmaydi; bazadan o'chirish qayta urinib ko'riladi |
+| Kirish (sessiyalar) | `users.json` vaqtincha yo'qolsa (iCloud nomini o'zgartirgan holat), barcha sessiyalar bazadan o'chirilardi | Sessiya o'chirilmaydi, so'rov rad etiladi; fayl qaytgach ishlash davom etadi |
+| Saytdan kelgan ariza — qabul qilish | Shifokor o'rniga istalgan xodim tanlanardi; o'tgan sana qabul qilinardi; "uyga chiqish" bron qilinardi; bemor faqat telefon bo'yicha topilardi (bir oiladagi boshqa odamning kartasiga tushardi) | Faqat faol shifokor; o'tgan sana rad etiladi; "uyga chiqish" ambulator tashrif sifatida yoziladi (PO: hozircha uyga chiqish yo'q); bemor telefon **va** ism bo'yicha topiladi |
+| Buxgalteriya | Kassir sifatida to'qima ism yozilardi; inkassatsiyada majburiy "topshiruvchi" ismi hech qayerda saqlanmasdi | To'qima ism olib tashlandi; topshiruvchi ismi va izoh jurnal yozuviga qo'shiladi |
+| Telegram | Muhit o'zgaruvchisida xato (masalan, topic raqami o'rniga matn) barcha Telegram xabarlarini jimgina o'chirib qo'yardi | Noto'g'ri qiymat e'tiborsiz qoldiriladi va logga bir qator yoziladi |
+| HR — Davomat | Server UTC vaqtda ishlasa, Toshkentda 00:00–05:00 orasida bugungi davomat "kelajak kun" deb rad etilardi | Bir kunlik farqqa ruxsat berildi |
+| Qabulxona — Takroriy konsultatsiya | Shu kuni shu shifokorga to'langan konsultatsiyadan keyin ikkinchi haqiqiy konsultatsiya "qayta yuborish" deb hisoblanib, hisobga yozilmasdi | Faqat oxirgi 10 daqiqada ochilgan va to'lanmagan tashrif qayta yuborish deb hisoblanadi (sahifa so'rov ID'sini yubormaydi, qayta yuborish soniyalar ichida bo'ladi) |
+
+Ko'rinadigan o'zgarishlar: Buxgalteriya → Maosh bo'limida "Maosh oyi" tanlagichi; bir oy uchun takroriy maosh endi server xabari bilan rad etiladi; faolsizlantirilgan xodimni tahrirlash uni faollashtirmaydi; "admin" huquqli (bosh administrator bo'lmagan) xodim bosh administrator huquqlarini bera olmaydi.
+
+17 ta yangi test qo'shildi, jami 295 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
@@ -565,6 +597,16 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 12. **Tashrif to'lovi qabulxonada olinadimi?** Hozir konsultatsiya va
    ambulator hisobi ochiladi, pulni kassa (buxgalteriya) qabul qiladi.
    Qabulxona ham pul olishi kerak bo'lsa, buni alohida yoqish mumkin.
+13. **Kursni qisman bekor qilish.** Ambulator yoki statsionar kurs
+   o'rtasida bekor qilinsa, o'tgan kunlar va berilgan dorilar qanday
+   hisobdan chiqariladi (to'liq to'lanadimi, qolgan kunlar qaytariladimi)?
+   Hozir faqat to'lanmagan tashrifning tashrif haqi qatori o'chiriladi.
+14. **Ushlab qolingan soliq va pensiya uchun xarajat turi.** Maoshda sof
+   summa to'lanadi; daromad solig'i va pensiyani davlatga o'tkazish uchun
+   alohida xarajat turi (kategoriya) kerakmi va qanday nomlansin?
+15. **Oy o'rtasida ishdan ketgan xodimning okladi.** Oklad ishlagan
+   kunlarga bo'lib (pro-rata) hisoblanadimi yoki to'liq oy uchunmi?
+   Hozir to'liq oklad ko'rsatiladi.
 
 ---
 

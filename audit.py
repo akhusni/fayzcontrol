@@ -25,6 +25,7 @@ swallowed and reported to the console.
 
 import os
 import json
+import re
 import datetime as _dt
 
 # Clinical actions the original schema allowed.
@@ -214,11 +215,24 @@ def scrub_secrets(conn):
     """
     cur = conn.cursor()
     changed = 0
+    # Only a password key whose string value is not already the marker. The
+    # plain LIKE matched every row ever masked too (2,600+ locally), so each
+    # start re-read and re-parsed all of them. ICU regex (MySQL 8) has the
+    # lookahead; if it is refused, fall back to the broad LIKE.
+    pending = r'"[^"]*password[^"]*": *"(?!' + re.escape(REDACTED) + '")'
     for column in ('new_data_json', 'old_data_json'):
         # The LIKE narrows a full-table read to the few rows that mention a
         # password key at all; the JSON is then checked properly in Python.
-        cur.execute(f"SELECT id, {column} AS doc FROM audit_logs "
-                    f"WHERE CAST({column} AS CHAR) LIKE '%password%'")
+        try:
+            cur.execute(f"SELECT id, {column} AS doc FROM audit_logs "
+                        f"WHERE CAST({column} AS CHAR) LIKE '%%password%%' "
+                        f"AND CAST({column} AS CHAR) REGEXP ?", (pending,))
+        except Exception as e:
+            print(f"[i] audit scrub: regex filter unavailable ({e}); reading every candidate row.")
+            conn.rollback()
+            cur = conn.cursor()
+            cur.execute(f"SELECT id, {column} AS doc FROM audit_logs "
+                        f"WHERE CAST({column} AS CHAR) LIKE '%password%'")
         rows = cur.fetchall() or []
         for r in rows:
             raw = r['doc'] if hasattr(r, 'keys') else r[1]
@@ -233,6 +247,44 @@ def scrub_secrets(conn):
                              r['id'] if hasattr(r, 'keys') else r[0]))
                 changed += 1
         conn.commit()
+    return changed
+
+
+# What a failed sign-in for a login that does not exist is filed under. The
+# typed text is often a password entered in the wrong box.
+UNKNOWN_LOGIN = "[noma'lum login]"
+
+
+def scrub_unknown_logins(conn, known_usernames):
+    """
+    Mask LOGIN_FAILED rows whose login is not an account, written before
+    the login handler masked them. Returns how many rows changed.
+
+    known_usernames comes from users.json. An empty set means the file could
+    not be read (iCloud once renamed it), not that nobody exists, so nothing
+    is touched then. Idempotent: masked rows no longer match.
+    """
+    known = {str(u).strip().lower() for u in (known_usernames or []) if u}
+    if not known:
+        return 0
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT entity_id FROM audit_logs "
+                "WHERE entity_name = 'auth' AND action_type = 'LOGIN_FAILED' "
+                "AND entity_id <> ? AND entity_id <> '-'", (UNKNOWN_LOGIN,))
+    stray = []
+    for r in cur.fetchall() or []:
+        v = r['entity_id'] if hasattr(r, 'keys') else r[0]
+        if str(v or '').strip().lower() not in known:
+            stray.append(v)
+    changed = 0
+    for i in range(0, len(stray), 200):
+        part = stray[i:i + 200]
+        marks = ', '.join('?' for _ in part)
+        cur.execute(f"UPDATE audit_logs SET entity_id = ? WHERE entity_name = 'auth' "
+                    f"AND action_type = 'LOGIN_FAILED' AND entity_id IN ({marks})",
+                    (UNKNOWN_LOGIN,) + tuple(part))
+        changed += cur.rowcount or 0
+    conn.commit()
     return changed
 
 

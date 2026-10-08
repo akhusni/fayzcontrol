@@ -441,6 +441,8 @@ CREATE TABLE IF NOT EXISTS accounting_transactions (
     transaction_date DATE NOT NULL,
     recorded_by_staff_id VARCHAR(64),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payroll_month CHAR(7) NULL, -- 'YYYY-MM' a salary payout pays for (db.ensure_transaction_payroll_month)
+    KEY idx_accounting_payroll (related_staff_id, payroll_month),
     FOREIGN KEY (payment_id) REFERENCES payments(id) ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (related_invoice_id) REFERENCES invoices(id) ON UPDATE CASCADE ON DELETE SET NULL,
     FOREIGN KEY (related_staff_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL,

@@ -32,16 +32,34 @@ import nursery
 # runs from posting fake payments into the real staff group.
 BOT_TOKEN = os.environ.get("FMH_TELEGRAM_BOT_TOKEN", "").strip()
 ENABLED = bool(BOT_TOKEN)
-CHAT_ID = int(os.environ.get("FMH_TELEGRAM_CHAT_ID", "-1004441223890"))
+
+
+def _env_int(name, default):
+    """
+    An integer from the environment, or `default` when unset or not a number.
+
+    These were parsed with int() at import time, so a typo in the service
+    file ("--5", "5a") raised here; server.py imports this module inside a
+    try, so every Telegram notice silently stopped. One log line instead.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[!] {name}={raw!r} is not a number; using {default!r}.")
+        return default
+
+
+CHAT_ID = _env_int("FMH_TELEGRAM_CHAT_ID", -1004441223890)
 
 TOPIC_NURSES = 2        # "Hamshira"
 TOPIC_DOCTORS = 4       # "Doctor"
 TOPIC_ACCOUNTING = 6    # "Bugalteriya"
 # Website enquiries. The group has no reception topic, so they go to the
 # group's main thread unless FMH_TELEGRAM_ENQUIRY_TOPIC names one.
-TOPIC_ENQUIRIES = (int(os.environ["FMH_TELEGRAM_ENQUIRY_TOPIC"])
-                   if os.environ.get("FMH_TELEGRAM_ENQUIRY_TOPIC", "").strip().lstrip("-").isdigit()
-                   else None)
+TOPIC_ENQUIRIES = _env_int("FMH_TELEGRAM_ENQUIRY_TOPIC", None)
 
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 

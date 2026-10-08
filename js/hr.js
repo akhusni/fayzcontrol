@@ -42,6 +42,10 @@
   const esc = (v) => String(v === null || v === undefined ? '' : v)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  // Inline onclick="f(...)" arguments need a JS string literal, not only
+  // HTML escaping: the browser decodes &#39; back to ' before the handler
+  // runs, so an id holding a quote would end the string and run as script.
+  const jsArg = (v) => esc(JSON.stringify(String(v)));
 
   function tariff(key) {
     const n = Number(State.dutyTariffs && State.dutyTariffs[key]);
@@ -861,7 +865,7 @@
             const isActive = activeStaffId === s.id;
             const roleType = s.role === 'doctor' || s.role === 'chief_doctor' ? 'doctor_night' : s.role === 'nurse' ? 'nurse' : 'sanitar';
             return `
-              <div class="stamp-chip ${isActive ? 'active' : ''}" onclick="window.FMH_HR.setPaintStamp('${esc(s.id)}', '${roleType}')">
+              <div class="stamp-chip ${isActive ? 'active' : ''}" onclick="window.FMH_HR.setPaintStamp(${jsArg(s.id)}, ${jsArg(roleType)})">
                 <i class="${s.role === 'doctor' || s.role === 'chief_doctor' ? 'fas fa-user-md' : s.role === 'nurse' ? 'fas fa-syringe' : 'fas fa-broom'}"></i>
                 ${esc(String(s.full_name || '').split(' ')[1] || s.full_name)}
               </div>
@@ -1324,7 +1328,7 @@
       const cardClass = conflictReason ? 'smart-picker-card conflict' : isRestRecommended ? 'smart-picker-card recommended' : 'smart-picker-card';
 
       return `
-        <div class="${cardClass}" onclick="window.FMH_HR.assignSlotStaff('${esc(staff.id)}')">
+        <div class="${cardClass}" onclick="window.FMH_HR.assignSlotStaff(${jsArg(staff.id)})">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <div style="font-weight: 800; color: #ffffff; font-size: 0.95rem;">${esc(staff.full_name)}</div>
@@ -1436,22 +1440,22 @@
       const dutyRateLabel = dutyKey ? `${formatUZS(tariff(dutyKey))}/${dutyKey === 'doctor_night' ? 'tun' : '24h'}` : '—';
 
       return `
-        <div class="staff-card" data-staff-id="${staff.id}"${isInactive ? ' style="opacity: 0.65;"' : ''}>
+        <div class="staff-card" data-staff-id="${esc(staff.id)}"${isInactive ? ' style="opacity: 0.65;"' : ''}>
           <div class="staff-card-header">
             <div class="staff-avatar" style="background: ${staff.avatar_color || '#4f46e5'};">
-              ${initials}
+              ${esc(initials)}
               <span class="status-dot ${statusClass}" title="${statusLabel}"></span>
             </div>
             <div class="staff-info">
-              <div class="staff-name">${staff.full_name}</div>
-              <div class="staff-role-badge"><i class="fas fa-id-badge"></i> ${staff.role_title_uz || staff.role}</div>
+              <div class="staff-name">${esc(staff.full_name)}</div>
+              <div class="staff-role-badge"><i class="fas fa-id-badge"></i> ${esc(staff.role_title_uz || staff.role)}</div>
               ${isInactive ? '<span class="status-badge badge-danger" style="margin-top: 4px;"><i class="fas fa-user-slash"></i> Faolsizlantirilgan</span>' : ''}
               <div class="staff-specialty">${esc(staff.specialty || '—')}</div>
             </div>
           </div>
 
           <div class="staff-meta-row">
-            <div class="staff-meta-chip" title="Telefon"><i class="fas fa-phone"></i> ${staff.phone || '—'}</div>
+            <div class="staff-meta-chip" title="Telefon"><i class="fas fa-phone"></i> ${esc(staff.phone || '—')}</div>
             <div class="staff-meta-chip" title="Oylik Navbatchilik"><i class="fas fa-clock"></i> ${staff.monthly_duty_count || 0} smena (${formatUZS(staff.monthly_duty_earnings)})</div>
             <div class="staff-meta-chip" title="Navbatchilik Tarifi"><i class="fas fa-tag"></i> ${dutyRateLabel}</div>
             <div class="staff-meta-chip" title="Toifa"><i class="fas fa-award"></i> ${esc(staff.category || '—')}</div>
@@ -1467,17 +1471,17 @@
           </div>
 
           <div class="staff-actions-row">
-            <button class="btn-portal btn-outline-portal" style="padding: 5px 10px; font-size: 0.76rem;" onclick="window.FMH_HR.openStaffDossier('${staff.id}')">
+            <button class="btn-portal btn-outline-portal" style="padding: 5px 10px; font-size: 0.76rem;" onclick="window.FMH_HR.openStaffDossier(${jsArg(staff.id)})">
               <i class="fas fa-folder-open"></i> Shaxsiy Ishi
             </button>
-            <button class="btn-portal btn-outline-portal" style="padding: 5px 10px; font-size: 0.76rem; border-color: rgba(99, 102, 241, 0.4); color: #818cf8;" onclick="window.FMH_HR.generatePayslip('${staff.id}')">
+            <button class="btn-portal btn-outline-portal" style="padding: 5px 10px; font-size: 0.76rem; border-color: rgba(99, 102, 241, 0.4); color: #818cf8;" onclick="window.FMH_HR.generatePayslip(${jsArg(staff.id)})">
               <i class="fas fa-file-invoice-dollar"></i> Oylik Varaqasi
             </button>
-            <button class="btn-portal btn-outline-portal" style="padding: 5px 8px; font-size: 0.76rem;" onclick="window.FMH_HR.editStaff('${staff.id}')" title="Tahrirlash">
+            <button class="btn-portal btn-outline-portal" style="padding: 5px 8px; font-size: 0.76rem;" onclick="window.FMH_HR.editStaff(${jsArg(staff.id)})" title="Tahrirlash">
               <i class="fas fa-edit"></i>
             </button>
             ${isInactive ? `
-            <button class="btn-portal btn-success-portal" style="padding: 5px 10px; font-size: 0.76rem;" onclick="window.FMH_HR.reactivateStaff('${esc(staff.id)}')" title="Qayta faollashtirish">
+            <button class="btn-portal btn-success-portal" style="padding: 5px 10px; font-size: 0.76rem;" onclick="window.FMH_HR.reactivateStaff(${jsArg(staff.id)})" title="Qayta faollashtirish">
               <i class="fas fa-user-check"></i> Faollashtirish
             </button>` : ''}
           </div>
@@ -1541,17 +1545,17 @@
         <tr>
           <td><span style="font-family: var(--font-mono); font-weight: 700; color: var(--text-muted);">${idx + 1}</span></td>
           <td>
-            <div style="font-weight: 700; color: #ffffff;">${staff.full_name}</div>
-            <div style="font-size: 0.74rem; color: var(--text-secondary);">${staff.role_title_uz || staff.role}</div>
+            <div style="font-weight: 700; color: #ffffff;">${esc(staff.full_name)}</div>
+            <div style="font-size: 0.74rem; color: var(--text-secondary);">${esc(staff.role_title_uz || staff.role)}</div>
           </td>
-          <td><span class="staff-meta-chip"><i class="fas fa-building"></i> ${staff.department_name_uz || staff.department}</span></td>
+          <td><span class="staff-meta-chip"><i class="fas fa-building"></i> ${esc(staff.department_name_uz || staff.department)}</span></td>
           <td><span style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">${esc(cin)}</span></td>
           <td><span style="font-family: var(--font-mono); font-weight: 700; color: var(--text-muted);">${esc(cout)}</span></td>
           <td><span style="font-family: var(--font-mono); font-weight: 700; color: #34d399;">${esc(hours)}</span></td>
           <td>${badgeHtml}</td>
           <td><span style="font-size: 0.78rem; color: var(--text-secondary);">${esc((att && att.notes) || '—')}</span></td>
           <td style="text-align: center;">
-            <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.74rem;" onclick="window.FMH_HR.openLogAttendanceModal('${staff.id}')">
+            <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.74rem;" onclick="window.FMH_HR.openLogAttendanceModal(${jsArg(staff.id)})">
               <i class="fas fa-user-check"></i> Qayd etish
             </button>
           </td>
@@ -1723,7 +1727,7 @@
           <td><span style="font-family: var(--font-mono); font-weight: 800; color: #34d399; font-size: 0.95rem;">${formatUZS(row.net)}</span></td>
           <td><span class="status-badge badge-active"><i class="fas fa-check-circle"></i> Hisoblangan</span></td>
           <td style="text-align: center;">
-            <button class="btn-portal btn-primary-portal" style="padding: 4px 10px; font-size: 0.74rem;" onclick="window.FMH_HR.generatePayslip('${esc(row.staff_id)}')">
+            <button class="btn-portal btn-primary-portal" style="padding: 4px 10px; font-size: 0.74rem;" onclick="window.FMH_HR.generatePayslip(${jsArg(row.staff_id)})">
               <i class="fas fa-receipt"></i> Pay Slip
             </button>
           </td>
@@ -1893,12 +1897,12 @@
     content.innerHTML = `
       <div style="display: flex; align-items: center; gap: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-subtle);">
         <div class="staff-avatar" style="width: 64px; height: 64px; font-size: 1.5rem; background: ${staff.avatar_color || '#4f46e5'};">
-          ${staff.full_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+          ${esc(staff.full_name.split(' ').map(n => n[0]).join('').substring(0, 2))}
         </div>
         <div>
-          <h2 style="color: #ffffff; font-size: 1.25rem; font-weight: 800;">${staff.full_name}</h2>
-          <div style="color: var(--indigo-light); font-weight: 600; font-size: 0.85rem;">${staff.role_title_uz || staff.role}</div>
-          <div style="color: var(--text-muted); font-size: 0.78rem;">ID: ${staff.id} • Ishga qabul: ${formatDate(staff.hire_date)}</div>
+          <h2 style="color: #ffffff; font-size: 1.25rem; font-weight: 800;">${esc(staff.full_name)}</h2>
+          <div style="color: var(--indigo-light); font-weight: 600; font-size: 0.85rem;">${esc(staff.role_title_uz || staff.role)}</div>
+          <div style="color: var(--text-muted); font-size: 0.78rem;">ID: ${esc(staff.id)} • Ishga qabul: ${formatDate(staff.hire_date)}</div>
         </div>
       </div>
 
@@ -1921,7 +1925,7 @@
         </div>
         <div class="form-group">
           <label class="form-label">Telefon & Aloqa</label>
-          <div style="font-weight: 600; color: #ffffff;">${staff.phone} (${staff.telegram || '—'})</div>
+          <div style="font-weight: 600; color: #ffffff;">${esc(staff.phone)} (${esc(staff.telegram || '—')})</div>
         </div>
         <div class="form-group">
           <label class="form-label">Tibbiy Toifasi</label>
@@ -1935,17 +1939,17 @@
 
       <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         ${staff.status === 'inactive' ? `
-        <button class="btn-portal btn-success-portal" style="padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.reactivateStaff('${esc(staff.id)}')">
+        <button class="btn-portal btn-success-portal" style="padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.reactivateStaff(${jsArg(staff.id)})">
           <i class="fas fa-user-check"></i> Qayta Faollashtirish
         </button>` : `
-        <button class="btn-portal btn-danger-portal" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.deleteStaff('${esc(staff.id)}')">
+        <button class="btn-portal btn-danger-portal" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.deleteStaff(${jsArg(staff.id)})">
           <i class="fas fa-user-slash"></i> Xodimni Faolsizlantirish
         </button>`}
         <div style="display: flex; gap: 0.5rem;">
-          <button class="btn-portal btn-outline-portal" style="padding: 6px 14px; font-size: 0.82rem; border-color: rgba(245, 158, 11, 0.5); color: #fbbf24;" onclick="window.FMH_HR.openEditStaffModal('${staff.id}')">
+          <button class="btn-portal btn-outline-portal" style="padding: 6px 14px; font-size: 0.82rem; border-color: rgba(245, 158, 11, 0.5); color: #fbbf24;" onclick="window.FMH_HR.openEditStaffModal(${jsArg(staff.id)})">
             <i class="fas fa-edit"></i> Tahrirlash
           </button>
-          <button class="btn-portal btn-primary-portal" style="padding: 6px 16px; font-size: 0.82rem;" onclick="window.FMH_HR.generatePayslip('${staff.id}')">
+          <button class="btn-portal btn-primary-portal" style="padding: 6px 16px; font-size: 0.82rem;" onclick="window.FMH_HR.generatePayslip(${jsArg(staff.id)})">
             <i class="fas fa-file-invoice-dollar"></i> Oylik Varaqasi (Payslip)
           </button>
         </div>
