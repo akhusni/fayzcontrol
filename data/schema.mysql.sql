@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS staff (
     -- clinical record names its author through this table.
     role VARCHAR(64) NOT NULL CHECK(role IN (
         'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant',
-        'pharmacist', 'ward_manager', 'hr_manager', 'kitchen_staff'
+        'pharmacist', 'ward_manager', 'hr_manager', 'kitchen_staff', 'sanitar'
     )),
     specialty VARCHAR(255),
     phone VARCHAR(64),

@@ -1215,13 +1215,16 @@ window.FMH_Reception = (function () {
     const rateInput = document.getElementById('intake-daily-rate');
     const sel = document.getElementById('intake-program-select');
     const isLux = sel?.value === 'statsionar_full_room';
-    
+
     if (rateInput) {
-      // NOTE: any other programme takes the bed's own rate here, so a
-      // day-care stay on a bed shows the bed rate, not 'kunlik_statsionar'.
-      // Left as it was (owner to confirm); only the numbers are now listed.
-      rateInput.value = isLux ? listedRate('statsionar_full_room')
-                              : (rate || listedRate('statsionar_shared'));
+      // Only a shared-room stay is priced by the bed. Every other programme
+      // keeps its own listed rate: picking a bed used to replace the
+      // day-care rate (630 000) with the bed's 720 000, so the desk billed a
+      // day-care patient at the overnight price without noticing.
+      const program = sel?.value || 'statsionar_shared';
+      rateInput.value = program === 'statsionar_shared'
+        ? (rate || listedRate('statsionar_shared'))
+        : listedRate(program);
     }
     // Set bed type label
     const bedTypeEl = document.getElementById('intake-bed-type-label');

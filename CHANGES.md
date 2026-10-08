@@ -149,11 +149,43 @@ sanasidan qo'llanadi. (2) Server ro'yxatdan farq qiladigan narxni rad etmaydi.
 (3) Uyga chaqiruv hozircha yo'q: yozuv turidan olib tashlandi, o'ylab topilgan
 850 000 narx o'chirildi (eski yozuvlar o'zgarmaydi).
 
-Hali qolgan: Qabulxonada karavot tanlanganda kunlik/ambulator dastur narxi karavot narxiga
-almashadi; HR va navbatchilik smena narxlari (300/350/400 ming) hali sahifada yozilgan.
+Bu ikki masala 3-bosqichda hal qilindi (pastda).
 
 29 ta yangi test qo'shildi, jami 219 ta test o'tadi.
 
+
+### 2026-10-09: 3-bosqich — Qabulxona narxi, navbatchilik narxlari va maosh serverda
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Qabulxona | Kunlik statsionarda karavot tanlanganda narx 630 000 dan karavot narxi 720 000 ga almashardi | Faqat "Statsionar (2 kishilik xonada 1 karavot)" karavot narxini oladi; boshqa dasturlar o'z narxida qoladi |
+| Narxlar | Navbatchilik smena narxlari (shifokor 350 000, hamshira 400 000, sanitarka 300 000) har sahifada alohida yozilgan edi | Bitta narxlar ro'yxatida; Super-Portal → Narxlar bo'limida tahrirlanadi |
+| HR | Navbatchilik jadvali har safar sahifa ochilganda qaytadan tuzilardi — qo'lda kiritilgan o'zgarishlar yo'qolardi | HR va Navbatchilik sahifasi bitta jadvalni (serverda) ko'radi va o'zgartiradi |
+| HR | Maosh brauzerda o'ylab topilgan jadvaldan hisoblanardi; har bir shifokorga 2 600 000 "statsionar bonusi" va 6 ta detoks bonusi qo'shilardi | Maosh serverda: oklad + saqlangan smenalar × narxlar ro'yxatidagi tarif. Hech kim kiritmagan bonuslar olib tashlandi |
+| HR | Pay slip har doim "Avgust 2026", "15.08.2026" va "TO'LANGAN ✓" deb chiqardi | Tanlangan oy, bugungi sana, holat "Hisoblangan" |
+| Navbatchilik | Sanitarkalar xodimlar ro'yxatida yo'q edi (maosh hisoblab bo'lmasdi) | "Sanitar" lavozimi qo'shildi; jadvaldagi 6 sanitarka xodim sifatida qo'shildi (faqat ism, telefon va oklad kiritilmagan) |
+| Navbatchilik | Saqlanmagan oy uchun sahifaga yozilgan ismlar bilan o'ylab topilgan jadval ko'rsatilardi | Xodimlar ro'yxatidan taklif tuziladi va "saqlanmagan" deb belgilanadi; "Jadvalni saqlash" bosilmaguncha maosh hisoblanmaydi |
+| Navbatchilik | Saqlangan jadvalda hamshira va shifokor ko'rinmasdi ("Hamshira smenada", "Dr. Umarov Xusan" o'ylab topilgan) | Jadvaldagi haqiqiy xodim ko'rsatiladi; bo'sh bo'lsa "—" |
+| Navbatchilik | Zaxira (2-post) sanitarka kuni ham 300 000 deb hisoblanardi | Faqat asosiy post to'lanadi |
+| Navbatchilik | Sanitarka jadvalni saqlay olardi — endi bu maosh degani (o'ziga smena yozishi mumkin edi) | Sanitarka jadvalni faqat ko'radi; saqlash va almashtirishni HR / administrator qiladi |
+| HR | Yangi xodim qo'shilganda ID xodimlar sonidan tuzilardi va shu ID dagi boshqa xodimning yozuvi ustidan yozilardi | ID ni server bo'sh raqamdan beradi |
+| HR | Oklad bo'sh qoldirilsa 10 000 000 deb saqlanardi; noto'g'ri e-pochta o'ylab topilardi | Bo'sh oklad = 0, e-pochta bo'sh qoladi; noto'g'ri summa rad etiladi |
+| HR | Server rad etgan xodim ham ro'yxatga qo'shilib "qo'shildi" deyilardi | Xato ko'rsatiladi, hech narsa qo'shilmaydi |
+| HR | Xodim ismi tuzatilsa, saqlangan smenalari to'lanmay qolardi | Jadvaldagi shu xodim kunlari ham yangi ismga o'tkaziladi (boshqa odam yozilgan kunlar o'zgarmaydi) |
+| HR | "Yangi Smena Qo'shish" tugmasi ishlamasdi | Smenalar bo'limini ochadi va kalendarda qanday qo'shishni ko'rsatadi |
+
+**Rahbar qarorlari (2026-10-09):** (1) Maosh Navbatchilik sahifasidagi (serverdagi)
+jadval bo'yicha hisoblanadi. (2) Sanitarkalar xodim sifatida qo'shiladi.
+(3) Rejalashtirilmagan oy — taklif sifatida ko'rsatiladi, saqlanmaguncha to'lanmaydi.
+
+**Diqqat:** jadvaldagi ism shu ID dagi xodim ismiga mos kelmasa (masalan, jadvalda
+`STF-DOC-01` = "Umarov Xusan", xodimlar ro'yxatida `STF-DOC-01` = boshqa shifokor),
+bu smena **to'lanmaydi** va HR → Maosh bo'limida ogohlantirish chiqadi. HR jadvalda
+o'sha kunlarni to'g'ri xodim bilan qayta belgilashi kerak.
+
+Daromad solig'i 12% va INPS 0,1% avvalgidek qoldi.
+
+9 ta yangi test qo'shildi, jami 228 ta test o'tadi.
 
 ## 2. Interfeys va foydalanish qulayligi
 

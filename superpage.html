@@ -23,7 +23,7 @@
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
   <script src="js/fmh_dialogs.js?v=1.4"></script>
-  <script src="js/fmh_pricing.js?v=1.0"></script>
+  <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="super-portal-page">
 
@@ -1178,6 +1178,21 @@
                   <small style="color: var(--text-muted); font-size: 0.72rem;" data-price-hint="consultation">Hozirgi standart: 250 000 so'm</small>
                 </div>
 
+                <div>
+                  <label class="super-form-label">Navbatchilik: Tungi shifokor (1 smena) *</label>
+                  <input type="number" id="price-duty-doctor-night" class="super-input" min="0" required>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Navbatchilik: Hamshira 24 soat (1 smena) *</label>
+                  <input type="number" id="price-duty-nurse-24h" class="super-input" min="0" required>
+                </div>
+
+                <div>
+                  <label class="super-form-label">Navbatchilik: Sanitarka 24 soat (1 smena) *</label>
+                  <input type="number" id="price-duty-sanitar-24h" class="super-input" min="0" required>
+                </div>
+
                 <button type="submit" class="btn-super btn-super-success" style="margin-top: 8px;">
                   <i class="fas fa-save"></i> Yangi Narxlarni Barcha Bo'limlarga Saqlash
                 </button>
@@ -1449,7 +1464,7 @@
   <script src="js/xlsx.full.min.js"></script>
     <script src="js/unified_print_engine.js?v=5.3"></script>
     <script src="js/med_search_engine.js?v=4.0"></script>
-<script src="js/superpage.js?v=8.3"></script>
+<script src="js/superpage.js?v=8.4"></script>
   <div id="print-area"></div>
 </body>
 </html>

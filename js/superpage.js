@@ -1447,6 +1447,12 @@
     'price-ambulator-2': 'ambulator_2',
     'price-consultation': 'consultation'
   };
+  // Editor inputs -> pay for one duty shift (payroll counts these).
+  const DUTY_TARIFF_INPUTS = {
+    'price-duty-doctor-night': 'doctor_night',
+    'price-duty-nurse-24h': 'nurse_24h',
+    'price-duty-sanitar-24h': 'sanitar_24h'
+  };
 
   function spacedAmount(n) {
     return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -1458,6 +1464,10 @@
     Object.keys(PRICE_INPUTS).forEach(inputId => {
       const el = document.getElementById(inputId);
       if (el) el.value = listedRate(PRICE_INPUTS[inputId]);
+    });
+    Object.keys(DUTY_TARIFF_INPUTS).forEach(inputId => {
+      const el = document.getElementById(inputId);
+      if (el && window.FMH_Pricing) el.value = window.FMH_Pricing.dutyTariff(DUTY_TARIFF_INPUTS[inputId]);
     });
     // The hints under the inputs were typed in ("Hozirgi standart: 720 000")
     // and went stale after the first edit; they now show the listed price.
@@ -1521,11 +1531,26 @@
       if (name) packages[pkgId].name_uz = name;
     }
 
+    const dutyTariffs = {};
+    for (const inputId of Object.keys(DUTY_TARIFF_INPUTS)) {
+      const el = document.getElementById(inputId);
+      if (!el) continue;
+      const raw = String(el.value || '').trim();
+      const value = Number(raw);
+      if (raw === '' || !Number.isFinite(value) || value < 0) {
+        showToast("Navbatchilik narxi to'g'ri kiritilmagan.", 'warning');
+        el.focus();
+        return false;
+      }
+      dutyTariffs[DUTY_TARIFF_INPUTS[inputId]] = value;
+    }
+
     // updated_by is taken from the session on the server.
     const payload = {
       packages,
       additional_services: pricingConfig.additional_services || []
     };
+    if (Object.keys(dutyTariffs).length) payload.duty_tariffs = dutyTariffs;
 
     try {
       const res = await fetch('/api/settings/pricing', {

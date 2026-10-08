@@ -210,6 +210,14 @@ DEFAULT_PRICING = {
         "consultation": {"daily_rate": 250000, "name_uz": "Shifokor Konsultatsiyasi (Birlamchi ko'rik)"},
     },
     "additional_services": [],
+    # Pay for one duty shift. The HR page, the duty roster and the payslip
+    # each typed 350 000 / 400 000 / 300 000 into their own text, so a raise
+    # would have reached the label on one screen and not the money on another.
+    "duty_tariffs": {
+        "doctor_night": 350000,
+        "nurse_24h": 400000,
+        "sanitar_24h": 300000,
+    },
 }
 
 # The consultation fee is kept as a package key, but it is a one-off fee, not
@@ -250,7 +258,85 @@ def load_pricing():
     result['packages'] = merged
     services = data.get('additional_services')
     result['additional_services'] = services if isinstance(services, list) else []
+    tariffs = dict(DEFAULT_PRICING['duty_tariffs'])
+    stored = data.get('duty_tariffs') if isinstance(data.get('duty_tariffs'), dict) else {}
+    for key in tariffs:
+        val = stored.get(key)
+        if isinstance(val, (int, float)) and not isinstance(val, bool) and val >= 0:
+            tariffs[key] = val
+    result['duty_tariffs'] = tariffs
     return result
+
+
+def ensure_roster_sanitarkas(conn):
+    """
+    Give each sanitarka named in the duty roster a staff row.
+
+    They were only names in data/duty_schedule.json, so payroll had no one to
+    pay their shifts to. Only the id and name are copied: the phone numbers in
+    that file are placeholders, and no salary is assumed (duty shifts are
+    their pay until HR enters one). Rows that already exist are left alone.
+    """
+    roster = read_json_file(os.path.join(BASE_DIR, 'data', 'duty_schedule.json'), default=None)
+    people = roster.get('sanitarkas') if isinstance(roster, dict) else None
+    if not isinstance(people, list):
+        return
+    try:
+        cur = conn.cursor()
+        added = 0
+        for p in people:
+            if not isinstance(p, dict):
+                continue
+            sid = str(p.get('staff_id') or '').strip()[:64]
+            name = str(p.get('name') or '').strip()[:255]
+            if not sid or not name:
+                continue
+            cur.execute("SELECT 1 FROM staff WHERE id = ?", (sid,))
+            if cur.fetchone():
+                continue
+            cur.execute("INSERT INTO staff (id, full_name, role, salary_base, shift_type, is_active) "
+                        "VALUES (?, ?, 'sanitar', 0, '24h', 1)", (sid, name))
+            added += 1
+        conn.commit()
+        if added:
+            print(f"[✓] Added {added} sanitarka(s) from the duty roster to staff.")
+    except Exception as e:
+        conn.rollback()
+        print(f"[!] Could not add roster sanitarkas to staff: {e}")
+
+
+def rename_in_roster(staff_id, old_name, new_name):
+    """
+    Carry an employee's new name into the saved duty roster.
+
+    Payroll pays a roster day only when its name matches the staff record
+    behind the id (the two were filled separately and disagreed), so fixing a
+    typo in someone's name used to stop pay for every shift already saved.
+    Only days that carried the old name are renamed: a day that names someone
+    else under this id is a roster mistake, and renaming it would pay this
+    employee for that person's shift.
+    """
+    path = os.path.join(BASE_DIR, 'data', 'duty_schedule.json')
+    roster = read_json_file(path, default=None)
+    if not isinstance(roster, dict):
+        return
+    changed = False
+    for sh in roster.get('shifts') or []:
+        if not isinstance(sh, dict):
+            continue
+        for id_field in [k for k in sh if k.endswith('_id')]:
+            name_field = id_field[:-3]
+            if (sh.get(id_field) == staff_id and name_field in sh and sh[name_field] != new_name
+                    and payroll.same_person(old_name, sh[name_field])):
+                sh[name_field] = new_name
+                changed = True
+    for person in roster.get('sanitarkas') or []:
+        if (isinstance(person, dict) and person.get('staff_id') == staff_id
+                and person.get('name') != new_name and payroll.same_person(old_name, person.get('name'))):
+            person['name'] = new_name
+            changed = True
+    if changed:
+        write_json_atomic(path, roster)
 
 
 def package_daily_rate(program_type, pricing=None):
@@ -411,6 +497,7 @@ from db import (
     ensure_appointment_requests,
     ensure_medication_purchases,
     ensure_appointment_service_types,
+    ensure_staff_roles,
     load_config
 )
 
@@ -420,6 +507,7 @@ import permissions
 import nursery
 import owner_report
 import consultation
+import payroll
 
 
 def validate_prescription_fields(rx):
@@ -1646,6 +1734,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
             # 8. /api/hr/data -> 100% Dynamic MySQL-Powered HR Dataset
+            # 8a. GET /api/hr/payroll?month=YYYY-MM -> pay counted from the
+            # saved duty roster (see payroll.py for why it left the browser).
+            elif path == '/api/hr/payroll':
+                month = (query.get('month', [''])[0] or '').strip() or \
+                    datetime.date.today().strftime('%Y-%m')
+                if not payroll.MONTH_RE.match(month):
+                    self._send_validation_error("Oy YYYY-MM ko'rinishida bo'lishi kerak", 'month')
+                    return
+                cur.execute("SELECT id, full_name, role, salary_base, is_active FROM staff ORDER BY role, full_name")
+                staff_rows = [dict(r) for r in cur.fetchall()]
+                roster = read_json_file(os.path.join(BASE_DIR, 'data', 'duty_schedule.json'), default=None)
+                shifts = roster.get('shifts') if isinstance(roster, dict) else None
+                result = payroll.build_payroll(month, staff_rows,
+                                               shifts if isinstance(shifts, list) else [],
+                                               load_pricing()['duty_tariffs'])
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+
             elif path == '/api/hr/data' or path.startswith('/api/hr'):
                 hr_file = os.path.join(BASE_DIR, 'data', 'hr_db.json')
                 hr_data = read_json_file(hr_file, default=None) or {}
@@ -1716,11 +1822,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "total_beds": 14,
                         "operating_mode": "24/7 Statsionar & Poliklinika"
                     }),
-                    "duty_tariffs": hr_data.get("duty_tariffs", {
-                        "doctor_night": 350000,
-                        "nurse_24h": 400000,
-                        "sanitar_24h": 300000
-                    }),
+                    # From the one price list, not the legacy hr_db.json.
+                    "duty_tariffs": load_pricing()['duty_tariffs'],
                     "staff": staff_list,
                     "total_staff_count": len(staff_list),
                     "attendance_records": attendance,
@@ -1732,15 +1835,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 8b. /api/duty-schedule -> 24/7 Duty Roster (Doctors, Nurses, Sanitarkas)
             elif path == '/api/duty-schedule':
+                # Who may be put on duty, from the staff table. The pages
+                # suggested unsaved months from names typed into duty_schedule.js
+                # (no ids, so nothing they produced could be paid).
+                cur.execute("SELECT id, full_name, role FROM staff WHERE is_active = 1 "
+                            "AND role IN ('doctor', 'chief_doctor', 'nurse', 'sanitar') "
+                            "ORDER BY full_name")
+                pool = {'doctors': [], 'nurses': [], 'sanitarkas': []}
+                for r in cur.fetchall():
+                    group = 'nurses' if r['role'] == 'nurse' else (
+                        'sanitarkas' if r['role'] == 'sanitar' else 'doctors')
+                    pool[group].append({'id': r['id'], 'name': r['full_name']})
                 conn.close()
                 ds_file = os.path.join(BASE_DIR, 'data', 'duty_schedule.json')
                 ds_data = read_json_file(ds_file, default=None)
                 # The old fallback divided by an empty sanitarka list (500 on every
                 # load) and wrote made-up doctors and nurses with fake phone
                 # numbers to disk. With no saved roster, answer an empty one and
-                # let the page fall back to its own rotation.
+                # let the page suggest a rotation from the staff pool.
                 if not isinstance(ds_data, dict):
                     ds_data = {"sanitarkas": [], "nurses": [], "doctors": [], "shifts": []}
+                ds_data['staff_pool'] = pool
+                ds_data['duty_tariffs'] = load_pricing()['duty_tariffs']
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(ds_data, ensure_ascii=False).encode('utf-8'))
 
@@ -2989,7 +3105,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # 4. POST /api/staff or POST /api/hr/staff (Create / Update Staff & Doctor)
             elif path == '/api/staff' or path == '/api/hr/staff':
                 raw_role = body.get('role', 'doctor')
-                valid_roles = {'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant'}
+                valid_roles = {'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant', 'sanitar'}
                 role = raw_role if raw_role in valid_roles else 'admin'
 
                 full_name = (body.get('full_name') or '').strip()
@@ -2999,17 +3115,41 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': 'Xodim F.I.Sh kiritilishi shart'}, ensure_ascii=False).encode('utf-8'))
                     return
                 
-                prefix = 'DOC' if role in ('doctor', 'chief_doctor') else ('NRS' if role == 'nurse' else 'ADM')
-                cur.execute("SELECT COUNT(*) FROM staff WHERE id LIKE ?", (f"STF-{prefix}-%",))
-                count = (cur.fetchone()[0] or 0) + 1
-                staff_id = body.get('id') or f"STF-{prefix}-{str(count).zfill(2)}"
+                prefix = 'DOC' if role in ('doctor', 'chief_doctor') else (
+                    'NRS' if role == 'nurse' else ('SAN' if role == 'sanitar' else 'ADM'))
+                staff_id = str(body.get('id') or '').strip()[:64]
+                if not staff_id:
+                    # COUNT + 1 named an id that could already exist (after a
+                    # deletion, or ids added by hand), and the upsert below then
+                    # overwrote that employee. Probe for a free number instead.
+                    cur.execute("SELECT COUNT(*) FROM staff WHERE id LIKE ?", (f"STF-{prefix}-%",))
+                    count = (cur.fetchone()[0] or 0) + 1
+                    while True:
+                        staff_id = f"STF-{prefix}-{str(count).zfill(2)}"
+                        cur.execute("SELECT 1 FROM staff WHERE id = ?", (staff_id,))
+                        if not cur.fetchone():
+                            break
+                        count += 1
                 specialty = body.get('specialty', '')
                 phone = body.get('phone', '')
                 email = body.get('email', '')
                 shift_raw = str(body.get('shift_type') or 'day').lower()
                 shift_db = 'night' if 'night' in shift_raw else ('24h' if '24h' in shift_raw else ('rotating' if 'call' in shift_raw or 'rotating' in shift_raw else 'day'))
-                salary_base = float(body.get('base_salary') or body.get('salary_base') or 10000000.0)
+                # A blank salary was saved as 10 000 000 and then paid. A
+                # sanitarka paid only by duty shifts has 0, which is valid.
+                raw_salary = body.get('base_salary', body.get('salary_base'))
+                if raw_salary in (None, ''):
+                    salary_base = 0.0
+                else:
+                    salary_base, _err = validate_amount(raw_salary, field='Oklad')
+                    if _err or isinstance(raw_salary, bool) or salary_base != salary_base:
+                        conn.close()
+                        self._send_validation_error(_err or "Oklad raqam bo'lishi kerak.", 'base_salary')
+                        return
 
+                cur.execute("SELECT full_name FROM staff WHERE id = ?", (staff_id,))
+                _old = cur.fetchone()
+                old_name = _old['full_name'] if _old else None
                 cur.execute("""
                     INSERT INTO staff (id, full_name, role, specialty, phone, email, salary_base, shift_type, is_active)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
@@ -3025,6 +3165,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 """, (staff_id, full_name, role, specialty, phone, email, salary_base, shift_db))
                 conn.commit()
                 conn.close()
+                if old_name and old_name != full_name:
+                    rename_in_roster(staff_id, old_name, full_name)
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
                     'message': 'Xodim muvaffaqiyatli saqlandi',
@@ -4019,6 +4161,27 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                                 row[opt] = val
                         new_services.append(row)
 
+                new_tariffs = None
+                if 'duty_tariffs' in body:
+                    if not isinstance(body.get('duty_tariffs'), dict):
+                        self._send_validation_error("Navbatchilik tariflari noto'g'ri.", 'duty_tariffs')
+                        return
+                    new_tariffs = {}
+                    for key, raw in body['duty_tariffs'].items():
+                        if key not in DEFAULT_PRICING['duty_tariffs']:
+                            self._send_validation_error(
+                                f"Noma'lum navbatchilik tarifi: {str(key)[:60]}.", f'duty_tariffs.{str(key)[:60]}')
+                            return
+                        val, _err = (None, "Narx raqam bo'lishi kerak.") \
+                            if isinstance(raw, bool) or raw in (None, '') \
+                            else validate_amount(raw, field='Narx')
+                        if not _err and val != val:
+                            _err = "Narx raqam bo'lishi kerak."
+                        if _err:
+                            self._send_validation_error(_err, f'duty_tariffs.{key}')
+                            return
+                        new_tariffs[key] = int(val) if float(val).is_integer() else val
+
                 # The raw file is read (not load_pricing) so that a file that
                 # cannot be parsed fails this request instead of being
                 # overwritten with defaults.
@@ -4036,6 +4199,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         existing['packages'][pid] = merged_pkg
                 if new_services is not None:
                     existing['additional_services'] = new_services
+                if new_tariffs is not None:
+                    if not isinstance(existing.get('duty_tariffs'), dict):
+                        existing['duty_tariffs'] = {}
+                    existing['duty_tariffs'].update(new_tariffs)
                 existing['updated_at'] = datetime.datetime.now().isoformat()
                 _sess = self.current_session() or {}
                 _suser = _sess.get('user') or {}
@@ -5124,6 +5291,9 @@ def run_server():
             ensure_medication_purchases(_c)
             # Older databases refuse 'consultation' appointments.
             ensure_appointment_service_types(_c)
+            # Sanitarkas need staff rows to be paid for duty shifts.
+            ensure_staff_roles(_c)
+            ensure_roster_sanitarkas(_c)
         finally:
             _c.close()
     except Exception as _e:

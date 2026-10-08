@@ -6,14 +6,38 @@
 (function () {
   'use strict';
 
-  const SANITARKAS = [
-    { id: "SAN-01", name: "Donoboyeva Laylo", full_name: "Donoboyeva Laylo Donoboyevna", phone: "+998 90 123-45-01" },
-    { id: "SAN-02", name: "Egamqulova Xilola", full_name: "Egamqulova Xilola Xoshimqulovna", phone: "+998 90 123-45-02" },
-    { id: "SAN-03", name: "Karabaeva Muxayyo", full_name: "Karabaeva Muxayyo Toshpo'latovna", phone: "+998 90 123-45-03" },
-    { id: "SAN-04", name: "Karakulova Xurshida", full_name: "Karakulova Xurshida Mirzakim qizi", phone: "+998 90 123-45-04" },
-    { id: "SAN-05", name: "Maxkamova Umida", full_name: "Maxkamova Umida Muminovna", phone: "+998 90 123-45-05" },
-    { id: "SAN-06", name: "Musaxanova Fotima", full_name: "Musaxanova Fotima Danabayevna", phone: "+998 90 123-45-06" }
-  ];
+  // Who can be put on duty comes from the staff list (GET /api/duty-schedule
+  // -> staff_pool). These were typed in here with ids ("SAN-01") that no
+  // staff record has and made-up phone numbers, and the unsaved months were
+  // suggested from typed doctor/nurse names with no id at all, so nothing
+  // they produced could be matched to a person on the payroll.
+  let SANITARKAS = [];
+  let NURSES = [];
+  let DOCTORS = [];
+
+  function poolEntry(p) {
+    const full = String(p.name || p.full_name || '').replace(/[<>"&]/g, '');
+    return { id: p.id || p.staff_id || '', full_name: full, name: full.split(' ').slice(0, 2).join(' ') };
+  }
+
+  // Saved days use the server's field names (nurse_primary, doctor_night);
+  // the views read nurse_name / doctor_name, so a saved roster showed
+  // "Hamshira smenada" and an invented doctor instead of who was on duty.
+  function withViewNames(shift) {
+    const out = Object.assign({}, shift);
+    out.nurse_name = shift.nurse_primary || shift.nurse_name || '';
+    out.doctor_name = shift.doctor_night || shift.doctor_name || '';
+    return out;
+  }
+
+  // Only roster fields go back to the server.
+  function toServerShift(shift) {
+    const out = Object.assign({}, shift);
+    delete out.suggested;
+    delete out.nurse_name;
+    delete out.doctor_name;
+    return out;
+  }
 
   // Names from the saved roster go straight into innerHTML all over this
   // page; stripping markup characters once here keeps a crafted name from
@@ -49,8 +73,16 @@
     selectedSanitar: 'all', // 'all' or sanitarka full_name
     searchQuery: '',
     rawShifts: [],
-    dutyTariffs: { sanitar: 300000, nurse: 400000, doctor: 350000 }
+    // Saving the roster sets pay, so only HR/admin may (sanitarkas read it).
+    // Unknown until the session answers; the server refuses either way.
+    canEdit: false,
+    // Replaced by the price list on load (GET /api/duty-schedule).
+    dutyTariffs: { doctor_night: 350000, nurse_24h: 400000, sanitar_24h: 300000 }
   };
+
+  function tariff(key) {
+    return Number(State.dutyTariffs[key]) || 0;
+  }
 
   function pad(n) {
     return String(n).padStart(2, '0');
@@ -65,17 +97,13 @@
     return new Date(year, month, 0).getDate();
   }
 
-  // Generate continuous rotating shifts if not present in API for chosen month
+  // A day not saved on the server is filled with a rotation suggestion,
+  // marked `suggested`. It is shown as "not saved" and earns nothing on the
+  // payroll until someone saves the month (decided 2026-10-09).
   function ensureMonthShifts(year, month) {
     const daysInMonth = getDaysInMonth(year, month);
     const result = [];
-    const nursesList = [
-      "Abdukarimova Ra'no", "Atametova Tursunoy", "G'aniyeva Saygul",
-      "Safarova Shaxnoza", "Saydaminova Ziyeda", "Xoltoyeva Shaxlo"
-    ];
-    const docsList = [
-      "Dr. Umarov Xusan", "Dr. Shermuxamedova Farida", "Dr. Vasina Yuliya"
-    ];
+    const pick = (list, i) => (list.length ? list[i % list.length] : { id: '', full_name: '' });
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${pad(month)}-${pad(day)}`;
@@ -86,15 +114,15 @@
       // Check if already in State.rawShifts
       const existing = State.rawShifts.find(s => s.date === dateStr);
       if (existing) {
-        result.push(existing);
+        result.push(withViewNames(existing));
       } else {
         // Continuous cycle calculation based on day offset from 2026-01-01
         const epoch = new Date(2026, 0, 1);
         const diffDays = Math.floor((dt - epoch) / (1000 * 60 * 60 * 24));
-        const san1 = SANITARKAS[(Math.abs(diffDays)) % SANITARKAS.length];
-        const san2 = SANITARKAS[(Math.abs(diffDays) + 3) % SANITARKAS.length];
-        const nurse = nursesList[(Math.abs(diffDays)) % nursesList.length];
-        const doc = docsList[(Math.abs(diffDays)) % docsList.length];
+        const san1 = pick(SANITARKAS, Math.abs(diffDays));
+        const san2 = pick(SANITARKAS, Math.abs(diffDays) + 3);
+        const nurse = pick(NURSES, Math.abs(diffDays));
+        const doc = pick(DOCTORS, Math.abs(diffDays));
 
         const newShift = {
           date: dateStr,
@@ -108,12 +136,15 @@
           sanitar_secondary: san2.full_name,
           sanitar_secondary_id: san2.id,
           sanitar_shift_time: "24 soat (08:00 - ertasi 08:00)",
-          nurse_name: nurse,
+          nurse_primary: nurse.full_name,
+          nurse_primary_id: nurse.id,
           nurse_shift_time: "24 soat (08:00 - ertasi 08:00)",
-          doctor_name: doc,
-          doctor_shift_time: "Tungi smena (20:00 - 08:00)"
+          doctor_night: doc.full_name,
+          doctor_night_id: doc.id,
+          doctor_shift_time: "Tungi smena (20:00 - 08:00)",
+          suggested: true
         };
-        result.push(newShift);
+        result.push(withViewNames(newShift));
       }
     }
     return result;
@@ -122,8 +153,21 @@
   // -------------------------------------------------------------------------
   // INITIALIZATION & API FETCH
   // -------------------------------------------------------------------------
+  async function loadEditRight() {
+    try {
+      const res = await fetch('/api/auth/session');
+      const s = res.ok ? await res.json() : null;
+      const perms = (s && Array.isArray(s.permissions)) ? s.permissions : [];
+      State.canEdit = perms.some(p => p === '*' || p === 'duty' || p === 'duty:write');
+    } catch (e) {
+      State.canEdit = false;
+    }
+    document.body.classList.toggle('duty-read-only', !State.canEdit);
+  }
+
   async function init() {
     const today = new Date();
+    await loadEditRight();
     State.currentYear = today.getFullYear();
     State.currentMonth = today.getMonth() + 1;
 
@@ -134,6 +178,16 @@
         if (data && Array.isArray(data.shifts) && data.shifts.length > 0) {
           State.rawShifts = data.shifts.map(cleanShift);
         }
+        const pool = (data && data.staff_pool) || {};
+        SANITARKAS = (pool.sanitarkas || []).map(poolEntry);
+        NURSES = (pool.nurses || []).map(poolEntry);
+        DOCTORS = (pool.doctors || []).map(poolEntry);
+        if (!SANITARKAS.length && Array.isArray(data && data.sanitarkas)) {
+          SANITARKAS = data.sanitarkas.map(poolEntry);
+        }
+        if (data && data.duty_tariffs && typeof data.duty_tariffs === 'object') {
+          State.dutyTariffs = Object.assign({}, State.dutyTariffs, data.duty_tariffs);
+        }
       }
     } catch (e) {
       console.warn("Using local duty schedule rotation:", e);
@@ -143,7 +197,65 @@
     setupEventListeners();
   }
 
+  function renderTariffLabels() {
+    document.querySelectorAll('[data-duty-tariff]').forEach(el => {
+      el.textContent = formatUZS(tariff(el.getAttribute('data-duty-tariff')));
+    });
+  }
+
+  function renderSuggestBanner() {
+    const box = document.getElementById('duty-suggest-banner');
+    if (!box) return;
+    const n = ensureMonthShifts(State.currentYear, State.currentMonth).filter(s => s.suggested).length;
+    if (!n) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = `
+      <span><i class="fas fa-exclamation-triangle"></i>
+        ${UZ_MONTHS[State.currentMonth - 1]} oyida ${n} kun saqlanmagan taklif (avtomatik navbat).
+        Saqlanmaguncha bu kunlar uchun maosh hisoblanmaydi.${State.canEdit ? '' : ' Jadvalni HR bo\'limi saqlaydi.'}</span>
+      ${State.canEdit ? `<button type="button" class="btn-duty-action" id="duty-save-month-btn">
+        <i class="fas fa-save"></i> Jadvalni saqlash
+      </button>` : ''}`;
+    const saveBtn = document.getElementById('duty-save-month-btn');
+    if (saveBtn) saveBtn.onclick = saveSuggestedMonth;
+  }
+
+  async function saveSuggestedMonth() {
+    const days = ensureMonthShifts(State.currentYear, State.currentMonth).filter(s => s.suggested);
+    if (!days.length) return;
+    if (days.some(d => !d.sanitar_primary_id || !d.nurse_primary_id || !d.doctor_night_id)) {
+      notify("Xodimlar ro'yxatida sanitarka, hamshira yoki shifokor yo'q. Avval HR bo'limida xodim qo'shing.", 'warning');
+      return;
+    }
+    const btn = document.getElementById('duty-save-month-btn');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/duty-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shifts: days.map(toServerShift) })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        notify(err.error || `Saqlab bo'lmadi (${res.status})`, 'error');
+        return;
+      }
+      days.forEach(d => State.rawShifts.push(toServerShift(d)));
+      notify(`${days.length} kunlik navbatchilik jadvali saqlandi`, 'success');
+      renderAll();
+    } catch (e) {
+      notify("Server bilan aloqa yo'q. Jadval saqlanmadi.", 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   function renderAll() {
+    renderTariffLabels();
+    renderSuggestBanner();
     renderHeroToday();
     renderMonthDisplay();
     renderFilterPills();
@@ -179,9 +291,10 @@
       const elNur = document.getElementById('hero-nurse-name');
       const elDoc = document.getElementById('hero-doctor-name');
 
-      if (elSan) elSan.textContent = todayShift.sanitar_primary || "Donoboyeva Laylo";
-      if (elNur) elNur.textContent = todayShift.nurse_name || "Hamshira smenada";
-      if (elDoc) elDoc.textContent = todayShift.doctor_name || "Dr. Umarov Xusan";
+      // No made-up fallback names: an empty post shows as empty.
+      if (elSan) elSan.textContent = todayShift.sanitar_primary || '—';
+      if (elNur) elNur.textContent = todayShift.nurse_name || '—';
+      if (elDoc) elDoc.textContent = todayShift.doctor_name || '—';
     }
   }
 
@@ -281,9 +394,11 @@
     const monthShifts = ensureMonthShifts(State.currentYear, State.currentMonth);
     const myShifts = monthShifts.filter(s => (s.sanitar_primary === State.selectedSanitar || s.sanitar_secondary === State.selectedSanitar));
 
-    const totalCount = myShifts.length;
+    // Pay follows payroll.py: the main post on a saved day. A reserve day
+    // ("Zaxira") and an unsaved suggestion are not paid shifts.
+    const totalCount = myShifts.filter(s => s.sanitar_primary === State.selectedSanitar).length;
     const totalHours = totalCount * 24;
-    const totalEarnings = totalCount * State.dutyTariffs.sanitar;
+    const totalEarnings = myShifts.filter(s => s.sanitar_primary === State.selectedSanitar && !s.suggested).length * tariff('sanitar_24h');
 
     // Next upcoming shift
     const now = new Date();
@@ -318,7 +433,7 @@
       <div class="personal-kpi-card">
         <div class="personal-kpi-label"><i class="fas fa-coins"></i> Hisoblangan Summa</div>
         <div class="personal-kpi-value" style="color: #34d399;">${formatUZS(totalEarnings)}</div>
-        <div class="personal-kpi-sub">1 smena = 300 000 so'm</div>
+        <div class="personal-kpi-sub">1 smena = ${formatUZS(tariff('sanitar_24h'))}</div>
       </div>
 
       <div class="personal-kpi-card">
@@ -521,7 +636,7 @@
     const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 
     // Filter shifts for selected sanitarka (or all if none picked)
-    const targetStaff = State.selectedSanitar === 'all' ? SANITARKAS[0].full_name : State.selectedSanitar;
+    const targetStaff = State.selectedSanitar === 'all' ? (SANITARKAS[0] ? SANITARKAS[0].full_name : '') : State.selectedSanitar;
     const myShifts = shifts.filter(s => (s.sanitar_primary === targetStaff || s.sanitar_secondary === targetStaff));
 
     if (myShifts.length === 0) {
@@ -567,7 +682,7 @@
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 0.82rem;">
-          <span style="color: #fbbf24; font-weight: 700;"><i class="fas fa-coins"></i> 300 000 so'm</span>
+          <span style="color: #fbbf24; font-weight: 700;"><i class="fas fa-coins"></i> ${shift.suggested ? 'Saqlanmagan' : (shift.sanitar_primary === targetStaff ? formatUZS(tariff('sanitar_24h')) : 'Zaxira')}</span>
           <button type="button" class="btn-duty-action btn-duty-swap" style="padding: 4px 10px; font-size: 0.74rem;" onclick="openSwapForShift('${shift.date}')">
             <i class="fas fa-exchange-alt"></i> Smenani Almashtirish
           </button>
@@ -587,7 +702,7 @@
 
     document.getElementById('modal-day-title').textContent = `${shift.date} (${shift.weekday}) — 24/7 Navbatchilik`;
     document.getElementById('modal-sanitar-name').textContent = shift.sanitar_primary || '—';
-    document.getElementById('modal-sanitar-2').textContent = shift.sanitar_secondary || 'Muxayyo Karabaeva (Zaxira)';
+    document.getElementById('modal-sanitar-2').textContent = shift.sanitar_secondary || '—';
     document.getElementById('modal-nurse-name').textContent = shift.nurse_name || '—';
     document.getElementById('modal-doc-name').textContent = shift.doctor_name || '—';
 
@@ -674,7 +789,7 @@
         const parts = dateStr.split('-').map(Number);
         const gen = ensureMonthShifts(parts[0], parts[1]).find(s => s.date === dateStr);
         if (gen) {
-          sh = JSON.parse(JSON.stringify(gen));
+          sh = toServerShift(JSON.parse(JSON.stringify(gen)));
           State.rawShifts.push(sh);
         }
       }
@@ -712,9 +827,10 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sanitarkas: SANITARKAS,
-          // Only the two changed days: the server merges by date.
-          shifts: [s1, s2]
+          // Only the two changed days: the server merges by date. The
+          // sanitarka list is no longer sent: it came from this file and
+          // overwrote the stored one with ids no staff record has.
+          shifts: [toServerShift(s1), toServerShift(s2)]
         })
       });
       if (!res.ok) {
@@ -814,9 +930,9 @@
     // Case 1: Specific Sanitarka Selected -> Personal Duty Sheet & Official Compensation Certificate
     if (State.selectedSanitar !== 'all') {
       const myShifts = shifts.filter(s => (s.sanitar_primary === State.selectedSanitar || s.sanitar_secondary === State.selectedSanitar));
-      const totalCount = myShifts.length;
+      const totalCount = myShifts.filter(s => s.sanitar_primary === State.selectedSanitar).length;
       const totalHours = totalCount * 24;
-      const totalSum = totalCount * State.dutyTariffs.sanitar;
+      const totalSum = myShifts.filter(s => s.sanitar_primary === State.selectedSanitar && !s.suggested).length * tariff('sanitar_24h');
 
       let rowsHTML = '';
       if (myShifts.length === 0) {
@@ -835,7 +951,7 @@
               <td>08:00 – ertasi 08:00 (24 soat)</td>
               <td>${roleLabel}</td>
               <td>${partner}</td>
-              <td style="text-align: right; font-weight: 700;">300 000 so'm</td>
+              <td style="text-align: right; font-weight: 700;">${!isPrimary ? '—' : (s.suggested ? 'Saqlanmagan' : formatUZS(tariff('sanitar_24h')))}</td>
             </tr>
           `;
         });

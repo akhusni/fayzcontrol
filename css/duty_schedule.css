@@ -1615,3 +1615,25 @@ body.day-mode .form-input,
     display: inline-block;
   }
 }
+
+/* Unsaved suggested roster (decided 2026-10-09: not paid until saved) */
+.duty-suggest-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.duty-suggest-banner[hidden] { display: none; }
+[data-theme="day"] body .duty-suggest-banner { color: #92400e; background: #fef3c7; }
+@media print { .duty-suggest-banner { display: none !important; } }
+/* Sanitarkas see the roster read-only (it sets pay); HR swaps shifts. */
+body.duty-read-only .btn-duty-swap { display: none !important; }

@@ -149,10 +149,12 @@ ROLES = {
         'home': '/owner.html',
     },
 
-    # 24/7 Ward sanitation & shift duty roster view.
+    # 24/7 Ward sanitation & shift duty roster view. Read-only: saved roster
+    # days are what payroll pays, so a sanitarka who could save the roster
+    # could give herself paid shifts. HR (and admin) change it.
     'sanitar': {
         'label': 'Sanitarka (Navbatchilik)',
-        'permissions': ['duty'],
+        'permissions': ['duty:read'],
         'home': '/duty_schedule.html',
     },
 }

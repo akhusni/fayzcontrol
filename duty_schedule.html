@@ -15,7 +15,7 @@
   <!-- Unified Enterprise Stylesheets -->
   <link rel="stylesheet" href="css/unified_print.css?v=5.0">
   <link rel="stylesheet" href="css/unified_header.css?v=6.1">
-  <link rel="stylesheet" href="css/duty_schedule.css?v=1.2">
+  <link rel="stylesheet" href="css/duty_schedule.css?v=1.4">
 
   <!-- Core Theme & Dialog Layer -->
   <script src="js/theme_engine.js"></script>
@@ -117,7 +117,7 @@
             <div class="duty-post-badge-time">
               <i class="fas fa-clock"></i> <span>08:00 – ertasi 08:00</span>
             </div>
-            <div class="duty-post-tariff">Tarif: 300 000 so'm / smena</div>
+            <div class="duty-post-tariff">Tarif: <span data-duty-tariff="sanitar_24h">300 000 so'm</span> / smena</div>
           </div>
         </div>
 
@@ -133,7 +133,7 @@
             <div class="duty-post-badge-time">
               <i class="fas fa-clock"></i> <span>08:00 – ertasi 08:00</span>
             </div>
-            <div class="duty-post-tariff">Tarif: 400 000 so'm / smena</div>
+            <div class="duty-post-tariff">Tarif: <span data-duty-tariff="nurse_24h">400 000 so'm</span> / smena</div>
           </div>
         </div>
 
@@ -149,7 +149,7 @@
             <div class="duty-post-badge-time">
               <i class="fas fa-moon"></i> <span>20:00 – 08:00</span>
             </div>
-            <div class="duty-post-tariff">Tarif: 350 000 so'm / smena</div>
+            <div class="duty-post-tariff">Tarif: <span data-duty-tariff="doctor_night">350 000 so'm</span> / smena</div>
           </div>
         </div>
       </div>
@@ -163,7 +163,7 @@
           <span>O'z navbatchilik jadvalingizni ko'rish uchun ismingizni tanlang:</span>
         </div>
         <div class="duty-filter-tariff-note">
-          <i class="fas fa-info-circle"></i> Sanitarka 24h = 300 000 so'm | 1 sutka ish, 5 sutka dam
+          <i class="fas fa-info-circle"></i> Sanitarka 24h = <span data-duty-tariff="sanitar_24h">300 000 so'm</span> | 1 sutka ish, 5 sutka dam
         </div>
       </div>
 
@@ -173,6 +173,7 @@
       </div>
 
       <!-- Personal KPI Banner (Shown when a staff member is selected) -->
+      <div class="duty-suggest-banner" id="duty-suggest-banner" hidden></div>
       <div class="personal-kpi-grid" id="personal-kpi-container" style="display: none;">
         <!-- Rendered by JS -->
       </div>
@@ -304,7 +305,7 @@
         <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
           <div style="font-size: 0.72rem; color: #fbbf24; font-weight: 700; text-transform: uppercase;">Navbatchi Sanitarka (1-Post)</div>
           <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-sanitar-name">—</div>
-          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Vaqti: 08:00 – ertasi 08:00 (24 soat) | Tarif: 300 000 so'm</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Vaqti: 08:00 – ertasi 08:00 (24 soat) | Tarif: <span data-duty-tariff="sanitar_24h">300 000 so'm</span></div>
         </div>
 
         <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
@@ -316,13 +317,13 @@
         <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
           <div style="font-size: 0.72rem; color: #34d399; font-weight: 700; text-transform: uppercase;">Navbatchi Hamshira</div>
           <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-nurse-name">—</div>
-          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Butun bino (1 & 2-qavat statsionar 14 karavot) | Tarif: 400 000 so'm</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Butun bino (1 & 2-qavat statsionar 14 karavot) | Tarif: <span data-duty-tariff="nurse_24h">400 000 so'm</span></div>
         </div>
 
         <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
           <div style="font-size: 0.72rem; color: #c084fc; font-weight: 700; text-transform: uppercase;">Navbatchi Shifokor (Tungi)</div>
           <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);" id="modal-doc-name">—</div>
-          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Tungi smena (20:00 – 08:00) | Tarif: 350 000 so'm</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Tungi smena (20:00 – 08:00) | Tarif: <span data-duty-tariff="doctor_night">350 000 so'm</span></div>
         </div>
       </div>
 
@@ -386,6 +387,6 @@
   </div>
 
   <!-- Controller Script -->
-  <script src="js/duty_schedule.js?v=1.4"></script>
+  <script src="js/duty_schedule.js?v=1.6"></script>
 </body>
 </html>

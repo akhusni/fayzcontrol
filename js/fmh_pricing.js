@@ -15,6 +15,8 @@
  *   FMH_Pricing.label(pkgId)     Uzbek name of a package
  *   FMH_Pricing.services()       copy of additional_services
  *   FMH_Pricing.consultationFee()
+ *   FMH_Pricing.dutyTariff(key)  pay for one duty shift: doctor_night,
+ *                                nurse_24h or sanitar_24h (0 if unknown)
  *   FMH_Pricing.isFallback()     true while the server list is not loaded;
  *                                a page must never save the fallback back
  *   FMH_Pricing.reload()         fetch again (after a save); returns a Promise
@@ -42,7 +44,8 @@
       ambulator_2: { daily_rate: 500000, name_uz: 'Ambulator (2 mahal)' },
       consultation: { daily_rate: 250000, name_uz: "Shifokor Konsultatsiyasi (Birlamchi ko'rik)" }
     },
-    additional_services: []
+    additional_services: [],
+    duty_tariffs: { doctor_night: 350000, nurse_24h: 400000, sanitar_24h: 300000 }
   });
 
   let current = FALLBACK;
@@ -63,6 +66,9 @@
           throw new Error('no packages');
         }
         if (!Array.isArray(data.additional_services)) data.additional_services = [];
+        if (!data.duty_tariffs || typeof data.duty_tariffs !== 'object') {
+          data.duty_tariffs = clone(FALLBACK.duty_tariffs);
+        }
         current = deepFreeze(data);
         fallback = false;
         return clone(current);
@@ -94,6 +100,10 @@
     },
     services: function () { return clone(current.additional_services || []); },
     consultationFee: function () { return api.rate('consultation'); },
+    dutyTariff: function (key) {
+      const n = Number(current.duty_tariffs && current.duty_tariffs[key]);
+      return Number.isFinite(n) ? n : 0;
+    },
     isFallback: function () { return fallback; },
     reload: function () {
       api.ready = load();

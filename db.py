@@ -830,6 +830,56 @@ def ensure_appointment_service_types(conn):
         print(f"[!] Could not widen appointments.service_type: {e}")
 
 
+STAFF_ROLES = (
+    'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant',
+    'pharmacist', 'ward_manager', 'hr_manager', 'kitchen_staff', 'sanitar',
+)
+_staff_roles_checked = False
+
+
+def ensure_staff_roles(conn):
+    """
+    Let staff.role accept 'sanitar'.
+
+    Sanitarkas work paid 24-hour duty shifts, but the role list had no place
+    for them: they existed only as names in the duty roster file, so payroll
+    could not pay them and an HR save filed one as 'admin'. Idempotent: the
+    CHECK is only rewritten when a role is missing from it.
+    """
+    global _staff_roles_checked
+    if _staff_roles_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+            FROM information_schema.CHECK_CONSTRAINTS cc
+            JOIN information_schema.TABLE_CONSTRAINTS tc
+              ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+             AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+            WHERE tc.TABLE_NAME = 'staff' AND tc.TABLE_SCHEMA = DATABASE()
+        """)
+        target = None
+        for r in cur.fetchall() or []:
+            clause = str(r['CHECK_CLAUSE'])
+            if '`role`' in clause or 'role in' in clause.lower():
+                target = (r['CONSTRAINT_NAME'], clause)
+                break
+        # MySQL reports the values as _latin1\'admin\', so match bare names.
+        if target is None or all(t in target[1] for t in STAFF_ROLES):
+            _staff_roles_checked = True
+            return
+        allowed = ', '.join("'%s'" % t for t in STAFF_ROLES)
+        cur.execute("ALTER TABLE staff DROP CHECK %s" % target[0])
+        cur.execute("ALTER TABLE staff ADD CONSTRAINT %s CHECK (role IN (%s))"
+                    % (target[0], allowed))
+        conn.commit()
+        _staff_roles_checked = True
+        print("[✓] staff.role now accepts 'sanitar'.")
+    except Exception as e:
+        print(f"[!] Could not widen staff.role: {e}")
+
+
 _medication_purchases_checked = False
 
 

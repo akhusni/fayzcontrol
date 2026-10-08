@@ -3874,6 +3874,174 @@ class PdfHonesty(ApiTest):
                            'full_dossier came back the same size as prescriptions')
 
 
+
+class ServerPayroll(ApiTest):
+    """
+    Pay used to be worked out in the HR page from a rota it rebuilt on every
+    load, plus a doctor bonus and a detox bonus nobody had entered. It is now
+    GET /api/hr/payroll: base salary + saved roster shifts x the listed duty
+    tariffs. These pin what is paid, what is reported instead, and who may
+    read it.
+    """
+
+    _account = RoleAuthorization._account
+    HERE = os.path.dirname(os.path.abspath(__file__))
+    ROSTER = os.path.join(HERE, '..', 'data', 'duty_schedule.json')
+    PRICING = os.path.join(HERE, '..', 'data', 'pricing_config.json')
+    MONTH = '2031-02'
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+        self._staff = []
+        self._saved = {}
+        for path in (self.ROSTER, self.PRICING):
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    self._saved[path] = f.read()
+
+    def tearDown(self):
+        for path, data in self._saved.items():
+            with open(path, 'wb') as f:
+                f.write(data)
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        if self._staff:
+            sys.path.insert(0, os.path.dirname(self.HERE))
+            from db import get_db
+            conn = get_db()
+            try:
+                cur = conn.cursor()
+                for sid in self._staff:
+                    cur.execute("DELETE FROM staff WHERE id = ?", (sid,))
+                conn.commit()
+            finally:
+                conn.close()
+        super().tearDown()
+
+    def _staff_member(self, name, role, salary):
+        st, body = self.api.post('/api/staff', {'full_name': name, 'role': role,
+                                                'base_salary': salary})
+        self.assertEqual(st, 201, body)
+        self._staff.append(body['id'])
+        return body
+
+    def _payroll(self, client=None):
+        st, body = (client or self.api).get('/api/hr/payroll?month=' + self.MONTH)
+        self.assertEqual(st, 200, body)
+        return body
+
+    def test_a_saved_shift_is_paid_at_the_listed_tariff(self):
+        san = self._staff_member('Suite Payroll Sanitarka', 'sanitar', 1000000)
+        self.assertEqual(san['staff']['role'], 'sanitar', 'a sanitarka was filed as another role')
+        st, res = self.api.post('/api/duty-schedule', {'shifts': [
+            {'date': self.MONTH + '-03', 'sanitar_primary_id': san['id'],
+             'sanitar_primary': 'Suite Payroll Sanitarka'},
+            {'date': self.MONTH + '-04', 'sanitar_primary_id': san['id'],
+             'sanitar_primary': 'Suite Payroll Sanitarka',
+             # The reserve is not a worked shift.
+             'sanitar_secondary_id': san['id'], 'sanitar_secondary': 'Suite Payroll Sanitarka'},
+        ]})
+        self.assertEqual(st, 200, res)
+        body = self._payroll()
+        tariff = body['tariffs']['sanitar_24h']
+        line = next(l for l in body['staff'] if l['staff_id'] == san['id'])
+        self.assertEqual(line['duty_counts'], {'sanitar_24h': 2})
+        self.assertEqual(line['duty_pay'], 2 * tariff)
+        self.assertEqual(line['gross'], 1000000 + 2 * tariff)
+        self.assertEqual(line['income_tax'], round(line['gross'] * 0.12))
+        self.assertEqual(line['net'], line['gross'] - line['income_tax'] - line['pension'])
+        self.assertEqual(body['saved_days'], 2)
+
+    def test_a_shift_for_someone_else_is_reported_not_paid(self):
+        nurse = self._staff_member('Suite Payroll Hamshira', 'nurse', 0)
+        st, res = self.api.post('/api/duty-schedule', {'shifts': [
+            {'date': self.MONTH + '-05', 'nurse_primary_id': nurse['id'],
+             'nurse_primary': 'Boshqa Odam Ismi'},
+            {'date': self.MONTH + '-06', 'doctor_night_id': 'STF-SUITE-NOBODY',
+             'doctor_night': 'Suite Yoq Shifokor'},
+        ]})
+        self.assertEqual(st, 200, res)
+        body = self._payroll()
+        line = next(l for l in body['staff'] if l['staff_id'] == nurse['id'])
+        self.assertEqual(line['duty_pay'], 0, 'a shift was paid to whoever holds the id')
+        self.assertIn(nurse['id'], [m['staff_id'] for m in body['name_mismatches']])
+        self.assertIn('STF-SUITE-NOBODY', [u['staff_id'] for u in body['unlinked_shifts']])
+
+    def test_tariffs_come_from_the_price_list(self):
+        st, body = self.api.post('/api/settings/pricing', {'duty_tariffs': {'nurse_24h': 412000}})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body['pricing']['duty_tariffs']['nurse_24h'], 412000)
+        self.assertEqual(self._payroll()['tariffs']['nurse_24h'], 412000)
+        st, roster = self.api.get('/api/duty-schedule')
+        self.assertEqual(roster['duty_tariffs']['nurse_24h'], 412000)
+        self.assertIn('sanitarkas', roster.get('staff_pool', {}))
+
+    def test_a_bad_tariff_is_refused_with_its_field(self):
+        for bad in ('ikki yuz', -5, None, True):
+            st, body = self.api.post('/api/settings/pricing', {'duty_tariffs': {'nurse_24h': bad}})
+            self.assertEqual(st, 400, f"{bad!r}: {body}")
+            self.assertEqual(body.get('field'), 'duty_tariffs.nurse_24h', body)
+        st, body = self.api.post('/api/settings/pricing', {'duty_tariffs': {'surgeon': 1}})
+        self.assertEqual(st, 400, body)
+        with open(self.PRICING, 'rb') as f:
+            self.assertEqual(f.read(), self._saved.get(self.PRICING))
+
+    def test_a_bad_month_is_refused(self):
+        for bad in ('2031-13', '2031-2', 'oktabr'):
+            st, body = self.api.get('/api/hr/payroll?month=' + urllib.parse.quote(bad))
+            self.assertEqual(st, 400, f"{bad!r}: {body}")
+            self.assertEqual(body.get('field'), 'month')
+
+    def test_a_new_employee_never_takes_an_existing_id(self):
+        first = self._staff_member('Suite Payroll Birinchi', 'sanitar', 0)
+        second = self._staff_member('Suite Payroll Ikkinchi', 'sanitar', '')
+        self.assertNotEqual(first['id'], second['id'])
+        st, staff = self.api.get('/api/staff')
+        rows = staff if isinstance(staff, list) else staff.get('staff', [])
+        names = {r['id']: r['full_name'] for r in rows}
+        self.assertEqual(names.get(first['id']), 'Suite Payroll Birinchi',
+                         'adding an employee overwrote another one')
+        # A blank salary is 0, not an invented 10 000 000.
+        self.assertEqual(second['staff']['base_salary'], 0)
+        st, body = self.api.post('/api/staff', {'full_name': 'Suite Payroll Xato',
+                                                'role': 'sanitar', 'base_salary': 'kop'})
+        self.assertEqual(st, 400, body)
+        self.assertEqual(body.get('field'), 'base_salary')
+
+    def test_a_sanitarka_reads_the_roster_but_cannot_save_it(self):
+        """Saved days are paid, so a sanitarka could otherwise pay herself."""
+        san = self._account('sanitar')
+        st, _ = san.get('/api/duty-schedule')
+        self.assertEqual(st, 200)
+        st, _ = san.post('/api/duty-schedule', {'shifts': [
+            {'date': self.MONTH + '-07', 'sanitar_primary': 'Suite Probe'}]})
+        self.assertEqual(st, 403)
+
+    def test_a_rename_keeps_saved_shifts_paid(self):
+        nurse = self._staff_member('Suite Payroll Karimva', 'nurse', 0)
+        other = self._staff_member('Suite Payroll Boshqa', 'nurse', 0)
+        st, res = self.api.post('/api/duty-schedule', {'shifts': [
+            {'date': self.MONTH + '-08', 'nurse_primary_id': nurse['id'],
+             'nurse_primary': 'Suite Payroll Karimva'},
+            # A roster mistake under the same id must not be handed over.
+            {'date': self.MONTH + '-09', 'nurse_primary_id': nurse['id'],
+             'nurse_primary': 'Suite Payroll Boshqa'},
+        ]})
+        self.assertEqual(st, 200, res)
+        st, body = self.api.post('/api/staff', {'id': nurse['id'], 'full_name': 'Suite Payroll Karimova',
+                                                'role': 'nurse', 'base_salary': 0})
+        self.assertEqual(st, 201, body)
+        line = next(l for l in self._payroll()['staff'] if l['staff_id'] == nurse['id'])
+        self.assertEqual(line['duty_counts'], {'nurse_24h': 1},
+                         'a rename stopped pay, or paid a day that named someone else')
+        self.assertTrue(other['id'])
+
+    def test_the_desk_cannot_read_payroll(self):
+        desk = self._account('receptionist')
+        st, _ = desk.get('/api/hr/payroll?month=' + self.MONTH)
+        self.assertEqual(st, 403)
+
 if __name__ == '__main__':
     argv = [sys.argv[0]]
     verbose = '-v' in sys.argv or '--verbose' in sys.argv
