@@ -29,6 +29,16 @@
   let txnTypeFilter = 'all';
   let txnMethodFilter = 'all';
 
+  const UI_PAYMENT_METHODS = {
+    cash: 'cash', cash_register: 'cash',
+    terminal: 'terminal', card: 'terminal',
+    online: 'online', payme_click: 'online', card_transfer: 'online', click: 'online', payme: 'online',
+    bank: 'bank', bank_wire: 'bank'
+  };
+  function uiPaymentMethod(m) {
+    return UI_PAYMENT_METHODS[String(m || '').toLowerCase()] || m;
+  }
+
   // Date Range Filter State
   let dateRangeMode = 'all';
   let filterDateStart = null;
@@ -211,7 +221,14 @@
       if (accRes.ok) {
         const liveAcc = await accRes.json();
         if (liveAcc.transactions && Array.isArray(liveAcc.transactions)) {
-          accountingData.transactions = liveAcc.transactions;
+          // The server stores the database's method names (payme_click,
+          // bank_wire, ...) but the balances, filter and labels here speak
+          // cash/terminal/online/bank; unmapped rows silently fell out of
+          // every cash-desk balance.
+          accountingData.transactions = liveAcc.transactions.map(t => ({
+            ...t,
+            payment_method: uiPaymentMethod(t.payment_method)
+          }));
         }
         if (liveAcc.medication_purchases && Array.isArray(liveAcc.medication_purchases)) {
           accountingData.medication_purchases = liveAcc.medication_purchases;

@@ -60,6 +60,11 @@ except Exception as e:
 
 try:
     import telegram_service
+    # No token in the environment means the bot is off: every notify hook
+    # below is guarded by `if telegram_service`, so this one switch keeps a
+    # dev or test server from posting into the real staff group.
+    if not telegram_service.ENABLED:
+        telegram_service = None
 except Exception as _e_tg:
     telegram_service = None
 
@@ -358,6 +363,34 @@ def validate_prescription_fields(rx):
     if not (1 <= duration_days <= 365):
         return None, ('Davomiylik 1-365 kun oralig\'ida bo\'lishi kerak.', 'duration_days')
     return duration_days, None
+
+
+# Every money route used to carry its own copy of this table; the copies
+# drifted (only payments knew 'card'), and the accounting page could not match
+# the stored names. One table, one place to add a method.
+PAYMENT_METHOD_ALIASES = {
+    'cash': 'cash', 'cash_register': 'cash_register',
+    'card': 'terminal', 'terminal': 'terminal',
+    'card_transfer': 'card_transfer',
+    'online': 'payme_click', 'payme_click': 'payme_click',
+    'click': 'payme_click', 'payme': 'payme_click',
+    'bank': 'bank_wire', 'bank_wire': 'bank_wire',
+    'mixed': 'cash',
+}
+
+
+def normalize_payment_method(raw):
+    """Map a UI or alias method name to the value the payments CHECK accepts."""
+    return PAYMENT_METHOD_ALIASES.get(str(raw or 'cash').strip().lower(), 'cash')
+
+
+def account_source_for(method):
+    """Which money account an accounting transaction paid by `method` moves."""
+    if method in ('cash', 'cash_register'):
+        return 'kassa'
+    if method == 'terminal':
+        return 'terminal_bank'
+    return 'main_bank_account'
 
 
 def new_record_id(cur, table, prefix):
@@ -1521,61 +1554,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.close()
                 ds_file = os.path.join(BASE_DIR, 'data', 'duty_schedule.json')
                 ds_data = read_json_file(ds_file, default=None)
-                if not ds_data:
-                    now = datetime.datetime.now()
-                    sanitarkas = []
-                    nurses = [
-                        {"id": "NRS-01", "name": "Nilufar Karimova (Katta hamshira)", "role": "nurse", "phone": "+998904007788"},
-                        {"id": "NRS-02", "name": "Shahnoza Qodirova (Post hamshirasi)", "role": "nurse", "phone": "+998905009900"}
-                    ]
-                    doctors = [
-                        {"id": "DOC-01", "name": "Dr. Bobur Mirzayev (Bosh shifokor)", "role": "chief_doctor", "phone": "+998901001122"},
-                        {"id": "DOC-02", "name": "Dr. Jasur Aliyev", "role": "doctor", "phone": "+998902003344"},
-                        {"id": "DOC-03", "name": "Dr. Dilnoza Rahimova", "role": "doctor", "phone": "+998903005566"}
-                    ]
-                    days_list = []
-                    start_date = datetime.date(now.year, now.month, 1)
-                    weekdays_uz = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
-                    for day_idx in range(62):
-                        cur_dt = start_date + datetime.timedelta(days=day_idx)
-                        san1 = sanitarkas[day_idx % len(sanitarkas)]
-                        san2 = sanitarkas[(day_idx + 3) % len(sanitarkas)]
-                        nrs1 = nurses[day_idx % len(nurses)]
-                        doc1 = doctors[day_idx % len(doctors)]
-                        days_list.append({
-                            "date": cur_dt.strftime("%Y-%m-%d"),
-                            "day": cur_dt.day,
-                            "month": cur_dt.month,
-                            "year": cur_dt.year,
-                            "weekday": weekdays_uz[cur_dt.weekday()],
-                            "is_weekend": cur_dt.weekday() >= 5,
-                            "sanitar_primary": san1["name"],
-                            "sanitar_primary_id": san1["id"],
-                            "sanitar_secondary": san2["name"],
-                            "sanitar_secondary_id": san2["id"],
-                            "sanitar_shift_time": "24 soat (08:00 - ertasi 08:00)",
-                            "nurse_name": nrs1["name"],
-                            "nurse_id": nrs1["id"],
-                            "nurse_shift_time": "24 soat (08:00 - ertasi 08:00)",
-                            "doctor_name": doc1["name"],
-                            "doctor_id": doc1["id"],
-                            "doctor_shift_time": "Tungi smena (20:00 - 08:00)",
-                        })
-                    ds_data = {
-                        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-                        "hospital": "Fayz Medical House",
-                        "operating_mode": "24/7 Statsionar & Poliklinika",
-                        "sanitarkas": sanitarkas,
-                        "nurses": nurses,
-                        "doctors": doctors,
-                        "shifts": days_list,
-                        "tariffs": {
-                            "sanitar_24h": 300000,
-                            "nurse_24h": 400000,
-                            "doctor_night": 350000
-                        }
-                    }
-                    write_json_atomic(ds_file, ds_data)
+                # The old fallback divided by an empty sanitarka list (500 on every
+                # load) and wrote made-up doctors and nurses with fake phone
+                # numbers to disk. With no saved roster, answer an empty one and
+                # let the page fall back to its own rotation.
+                if not isinstance(ds_data, dict):
+                    ds_data = {"sanitarkas": [], "nurses": [], "doctors": [], "shifts": []}
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(ds_data, ensure_ascii=False).encode('utf-8'))
 
@@ -2260,16 +2244,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 amount = float(body.get('amount', 0))
 
                 # Normalize payment method
-                raw_method = str(body.get('payment_method', 'cash')).lower()
-                method_map = {
-                    'cash': 'cash', 'cash_register': 'cash_register',
-                    'card': 'terminal', 'terminal': 'terminal',
-                    'card_transfer': 'card_transfer', 'online': 'payme_click',
-                    'payme_click': 'payme_click', 'click': 'payme_click',
-                    'payme': 'payme_click', 'bank_wire': 'bank_wire', 'bank': 'bank_wire',
-                    'mixed': 'cash'
-                }
-                method = method_map.get(raw_method, 'cash')
+                method = normalize_payment_method(body.get('payment_method', 'cash'))
 
                 # Normalize account destination
                 raw_acc = str(body.get('account_destination', 'kassa')).lower()
@@ -2345,21 +2320,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 amount = float(body.get('amount', 0))
                 txn_type = body.get('type', 'expense')
                 category = body.get('category', 'operational_expense')
-                raw_method = body.get('payment_method', 'cash')
-                method_map = {
-                    'cash': 'cash',
-                    'cash_register': 'cash_register',
-                    'terminal': 'terminal',
-                    'card_transfer': 'card_transfer',
-                    'online': 'payme_click',
-                    'click': 'payme_click',
-                    'payme': 'payme_click',
-                    'payme_click': 'payme_click',
-                    'bank': 'bank_wire',
-                    'bank_wire': 'bank_wire',
-                }
-                method = method_map.get(raw_method, 'cash')
-                account_source = 'kassa' if method in ('cash', 'cash_register') else ('terminal_bank' if method == 'terminal' else 'main_bank_account')
+                method = normalize_payment_method(body.get('payment_method', 'cash'))
+                account_source = account_source_for(method)
                 date_str = (body.get('date') or datetime.date.today().isoformat())[:10]
                 desc = body.get('title') or body.get('description') or 'Kassa operatsiyasi'
 
@@ -2399,21 +2361,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path == '/api/accounting/medication-purchases':
                 ensure_medication_purchases(conn)
                 purchase_date = (body.get('purchase_date') or datetime.date.today().isoformat())[:10]
-                raw_method = body.get('payment_method', 'cash')
-                method_map = {
-                    'cash': 'cash',
-                    'cash_register': 'cash_register',
-                    'terminal': 'terminal',
-                    'card_transfer': 'card_transfer',
-                    'online': 'payme_click',
-                    'click': 'payme_click',
-                    'payme': 'payme_click',
-                    'payme_click': 'payme_click',
-                    'bank': 'bank_wire',
-                    'bank_wire': 'bank_wire',
-                }
-                payment_method = method_map.get(raw_method, 'cash')
-                account_source = 'kassa' if payment_method in ('cash', 'cash_register') else ('terminal_bank' if payment_method == 'terminal' else 'main_bank_account')
+                payment_method = normalize_payment_method(body.get('payment_method', 'cash'))
+                account_source = account_source_for(payment_method)
                 supplier_name = (body.get('supplier_name') or '').strip()
                 invoice_number = (body.get('invoice_number') or '').strip()
                 notes = (body.get('notes') or '').strip()
@@ -2450,6 +2399,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         conn.close()
                         self._set_json_headers(400)
                         self.wfile.write(json.dumps({'error': f"'{med_name}' dori miqdori yoki narxi noto'g'ri"}, ensure_ascii=False).encode('utf-8'))
+                        return
+
+                    # Stock is counted in whole units (an INT column); 2.5 used to
+                    # be booked as an expense for 2.5 but added only 2 to stock.
+                    if qty != int(qty):
+                        conn.close()
+                        self._send_validation_error(f"'{med_name}' miqdori butun son bo'lishi kerak", 'quantity')
                         return
 
                     if qty <= 0 or unit_p < 0:
@@ -2546,7 +2502,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             it['medication_name'],
                             it['category'],
                             it['form'],
-                            it['form'],
+                            None,  # dosage is a clinical fact the purchase form never asks for
                             it['unit_price'],
                             int(it['quantity'])
                         ))
@@ -2606,8 +2562,38 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # 3b. POST /api/duty-schedule (Update Duty Schedule / Shifts)
             elif path == '/api/duty-schedule':
                 conn.close()
+                # The page sends only sanitarkas + shifts; writing the body as
+                # the whole file erased the stored nurses and doctors on every
+                # swap. Merge into the saved roster instead, and refuse markup
+                # in names because the page renders them as HTML.
+                if not isinstance(body, dict) or not isinstance(body.get('shifts'), list):
+                    self._send_validation_error("Navbatchilik jadvali noto'g'ri formatda", 'shifts')
+                    return
+                if len(body['shifts']) > 400:
+                    self._send_validation_error("Navbatchilik jadvalida juda ko'p kun bor", 'shifts')
+                    return
+
+                def _has_markup(v):
+                    if isinstance(v, str):
+                        return any(ch in v for ch in '<>"')
+                    if isinstance(v, dict):
+                        return any(_has_markup(x) for x in v.values())
+                    if isinstance(v, list):
+                        return any(_has_markup(x) for x in v)
+                    return False
+
+                if any(not isinstance(sh, dict) for sh in body['shifts']) or _has_markup(body.get('shifts')) or _has_markup(body.get('sanitarkas')):
+                    self._send_validation_error("Ismlarda < > \" belgilariga ruxsat yo'q", 'shifts')
+                    return
                 ds_file = os.path.join(BASE_DIR, 'data', 'duty_schedule.json')
-                write_json_atomic(ds_file, body)
+                saved = read_json_file(ds_file, default=None)
+                if not isinstance(saved, dict):
+                    saved = {}
+                saved['shifts'] = body['shifts']
+                if isinstance(body.get('sanitarkas'), list):
+                    saved['sanitarkas'] = body['sanitarkas']
+                saved['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                write_json_atomic(ds_file, saved)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': 'Navbatchilik jadvali muvaffaqiyatli saqlandi'}, ensure_ascii=False).encode('utf-8'))
 
@@ -3062,49 +3048,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if body.get('allergic_status'):
                     cur.execute("UPDATE patients SET medical_allergies = ? WHERE id = ? OR patient_code = ?", (body.get('allergic_status'), pid, pid))
 
-                # Also mirror into consultations table
-                try:
-                    cur.execute("SELECT id FROM consultations WHERE patient_id = ? ORDER BY consultation_date DESC LIMIT 1", (pid,))
-                    c_exist = cur.fetchone()
-                    if c_exist:
-                        cur.execute("""
-                            UPDATE consultations
-                            SET primary_complaint = COALESCE(?, primary_complaint),
-                                onset_note = COALESCE(?, onset_note),
-                                observed_mood = COALESCE(?, observed_mood),
-                                working_diagnosis = COALESCE(?, working_diagnosis),
-                                icd10_code = COALESCE(?, icd10_code),
-                                drug_allergies = COALESCE(?, drug_allergies),
-                                doctor_id = COALESCE(?, doctor_id)
-                            WHERE id = ?
-                        """, (
-                            body.get('complaints'),
-                            body.get('anamnesis_morbi'),
-                            body.get('psychiatric_status') or body.get('somatic_status'),
-                            body.get('diagnosis_primary'),
-                            body.get('icd10_code'),
-                            body.get('allergic_status'),
-                            body.get('doctor_id'),
-                            c_exist[0]
-                        ))
-                    else:
-                        c_id = new_record_id(cur, 'consultations', 'CONS-2026')
-                        cur.execute("""
-                            INSERT INTO consultations (id, patient_id, doctor_id, primary_complaint, onset_note, observed_mood, working_diagnosis, icd10_code, drug_allergies, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'final')
-                        """, (
-                            c_id,
-                            pid,
-                            body.get('doctor_id'),
-                            body.get('complaints', ''),
-                            body.get('anamnesis_morbi', ''),
-                            body.get('psychiatric_status') or body.get('somatic_status', ''),
-                            body.get('diagnosis_primary', ''),
-                            body.get('icd10_code') or None,
-                            body.get('allergic_status', '')
-                        ))
-                except Exception as _e_cons:
-                    print("Mirroring to consultations:", _e_cons)
+                # The anamnesis used to be copied into the patient's latest
+                # consultation (or a new 'final' one), recording a suicide-risk
+                # assessment of 'none' that nobody made and overwriting signed
+                # intakes. Consultations are written only by the consultation
+                # page now.
 
                 conn.commit()
                 conn.close()
@@ -4634,8 +4582,16 @@ def run_server():
             print(f"[!] Telegram scheduler ishga tushmadi: {_e_sched}")
 
     while True:
+        # A port that is already taken (an old server still running) must stop
+        # this process: retrying it forever kept the old code serving while
+        # systemd reported the new one as up.
         try:
-            with http.server.ThreadingHTTPServer((bind_host, PORT), ClinicRequestHandler) as httpd:
+            httpd_main = http.server.ThreadingHTTPServer((bind_host, PORT), ClinicRequestHandler)
+        except OSError as e:
+            print(f"[!] Port {PORT} band qilinmadi: {e}")
+            sys.exit(1)
+        try:
+            with httpd_main as httpd:
                 try:
                     httpd.serve_forever()
                 except KeyboardInterrupt:

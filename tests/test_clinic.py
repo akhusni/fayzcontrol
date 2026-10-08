@@ -2920,6 +2920,87 @@ def sweep_probe_accounts(when):
               + ', '.join(u['username'] for u in stale))
 
 
+class DutyScheduleSave(ApiTest):
+    """The duty roster is a JSON file the page rewrites on every shift swap."""
+
+    ROSTER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'duty_schedule.json')
+
+    def setUp(self):
+        super().setUp()
+        # The roster is a tracked file; put its exact bytes back afterwards.
+        self._roster_bytes = None
+        if os.path.exists(self.ROSTER):
+            with open(self.ROSTER, 'rb') as f:
+                self._roster_bytes = f.read()
+
+    def tearDown(self):
+        if self._roster_bytes is not None:
+            with open(self.ROSTER, 'wb') as f:
+                f.write(self._roster_bytes)
+        super().tearDown()
+
+    def test_saving_shifts_keeps_nurses_and_doctors(self):
+        """A swap sends only sanitarkas + shifts; it used to erase the rest."""
+        st, before = self.api.get('/api/duty-schedule')
+        self.assertEqual(st, 200)
+        st, res = self.api.post('/api/duty-schedule', {
+            'sanitarkas': before.get('sanitarkas', []),
+            'shifts': before.get('shifts', []),
+        })
+        self.assertEqual(st, 200, res)
+        st, after = self.api.get('/api/duty-schedule')
+        self.assertEqual(after.get('nurses'), before.get('nurses'))
+        self.assertEqual(after.get('doctors'), before.get('doctors'))
+        self.assertEqual(after.get('shifts'), before.get('shifts'))
+
+    def test_refuses_bad_shape_and_markup(self):
+        st, res = self.api.post('/api/duty-schedule', {'shifts': 'hammasi'})
+        self.assertEqual(st, 400, res)
+        st, res = self.api.post('/api/duty-schedule', {
+            'shifts': [{'date': '2026-10-01', 'sanitar_primary': '<img src=x onerror=alert(1)>'}],
+        })
+        self.assertEqual(st, 400, res)
+        self.assertIn('error', res)
+
+
+class AccountingPaymentMethods(ApiTest):
+    def test_card_is_stored_as_terminal(self):
+        """'card' was known only to the payments route; journal entries fell back to cash."""
+        st, res = self.api.post('/api/accounting/transaction', {
+            'type': 'expense', 'category': 'operational_expense', 'amount': 1000,
+            'payment_method': 'card', 'title': 'Suite probe: card method',
+        })
+        self.assertEqual(st, 201, res)
+        st, data = self.api.get('/api/accounting/data')
+        txn = next(t for t in data['transactions'] if t['id'] == res['id'])
+        self.assertEqual(txn['payment_method'], 'terminal')
+        self.assertEqual(txn['account_source'], 'terminal_bank')
+
+
+class MedicationPurchaseQuantity(ApiTest):
+    def test_fractional_quantity_is_refused(self):
+        """Stock is whole units; 2.5 was billed as 2.5 but stocked as 2."""
+        st, res = self.api.post('/api/accounting/medication-purchases', {
+            'items': [{'medication_name': 'Suite probe med', 'quantity': 2.5, 'unit_price': 1000}],
+        })
+        self.assertEqual(st, 400, res)
+        self.assertEqual(res.get('field'), 'quantity')
+
+
+class AnamnesisDoesNotWriteConsultation(ApiTest):
+    def test_anamnesis_save_creates_no_consultation(self):
+        """Saving an anamnesis used to file a 'final' consultation with risk 'none'."""
+        pid = self.make_patient('Anamnez Sinov')
+        st, res = self.api.post('/api/doctor/anamnesis', {
+            'patient_id': pid, 'complaints': 'Bosh ogrigi',
+            'somatic_status': 'Qoniqarli',
+        })
+        self.assertIn(st, (200, 201), res)
+        st, cons = self.api.get('/api/consultations/patient/' + pid)
+        self.assertEqual(st, 200, cons)
+        self.assertEqual(cons['consultations'], [])
+
+
 if __name__ == '__main__':
     argv = [sys.argv[0]]
     verbose = '-v' in sys.argv or '--verbose' in sys.argv

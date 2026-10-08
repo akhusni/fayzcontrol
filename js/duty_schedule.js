@@ -15,6 +15,23 @@
     { id: "SAN-06", name: "Musaxanova Fotima", full_name: "Musaxanova Fotima Danabayevna", phone: "+998 90 123-45-06" }
   ];
 
+  // Names from the saved roster go straight into innerHTML all over this
+  // page; stripping markup characters once here keeps a crafted name from
+  // running as code in every viewer's browser. Real names never use them.
+  function cleanShift(shift) {
+    const out = {};
+    Object.keys(shift || {}).forEach(k => {
+      const v = shift[k];
+      out[k] = typeof v === 'string' ? v.replace(/[<>"&]/g, '') : v;
+    });
+    return out;
+  }
+
+  function notify(msg, type) {
+    if (window.FMH_Toast) window.FMH_Toast(msg, type);
+    else console.warn(msg);
+  }
+
   const UZ_MONTHS = [
     "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
     "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"
@@ -115,7 +132,7 @@
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.shifts) && data.shifts.length > 0) {
-          State.rawShifts = data.shifts;
+          State.rawShifts = data.shifts.map(cleanShift);
         }
       }
     } catch (e) {
@@ -636,14 +653,17 @@
     const targetStaff = document.getElementById('swap-target-staff').value;
 
     if (!fromDate || !toDate) {
-      alert("Ikkala sanani ham tanlang");
+      notify("Ikkala sanani ham tanlang", "warning");
       return;
     }
 
     if (fromDate === toDate) {
-      alert("Bir xil sanani tanlab bo'lmaydi");
+      notify("Bir xil sanani tanlab bo'lmaydi", "warning");
       return;
     }
+
+    // Keep a copy so a refused save can be undone on screen too.
+    const before = JSON.parse(JSON.stringify(State.rawShifts || []));
 
     // Perform swap in local State.rawShifts
     const s1 = State.rawShifts.find(s => s.date === fromDate);
@@ -666,32 +686,38 @@
       State.rawShifts = monthShifts;
     }
 
-    // Persist to server via POST /api/duty-schedule
+    // Persist to server via POST /api/duty-schedule. The swap used to be
+    // reported as done even when the server refused it (e.g. a read-only
+    // role), so staff believed in a shift change nobody else could see.
+    let saveError = null;
     try {
-      await fetch('/api/duty-schedule', {
+      const res = await fetch('/api/duty-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          updated_at: new Date().toISOString(),
-          hospital: "Fayz Medical House",
-          operating_mode: "24/7 Statsionar & Poliklinika",
           sanitarkas: SANITARKAS,
           shifts: State.rawShifts
         })
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        saveError = err.error || `Saqlab bo'lmadi (${res.status})`;
+      }
     } catch (e) {
-      console.warn("Server update failed, saved locally:", e);
+      saveError = "Server bilan aloqa yo'q. Smena saqlanmadi.";
+    }
+
+    if (saveError) {
+      State.rawShifts = before;
+      renderCurrentView();
+      notify(saveError, "danger");
+      return;
     }
 
     closeSwapModal();
     renderCurrentView();
     renderPersonalDashboard();
-
-    if (window.FMH_Toast) {
-      window.FMH_Toast(`✅ Smena muvaffaqiyatli almashtirildi! (${fromDate} ⇄ ${toDate})`, "success");
-    } else {
-      alert("Smena muvaffaqiyatli almashtirildi!");
-    }
+    notify(`✅ Smena muvaffaqiyatli almashtirildi! (${fromDate} ⇄ ${toDate})`, "success");
   }
 
   // -------------------------------------------------------------------------
@@ -718,13 +744,9 @@
     msg += `\n📞 Aloqa: +998 71 209-99-10\n📍 Yunusobod, Nurmakon ko'chasi 2A`;
 
     navigator.clipboard.writeText(msg).then(() => {
-      if (window.FMH_Toast) {
-        window.FMH_Toast("✅ Telegram uchun navbatchilik jadvali nusxalandi!", "success");
-      } else {
-        alert("Telegram uchun navbatchilik jadvali nusxalandi!");
-      }
+      notify("✅ Telegram uchun navbatchilik jadvali nusxalandi!", "success");
     }).catch(() => {
-      alert("Nusxalab bo'lmadi. Brauzer ruxsatini tekshiring.");
+      notify("Nusxalab bo'lmadi. Brauzer ruxsatini tekshiring.", "danger");
     });
   }
 

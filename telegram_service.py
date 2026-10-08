@@ -26,8 +26,13 @@ import db
 import nursery
 
 # Telegram Configuration
-BOT_TOKEN = "8433988355:AAHbkHqZSkhXjMmqN-SxPRbvzAp1tir2BI0"
-CHAT_ID = -1004441223890
+# The bot token used to be hard-coded here and was pushed to a public GitHub
+# repo, so anyone could post as the clinic bot. It now comes only from the
+# environment; with no token the bot stays off, which also keeps local test
+# runs from posting fake payments into the real staff group.
+BOT_TOKEN = os.environ.get("FMH_TELEGRAM_BOT_TOKEN", "").strip()
+ENABLED = bool(BOT_TOKEN)
+CHAT_ID = int(os.environ.get("FMH_TELEGRAM_CHAT_ID", "-1004441223890"))
 
 TOPIC_NURSES = 2        # "Hamshira"
 TOPIC_DOCTORS = 4       # "Doctor"
@@ -1532,8 +1537,31 @@ def generate_and_send_daily_closing_report(target_date=None):
     return True
 
 
-# Global scheduler state
-_last_closing_date = None
+# Global scheduler state. The last closing date is kept on disk: held only in
+# memory, every restart after 21:00 (a deploy, a crash) posted the day's
+# closing report again.
+_STATE_FILE = os.path.join(BASE_DIR, 'data', 'telegram_state.json')
+
+
+def _load_last_closing_date():
+    try:
+        with open(_STATE_FILE, encoding='utf-8') as f:
+            return json.load(f).get('last_closing_date')
+    except Exception:
+        return None
+
+
+def _save_last_closing_date(day_iso):
+    tmp = _STATE_FILE + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'last_closing_date': day_iso}, f)
+        os.replace(tmp, _STATE_FILE)
+    except Exception as e:
+        print(f"[Daily Closing Scheduler] holat saqlanmadi: {e}")
+
+
+_last_closing_date = _load_last_closing_date()
 _scheduler_started = False
 _scheduler_lock = threading.Lock()
 
@@ -1557,8 +1585,9 @@ def start_daily_closing_scheduler():
                 today_iso = now.date().isoformat()
                 if now.hour >= 21 and _last_closing_date != today_iso:
                     print(f"[*] Soat 21:00! Kunlik moliya yakuni hisoboti yuborilmoqda: {today_iso}")
-                    generate_and_send_daily_closing_report()
                     _last_closing_date = today_iso
+                    _save_last_closing_date(today_iso)
+                    generate_and_send_daily_closing_report()
             except Exception as e:
                 print(f"[Daily Closing Scheduler Error] {e}")
             import time
@@ -1603,15 +1632,29 @@ def _is_already_notified(txn_id):
         return str(txn_id) in _notified_transaction_ids
 
 
+def _claim(txn_id):
+    """Atomically take the right to announce txn_id; False if already taken.
+
+    The ids used to be marked only after the message went out, so the 5-second
+    watchdog could pick up a payment the request thread was still sending and
+    post it a second time.
+    """
+    with _notified_lock:
+        key = str(txn_id)
+        if key in _notified_transaction_ids:
+            return False
+        _notified_transaction_ids.add(key)
+        return True
+
+
 def notify_payment_entered_sync(pay_data):
     """
     Kassa/Bemor to'lovi (yoki qaytarish) tizimga kiritilganda darhol Telegramga xabar berish.
     """
     pay_id = pay_data.get('id')
-    txn_key = f"TXN-{pay_id}" if pay_id else None
-    if txn_key and _is_already_notified(txn_key):
+    if pay_id and _is_already_notified(f"TXN-{pay_id}"):
         return
-    if pay_id and _is_already_notified(pay_id):
+    if pay_id and not _claim(pay_id):
         return
 
     amount = float(pay_data.get('amount') or 0)
@@ -1748,7 +1791,7 @@ def notify_accounting_transaction_entered_sync(txn_data):
     Operatsion xarajat (chiqim), kirim yoki inkassatsiya kiritilganda darhol Telegramga xabar berish.
     """
     trx_id = txn_data.get('id')
-    if trx_id and _is_already_notified(trx_id):
+    if trx_id and not _claim(trx_id):
         return
 
     txn_type = txn_data.get('transaction_type') or txn_data.get('type') or 'expense'
@@ -1889,6 +1932,10 @@ def start_transaction_watchdog():
                 for row in rows:
                     t_id = row['id']
                     if not _is_already_notified(t_id):
+                        if row.get('payment_id'):
+                            # The payment id is what the request thread claims;
+                            # remember the row too so it is checked only once.
+                            _mark_as_notified(t_id)
                         # Trigger notification
                         if row.get('payment_id'):
                             # It's a payment-linked transaction
@@ -2002,6 +2049,9 @@ def run_polling():
 
 
 if __name__ == "__main__":
+    if not ENABLED:
+        print("[!] FMH_TELEGRAM_BOT_TOKEN o'rnatilmagan - Telegram bot o'chiq.")
+        sys.exit(1)
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
         if arg in ("--nurses", "-n", "nurses"):
