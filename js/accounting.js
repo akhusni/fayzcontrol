@@ -306,7 +306,7 @@
               bed_name: row.room_number ? `${row.room_number}-xona (${row.bed_code || ''})` : (row.bed_code || 'Ambulator'),
               patient_name: row.patient_name || 'Bemor',
               patient_phone: row.patient_phone || '+998 (90) --- -- --',
-              patient_city: 'Toshkent sh.',
+              patient_city: '',
               program: row.program_type || 'Statsionar',
               // The stay's own programme decides the package; the price is
               // only a guess for a programme that is not a package id.
@@ -412,10 +412,10 @@
             bed_name: getBedName(booking.bed_id),
             patient_name: booking.patient_name,
             patient_phone: booking.patient_phone || "+998 (90) --- -- --",
-            patient_city: "Toshkent sh.",
+            patient_city: '',
             program: progName,
             package_type: packageKey,
-            doctor: booking.doctor || "Dr. Rustam Ziyayev (Bosh Narkolog)",
+            doctor: booking.doctor || '',
             start_date: booking.start_date || getTodayISO(),
             end_date: booking.end_date || getOffsetDateStr(10),
             days_count: days,
@@ -744,7 +744,7 @@
           <td>
             <div class="patient-cell">
               <span class="patient-name-bold">${b.patient_name}</span>
-              <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${b.patient_phone} • ${b.patient_city || 'Toshkent'}</span>
+              <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${b.patient_phone}${b.patient_city ? ' • ' + b.patient_city : ''}</span>
             </div>
           </td>
           <td>
@@ -1490,14 +1490,14 @@
             <div class="title">Bemor Ma'lumotlari:</div>
             <div class="name">${bill.patient_name}</div>
             <div style="font-size: 0.8rem; color: #475569;">Tel: ${bill.patient_phone}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Manzil: ${bill.patient_city || 'Toshkent'}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Manzil: ${bill.patient_city || '—'}</div>
           </div>
           <div class="inv-meta-col">
             <div class="title">Muolaja / Tarif Paketi:</div>
             <div style="font-weight: 700; color: #0f172a;">${bill.program}</div>
             <div style="font-size: 0.8rem; color: #475569;">Joy: ${bill.bed_name || 'Ambulator'}</div>
             <div style="font-size: 0.8rem; color: #475569;">Davomiyligi: ${bill.days_count} kun (${bill.start_date} — ${bill.end_date})</div>
-            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${bill.doctor}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${bill.doctor || '—'}</div>
           </div>
         </div>
 
@@ -1550,7 +1550,7 @@
           </div>
 
           <div style="text-align: right;">
-            <div>Kassir-Buxgalter: ____________________ / Dilnoza R.</div>
+            <div>Kassir-Buxgalter: ____________________</div>
             <div style="margin-top: 6px;">Bemor (Vakil): ____________________ / ${bill.patient_name.split(' ')[0]}</div>
           </div>
         </div>
@@ -1705,15 +1705,22 @@
           payment_date: getTodayISO()
         })
       });
-      if (res.ok) {
-        if (isRefund) {
-          showToast(`💸 ${bill.patient_name} uchun ${formatUZS(Math.abs(amount))} qaytarish kassa jurnaliga kiritildi!`, 'info');
-        } else {
-          showToast(`✅ ${bill.patient_name} uchun ${formatUZS(amount)} to'lov muvaffaqiyatli qabul qilindi!`, 'success');
-        }
+      // A refused payment used to close the form with no message, so the
+      // cashier could not tell it had not been recorded. The form now stays
+      // open with the server's reason.
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || `To'lov saqlanmadi (${res.status})`, 'danger');
+        return;
+      }
+      if (isRefund) {
+        showToast(`💸 ${bill.patient_name} uchun ${formatUZS(Math.abs(amount))} qaytarish kassa jurnaliga kiritildi!`, 'info');
+      } else {
+        showToast(`✅ ${bill.patient_name} uchun ${formatUZS(amount)} to'lov muvaffaqiyatli qabul qilindi!`, 'success');
       }
     } catch (err) {
-      console.warn("Payment offline save:", err);
+      showToast("Server bilan aloqa yo'q — to'lov saqlanmadi.", 'danger');
+      return;
     }
 
     closeAllModals();
@@ -1881,6 +1888,12 @@
       showToast("Iltimos, to'g'ri inkassatsiya summasini kiriting!", 'warning');
       return;
     }
+    // The field came pre-filled with a name nobody at the clinic has, so
+    // every hand-over was signed by him unless somebody retyped it.
+    if (!collector) {
+      showToast("Inkassator / mas'ul xodim ismini kiriting.", 'warning');
+      return;
+    }
 
     // Check available cash
     let cashBalance = 0;
@@ -1908,7 +1921,7 @@
       bill_id: null,
       date: getTodayISO(),
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-      cashier: collector || "Xusnitdinov Azamat",
+      cashier: collector,
       notes: `${bank} bank hisob raqamiga topshirildi. ${notes}`
     };
 
@@ -1983,6 +1996,7 @@
     const totalDue = pkg.rate * days;
     const debt = Math.max(0, totalDue - advancePaid);
 
+    let resJsonInvoiceId = null;
     try {
       const res = await fetch('/api/admissions', {
         method: 'POST',
@@ -2005,12 +2019,23 @@
         showToast(resJson.error || "Qabul saqlanmadi.", 'error');
         return;
       }
-      if (resJson.invoice_id && advancePaid > 0) {
-        await fetch('/api/payments', {
+      resJsonInvoiceId = resJson.invoice_id || null;
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — qabul saqlanmadi.", 'error');
+      return;
+    }
+
+    // The stay is saved by now; the advance is a second request. Its answer
+    // was ignored, so a refused advance still read as paid. Say so instead,
+    // and let the stay stand.
+    if (resJsonInvoiceId && advancePaid > 0) {
+      let advanceError = null;
+      try {
+        const payRes = await fetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            invoice_id: resJson.invoice_id,
+            invoice_id: resJsonInvoiceId,
             amount: advancePaid,
             payment_method: method,
             account_destination: method === 'cash' ? 'kassa' : 'terminal_bank',
@@ -2018,10 +2043,16 @@
             payment_date: getTodayISO()
           })
         });
+        if (!payRes.ok) {
+          const err = await payRes.json().catch(() => ({}));
+          advanceError = err.error || `Xatolik (${payRes.status})`;
+        }
+      } catch (e) {
+        advanceError = "Server bilan aloqa yo'q";
       }
-    } catch (e) {
-      showToast("Server bilan aloqa yo'q — qabul saqlanmadi.", 'error');
-      return;
+      if (advanceError) {
+        showToast(`Diqqat: hisob ochildi, lekin avans to'lovi saqlanmadi — ${esc(advanceError)}. To'lovni qayta kiriting.`, 'warning');
+      }
     }
 
     await syncWithLedgerAndBackend();
@@ -2720,7 +2751,7 @@
         </div>
 
         <div style="text-align: center; border-top: 1px dashed #64748b; padding-top: 1rem; font-size: 0.75rem; color: #64748b;">
-          Kassir: Dilnoza Rahimova ______________<br>
+          Kassir: ______________<br>
           Bosh buxgalter tasdiqladi: ______________
         </div>
       </div>

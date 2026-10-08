@@ -136,6 +136,9 @@
   const TOAST_DURATION = { success: 3200, info: 3600, warning: 6500, danger: 9000 };
 
   window.FMH_Toast = function (message, type = 'success', options = {}) {
+    // Pages pass 'error' for refusals, a type this function did not know, so
+    // every server refusal was drawn as a green, short-lived success toast.
+    if (type === 'error') type = 'danger';
     let container = document.getElementById('fmh-toast-container');
     if (!container) {
       container = document.createElement('div');

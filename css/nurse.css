@@ -598,3 +598,98 @@ body.day-mode .prn-block { background: #f8fafc; }
   }
   .vital-note { width: auto; min-width: 120px; }
 }
+
+/* --------------------------------------------------------------------------
+   Treatment plan view (js/fmh_plan_view.js) — read-only, nurse + ward pages
+   -------------------------------------------------------------------------- */
+.btn-plan-view {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-input, #060e1f);
+  color: var(--text-secondary, #cbd5e1);
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-plan-view:hover { border-color: var(--primary, #38bdf8); color: var(--text-primary, #f8fafc); }
+
+.plan-view-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  background: rgba(2, 6, 23, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.plan-view-card {
+  width: 100%;
+  max-width: 620px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel, #0a1b33);
+  color: var(--text-primary, #f8fafc);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 14px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+}
+.plan-view-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+.plan-view-title { font-weight: 800; font-size: 0.98rem; min-width: 0; overflow-wrap: anywhere; }
+.plan-view-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.plan-view-body { padding: 14px 18px 18px; overflow-y: auto; }
+.plan-view-meta { font-size: 0.8rem; font-weight: 700; color: var(--primary, #38bdf8); margin-bottom: 10px; }
+.plan-view-note { font-size: 0.76rem; color: var(--text-muted, #94a3b8); margin: 6px 0 10px; }
+.plan-view-empty { padding: 18px 0; text-align: center; color: var(--text-muted, #94a3b8); font-size: 0.86rem; }
+.plan-view-field { margin-bottom: 10px; }
+.plan-view-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 3px;
+}
+.plan-view-value { font-size: 0.88rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.plan-view-table-wrap { overflow-x: auto; }
+.plan-view-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.plan-view-table th,
+.plan-view-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+.plan-view-table th { color: var(--text-muted, #94a3b8); font-weight: 700; }
+
+[data-theme="day"] .plan-view-card { background: #ffffff; color: #0f172a; border-color: #cbd5e1; }
+[data-theme="day"] .btn-plan-view { background: #f8fafc; color: #334155; border-color: #cbd5e1; }
+
+@media print {
+  .btn-plan-view,
+  .plan-view-backdrop { display: none !important; }
+}

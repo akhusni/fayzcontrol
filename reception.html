@@ -17,7 +17,7 @@
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.4"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
   <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="reception-portal">
@@ -771,6 +771,43 @@
   </div>
 
   <!-- ================================================================
+       MODAL: ACCEPT A WEBSITE ENQUIRY (doctor + time are required)
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-request-accept">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-user-check" style="color:var(--primary-light);"></i> So'rovni Qabul Qilish</div>
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-request-accept')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:0.85rem;font-weight:700;margin-bottom:1rem;" id="req-accept-patient">—</div>
+        <form id="req-accept-form" onsubmit="event.preventDefault(); window.FMH_Reception.confirmAcceptRequest();">
+          <div style="display:flex;flex-direction:column;gap:0.9rem;">
+            <div class="form-group">
+              <label class="form-label" for="req-accept-doctor">Shifokor *</label>
+              <select id="req-accept-doctor" class="form-select" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="req-accept-date">Qabul sanasi *</label>
+              <input type="date" id="req-accept-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="req-accept-time">Qabul vaqti *</label>
+              <input type="time" id="req-accept-time" class="form-input" required>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-request-accept')">Bekor</button>
+        <button class="btn-portal btn-primary-portal" id="req-accept-submit" onclick="window.FMH_Reception.confirmAcceptRequest()">
+          <i class="fas fa-calendar-check"></i> Qabul qilish va yozish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
        MODAL: NEW / EDIT CALL LOG
        ================================================================ -->
   <div class="modal-backdrop" id="modal-call-log">
@@ -882,7 +919,7 @@
 
   <!-- Scripts -->
   <script src="js/xlsx.full.min.js"></script>
-    <script src="js/unified_print_engine.js?v=5.3"></script>
-<script src="js/reception.js?v=17.0"></script>
+    <script src="js/unified_print_engine.js?v=5.4"></script>
+<script src="js/reception.js?v=17.1"></script>
 </body>
 </html>

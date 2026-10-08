@@ -18,7 +18,7 @@
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.4"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
   <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="accounting-portal">
@@ -197,7 +197,7 @@
         <button class="date-range-btn" data-range="today" onclick="window.FMH_Accounting.setDateRangePreset('today')">Bugun</button>
         <button class="date-range-btn" data-range="yesterday" onclick="window.FMH_Accounting.setDateRangePreset('yesterday')">Kecha</button>
         <button class="date-range-btn" data-range="week" onclick="window.FMH_Accounting.setDateRangePreset('week')">Shu Hafta (7 kun)</button>
-        <button class="date-range-btn" data-range="month" onclick="window.FMH_Accounting.setDateRangePreset('month')">Shu Oy (Avgust)</button>
+        <button class="date-range-btn" id="accounting-month-btn" data-range="month" onclick="window.FMH_Accounting.setDateRangePreset('month')">Shu Oy</button>
       </div>
 
       <div class="date-custom-inputs">
@@ -941,7 +941,7 @@
 
             <div>
               <label class="form-label" for="incasso-collector-name">Inkassator / Mas'ul Xodim *</label>
-              <input type="text" id="incasso-collector-name" class="form-input" value="Xusnitdinov Azamat" required>
+              <input type="text" id="incasso-collector-name" class="form-input" value="" placeholder="F.I.Sh." required>
             </div>
 
             <div class="form-group-full">
@@ -1057,8 +1057,8 @@
   </div>
 
   <script src="js/xlsx.full.min.js"></script>
-  <script src="js/unified_print_engine.js?v=5.3"></script>
-  <script src="js/accounting.js?v=10.1"></script>
+  <script src="js/unified_print_engine.js?v=5.4"></script>
+  <script src="js/accounting.js?v=10.2"></script>
   <div id="print-area"></div>
 </body>
 </html>

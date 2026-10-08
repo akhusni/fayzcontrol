@@ -497,6 +497,7 @@ from db import (
     ensure_appointment_requests,
     ensure_medication_purchases,
     ensure_appointment_service_types,
+    APPOINTMENT_SERVICE_TYPES,
     ensure_staff_roles,
     load_config
 )
@@ -3281,6 +3282,53 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 # --- accept: register the patient and book the visit --------
+                #
+                # The desk's accept button sent an empty body, so every
+                # accepted enquiry was booked with no doctor at 10:00 -- a
+                # visit nobody's diary showed, at a time nobody chose. A
+                # booking is a slot in one doctor's day (the same rule as
+                # /api/reception/appointment), so both are required, checked
+                # before anything is written, and the slot must be free.
+                doc_id = (str(body.get('doctor_id') or '')).strip()
+                if not doc_id:
+                    self._send_validation_error("Shifokor tanlanmagan.", 'doctor_id')
+                    return
+                cur.execute('SELECT id FROM staff WHERE id = ?', (doc_id,))
+                if not cur.fetchone():
+                    self._send_validation_error(f"Shifokor topilmadi ({doc_id}).", 'doctor_id')
+                    return
+                apt_day, _derr = parse_date_param(
+                    body.get('appointment_date') or str(row['preferred_date'] or '')[:10],
+                    default_today=True, field='Qabul sanasi')
+                if _derr:
+                    self._send_validation_error(_derr, 'appointment_date')
+                    return
+                apt_date = apt_day.isoformat()
+                apt_time = (str(body.get('appointment_time') or '')).strip()
+                if not apt_time:
+                    self._send_validation_error("Qabul vaqti tanlanmagan.", 'appointment_time')
+                    return
+                if not re.match(r'^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?$', apt_time):
+                    self._send_validation_error(
+                        "Qabul vaqti noto'g'ri. Kutilgan format: SS:DD (masalan 14:30).",
+                        'appointment_time')
+                    return
+                cur.execute("""
+                    SELECT id FROM appointments
+                    WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ?
+                      AND status != 'cancelled'
+                    LIMIT 1
+                """, (doc_id, apt_date, apt_time))
+                if cur.fetchone():
+                    self._send_validation_error(
+                        f"Bu vaqt band: shifokorda {apt_date} soat {apt_time} ga allaqachon yozilgan bemor bor.",
+                        'appointment_time')
+                    return
+                # The website's service field is free text; a value the
+                # appointments CHECK does not know made the insert fail with a
+                # 500 after the patient row was already built.
+                apt_service = row['service_type'] if row['service_type'] in APPOINTMENT_SERVICE_TYPES else 'outpatient'
+
                 phone = (row['phone'] or '').strip()
                 name = (row['full_name'] or '').strip() or 'Bemor'
                 patient_id = None
@@ -3298,18 +3346,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     """, (patient_id, _pcode, name, phone))
 
                 apt_id = new_record_id(cur, 'appointments', 'APT-2026')
-                apt_date = (body.get('appointment_date')
-                            or str(row['preferred_date'] or '')[:10]
-                            or datetime.date.today().isoformat())
-                apt_time = (body.get('appointment_time') or '10:00')
                 cur.execute("""
                     INSERT INTO appointments (id, patient_id, patient_name, patient_phone,
                                               doctor_id, service_type, appointment_date,
                                               appointment_time, status, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
                 """, (apt_id, patient_id, name, phone,
-                      body.get('doctor_id') or None,
-                      row['service_type'] or 'outpatient',
+                      doc_id,
+                      apt_service,
                       apt_date, apt_time,
                       row['note'] or 'Saytdan kelgan so\'rov'))
 
@@ -3398,6 +3442,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 ))
                 conn.commit()
                 self._send_enquiry_ok(req_id)
+                # Tell the staff group, so a lead is answered while it is
+                # warm instead of when somebody next opens the tab. Runs on a
+                # background thread after the reply has been sent, so a slow
+                # or failing Telegram can neither delay nor fail the website;
+                # with no bot token configured telegram_service is None.
+                if telegram_service:
+                    try:
+                        telegram_service.notify_enquiry_async({
+                            'full_name': name[:160],
+                            'phone': phone[:60],
+                            'preferred_date': preferred,
+                            'note': (body.get('note') or body.get('message') or '')[:1000],
+                        })
+                    except Exception as _e_notify:
+                        print(f"[Telegram Notify Error] {_e_notify}")
 
             elif path == '/api/reception/appointment':
                 apt_id = body.get('id') or new_record_id(cur, 'appointments', 'APT-2026')

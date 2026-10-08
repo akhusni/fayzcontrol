@@ -123,6 +123,10 @@
             </div>
           </div>
           ${allergy}
+          <button type="button" class="btn-plan-view no-print" data-pid="${esc(p.patient_id)}"
+                  data-name="${esc(p.patient_name)}" title="Shifokorning davolash rejasi (faqat o'qish)">
+            <i class="fas fa-clipboard-list"></i> Davolash rejasi
+          </button>
           <div class="ward-status ${p.seen ? 'seen' : 'waiting'}">
             <i class="fas ${p.seen ? 'fa-circle-check' : 'fa-clock'}"></i>
             ${p.seen ? "Ko'rikdan o'tgan" : 'Kutilmoqda'}
@@ -266,6 +270,11 @@
       .addEventListener('change', e => go(e.target.value || todayISO()));
 
     document.getElementById('ward-container').addEventListener('click', e => {
+      const plan = e.target.closest('.btn-plan-view');
+      if (plan) {
+        if (window.FMH_PlanView) window.FMH_PlanView.show(plan.dataset.pid, plan.dataset.name);
+        return;
+      }
       const btn = e.target.closest('.btn-ward-save');
       if (!btn) return;
       save(btn.dataset.adm, btn.dataset.patient, btn);

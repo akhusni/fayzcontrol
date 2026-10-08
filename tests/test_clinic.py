@@ -1780,6 +1780,11 @@ class PublicEnquiry(ApiTest):
         self.assertIn('Ko`rinadigan Bemor', names)
         self.assertGreaterEqual(body['waiting'], 1)
 
+    def slot(self, minute=0):
+        """A doctor, day and time no other test (or earlier run) is using."""
+        return {'doctor_id': DOCTOR, 'appointment_date': '2031-03-14',
+                'appointment_time': f'{8 + os.getpid() % 9:02d}:{(minute + os.getpid()) % 60:02d}'}
+
     def test_accepting_is_what_creates_the_patient(self):
         _, body, _ = self.enquire(
             {'full_name': 'Sanjar Toshmatov', 'phone': '+998934445566'},
@@ -1787,7 +1792,8 @@ class PublicEnquiry(ApiTest):
         req_id = body['request_id']
         before = self.table_counts()
 
-        status, result = self.api.post(f'/api/reception/requests/{req_id}/accept', {})
+        status, result = self.api.post(f'/api/reception/requests/{req_id}/accept',
+                                       self.slot(1))
         self.assertEqual(status, 201, f"accept failed: {result}")
         self.assertIn('patient_id', result)
         self.assertIn('appointment_id', result)
@@ -1810,10 +1816,119 @@ class PublicEnquiry(ApiTest):
         _, body, _ = self.enquire({'full_name': 'Ikki Marta', 'phone': '+998901112233'},
                                   ip='203.0.113.22')
         req_id = body['request_id']
-        self.assertEqual(self.api.post(f'/api/reception/requests/{req_id}/accept', {})[0], 201)
+        self.assertEqual(self.api.post(f'/api/reception/requests/{req_id}/accept',
+                                       self.slot(2))[0], 201)
         status, second = self.api.post(f'/api/reception/requests/{req_id}/reject', {})
         self.assertEqual(status, 400, 'the same enquiry was decided twice')
         self.assertEqual(second.get('field'), 'status')
+
+    def test_accepting_needs_a_doctor_and_a_time(self):
+        """
+        The desk's accept button sent an empty body and the server booked the
+        patient with no doctor at 10:00: a visit in nobody's diary, at a time
+        nobody chose. Now both are required, and a refusal creates nothing.
+        """
+        _, body, _ = self.enquire({'full_name': 'Shifokorsiz Bemor', 'phone': '+998935556677'},
+                                  ip='203.0.113.23')
+        req_id = body['request_id']
+        before = self.table_counts()
+        url = f'/api/reception/requests/{req_id}/accept'
+        good = self.slot(3)
+        for payload, field in [
+                ({}, 'doctor_id'),
+                (dict(good, doctor_id='STF-NOBODY-404'), 'doctor_id'),
+                ({'doctor_id': DOCTOR, 'appointment_date': good['appointment_date']},
+                 'appointment_time'),
+                (dict(good, appointment_time='25:99'), 'appointment_time'),
+                (dict(good, appointment_date='14.03.2031'), 'appointment_date')]:
+            status, result = self.api.post(url, payload)
+            self.assertEqual(status, 400, f"{payload} was accepted: {result}")
+            self.assertEqual(result.get('field'), field, result)
+        after = self.table_counts()
+        self.assertEqual(after['patients'], before['patients'], 'a refusal registered a patient')
+        self.assertEqual(after['appointments'], before['appointments'], 'a refusal booked a visit')
+        # Still waiting for a proper decision.
+        self.assertEqual(self.api.post(url, good)[0], 201)
+
+    def test_accepting_books_the_chosen_doctor_and_time(self):
+        _, body, _ = self.enquire({'full_name': 'Vaqtli Bemor', 'phone': '+998936667788'},
+                                  ip='203.0.113.24')
+        chosen = self.slot(4)
+        status, result = self.api.post(
+            f"/api/reception/requests/{body['request_id']}/accept", chosen)
+        self.assertEqual(status, 201, f"accept failed: {result}")
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("""SELECT doctor_id, appointment_date, appointment_time
+                           FROM appointments WHERE id = ?""", (result['appointment_id'],))
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row['doctor_id'], DOCTOR)
+        self.assertEqual(str(row['appointment_date']), chosen['appointment_date'])
+        self.assertTrue(str(row['appointment_time']).zfill(8).startswith(chosen['appointment_time']),
+                        f"booked at {row['appointment_time']}, not {chosen['appointment_time']}")
+
+    def test_an_accepted_enquiry_cannot_take_a_booked_slot(self):
+        """The same one-patient-per-slot rule as booking at the desk."""
+        same = self.slot(5)
+        first = self.enquire({'full_name': 'Birinchi Bemor', 'phone': '+998937778899'},
+                             ip='203.0.113.25')[1]['request_id']
+        second = self.enquire({'full_name': 'Ikkinchi Bemor', 'phone': '+998938889900'},
+                              ip='203.0.113.26')[1]['request_id']
+        self.assertEqual(self.api.post(f'/api/reception/requests/{first}/accept', same)[0], 201)
+        status, body = self.api.post(f'/api/reception/requests/{second}/accept', same)
+        self.assertEqual(status, 400, f"two patients were booked into one slot: {body}")
+        self.assertEqual(body.get('field'), 'appointment_time')
+
+    def test_an_unknown_service_from_the_website_does_not_break_accepting(self):
+        """
+        The website's service field is free text. A value the appointments
+        CHECK does not know made accepting fail with a 500.
+        """
+        _, body, _ = self.enquire({'full_name': 'Xizmat Matni', 'phone': '+998939990011',
+                                   'service_type': 'Narkolog maslahati'},
+                                  ip='203.0.113.27')
+        status, result = self.api.post(
+            f"/api/reception/requests/{body['request_id']}/accept", self.slot(6))
+        self.assertEqual(status, 201, f"accept failed: {result}")
+
+    def test_the_staff_group_is_told_only_what_it_needs(self):
+        """
+        A new enquiry is announced in the staff Telegram group so it is
+        answered while warm. The text comes from the open internet: it must be
+        escaped for Telegram's HTML mode, carry only name, phone, preferred
+        date and note (never the visitor's IP), and do nothing at all when no
+        bot token is configured.
+        """
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import telegram_service as tg
+        sent = []
+        saved = (tg.ENABLED, tg.send_telegram_message)
+        tg.send_telegram_message = lambda topic, text, parse_mode='HTML': sent.append(text)
+        req = {'full_name': '<b>Aziz</b> & Co', 'phone': '+998 90 111 22 33',
+               'preferred_date': '2031-03-14', 'note': 'Qo`ng`iroq qiling',
+               'ip_address': '198.51.100.7', 'id': 'REQ-SECRET'}
+        try:
+            tg.ENABLED = False
+            tg.notify_enquiry_sync(req)
+            self.assertEqual(sent, [], 'a notice went out with no bot configured')
+
+            tg.ENABLED = True
+            tg.notify_enquiry_sync(req)
+        finally:
+            tg.ENABLED, tg.send_telegram_message = saved
+        self.assertEqual(len(sent), 1)
+        text = sent[0]
+        self.assertIn('&lt;b&gt;Aziz&lt;/b&gt; &amp; Co', text, 'the name was not escaped')
+        self.assertIn('+998 90 111 22 33', text)
+        self.assertIn('2031-03-14', text)
+        self.assertIn('Qo`ng`iroq qiling', text)
+        self.assertNotIn('198.51.100.7', text, "the visitor's IP was sent to the group")
+        self.assertNotIn('REQ-SECRET', text)
 
     def test_the_inbox_is_receptions_work(self):
         username = f'suite_enq_hr_{os.getpid()}'
@@ -2472,6 +2587,45 @@ class ConsultationIntake(ApiTest):
             # But a nurse must be able to READ the plan she has to carry out.
             self.assertEqual(c.get('/api/treatment-plans/patient/' + pid)[0], 200,
                              'a nurse could not read the plan she must follow')
+        finally:
+            self.api.delete('/api/users/' + (body.get('id') or username))
+
+    def test_the_nurse_station_can_open_the_whole_plan(self):
+        """
+        Plans were saved but the nurse station and the ward round never showed
+        them. Their read-only "Davolash rejasi" view lists the patient's plans
+        and opens the active one, so a nurse must be able to read both the
+        list and the full plan -- and still not change it.
+        """
+        pid = self.make_patient('Plan For Nurse')
+        st, plan = self.api.post('/api/treatment-plans', {
+            'patient_id': pid, 'plan_type': 'outpatient',
+            'immediate_actions': 'Vitallarni 4 soatda bir nazorat qilish'})
+        self.assertEqual(st, 201, f"plan failed: {plan}")
+        username = f'suite_nurse_p_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, body = self.api.post('/api/users', {
+            'username': username, 'password': 'Suite-Probe-2026',
+            'full_name': 'Suite Nurse P', 'role': 'nurse'})
+        self.assertEqual(st, 201, f"could not create the probe account: {body}")
+        try:
+            c = Client()
+            c.login(username, 'Suite-Probe-2026')
+            c.post('/api/auth/change-password', {
+                'current_password': 'Suite-Probe-2026',
+                'new_password': 'Suite-Probe-2026-Rot',
+                'confirm_password': 'Suite-Probe-2026-Rot'})
+            st, plans = c.get('/api/treatment-plans/patient/' + pid)
+            self.assertEqual(st, 200)
+            active = [p for p in plans if p['status'] == 'active']
+            self.assertEqual([p['id'] for p in active], [plan['plan_id']])
+            st, one = c.get('/api/treatment-plans/' + plan['plan_id'])
+            self.assertEqual(st, 200, 'a nurse could not open the plan itself')
+            self.assertEqual(one['immediate_actions'], 'Vitallarni 4 soatda bir nazorat qilish')
+            self.assertEqual(
+                c.post('/api/treatment-plans',
+                       {'patient_id': pid, 'immediate_actions': 'x'})[0],
+                403, 'reading the plan let a nurse write one')
         finally:
             self.api.delete('/api/users/' + (body.get('id') or username))
 

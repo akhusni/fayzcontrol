@@ -1841,10 +1841,19 @@
       return;
     }
 
+    // Removed from the list only once the server agrees. The answer used to
+    // be ignored, so a refused delete still said "o'chirildi" and the person
+    // came back on the next load.
     try {
-      await fetch('/api/staff/' + encodeURIComponent(staffId), { method: 'DELETE' });
+      const res = await fetch('/api/staff/' + encodeURIComponent(staffId), { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || `Xodim o'chirilmadi (${res.status})`, 'danger');
+        return;
+      }
     } catch (err) {
-      console.warn('DELETE /api/staff error:', err);
+      showToast("Server bilan aloqa yo'q. Xodim o'chirilmadi.", 'danger');
+      return;
     }
 
     State.staff = State.staff.filter(s => s.id !== staffId);
@@ -2265,7 +2274,8 @@
     const newRecord = {
       id: `ATT-2026-${staffId}`,
       staff_id: staffId,
-      date: '2026-08-15',
+      // Today's date in clinic time; this was fixed to 2026-08-15.
+      date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
       check_in: form.check_in.value || '08:00',
       check_out: form.check_out.value || null,
       status: form.status.value,

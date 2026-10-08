@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 182 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 234 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil oktabr
 
 ---
@@ -186,6 +186,40 @@ o'sha kunlarni to'g'ri xodim bilan qayta belgilashi kerak.
 Daromad solig'i 12% va INPS 0,1% avvalgidek qoldi.
 
 9 ta yangi test qo'shildi, jami 228 ta test o'tadi.
+
+### 2026-10-09: 4-bosqich (A) — kichik tuzatishlar
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Barcha sahifalar | Xato xabarlari ("error") yashil, "muvaffaqiyatli" ko'rinishida chiqib, tez yo'qolardi | Xato xabari qizil chiqadi va uzoqroq turadi |
+| Qabulxona | Qo'ng'iroq qayd etilganda server javobi tekshirilmasdi — rad etilgan qo'ng'iroq ham "qayd etildi" deyilardi | Faqat server saqlaganda ro'yxatga qo'shiladi; aks holda sababi ko'rsatiladi |
+| Qabulxona | "Saytdan So'rovlar" soni faqat bo'lim ochilganda yangilanardi | Soni har daqiqada avtomatik yangilanadi |
+| Qabulxona | Saytdan kelgan so'rov qabul qilinganda bemor shifokorsiz, soat 10:00 ga yozilardi | Qabul qilishda shifokor, sana va vaqt so'raladi; server ularsiz yoki band vaqtga yozmaydi |
+| Qabulxona | Saytda xizmat turi erkin matn bo'lsa, so'rovni qabul qilish 500 xato berardi | Noma'lum xizmat turi "Ambulator" sifatida yoziladi |
+| Telegram | Saytdan yangi so'rov kelganda hech kim xabar olmasdi | Xodimlar guruhiga xabar boradi (faqat ism, telefon, istalgan sana va izoh). Bot tokeni bo'lmasa — hech narsa yuborilmaydi; sayt so'rovini sekinlashtirmaydi |
+| Hamshira posti, Statsionar ko'rigi | Shifokor saqlagan davolash rejasi bu sahifalarda ko'rinmasdi | Har bir bemor kartasida "Davolash rejasi" tugmasi — amaldagi rejani faqat o'qish uchun ochadi |
+| Buxgalteriya | To'lov server tomonidan rad etilsa oyna xabarsiz yopilardi | Oyna ochiq qoladi, sababi ko'rsatiladi |
+| Buxgalteriya | Yangi hisob ochilganda avans to'lovi rad etilsa ham "to'landi" deb hisoblanardi | Hisob ochiladi, avans saqlanmagani haqida ogohlantirish chiqadi |
+| Buxgalteriya | "Shu Oy (Avgust)" tugmasi har doim Avgust deb yozardi | Joriy oy nomi ko'rsatiladi |
+| Buxgalteriya | Inkassatsiyada o'ylab topilgan "Xusnitdinov Azamat", kvitansiya va Z-hisobotda "Dilnoza R." / "Dilnoza Rahimova" chiqardi | Ism maydoni bo'sh (majburiy), hujjatlarda bo'sh imzo chizig'i |
+| Buxgalteriya | Shifokor biriktirilmagan hisobda o'ylab topilgan "Dr. Rustam Ziyayev", manzil har doim "Toshkent" | Bo'sh yoki "—" |
+| Shifokor posti | Protokol tugmasi barcha dorilar saqlanmasa ham "tayinlandi" derdi | Nechta dori haqiqatan saqlangani aytiladi |
+| Shifokor posti | Retsept holatini o'zgartirish yoki o'chirish rad etilsa umumiy xabar chiqardi | Serverning aniq sababi ko'rsatiladi |
+| Shifokor posti | Bemor yoshi 2026 − tug'ilgan yil deb hisoblanardi | Joriy yildan hisoblanadi |
+| Shifokor posti, Navbatchilik | Sahifa yuklanguncha boshqa shifokor/sanitarka ismi ko'rinib turardi | Yuklanguncha "—" |
+| A4 blanklar | Imzo qatorida o'ylab topilgan "Dr. Xusnitdinov A." | Bo'sh — shifokor o'zi yozadi |
+| Muolaja varaqasi (chop etish) | "Katta Hamshira" imzosida o'ylab topilgan "Nilufar Karimova" | "—" |
+| HR | Xodimni o'chirish rad etilsa ham "o'chirildi" deyilardi | Faqat server o'chirganda ro'yxatdan olinadi |
+| HR | Davomat sanasi har doim 15.08.2026 | Bugungi sana |
+| Super-Portal | Xona/karavot/xodim/foydalanuvchi amallari rad etilsa umumiy xabar | Serverning aniq sababi ko'rsatiladi |
+| Bemorlar kartotekasi (CRM) | "Yangi To'lov Qabul Qilish" summani faqat ekranda o'zgartirardi — hech narsa saqlanmasdi | To'lov bu yerda saqlanmasligi va Buxgalteriyada qabul qilinishi aytiladi |
+| Hujjatlar | README dagi fayllar tuzilmasi eski (`crm-suite/`), testlar soni eskirgan | Haqiqiy tuzilma va joriy testlar soni |
+
+**Diqqat:** Telegram xabari uchun serverda `FMH_TELEGRAM_BOT_TOKEN` bo'lishi kerak.
+Xabar guruhning asosiy chatiga boradi; alohida mavzu (topic) kerak bo'lsa
+`FMH_TELEGRAM_ENQUIRY_TOPIC` ga uning raqamini yozing.
+
+6 ta yangi test qo'shildi, jami 234 ta test o'tadi.
 
 ## 2. Interfeys va foydalanish qulayligi
 
@@ -402,7 +436,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **190 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **234 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda

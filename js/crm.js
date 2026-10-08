@@ -791,21 +791,15 @@
   }
 
   // Quick Payment Modal
+  // This asked for a sum in a browser prompt and only changed the numbers on
+  // screen: nothing reached the server, so a payment "accepted" here was
+  // never on the patient's bill and vanished on the next refresh. Payments
+  // are taken in Accounting (/api/payments, against the stay's invoice), so
+  // the button now says where instead of pretending.
   function openPaymentModal(patientId) {
     const patient = state.patients.find(p => p.id === patientId);
     if (!patient) return;
-    const amount = prompt(`${patient.full_name} (${patient.patient_code}) uchun to'lov summasini kiriting (so'mda):`, patient.balance_due || 1000000);
-    if (amount && Number(amount) > 0) {
-      const num = Number(amount);
-      patient.total_paid = (patient.total_paid || 0) + num;
-      patient.balance_due = Math.max(0, (patient.balance_due || 0) - num);
-      showToast(`${formatMoney(num)} to'lov muvaffaqiyatli qabul qilindi!`, 'success');
-      applyFilters();
-      renderStats();
-      if (state.selectedPatient && state.selectedPatient.id === patientId) {
-        renderDossierFinancePane(patient);
-      }
-    }
+    showToast("To'lov bu yerda saqlanmaydi. To'lovni Buxgalteriya → bemor hisobi orqali qabul qiling.", 'warning');
   }
 
   // Export to Multi-Sheet Excel

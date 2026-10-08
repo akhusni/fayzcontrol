@@ -283,6 +283,10 @@ window.FMH_Reception = (function () {
     // 4. Periodic Real-Time Refresh (Every 4s)
     setInterval(refreshLiveDataSilently, 4000);
 
+    // Website enquiries: keep the tab badge current without opening it.
+    refreshRequestBadge();
+    setInterval(refreshRequestBadge, 60000);
+
     console.log('[FMH Reception] Portal initialized with live sync.');
   }
 
@@ -929,13 +933,30 @@ window.FMH_Reception = (function () {
     }
   }
 
-  function renderRequests(data) {
-    const host = document.getElementById('requests-list');
+  function setRequestBadge(waiting) {
     const badge = document.getElementById('tab-count-requests');
     if (badge) {
-      badge.textContent = data.waiting || 0;
-      badge.classList.toggle('is-waiting', (data.waiting || 0) > 0);
+      badge.textContent = waiting || 0;
+      badge.classList.toggle('is-waiting', (waiting || 0) > 0);
     }
+  }
+
+  // The badge was only set when somebody opened the tab, so a new website
+  // enquiry sat unseen until then. It is re-read every minute in the
+  // background; only the count changes, the list itself is left alone.
+  async function refreshRequestBadge() {
+    if (document.hidden) return;
+    try {
+      const res = await fetch('/api/reception/requests?status=new');
+      if (!res.ok) return;
+      const data = await res.json();
+      setRequestBadge(data.waiting);
+    } catch (e) { /* the next tick tries again */ }
+  }
+
+  function renderRequests(data) {
+    const host = document.getElementById('requests-list');
+    setRequestBadge(data.waiting);
     if (!data.requests.length) {
       host.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i>
         <p>Bu holatda so'rov yo'q.</p></div>`;
@@ -970,21 +991,31 @@ window.FMH_Reception = (function () {
   }
 
   async function decideRequest(id, action, button) {
-    if (action === 'reject') {
-      const ok = window.fmhConfirm
-        ? await window.fmhConfirm({
-            title: "So'rovni rad etish",
-            message: "Bu so'rov rad etilgan deb belgilanadi. Bemor kartasi ochilmaydi.",
-            confirmText: 'Rad etish', cancelText: 'Bekor qilish', type: 'warning' })
-        : true;
-      if (!ok) return;
+    // Accepting books a visit, so it first asks for the doctor and the time.
+    // It used to post an empty body and the server booked the patient with
+    // no doctor at 10:00.
+    if (action === 'accept') {
+      openAcceptRequestModal(id);
+      return;
     }
+    const ok = window.fmhConfirm
+      ? await window.fmhConfirm({
+          title: "So'rovni rad etish",
+          message: "Bu so'rov rad etilgan deb belgilanadi. Bemor kartasi ochilmaydi.",
+          confirmText: 'Rad etish', cancelText: 'Bekor qilish', type: 'warning' })
+      : true;
+    if (!ok) return;
     button.disabled = true;
+    if (!await postRequestDecision(id, action, {})) button.disabled = false;
+  }
+
+  // Returns true once the server has recorded the decision.
+  async function postRequestDecision(id, action, payload) {
     try {
       const res = await fetch(`/api/reception/requests/${encodeURIComponent(id)}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Xatolik (${res.status})`);
@@ -998,9 +1029,52 @@ window.FMH_Reception = (function () {
         renderAppointmentsTab();
         renderDirectoryTab();
       }
+      return true;
     } catch (e) {
       showToast(e.message, 'error');
-      button.disabled = false;
+      return false;
+    }
+  }
+
+  function openAcceptRequestModal(id) {
+    const req = (State.requests || []).find(r => r.id === id);
+    if (!req) return;
+    State.acceptingRequestId = id;
+    const who = document.getElementById('req-accept-patient');
+    if (who) who.textContent = `${req.full_name || '—'} · ${req.phone || '—'}`;
+    const sel = document.getElementById('req-accept-doctor');
+    if (sel) {
+      const doctors = State.data.doctors || [];
+      sel.innerHTML = '<option value="">— Shifokor tanlang —</option>' +
+        doctors.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.full_name)}</option>`).join('');
+    }
+    const dateEl = document.getElementById('req-accept-date');
+    if (dateEl) dateEl.value = req.preferred_date ? String(req.preferred_date).slice(0, 10) : todayStr();
+    const timeEl = document.getElementById('req-accept-time');
+    if (timeEl) timeEl.value = '';
+    const btn = document.getElementById('req-accept-submit');
+    if (btn) btn.disabled = false;
+    openModal('modal-request-accept');
+  }
+
+  async function confirmAcceptRequest() {
+    const id = State.acceptingRequestId;
+    if (!id) return;
+    const doctorId = document.getElementById('req-accept-doctor')?.value || '';
+    const date = document.getElementById('req-accept-date')?.value || '';
+    const time = document.getElementById('req-accept-time')?.value || '';
+    if (!doctorId) { showToast('Shifokorni tanlang', 'error'); return; }
+    if (!date) { showToast('Qabul sanasini tanlang', 'error'); return; }
+    if (!time) { showToast('Qabul vaqtini tanlang', 'error'); return; }
+    const btn = document.getElementById('req-accept-submit');
+    if (btn) btn.disabled = true;
+    const ok = await postRequestDecision(id, 'accept', {
+      doctor_id: doctorId, appointment_date: date, appointment_time: time,
+    });
+    if (btn) btn.disabled = false;
+    if (ok) {
+      State.acceptingRequestId = null;
+      closeModal('modal-request-accept');
     }
   }
 
@@ -2445,17 +2519,30 @@ window.FMH_Reception = (function () {
         operator: 'Administrator',
         created_at: new Date().toISOString(),
       };
-      if (!State.data.call_logs) State.data.call_logs = [];
-      State.data.call_logs.push(newCall);
-
+      // Listed only once the server has it. The answer used to be ignored,
+      // so a refused or unsent call showed as logged and vanished on reload.
+      // The id is the server's: a browser-made random one could collide.
+      const payload = Object.assign({}, newCall);
+      delete payload.id;
       try {
-        await fetch('/api/reception/call-log', {
+        const res = await fetch('/api/reception/call-log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newCall)
+          body: JSON.stringify(payload)
         });
-      } catch (e) {}
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showToast(data.error || "Qo'ng'iroq saqlanmadi.", 'error');
+          return;
+        }
+        if (data.id) newCall.id = data.id;
+      } catch (e) {
+        showToast("Server bilan aloqa yo'q — qo'ng'iroq saqlanmadi.", 'error');
+        return;
+      }
 
+      if (!State.data.call_logs) State.data.call_logs = [];
+      State.data.call_logs.push(newCall);
       showToast('✓ Yangi qo\'ng\'iroq qayd etildi', 'success');
     }
 
@@ -2881,6 +2968,7 @@ window.FMH_Reception = (function () {
     renderRoomsBoard,
     renderRoomsTab,
     loadRequests,
+    confirmAcceptRequest,
     loadRoomsBoard,
     setRoomsBoardPreset,
   };

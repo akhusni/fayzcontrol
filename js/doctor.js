@@ -467,7 +467,7 @@
           </div>
           <div class="doc-pt-details">
             <span><i class="fas fa-id-badge"></i> ${p.patient_code}</span> • 
-            <span>${p.birth_year ? (2026 - p.birth_year) + ' yosh' : 'N/A'}</span>
+            <span>${p.birth_year ? (new Date().getFullYear() - p.birth_year) + ' yosh' : 'N/A'}</span>
           </div>
           ${diagHtml}
           <div class="doc-pt-vitals">
@@ -1659,7 +1659,7 @@
     return true;
   }
 
-  function applyPresetProtocol(protocolType) {
+  async function applyPresetProtocol(protocolType) {
     const p = state.selectedPatient;
     if (!p) return;
 
@@ -1689,16 +1689,27 @@
       ];
     }
 
-    items.forEach(item => {
-      addPrescription({
+    // Each order is saved one after another and counted. The summary used to
+    // say every drug was prescribed even when the server refused them all
+    // (each refusal already shows its own message from addPrescription).
+    let saved = 0;
+    for (const item of items) {
+      const ok = await addPrescription({
         id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
         status: 'active',
         doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
         ...item
       });
-    });
+      if (ok) saved++;
+    }
 
-    showToast(`⚡ Protokol biriktirildi: <strong>${items.length} ta dori</strong> tayinlandi!`);
+    if (saved === items.length) {
+      showToast(`⚡ Protokol biriktirildi: <strong>${saved} ta dori</strong> tayinlandi!`);
+    } else if (saved > 0) {
+      showToast(`Protokol qisman biriktirildi: ${items.length} tadan <strong>${saved} ta dori</strong> saqlandi.`, 'warning');
+    } else if (items.length) {
+      showToast('Protokol saqlanmadi: birorta dori tayinlanmadi.', 'danger');
+    }
   }
 
   async function toggleRxStatus(patientId, rxId, newStatus) {
@@ -1714,7 +1725,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })
         });
-        if (!res.ok) throw new Error('API failed');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Xatolik: Holatni yangilab bo'lmadi");
+        }
 
         localStorage.setItem(STORAGE_KEYS.PRESCRIPTIONS, JSON.stringify(state.prescriptionsMap));
         renderPrescriptionsTab();
@@ -1722,7 +1736,7 @@
       } catch (err) {
         // revert
         item.status = oldStatus;
-        showToast("Xatolik: Holatni yangilab bo'lmadi", "error");
+        showToast(escapeHtml(err.message || "Xatolik: Holatni yangilab bo'lmadi"), "error");
       }
     }
   }
@@ -1750,8 +1764,11 @@
       type: "danger",
       onConfirm: async () => {
         try {
-          const res = await fetch(`/api/doctor/prescriptions/${rxId}`, { method: 'DELETE' });
-          if (!res.ok) throw new Error('API failed');
+          const res = await fetch(`/api/doctor/prescriptions/${encodeURIComponent(rxId)}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "Xatolik: Retseptni o'chirib bo'lmadi");
+          }
 
           state.prescriptionsMap[patientId] = list.filter(rx => rx.id !== rxId);
           localStorage.setItem(STORAGE_KEYS.PRESCRIPTIONS, JSON.stringify(state.prescriptionsMap));
@@ -1760,7 +1777,7 @@
           showToast("🗑️ Dori retseptdan o'chirildi");
           updateKPIs();
         } catch (err) {
-          showToast("Xatolik: Retseptni o'chirib bo'lmadi", "error");
+          showToast(escapeHtml(err.message || "Xatolik: Retseptni o'chirib bo'lmadi"), "error");
         }
       }
     });

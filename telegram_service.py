@@ -37,6 +37,11 @@ CHAT_ID = int(os.environ.get("FMH_TELEGRAM_CHAT_ID", "-1004441223890"))
 TOPIC_NURSES = 2        # "Hamshira"
 TOPIC_DOCTORS = 4       # "Doctor"
 TOPIC_ACCOUNTING = 6    # "Bugalteriya"
+# Website enquiries. The group has no reception topic, so they go to the
+# group's main thread unless FMH_TELEGRAM_ENQUIRY_TOPIC names one.
+TOPIC_ENQUIRIES = (int(os.environ["FMH_TELEGRAM_ENQUIRY_TOPIC"])
+                   if os.environ.get("FMH_TELEGRAM_ENQUIRY_TOPIC", "").strip().lstrip("-").isdigit()
+                   else None)
 
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -46,10 +51,12 @@ def send_telegram_message(message_thread_id, text, parse_mode="HTML"):
     url = f"{API_BASE}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
-        "message_thread_id": message_thread_id,
         "text": text,
         "parse_mode": parse_mode
     }
+    # None means the group's main thread; Telegram rejects a null topic id.
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
@@ -1891,6 +1898,45 @@ def notify_accounting_transaction_entered_sync(txn_data):
 def notify_accounting_transaction_entered_async(txn_data):
     """Non-blocking background thread to send expense/transaction notification immediately."""
     threading.Thread(target=notify_accounting_transaction_entered_sync, args=(txn_data,), daemon=True).start()
+
+
+def notify_enquiry_sync(req):
+    """
+    Tell the staff group a website enquiry has arrived.
+
+    Only what the desk needs to call back -- name, phone, preferred date and
+    the visitor's note -- and nothing else from the request (no IP, no id).
+    The text comes from the open internet, so it is HTML-escaped: a name like
+    "<b>" would otherwise either restyle the message or make Telegram refuse
+    it. A no-op without a bot token, and it never raises.
+    """
+    if not ENABLED:
+        return None
+    try:
+        import html as _html
+
+        def esc(v, limit):
+            return _html.escape(str(v or '').strip()[:limit])
+
+        lines = [
+            "🌐 <b>Saytdan yangi so'rov</b>",
+            f"👤 {esc(req.get('full_name'), 160) or '—'}",
+            f"📞 {esc(req.get('phone'), 60) or '—'}",
+        ]
+        if req.get('preferred_date'):
+            lines.append(f"📅 Istalgan sana: {esc(req.get('preferred_date'), 10)}")
+        if (req.get('note') or '').strip():
+            lines.append(f"📝 {esc(req.get('note'), 500)}")
+        lines.append("Qabulxona → «Saytdan So'rovlar» bo'limida ko'rib chiqing.")
+        return send_telegram_message(TOPIC_ENQUIRIES, "\n".join(lines))
+    except Exception as e:
+        print(f"[ERROR] Enquiry notice failed: {e}")
+        return None
+
+
+def notify_enquiry_async(req):
+    """Background thread, so the website's request never waits on Telegram."""
+    threading.Thread(target=notify_enquiry_sync, args=(dict(req),), daemon=True).start()
 
 
 def start_transaction_watchdog():

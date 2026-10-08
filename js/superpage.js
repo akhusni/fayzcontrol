@@ -1701,7 +1701,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Xona qo'shishda xatolik yuz berdi", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xona qo'shishda xatolik yuz berdi", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1735,7 +1736,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Karavot biriktirishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Karavot biriktirishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1762,7 +1764,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Karavotni ajratishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Karavotni ajratishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1789,7 +1792,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Xonani o'chirishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xonani o'chirishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1871,7 +1875,8 @@
         await initSampleStaffRoster();
         renderAdminStaffTab();
       } else {
-        showToast("Xodimni qabul qilishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xodimni qabul qilishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1889,7 +1894,7 @@
     if (!okFire) return;
 
     try {
-      const res = await fetch(`/api/staff/${staffId}`, {
+      const res = await fetch(`/api/staff/${encodeURIComponent(staffId)}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -1897,7 +1902,8 @@
         await initSampleStaffRoster();
         renderAdminStaffTab();
       } else {
-        showToast("Xodimni bo'shatishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xodimni bo'shatishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1997,7 +2003,8 @@
         showToast("🗑️ Foydalanuvchi tizimdan o'chirildi!", "info");
         renderAdminUsersTab();
       } else {
-        showToast("Foydalanuvchini o'chirishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Foydalanuvchini o'chirishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");

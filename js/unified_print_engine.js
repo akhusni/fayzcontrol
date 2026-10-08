@@ -573,7 +573,7 @@ window.FMH_Print = (function() {
       ${getCommonAuthZone({
         doctor: docName,
         patientTitle: "Katta Hamshira",
-        patient: "Nilufar Karimova"
+        patient: "—"
       })}
 
       ${getCommonFooter()}
