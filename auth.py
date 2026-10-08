@@ -391,6 +391,12 @@ def note_login_success(username, ip):
         _FAILURES.pop(f'ip:{ip or "-"}', None)
 
 
+def clear_user_lockout(username):
+    """Forget one account's failed attempts (an administrator reset its password)."""
+    with _FAILURE_LOCK:
+        _FAILURES.pop(f'user:{(username or "").lower()}', None)
+
+
 # ---------------------------------------------------------------------------
 # Forced password rotation
 # ---------------------------------------------------------------------------

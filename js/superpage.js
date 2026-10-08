@@ -1435,6 +1435,8 @@
     if (btn) btn.classList.add('active');
     const targetContent = document.getElementById(`admin-tab-${tabName}`);
     if (targetContent) targetContent.classList.add('active');
+    // The audit trail is large; it is read only when its tab is opened.
+    if (tabName === 'audit') renderAuditTab();
   }
 
   // --- 1. PRICING & TARIFFS ---
@@ -1820,16 +1822,18 @@
           const name = s.full_name || s.name;
           const role = s.role;
           const spec = s.specialty || '—';
-          const sal = s.salary ? formatUZS(s.salary) : '—';
+          // The list carries salary_base (to HR, accounting and the owner);
+          // 'salary' never existed, so this column always showed a dash.
+          const sal = s.salary_base != null && s.salary_base !== '' ? formatUZS(s.salary_base) : '—';
 
           return `
             <tr>
-              <td><strong>${name}</strong><br><small style="color: var(--text-muted);">${s.phone || ''}</small></td>
-              <td><span class="pill-status pill-available">${role}</span></td>
-              <td>${spec}</td>
+              <td><strong>${esc(name)}</strong><br><small style="color: var(--text-muted);">${esc(s.phone || '')}</small></td>
+              <td><span class="pill-status pill-available">${esc(role)}</span></td>
+              <td>${esc(spec)}</td>
               <td><strong style="color: var(--warning);">${sal}</strong></td>
               <td>
-                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.fireStaff('${staffId}', '${name.replace(/'/g, "\\'")}')" title="Ishdan bo'shatish">
+                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.fireStaff('${esc(staffId)}', '${esc(String(name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"))}')" title="Ishdan bo'shatish">
                   <i class="fas fa-user-minus"></i> Bo'shatish
                 </button>
               </td>
@@ -1849,7 +1853,10 @@
     const role = document.getElementById('hire-staff-role').value;
     const specialty = document.getElementById('hire-staff-specialty').value.trim();
     const phone = document.getElementById('hire-staff-phone').value.trim();
-    const salary = Number(document.getElementById('hire-staff-salary').value) || 10000000;
+    // POST /api/staff reads base_salary; 'salary' was ignored and the blank
+    // field showed 10 000 000. Blank stays blank (the server stores 0) and
+    // a bad amount comes back as a refusal.
+    const salary = document.getElementById('hire-staff-salary').value.trim();
     const shift = document.getElementById('hire-staff-shift').value;
 
     if (!name || !specialty || !phone) return;
@@ -1863,14 +1870,14 @@
           role: role,
           specialty: specialty,
           phone: phone,
-          salary: salary,
-          shift: shift,
+          base_salary: salary,
+          shift_type: shift,
           status: 'active'
         })
       });
 
       if (res.ok) {
-        showToast(`🎉 <strong>${name}</strong> muvaffaqiyatli ishga qabul qilindi (Rasmiylashtirildi)!`);
+        showToast(`🎉 <strong>${esc(name)}</strong> muvaffaqiyatli ishga qabul qilindi (Rasmiylashtirildi)!`);
         document.getElementById('admin-hire-staff-form').reset();
         await initSampleStaffRoster();
         renderAdminStaffTab();
@@ -1886,7 +1893,7 @@
   async function fireStaff(staffId, staffName) {
     const okFire = await fmhConfirm({
       title: "Xodimni Bo'shatish",
-      message: `Haqiqatan ham <strong>${staffName}</strong>ni ishdan bo'shatmoqchimisiz?`,
+      message: `Haqiqatan ham <strong>${esc(staffName)}</strong>ni ishdan bo'shatmoqchimisiz?`,
       confirmText: "Bo'shatish",
       cancelText: "Bekor Qilish",
       type: 'danger'
@@ -1898,7 +1905,7 @@
         method: 'DELETE'
       });
       if (res.ok) {
-        showToast(`👋 <strong>${staffName}</strong> xodimlar safidan bo'shatildi!`, 'danger');
+        showToast(`👋 <strong>${esc(staffName)}</strong> xodimlar safidan bo'shatildi!`, 'danger');
         await initSampleStaffRoster();
         renderAdminStaffTab();
       } else {
@@ -1911,84 +1918,318 @@
   }
 
   // --- 4. USER ACCOUNTS & RBAC ---
+  //
+  // The console offered 6 of the 13 roles from a hand-typed list, could only
+  // create and delete, and put names straight into innerHTML. Roles now come
+  // from GET /api/users/roles (permissions.ROLES), accounts can be edited,
+  // blocked and given a one-time password, and every value is escaped.
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  let adminRoles = [];
+  let adminUsers = [];
+  let adminStaffOptions = [];
+
+  async function readError(res, fallback) {
+    const err = await res.json().catch(() => ({}));
+    return err.error || fallback;
+  }
+
+  function roleLabel(key) {
+    const r = adminRoles.find(x => x.key === key);
+    return r ? r.label : key;
+  }
+
+  async function loadAdminRoles() {
+    try {
+      const res = await fetch('/api/users/roles');
+      if (!res.ok) return;
+      adminRoles = await res.json();
+      const opts = adminRoles.map(r =>
+        `<option value="${esc(r.key)}">${esc(r.label)} (${esc(r.key)})</option>`).join('');
+      const reg = document.getElementById('reg-role');
+      if (reg) {
+        const keep = reg.value;
+        reg.innerHTML = `<option value="">— Rolni tanlang —</option>` + opts;
+        if (keep && adminRoles.some(r => r.key === keep)) reg.value = keep;
+      }
+      const edit = document.getElementById('user-edit-role');
+      if (edit) edit.innerHTML = opts;
+    } catch (e) {
+      console.error('Error loading roles:', e);
+    }
+  }
+
+  async function loadAdminStaffOptions() {
+    try {
+      const res = await fetch('/api/staff');
+      if (!res.ok) return;
+      adminStaffOptions = await res.json();
+      const opts = `<option value="">— Bog'lanmagan —</option>` + adminStaffOptions.map(s =>
+        `<option value="${esc(s.id)}">${esc(s.full_name || s.name || s.id)} — ${esc(s.role || '')} (${esc(s.id)})</option>`).join('');
+      ['reg-staff', 'user-edit-staff'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { const keep = el.value; el.innerHTML = opts; el.value = keep; }
+      });
+    } catch (e) {
+      console.error('Error loading staff for user links:', e);
+    }
+  }
+
+  let usersTableWired = false;
+  function wireUsersTable(tbody) {
+    if (usersTableWired) return;
+    usersTableWired = true;
+    // One delegated listener: ids travel in data attributes, never inside an
+    // inline onclick string where a quote in an id would break out.
+    tbody.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-user-action]');
+      if (!btn) return;
+      const uid = btn.getAttribute('data-uid');
+      const action = btn.getAttribute('data-user-action');
+      if (action === 'edit') openUserEdit(uid);
+      else if (action === 'reset') resetUserPassword(uid);
+      else if (action === 'delete') deleteUser(uid);
+    });
+  }
+
   async function renderAdminUsersTab() {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
+    wireUsersTable(tbody);
+    if (!adminRoles.length) loadAdminRoles();
+    loadAdminStaffOptions();
 
     try {
       const res = await fetch('/api/users');
-      if (res.ok) {
-        const users = await res.json();
-        if (users.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Foydalanuvchilar mavjud emas</td></tr>`;
-          return;
-        }
-
-        tbody.innerHTML = users.map(u => {
-          const isSelf = currentUser && (currentUser.username === u.username || currentUser.id === u.id);
-          const isSuper = u.role === 'superadmin' && u.username === 'superadmin';
-
-          return `
-            <tr>
-              <td><strong style="color: var(--primary); font-family: var(--font-mono);">${u.username}</strong></td>
-              <td><strong>${u.full_name}</strong><br><small style="color: var(--text-muted);">${u.phone || ''}</small></td>
-              <td><span class="pill-status ${u.role === 'superadmin' ? 'pill-occupied' : 'pill-available'}">${u.role}</span></td>
-              <td>
-                ${isSuper || isSelf ? '<span style="font-size: 0.72rem; color: var(--text-muted);">Himoyalangan</span>' : `
-                  <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteUser('${u.id}')" title="O'chirish">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                `}
-              </td>
-            </tr>
-          `;
-        }).join('');
+      if (!res.ok) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger);">${esc(await readError(res, "Ro'yxatni yuklab bo'lmadi"))}</td></tr>`;
+        return;
       }
+      adminUsers = await res.json();
+      if (adminUsers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Foydalanuvchilar mavjud emas</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = adminUsers.map(u => {
+        const active = u.is_active !== false;
+        const uid = esc(u.id || u.username);
+        const actions = `
+          <div class="user-actions">
+            <button type="button" class="btn-super btn-super-outline" data-user-action="edit" data-uid="${uid}" title="Tahrirlash"><i class="fas fa-pen"></i></button>
+            ${u.protected ? '<span style="font-size: 0.72rem; color: var(--text-muted); align-self: center;">Himoyalangan</span>' : `
+              <button type="button" class="btn-super btn-super-outline" data-user-action="reset" data-uid="${uid}" title="Parolni tiklash"><i class="fas fa-key"></i></button>
+              <button type="button" class="btn-super btn-super-outline" style="color: var(--danger);" data-user-action="delete" data-uid="${uid}" title="O'chirish"><i class="fas fa-trash"></i></button>
+            `}
+          </div>`;
+        return `
+          <tr>
+            <td><strong style="color: var(--primary); font-family: var(--font-mono);">${esc(u.username)}</strong></td>
+            <td><strong>${esc(u.full_name)}</strong><br><small style="color: var(--text-muted);">${esc(u.phone || '')}${u.staff_id ? ' · ' + esc(u.staff_id) : ''}</small></td>
+            <td><span class="pill-status ${u.role === 'superadmin' ? 'pill-occupied' : 'pill-available'}" title="${esc(u.role)}">${esc(roleLabel(u.role))}</span></td>
+            <td>${active ? '<span class="pill-status pill-available">Faol</span>' : '<span class="pill-status pill-occupied">Bloklangan</span>'}${u.must_change_password ? '<br><small style="color: var(--warning);">Parol almashtirilmagan</small>' : ''}</td>
+            <td>${actions}</td>
+          </tr>
+        `;
+      }).join('');
     } catch (e) {
       console.error("Error loading users:", e);
     }
+  }
+
+  function openModalById(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.add('active');
+  }
+
+  // Closes one of the user dialogs only, leaving the admin centre open
+  // underneath (closeAllModals would close that too).
+  function closeUserModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove('active');
+    if (id === 'super-user-password-modal') {
+      // The password is not kept anywhere once the dialog is closed.
+      const v = document.getElementById('user-pw-value');
+      if (v) v.value = '';
+    }
+  }
+
+  function showOneTimePassword(username, password) {
+    document.getElementById('user-pw-username').textContent = username || '';
+    const v = document.getElementById('user-pw-value');
+    v.value = password || '';
+    openModalById('super-user-password-modal');
+    v.focus();
+    v.select();
+  }
+
+  async function copyOneTimePassword() {
+    const v = document.getElementById('user-pw-value');
+    if (!v || !v.value) return;
+    try {
+      await navigator.clipboard.writeText(v.value);
+    } catch (e) {
+      v.select();
+      try { document.execCommand('copy'); } catch (e2) { /* the field stays selected */ }
+    }
+    showToast('Parol nusxalandi');
   }
 
   async function handleCreateUser(e) {
     if (e) e.preventDefault();
     const username = document.getElementById('reg-username').value.trim();
     const fullName = document.getElementById('reg-fullname').value.trim();
-    const password = document.getElementById('reg-password').value.trim();
+    const password = document.getElementById('reg-password').value;
     const role = document.getElementById('reg-role').value;
     const phone = document.getElementById('reg-phone').value.trim();
+    const staffEl = document.getElementById('reg-staff');
+    const staffId = staffEl ? staffEl.value : '';
 
-    if (!username || !fullName || !password) return;
+    if (!username || !fullName || !role) {
+      showToast("Login, F.I.Sh va rolni kiriting", "error");
+      return;
+    }
+
+    const payload = { username: username, full_name: fullName, role: role, phone: phone };
+    // Blank: the server issues a one-time password and shows it once.
+    if (password) payload.password = password;
+    if (staffId) payload.staff_id = staffId;
 
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username,
-          full_name: fullName,
-          password: password,
-          role: role,
-          phone: phone
-        })
+        body: JSON.stringify(payload)
       });
-
-      if (res.ok) {
-        showToast(`👤 <strong>${fullName} (${username})</strong> yangi foydalanuvchi sifatida yaratildi!`);
-        document.getElementById('admin-create-user-form').reset();
-        renderAdminUsersTab();
-      } else {
-        const err = await res.json();
-        showToast(err.error || "Foydalanuvchi yaratishda xatolik", "danger");
+      if (!res.ok) {
+        showToast(await readError(res, "Foydalanuvchi yaratishda xatolik"), "error");
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      showToast(`👤 <strong>${esc(fullName)} (${esc(username)})</strong> yangi foydalanuvchi sifatida yaratildi!`);
+      document.getElementById('admin-create-user-form').reset();
+      if (data.temporary_password) showOneTimePassword(username, data.temporary_password);
+      renderAdminUsersTab();
     } catch (err) {
-      showToast("Server bilan bog'lanishda xatolik", "danger");
+      showToast("Server bilan bog'lanishda xatolik", "error");
+    }
+  }
+
+  async function openUserEdit(uid) {
+    const u = adminUsers.find(x => x.id === uid || x.username === uid);
+    if (!u) return;
+    if (!adminRoles.length) await loadAdminRoles();
+    document.getElementById('user-edit-id').value = u.id || u.username;
+    document.getElementById('user-edit-username').textContent = u.username || '';
+    document.getElementById('user-edit-fullname').value = u.full_name || '';
+    document.getElementById('user-edit-phone').value = u.phone || '';
+    const roleSel = document.getElementById('user-edit-role');
+    if (u.role && !adminRoles.some(r => r.key === u.role)) {
+      // A role permissions.py no longer knows: show it so it is not changed silently.
+      roleSel.insertAdjacentHTML('afterbegin', `<option value="${esc(u.role)}">${esc(u.role)}</option>`);
+    }
+    roleSel.value = u.role || '';
+    const staffSel = document.getElementById('user-edit-staff');
+    if (u.staff_id && !Array.from(staffSel.options).some(o => o.value === u.staff_id)) {
+      staffSel.insertAdjacentHTML('beforeend', `<option value="${esc(u.staff_id)}">${esc(u.staff_id)}</option>`);
+    }
+    staffSel.value = u.staff_id || '';
+    document.getElementById('user-edit-active').value = u.is_active === false ? '0' : '1';
+    roleSel.disabled = !!u.protected;
+    document.getElementById('user-edit-active').disabled = !!u.protected;
+    document.getElementById('user-edit-protected-note').style.display = u.protected ? 'block' : 'none';
+    openModalById('super-user-edit-modal');
+  }
+
+  async function handleUserEditSubmit(e) {
+    if (e) e.preventDefault();
+    const uid = document.getElementById('user-edit-id').value;
+    const u = adminUsers.find(x => x.id === uid || x.username === uid);
+    if (!u) return;
+    // Only what changed is sent, so a protected account's role and state are
+    // never part of the request.
+    const payload = {};
+    const fullName = document.getElementById('user-edit-fullname').value.trim();
+    const phone = document.getElementById('user-edit-phone').value.trim();
+    const role = document.getElementById('user-edit-role').value;
+    const staffId = document.getElementById('user-edit-staff').value;
+    const active = document.getElementById('user-edit-active').value === '1';
+    if (fullName !== (u.full_name || '')) payload.full_name = fullName;
+    if (phone !== (u.phone || '')) payload.phone = phone;
+    if (staffId !== (u.staff_id || '')) payload.staff_id = staffId;
+    if (!u.protected) {
+      if (role !== u.role) payload.role = role;
+      if (active !== (u.is_active !== false)) payload.is_active = active;
+    }
+    if (!Object.keys(payload).length) {
+      closeUserModal('super-user-edit-modal');
+      return;
+    }
+    if (payload.is_active === false) {
+      const ok = await fmhConfirm({
+        title: 'Hisobni bloklash',
+        message: `<strong>${esc(u.username)}</strong> tizimga kira olmaydi va hozirgi sessiyasi yopiladi. Davom etasizmi?`,
+        confirmText: 'Bloklash',
+        cancelText: 'Bekor qilish',
+        type: 'danger'
+      });
+      if (!ok) return;
+    }
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(uid)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        showToast(await readError(res, "Saqlab bo'lmadi"), "error");
+        return;
+      }
+      showToast("Foydalanuvchi ma'lumotlari yangilandi");
+      closeUserModal('super-user-edit-modal');
+      renderAdminUsersTab();
+    } catch (err) {
+      showToast("Server bilan bog'lanishda xatolik", "error");
+    }
+  }
+
+  async function resetUserPassword(uid) {
+    const u = adminUsers.find(x => x.id === uid || x.username === uid);
+    const name = u ? u.username : uid;
+    const ok = await fmhConfirm({
+      title: 'Parolni tiklash',
+      message: `<strong>${esc(name)}</strong> uchun yangi bir martalik parol beriladi. Eski parol ishlamay qoladi va ochiq sessiyalar yopiladi.`,
+      confirmText: 'Yangi parol berish',
+      cancelText: 'Bekor qilish',
+      type: 'warning'
+    });
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(uid)}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (!res.ok) {
+        showToast(await readError(res, "Parolni tiklab bo'lmadi"), "error");
+        return;
+      }
+      const data = await res.json();
+      showOneTimePassword(data.username || name, data.temporary_password);
+      renderAdminUsersTab();
+    } catch (err) {
+      showToast("Server bilan bog'lanishda xatolik", "error");
     }
   }
 
   async function deleteUser(userId) {
     const okUser = await fmhConfirm({
       title: "Foydalanuvchini O'chirish",
-      message: "Haqiqatan ham ushbu foydalanuvchini o'chirmoqchimisiz?",
+      message: "Haqiqatan ham ushbu foydalanuvchini o'chirmoqchimisiz? (Vaqtincha to'xtatish uchun \"Bloklangan\" holatidan foydalaning.)",
       confirmText: "O'chirish",
       cancelText: "Bekor Qilish",
       type: 'danger'
@@ -2003,12 +2244,114 @@
         showToast("🗑️ Foydalanuvchi tizimdan o'chirildi!", "info");
         renderAdminUsersTab();
       } else {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.error || "Foydalanuvchini o'chirishda xatolik", "danger");
+        showToast(await readError(res, "Foydalanuvchini o'chirishda xatolik"), "error");
       }
     } catch (err) {
-      showToast("Server bilan bog'lanishda xatolik", "danger");
+      showToast("Server bilan bog'lanishda xatolik", "error");
     }
+  }
+
+  // --- 5. AUDIT LOG VIEWER (read-only, GET /api/audit) ---
+  const AUDIT_ACTION_LABELS = {
+    CREATE: 'Yaratildi',
+    UPDATE: "O'zgartirildi",
+    DELETE: "O'chirildi",
+    CHECK_IN: 'Joylashtirildi',
+    CHECK_OUT: 'Chiqarildi',
+    TRANSFER: "Ko'chirildi",
+    PAYMENT_RECEIVED: "To'lov",
+    LOGIN: 'Kirdi',
+    LOGIN_FAILED: 'Kirish xatosi',
+    LOGOUT: 'Chiqdi',
+    ACCESS_DENIED: 'Rad etildi',
+    PASSWORD_CHANGED: "Parol o'zgardi"
+  };
+  const auditState = { offset: 0, total: 0, facetsLoaded: false, busy: false };
+
+  function auditFilters() {
+    const val = id => (document.getElementById(id) || {}).value || '';
+    return {
+      from: val('audit-from'),
+      to: val('audit-to'),
+      user: val('audit-user').trim(),
+      entity: val('audit-entity'),
+      action: val('audit-action'),
+      q: val('audit-q').trim(),
+      limit: val('audit-limit') || '50'
+    };
+  }
+
+  async function renderAuditTab() {
+    const tbody = document.getElementById('admin-audit-table-body');
+    if (!tbody || auditState.busy) return;
+    auditState.busy = true;
+    const f = auditFilters();
+    const params = new URLSearchParams();
+    Object.keys(f).forEach(k => { if (f[k]) params.set(k, f[k]); });
+    params.set('offset', String(auditState.offset));
+    if (!auditState.facetsLoaded) params.set('facets', '1');
+    try {
+      const res = await fetch('/api/audit?' + params.toString());
+      if (!res.ok) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger);">${esc(await readError(res, "Jurnalni yuklab bo'lmadi"))}</td></tr>`;
+        return;
+      }
+      const data = await res.json();
+      if (data.entities) {
+        const ent = document.getElementById('audit-entity');
+        ent.innerHTML = '<option value="">Barchasi</option>' +
+          data.entities.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+        ent.value = f.entity;
+        const act = document.getElementById('audit-action');
+        act.innerHTML = '<option value="">Barchasi</option>' +
+          (data.actions || []).map(x => `<option value="${esc(x)}">${esc(AUDIT_ACTION_LABELS[x] || x)}</option>`).join('');
+        act.value = f.action;
+        auditState.facetsLoaded = true;
+      }
+      auditState.total = data.total || 0;
+      const rows = data.rows || [];
+      tbody.innerHTML = rows.length ? rows.map(r => `
+        <tr>
+          <td class="audit-time">${esc(r.timestamp)}</td>
+          <td><strong>${esc(r.actor || '—')}</strong><br><small style="color: var(--text-muted);">${esc(r.actor_role || '')}${r.ip ? ' · ' + esc(r.ip) : ''}</small></td>
+          <td title="${esc(r.action)}">${esc(AUDIT_ACTION_LABELS[r.action] || r.action)}</td>
+          <td>${esc(r.entity)}</td>
+          <td style="font-family: var(--font-mono); font-size: 0.76rem;">${esc(r.entity_id)}</td>
+          <td class="audit-summary">${esc(r.summary || '')}</td>
+        </tr>`).join('')
+        : `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Hech narsa topilmadi</td></tr>`;
+      const limit = Number(data.limit) || 50;
+      const first = rows.length ? auditState.offset + 1 : 0;
+      const last = auditState.offset + rows.length;
+      document.getElementById('audit-page-info').textContent =
+        `${first}–${last} / ${auditState.total}`;
+      document.getElementById('audit-prev').disabled = auditState.offset <= 0;
+      document.getElementById('audit-next').disabled = auditState.offset + limit >= auditState.total;
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger);">Server bilan bog'lanishda xatolik</td></tr>`;
+    } finally {
+      auditState.busy = false;
+    }
+  }
+
+  function searchAudit(e) {
+    if (e) e.preventDefault();
+    auditState.offset = 0;
+    renderAuditTab();
+  }
+
+  function pageAudit(dir) {
+    const limit = Number(auditFilters().limit) || 50;
+    const next = auditState.offset + dir * limit;
+    if (next < 0 || (dir > 0 && next >= auditState.total)) return;
+    auditState.offset = next;
+    renderAuditTab();
+  }
+
+  function resetAuditFilters() {
+    const form = document.getElementById('admin-audit-filter-form');
+    if (form) form.reset();
+    searchAudit();
   }
 
   window.FMH_Super = {
@@ -2051,7 +2394,13 @@
     handleHireStaff,
     fireStaff,
     handleCreateUser,
-    deleteUser
+    deleteUser,
+    closeUserModal,
+    copyOneTimePassword,
+    handleUserEditSubmit,
+    searchAudit,
+    pageAudit,
+    resetAuditFilters
   };
 
   document.addEventListener('DOMContentLoaded', init);

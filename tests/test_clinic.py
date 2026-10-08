@@ -336,8 +336,9 @@ class AuthBoundary(unittest.TestCase):
         status, users = c.get('/api/users')
         self.assertEqual(status, 200)
         for u in users:
-            self.assertEqual(u.get('password'), '********',
-                             f"{u.get('username')} exposed a password value")
+            # The hash is not sent at all (it used to be masked as '********').
+            self.assertNotIn('password', u, f"{u.get('username')} carried a password field")
+            self.assertNotIn('pbkdf2', json.dumps(u), f"{u.get('username')} exposed a hash")
 
 
 class RoleAuthorization(ApiTest):
@@ -4429,6 +4430,275 @@ class HrAttendanceAndStaffRecords(ApiTest):
         desk = self._account('receptionist')
         self.assertEqual(desk.post('/api/staff/' + sid + '/reactivate', {})[0], 403)
         self.assertEqual(self.api.post('/api/staff/STF-NOBODY-999/reactivate', {})[0], 404)
+
+class AdminConsole(ApiTest):
+    """
+    The Super-Portal user console offered 6 of the 13 roles, could only create
+    and delete, and the routes behind it accepted any role name, set typed
+    passwords with no rotation, would delete or block the superadmin, and
+    stored the typed password in the audit trail. These pin the hardened
+    /api/users routes, the password reset and the audit viewer.
+    """
+
+    PW = 'Suite-Probe-2026'
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def _create(self, role, tag, **extra):
+        username = f'suite_adm_{tag}_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        payload = {'username': username, 'password': self.PW,
+                   'full_name': f'Suite Admin {tag}', 'role': role}
+        payload.update(extra)
+        st, body = self.api.post('/api/users', payload)
+        self.assertEqual(st, 201, f"could not create {role} probe: {body}")
+        self._temp_users.append(body['id'])
+        return body['id'], username
+
+    def _signed_in(self, username, password=None):
+        """Sign in and walk the first-login password change."""
+        password = password or self.PW
+        c = Client()
+        st, b = c.login(username, password)
+        self.assertEqual(st, 200, f"could not sign in as {username}: {b}")
+        if b.get('must_change_password'):
+            st2, b2 = c.post('/api/auth/change-password', {
+                'current_password': password, 'new_password': password + '-R',
+                'confirm_password': password + '-R'})
+            self.assertEqual(st2, 200, b2)
+        return c
+
+    def _superadmin_id(self):
+        st, users = self.api.get('/api/users')
+        self.assertEqual(st, 200, users)
+        return next(u['id'] for u in users if u['username'] == 'superadmin')
+
+    def _audit_rows(self, entity_id):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from db import get_db
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT action_type, new_data_json, old_data_json FROM audit_logs "
+                        "WHERE entity_name = 'users' AND entity_id = ? ORDER BY id", (entity_id,))
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+    # --- roles -------------------------------------------------------------
+
+    def test_role_list_is_every_role_in_permissions(self):
+        import permissions
+        st, roles = self.api.get('/api/users/roles')
+        self.assertEqual(st, 200, roles)
+        self.assertEqual({r['key'] for r in roles}, set(permissions.ROLES))
+        for r in roles:
+            self.assertEqual(r['label'], permissions.ROLES[r['key']]['label'])
+
+    def test_a_role_the_old_form_lacked_can_be_issued(self):
+        uid, _u = self._create('sanitar', 'san')
+        st, users = self.api.get('/api/users')
+        self.assertEqual(next(u for u in users if u['id'] == uid)['role'], 'sanitar')
+
+    # --- permissions -------------------------------------------------------
+
+    def test_non_admins_are_refused_and_admin_read_is_read_only(self):
+        uid, _ = self._create('doctor', 'tgt')
+        _nid, nurse_name = self._create('nurse', 'nrs')
+        nurse = self._signed_in(nurse_name)
+        for method, path, payload in (
+                ('GET', '/api/users/roles', None), ('GET', '/api/audit', None),
+                ('PUT', '/api/users/' + uid, {'full_name': 'X'}),
+                ('POST', f'/api/users/{uid}/reset-password', {}),
+                ('DELETE', '/api/users/' + uid, None)):
+            st, _b = nurse.call(method, path, payload)
+            self.assertEqual(st, 403, f"nurse got {st} on {method} {path}")
+        # The 'admin' role carries admin:read: it may look, not change.
+        _aid, admin_name = self._create('admin', 'adm')
+        admin = self._signed_in(admin_name)
+        self.assertEqual(admin.get('/api/audit?limit=1')[0], 200)
+        self.assertEqual(admin.get('/api/users/roles')[0], 200)
+        self.assertEqual(admin.put('/api/users/' + uid, {'full_name': 'X'})[0], 403)
+        self.assertEqual(admin.post(f'/api/users/{uid}/reset-password', {})[0], 403)
+        self.assertEqual(admin.delete('/api/users/' + uid)[0], 403)
+
+    # --- create / edit -----------------------------------------------------
+
+    def test_create_refuses_bad_input_with_the_field(self):
+        base = {'username': f'suite_adm_bad_{os.getpid()}', 'password': self.PW,
+                'full_name': 'Suite Bad', 'role': 'nurse'}
+        for change, field in (({'role': 'janitor'}, 'role'), ({'role': ''}, 'role'),
+                              ({'full_name': '  '}, 'full_name'),
+                              ({'password': 'short'}, 'password'),
+                              ({'username': 'A B!'}, 'username'),
+                              ({'username': ''}, 'username'),
+                              ({'staff_id': 'STF-NOBODY-999'}, 'staff_id'),
+                              ({'permissions': ['nonsense']}, 'permissions')):
+            payload = dict(base, **change)
+            st, body = self.api.post('/api/users', payload)
+            if st == 201:
+                self._temp_users.append(body['id'])
+            self.assertEqual(st, 400, f"{change} was accepted: {body}")
+            self.assertEqual(body.get('field'), field, body)
+
+    def test_create_without_password_issues_a_one_time_one(self):
+        username = f'suite_adm_tmp_{os.getpid()}'
+        self.api.delete('/api/users/' + username)
+        st, body = self.api.post('/api/users', {'username': username,
+                                                'full_name': 'Suite Tmp', 'role': 'nurse'})
+        self.assertEqual(st, 201, body)
+        self._temp_users.append(body['id'])
+        self.assertTrue(body.get('temporary_password'))
+        self.assertNotIn('password', body['user'])
+        c = Client()
+        st, b = c.login(username, body['temporary_password'])
+        self.assertEqual(st, 200)
+        self.assertTrue(b.get('must_change_password'))
+
+    def test_edit_changes_name_phone_role_and_staff_link(self):
+        uid, _ = self._create('nurse', 'edt')
+        st, staff = self.api.get('/api/staff')
+        self.assertEqual(st, 200)
+        sid = staff[0]['id']
+        st, body = self.api.put('/api/users/' + uid, {
+            'full_name': 'Suite Edited', 'phone': '+998 90 000 00 00',
+            'role': 'doctor', 'staff_id': sid})
+        self.assertEqual(st, 200, body)
+        u = body['user']
+        self.assertEqual((u['full_name'], u['role'], u['staff_id']), ('Suite Edited', 'doctor', sid))
+        self.assertNotIn('password', u)
+        st, body = self.api.put('/api/users/' + uid, {'staff_id': ''})
+        self.assertEqual(st, 200, body)
+        self.assertNotIn('staff_id', body['user'])
+        for change, field in (({'role': 'janitor'}, 'role'), ({'full_name': ''}, 'full_name'),
+                              ({'staff_id': 'STF-NOBODY-999'}, 'staff_id'),
+                              ({'is_active': 'no'}, 'is_active'),
+                              ({'password': 'Another-Pass-1'}, 'password')):
+            st, body = self.api.put('/api/users/' + uid, change)
+            self.assertEqual(st, 400, f"{change} was accepted: {body}")
+            self.assertEqual(body.get('field'), field, body)
+        self.assertEqual(self.api.put('/api/users/suite_nobody_xyz', {'full_name': 'X'})[0], 404)
+
+    def test_blocking_signs_the_account_out_and_refuses_login(self):
+        uid, username = self._create('nurse', 'blk')
+        c = self._signed_in(username)
+        self.assertEqual(c.get('/api/crm/patients')[0], 200)
+        st, body = self.api.put('/api/users/' + uid, {'is_active': False})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(c.get('/api/crm/patients')[0], 401, 'blocked account kept its session')
+        self.assertEqual(Client().login(username, self.PW + '-R')[0], 401)
+        self.assertEqual(self.api.put('/api/users/' + uid, {'is_active': True})[0], 200)
+        self.assertEqual(Client().login(username, self.PW + '-R')[0], 200)
+
+    # --- reset -------------------------------------------------------------
+
+    def test_reset_issues_a_one_time_password_that_must_be_changed(self):
+        uid, username = self._create('nurse', 'rst')
+        c = self._signed_in(username)
+        st, body = self.api.post(f'/api/users/{uid}/reset-password', {})
+        self.assertEqual(st, 200, body)
+        temp = body.get('temporary_password')
+        self.assertTrue(temp and len(temp) >= 8)
+        self.assertEqual(c.get('/api/crm/patients')[0], 401, 'old session survived the reset')
+        self.assertEqual(Client().login(username, self.PW + '-R')[0], 401,
+                         'the old password still works')
+        fresh = Client()
+        st, b = fresh.login(username, temp)
+        self.assertEqual(st, 200)
+        self.assertTrue(b.get('must_change_password'))
+        self.assertEqual(fresh.get('/api/crm/patients')[0], 403,
+                         'a reset account reached data before changing its password')
+        self.assertEqual(self.api.post('/api/users/suite_nobody_xyz/reset-password', {})[0], 404)
+
+    # --- protection --------------------------------------------------------
+
+    def test_superadmin_account_cannot_be_deleted_demoted_blocked_or_reset(self):
+        sid = self._superadmin_id()
+        st, users = self.api.get('/api/users')
+        self.assertTrue(next(u for u in users if u['id'] == sid).get('protected'))
+        self.assertEqual(self.api.delete('/api/users/' + sid)[0], 403)
+        self.assertEqual(self.api.put('/api/users/' + sid, {'role': 'nurse'})[0], 403)
+        self.assertEqual(self.api.put('/api/users/' + sid, {'is_active': False})[0], 403)
+        self.assertEqual(self.api.put('/api/users/' + sid, {'permissions': ['crm']})[0], 403)
+        self.assertEqual(self.api.post(f'/api/users/{sid}/reset-password', {})[0], 403)
+        st, users = self.api.get('/api/users')
+        me = next(u for u in users if u['id'] == sid)
+        self.assertEqual((me['role'], me['is_active']), ('superadmin', True))
+
+    def test_an_administrator_cannot_remove_their_own_account(self):
+        uid, username = self._create('superadmin', 'own')
+        me = self._signed_in(username)
+        self.assertEqual(me.delete('/api/users/' + uid)[0], 403)
+        self.assertEqual(me.put('/api/users/' + uid, {'role': 'nurse'})[0], 403)
+        self.assertEqual(me.put('/api/users/' + uid, {'is_active': False})[0], 403)
+        self.assertEqual(me.post(f'/api/users/{uid}/reset-password', {})[0], 403)
+        # Name and phone of one's own account stay editable.
+        self.assertEqual(me.put('/api/users/' + uid, {'phone': '+998 90 111 11 11'})[0], 200)
+
+    # --- audit -------------------------------------------------------------
+
+    def test_no_password_reaches_the_audit_trail(self):
+        uid, _ = self._create('nurse', 'aud')
+        st, body = self.api.post(f'/api/users/{uid}/reset-password', {})
+        self.assertEqual(st, 200, body)
+        temp = body['temporary_password']
+        rows = self._audit_rows(uid)
+        self.assertTrue(any(r['action_type'] == 'CREATE' for r in rows), rows)
+        self.assertTrue(any(r['action_type'] == 'PASSWORD_CHANGED' for r in rows),
+                        'the reset was not recorded as a password change')
+        for r in rows:
+            blob = json.dumps(r, default=str)
+            self.assertNotIn(self.PW, blob, 'the typed password was audited')
+            self.assertNotIn(temp, blob, 'the issued password was audited')
+            self.assertNotIn('pbkdf2', blob)
+        st, page = self.api.get('/api/audit?entity=users&q=' + urllib.parse.quote(uid))
+        self.assertEqual(st, 200, page)
+        self.assertTrue(page['rows'])
+        for r in page['rows']:
+            self.assertNotIn(self.PW, r['summary'])
+
+    def test_audit_viewer_refuses_bad_filters(self):
+        for qs, field in (('limit=201', 'limit'), ('limit=0', 'limit'), ('limit=x', 'limit'),
+                          ('offset=-1', 'offset'), ('action=BOGUS', 'action'),
+                          ('from=2026-13-01', 'from'), ('entity=users;drop', 'entity'),
+                          ('from=2026-10-09&to=2026-10-01', 'to'), ('q=' + 'x' * 101, 'q')):
+            st, body = self.api.get('/api/audit?' + qs)
+            self.assertEqual(st, 400, f"{qs} was accepted: {body}")
+            self.assertEqual(body.get('field'), field, body)
+
+    def test_audit_viewer_filters_and_pages(self):
+        uid, username = self._create('nurse', 'flt')
+        today = _dt.date.today().isoformat()
+        st, page = self.api.get(f'/api/audit?entity=users&action=CREATE&user={USERNAME}'
+                                f'&from={today}&to={today}&limit=5&facets=1')
+        self.assertEqual(st, 200, page)
+        self.assertLessEqual(len(page['rows']), 5)
+        self.assertGreaterEqual(page['total'], len(page['rows']))
+        self.assertIn('users', page['entities'])
+        self.assertIn('PASSWORD_CHANGED', page['actions'])
+        for r in page['rows']:
+            self.assertEqual((r['entity'], r['action'], r['actor']), ('users', 'CREATE', USERNAME))
+            self.assertTrue(r['timestamp'].startswith(today))
+        self.assertTrue(any(r['entity_id'] == uid for r in page['rows']),
+                        'the account just created is not in the newest rows')
+        st, found = self.api.get('/api/audit?q=' + urllib.parse.quote(username))
+        self.assertEqual(st, 200)
+        self.assertTrue(any(r['entity_id'] == uid for r in found['rows']))
+        _s, p1 = self.api.get('/api/audit?limit=3&offset=0')
+        _s, p2 = self.api.get('/api/audit?limit=3&offset=3')
+        ids1, ids2 = [r['id'] for r in p1['rows']], [r['id'] for r in p2['rows']]
+        self.assertEqual(ids1, sorted(ids1, reverse=True))
+        self.assertFalse(set(ids1) & set(ids2), 'pages overlap')
+        if ids1 and ids2:
+            self.assertGreater(min(ids1), max(ids2))
+
 
 if __name__ == '__main__':
     argv = [sys.argv[0]]

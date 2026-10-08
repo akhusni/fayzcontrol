@@ -257,6 +257,9 @@ API_RULES = [
 
     # --- user administration ---------------------------------------------
     ('/api/users',                    'admin',      None),
+    # The audit trail viewer. Read-only (there is no write route): it shows
+    # who changed what, so it is for administrators only.
+    ('/api/audit',                    'admin',      None),
 ]
 
 # GET /api/settings/pricing and GET /api/staff are needed far more widely than

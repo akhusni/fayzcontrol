@@ -1498,3 +1498,52 @@ h1, h2, h3, h4, h5, h6 {
     width: 240px !important;
   }
 }
+
+/* Admin centre: five tabs no longer fit a phone-width row. */
+.superadmin-tabs-nav {
+  overflow-x: auto;
+}
+.superadmin-tab-btn {
+  white-space: nowrap;
+}
+
+/* Admin centre tab 5: audit log viewer */
+.audit-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+.audit-filter-actions {
+  display: flex;
+  gap: 6px;
+}
+.audit-pager {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.audit-summary {
+  max-width: 340px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+.audit-time {
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+.user-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.user-actions .btn-super {
+  padding: 2px 6px;
+  font-size: 0.72rem;
+}

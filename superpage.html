@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/superpage.css?v=3.1">
+  <link rel="stylesheet" href="css/superpage.css?v=3.2">
   <link rel="stylesheet" href="css/building_management.css?v=3.1">
   <link rel="stylesheet" href="css/unified_header.css?v=6.1">
 
@@ -1133,6 +1133,9 @@
         <button type="button" class="superadmin-tab-btn" data-admin-tab="users" onclick="window.FMH_Super.switchAdminTab('users', this)">
           <i class="fas fa-key"></i> <span>4. Foydalanuvchilar & RBAC</span>
         </button>
+        <button type="button" class="superadmin-tab-btn" data-admin-tab="audit" onclick="window.FMH_Super.switchAdminTab('audit', this)">
+          <i class="fas fa-clipboard-list"></i> <span>5. Audit jurnali</span>
+        </button>
       </div>
 
       <!-- TAB 1: ELASTIC PRICING -->
@@ -1340,7 +1343,7 @@
                   </div>
                   <div>
                     <label class="super-form-label">Oylik Maoshi (so'm)</label>
-                    <input type="number" id="hire-staff-salary" class="super-input" value="10000000">
+                    <input type="number" id="hire-staff-salary" class="super-input" min="0" step="1000" placeholder="0">
                   </div>
                 </div>
 
@@ -1404,12 +1407,12 @@
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                   <div>
-                    <label class="super-form-label">Parol *</label>
-                    <input type="password" id="reg-password" class="super-input" placeholder="••••••••" required>
+                    <label class="super-form-label">Parol (ixtiyoriy)</label>
+                    <input type="password" id="reg-password" class="super-input" placeholder="Bo'sh: bir martalik parol" minlength="8" autocomplete="new-password">
                   </div>
                   <div>
                     <label class="super-form-label">Tizimdagi Roli *</label>
-                    <select id="reg-role" class="super-select">
+                    <select id="reg-role" class="super-select" required>
                       <option value="doctor">Shifokor (Doctor)</option>
                       <option value="nurse">Hamshira (Nurse)</option>
                       <option value="accountant">Buxgalter (Accountant)</option>
@@ -1424,6 +1427,14 @@
                   <label class="super-form-label">Telefon Raqami</label>
                   <input type="text" id="reg-phone" class="super-input" placeholder="+998 90 ...">
                 </div>
+
+                <div>
+                  <label class="super-form-label">Xodim bilan bog'lash (ixtiyoriy)</label>
+                  <select id="reg-staff" class="super-select">
+                    <option value="">— Bog'lanmagan —</option>
+                  </select>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">Yangi foydalanuvchi birinchi kirishda parolini o'zgartirishi shart.</div>
 
                 <button type="submit" class="btn-super btn-super-primary" style="margin-top: 8px;">
                   <i class="fas fa-user-plus"></i> Foydalanuvchini Saqlash
@@ -1442,6 +1453,7 @@
                     <th>Login</th>
                     <th>Ism</th>
                     <th>Rol</th>
+                    <th>Holat</th>
                     <th>Amal</th>
                   </tr>
                 </thead>
@@ -1454,8 +1466,145 @@
         </div>
       </div>
 
+      <!-- TAB 5: AUDIT LOG VIEWER (read-only) -->
+      <div class="superadmin-tab-content" id="admin-tab-audit">
+        <div class="elastic-box">
+          <div class="elastic-box-title"><i class="fas fa-clipboard-list" style="color: var(--primary);"></i> Audit jurnali: kim, qachon, nimani o'zgartirdi</div>
+          <form id="admin-audit-filter-form" class="audit-filter-grid" onsubmit="window.FMH_Super.searchAudit(event)">
+            <div>
+              <label class="super-form-label" for="audit-from">Sanadan</label>
+              <input type="date" id="audit-from" class="super-input">
+            </div>
+            <div>
+              <label class="super-form-label" for="audit-to">Sanagacha</label>
+              <input type="date" id="audit-to" class="super-input">
+            </div>
+            <div>
+              <label class="super-form-label" for="audit-user">Foydalanuvchi (login)</label>
+              <input type="text" id="audit-user" class="super-input" placeholder="masalan: superadmin" maxlength="64">
+            </div>
+            <div>
+              <label class="super-form-label" for="audit-entity">Bo'lim (jadval)</label>
+              <select id="audit-entity" class="super-select"><option value="">Barchasi</option></select>
+            </div>
+            <div>
+              <label class="super-form-label" for="audit-action">Amal</label>
+              <select id="audit-action" class="super-select"><option value="">Barchasi</option></select>
+            </div>
+            <div>
+              <label class="super-form-label" for="audit-q">Qidiruv (ID, IP, matn)</label>
+              <input type="text" id="audit-q" class="super-input" maxlength="100" placeholder="PAT-..., USR-...">
+            </div>
+            <div class="audit-filter-actions">
+              <button type="submit" class="btn-super btn-super-primary"><i class="fas fa-search"></i> Qidirish</button>
+              <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.resetAuditFilters()">Tozalash</button>
+            </div>
+          </form>
+          <div class="super-table-wrapper" style="max-height: 440px; margin-top: 12px;">
+            <table class="super-table">
+              <thead>
+                <tr>
+                  <th>Vaqt</th>
+                  <th>Foydalanuvchi</th>
+                  <th>Amal</th>
+                  <th>Bo'lim</th>
+                  <th>ID</th>
+                  <th>Qisqacha</th>
+                </tr>
+              </thead>
+              <tbody id="admin-audit-table-body">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Yuklanmoqda...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="audit-pager">
+            <button type="button" class="btn-super btn-super-outline" id="audit-prev" onclick="window.FMH_Super.pageAudit(-1)">&laquo; Oldingi</button>
+            <span id="audit-page-info" aria-live="polite">—</span>
+            <button type="button" class="btn-super btn-super-outline" id="audit-next" onclick="window.FMH_Super.pageAudit(1)">Keyingi &raquo;</button>
+            <label class="super-form-label" for="audit-limit" style="margin: 0 0 0 auto;">Sahifada</label>
+            <select id="audit-limit" class="super-select" style="width: auto;" onchange="window.FMH_Super.searchAudit()">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div class="super-modal-footer">
         <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit one user account (opened from the admin centre's users tab) -->
+  <div class="super-modal-backdrop" id="super-user-edit-modal" role="dialog" aria-modal="true" aria-labelledby="user-edit-title">
+    <div class="super-modal-box" style="max-width: 520px;">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title" id="user-edit-title">Foydalanuvchini tahrirlash</h3>
+        <button type="button" class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeUserModal('super-user-edit-modal')" aria-label="Yopish">&times;</button>
+      </div>
+      <form id="user-edit-form" onsubmit="window.FMH_Super.handleUserEditSubmit(event)">
+        <div class="super-modal-body" style="display: flex; flex-direction: column; gap: 10px;">
+          <input type="hidden" id="user-edit-id">
+          <div>
+            <label class="super-form-label">Login</label>
+            <div id="user-edit-username" style="font-family: var(--font-mono); color: var(--primary); font-weight: 700;"></div>
+          </div>
+          <div>
+            <label class="super-form-label" for="user-edit-fullname">F.I.Sh *</label>
+            <input type="text" id="user-edit-fullname" class="super-input" maxlength="120" required>
+          </div>
+          <div>
+            <label class="super-form-label" for="user-edit-phone">Telefon</label>
+            <input type="text" id="user-edit-phone" class="super-input" maxlength="40">
+          </div>
+          <div>
+            <label class="super-form-label" for="user-edit-role">Rol</label>
+            <select id="user-edit-role" class="super-select"></select>
+          </div>
+          <div>
+            <label class="super-form-label" for="user-edit-staff">Xodim bilan bog'lash</label>
+            <select id="user-edit-staff" class="super-select"><option value="">— Bog'lanmagan —</option></select>
+          </div>
+          <div>
+            <label class="super-form-label" for="user-edit-active">Holat</label>
+            <select id="user-edit-active" class="super-select">
+              <option value="1">Faol</option>
+              <option value="0">Bloklangan (kira olmaydi)</option>
+            </select>
+          </div>
+          <div id="user-edit-protected-note" style="display: none; font-size: 0.75rem; color: var(--warning);">
+            <i class="fas fa-shield-alt"></i> Himoyalangan hisob: rol va holatni o'zgartirib bo'lmaydi.
+          </div>
+        </div>
+        <div class="super-modal-footer">
+          <button type="button" class="btn-super btn-super-outline" onclick="window.FMH_Super.closeUserModal('super-user-edit-modal')">Bekor qilish</button>
+          <button type="submit" class="btn-super btn-super-primary"><i class="fas fa-save"></i> Saqlash</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- One-time password, shown once after a reset or a create without password -->
+  <div class="super-modal-backdrop" id="super-user-password-modal" role="dialog" aria-modal="true" aria-labelledby="user-pw-title">
+    <div class="super-modal-box" style="max-width: 460px;">
+      <div class="super-modal-header">
+        <h3 class="super-modal-title" id="user-pw-title">Bir martalik parol</h3>
+        <button type="button" class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeUserModal('super-user-password-modal')" aria-label="Yopish">&times;</button>
+      </div>
+      <div class="super-modal-body" style="display: flex; flex-direction: column; gap: 10px;">
+        <div>Login: <strong id="user-pw-username" style="font-family: var(--font-mono);"></strong></div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="user-pw-value" class="super-input" readonly style="font-family: var(--font-mono); font-size: 1rem;">
+          <button type="button" class="btn-super btn-super-primary" onclick="window.FMH_Super.copyOneTimePassword()"><i class="fas fa-copy"></i> Nusxa</button>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--warning);">
+          <i class="fas fa-exclamation-triangle"></i> Bu parol faqat hozir ko'rsatiladi va hech qayerda saqlanmaydi. Xodimga bering: u birinchi kirishda parolini o'zgartiradi.
+        </div>
+      </div>
+      <div class="super-modal-footer">
+        <button type="button" class="btn-super btn-super-primary" onclick="window.FMH_Super.closeUserModal('super-user-password-modal')">Yopdim</button>
       </div>
     </div>
   </div>
@@ -1464,7 +1613,7 @@
   <script src="js/xlsx.full.min.js"></script>
     <script src="js/unified_print_engine.js?v=5.4"></script>
     <script src="js/med_search_engine.js?v=4.0"></script>
-<script src="js/superpage.js?v=8.5"></script>
+<script src="js/superpage.js?v=8.6"></script>
   <div id="print-area"></div>
 </body>
 </html>

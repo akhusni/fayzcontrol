@@ -741,6 +741,7 @@ from db import (
 import auth
 import audit
 import permissions
+import user_admin
 import nursery
 import owner_report
 import consultation
@@ -2520,22 +2521,32 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # 17. /api/users -> List platform user accounts
             elif path == '/api/users':
-                users_file = os.path.join(BASE_DIR, 'data', 'users.json')
-                if os.path.exists(users_file):
-                    try:
-                        with open(users_file, 'r', encoding='utf-8') as f:
-                            u_data = json.load(f)
-                    except Exception:
-                        u_data = []
-                else:
-                    u_data = []
-                sanitized = []
-                for u in u_data:
-                    u_copy = dict(u)
-                    u_copy['password'] = '********'
-                    sanitized.append(u_copy)
+                # A damaged file is an error, not an empty list: the old
+                # catch-all showed "no users" and invited re-creating them.
+                u_data = read_json_file(os.path.join(BASE_DIR, 'data', 'users.json'), [])
+                caller = (self.current_session() or {}).get('user')
+                # 'protected' tells the console which rows it may not delete,
+                # block or demote; the PUT/DELETE handlers enforce it anyway.
+                sanitized = [user_admin.sanitize(u, caller, u_data) for u in u_data]
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(sanitized, ensure_ascii=False).encode('utf-8'))
+
+            # The role picker reads the roles from permissions.ROLES, so the
+            # console offers all of them instead of a hand-typed six.
+            elif path == '/api/users/roles':
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(user_admin.role_list(),
+                                            ensure_ascii=False).encode('utf-8'))
+
+            # Read-only audit trail viewer for administrators.
+            elif path == '/api/audit':
+                filters, _err = audit.parse_search(query)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
+                    return
+                result = audit.search(conn, filters)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
 
             # /api/facility/availability?start=&end=
             # The occupancy board for a range of dates, room by room.
@@ -4993,63 +5004,77 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     return
                 u_list = read_json_file(users_file, [])
 
-                username = (body.get('username') or '').strip().lower()
-                if not username:
-                    self._set_json_headers(400)
-                    self.wfile.write(json.dumps({'error': 'Foydalanuvchi logini kiritilishi shart'}, ensure_ascii=False).encode('utf-8'))
+                # Checks live in user_admin.build_new_user: only a role that
+                # permissions.ROLES knows (an unknown one signed in with no
+                # access at all), a real login and name, a password of at
+                # least 8 characters when one is typed, a staff link that
+                # exists, and an id that is not taken. The old id was built
+                # from the user count and repeated after a deletion.
+                new_u, _issued_password, _err = user_admin.build_new_user(body, u_list, cur)
+                if _err:
+                    self._send_validation_error(_err[0], _err[1])
                     return
-
-                for u in u_list:
-                    if u.get('username', '').lower() == username:
-                        self._set_json_headers(400)
-                        self.wfile.write(json.dumps({'error': f"'{username}' logini allaqachon mavjud"}, ensure_ascii=False).encode('utf-8'))
-                        return
-
-                uid = body.get('id') or f"USR-{body.get('role', 'staff')[:3].upper()}-{len(u_list) + 1:02d}"
-                new_u = {
-                    "id": uid,
-                    "username": username,
-                    # Stored as a PBKDF2 hash, never as the typed value.
-                    # An account created without a password used to fall back to a
-                    # single fixed value, which meant every such account shared
-                    # one guessable password. A random one is generated instead and
-                    # returned once below, for the administrator to hand over.
-                    "password": auth.hash_password(_issued_password := (
-                        body.get('password') or auth.generate_temp_password())),
-                    "full_name": body.get('full_name') or username,
-                    "role": body.get('role') or 'doctor',
-                    "avatar": body.get('avatar') or ('👑' if body.get('role') == 'superadmin' else '👤'),
-                    "phone": body.get('phone', ''),
-                    "is_active": True,
-                    # A new account issued with a password someone else chose
-                    # must set its own before it can be used.
-                    "must_change_password": True,
-                }
-                # Only store an explicit permission list when one was actually
-                # supplied. This used to default to [role] — the role's *name*
-                # as a permission string, which matches no module in
-                # permissions.py, so a new receptionist or pharmacist was
-                # created with effectively no access at all. With the key
-                # absent the role's own defaults apply, which also means
-                # changing a role updates everyone holding it.
-                explicit = body.get('permissions')
-                if isinstance(explicit, list) and explicit:
-                    new_u['permissions'] = explicit
                 u_list.append(new_u)
                 write_json_atomic(users_file, u_list)
 
-                sanitized = dict(new_u)
-                sanitized.pop('password', None)
                 self._set_json_headers(201)
                 payload = {'message': "Foydalanuvchi muvaffaqiyatli ro'yxatdan o'tkazildi",
-                           'user': sanitized}
+                           'id': new_u['id'],
+                           'user': user_admin.sanitize(new_u)}
                 # Shown once. The account cannot be used until its owner sets
-                # their own password, so this is only for handing over.
-                if not body.get('password'):
+                # their own password, so this is only for handing over. The
+                # audit row is built from the request, never from this reply.
+                if _issued_password:
                     payload['temporary_password'] = _issued_password
                     payload['note'] = ("Bu parol faqat bir marta ko'rsatiladi. "
                                        "Xodim birinchi kirishda uni almashtirishi shart.")
                 self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+
+            # POST /api/users/<id>/reset-password
+            #
+            # A member of staff who forgot their password had no way back in
+            # short of someone editing users.json. This issues a new one-time
+            # password, shown once to the administrator, that must be changed
+            # at the next sign-in; every open session of that account ends.
+            elif path.startswith('/api/users/') and path.endswith('/reset-password'):
+                uid = urllib.parse.unquote(path[len('/api/users/'):-len('/reset-password')])
+                users_file = os.path.join(BASE_DIR, 'data', 'users.json')
+                if not os.path.exists(users_file):
+                    self._set_json_headers(503)
+                    self.wfile.write(json.dumps({'error': "Foydalanuvchilar bazasi topilmadi."},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                u_list = read_json_file(users_file, [])
+                target = user_admin.find(u_list, uid)
+                if not target:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Foydalanuvchi topilmadi'},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                caller = (self.current_session() or {}).get('user')
+                why = user_admin.protection_reason(target, caller, u_list, 'reset')
+                if why:
+                    self._set_json_headers(403)
+                    self.wfile.write(json.dumps({'error': why, 'field': 'id'},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                issued = auth.generate_temp_password()
+                target['password'] = auth.hash_password(issued)
+                target['must_change_password'] = True
+                write_json_atomic(users_file, u_list)
+                auth.destroy_sessions_for_user(target.get('username'))
+                # A lockout from the forgotten-password attempts would
+                # otherwise keep the new password from working for 15 minutes.
+                auth.clear_user_lockout(target.get('username'))
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'message': "Yangi bir martalik parol berildi",
+                    'id': target.get('id'),
+                    'username': target.get('username'),
+                    'temporary_password': issued,
+                    'note': ("Bu parol faqat bir marta ko'rsatiladi. "
+                             "Xodim kirgach uni almashtirishi shart."),
+                }, ensure_ascii=False).encode('utf-8'))
 
             # 15. POST /api/facility/rooms (Create Room)
             elif path == '/api/facility/rooms':
@@ -5383,39 +5408,49 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._set_json_headers(404)
                     self.wfile.write(json.dumps({'error': f"'{bed_id}' karavot topilmadi"}).encode('utf-8'))
 
+            # PUT /api/users/<id>: edit name, phone, role, staff link, block.
+            #
+            # This took any role name, set a typed password with no rotation,
+            # stored any 'permissions' value, and would block or demote the
+            # superadmin or the caller's own account. user_admin.apply_update
+            # holds the checks. A change to what the account may do ends its
+            # open sessions, which carry a copy of the record made at sign-in:
+            # a blocked employee otherwise kept working until the 12 h timeout.
             elif path.startswith('/api/users/'):
                 uid = urllib.parse.unquote(path.replace('/api/users/', ''))
                 users_file = os.path.join(BASE_DIR, 'data', 'users.json')
-                if os.path.exists(users_file):
-                    with open(users_file, 'r', encoding='utf-8') as f:
-                        u_list = json.load(f)
-                    
-                    found = None
-                    for u in u_list:
-                        if u.get('id') == uid or u.get('username') == uid:
-                            found = u
-                            break
-                    if found:
-                        if 'full_name' in body: found['full_name'] = body['full_name']
-                        if 'role' in body: found['role'] = body['role']
-                        if 'password' in body and body['password']:
-                            found['password'] = auth.hash_password(body['password'])
-                        if 'phone' in body: found['phone'] = body['phone']
-                        if 'is_active' in body: found['is_active'] = bool(body['is_active'])
-                        if 'permissions' in body: found['permissions'] = body['permissions']
-
-                        write_json_atomic(users_file, u_list)
-
-                        sanitized = dict(found)
-                        sanitized.pop('password', None)
-                        self._set_json_headers(200)
-                        self.wfile.write(json.dumps({'message': 'Foydalanuvchi ma\'lumotlari yangilandi', 'user': sanitized}, ensure_ascii=False).encode('utf-8'))
-                    else:
-                        self._set_json_headers(404)
-                        self.wfile.write(json.dumps({'error': 'Foydalanuvchi topilmadi'}).encode('utf-8'))
-                else:
+                if not os.path.exists(users_file):
+                    self._set_json_headers(503)
+                    self.wfile.write(json.dumps({'error': "Foydalanuvchilar bazasi topilmadi."},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                u_list = read_json_file(users_file, [])
+                found = user_admin.find(u_list, uid)
+                if not found:
                     self._set_json_headers(404)
-                    self.wfile.write(json.dumps({'error': 'Users fayli mavjud emas'}).encode('utf-8'))
+                    self.wfile.write(json.dumps({'error': 'Foydalanuvchi topilmadi'},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                caller = (self.current_session() or {}).get('user')
+                security, _err = user_admin.apply_update(found, body, caller, u_list, cur)
+                if _err:
+                    _msg, _field, _status = _err
+                    if _status == 400:
+                        self._send_validation_error(_msg, _field)
+                    else:
+                        self._set_json_headers(_status)
+                        self.wfile.write(json.dumps({'error': _msg, 'field': _field},
+                                                    ensure_ascii=False).encode('utf-8'))
+                    return
+                write_json_atomic(users_file, u_list)
+                if security:
+                    auth.destroy_sessions_for_user(found.get('username'))
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'message': "Foydalanuvchi ma'lumotlari yangilandi",
+                    'id': found.get('id'),
+                    'user': user_admin.sanitize(found, caller, u_list),
+                }, ensure_ascii=False).encode('utf-8'))
 
             else:
                 self._set_json_headers(404)
@@ -5603,16 +5638,41 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._set_json_headers(404)
                     self.wfile.write(json.dumps({'error': f"'{rid}' xonasi topilmadi"}).encode('utf-8'))
 
+            # DELETE /api/users/<id>
+            #
+            # Removed every account whose id OR username matched -- ids built
+            # from the user count repeated, so one delete could take two
+            # people -- answered 200 for an account that did not exist, and
+            # would delete the superadmin or the caller's own login.
             elif path.startswith('/api/users/'):
                 uid = urllib.parse.unquote(path.replace('/api/users/', ''))
                 users_file = os.path.join(BASE_DIR, 'data', 'users.json')
-                if os.path.exists(users_file):
-                    with open(users_file, 'r', encoding='utf-8') as f:
-                        u_list = json.load(f)
-                    u_list = [u for u in u_list if u.get('id') != uid and u.get('username') != uid]
-                    write_json_atomic(users_file, u_list)
+                if not os.path.exists(users_file):
+                    self._set_json_headers(503)
+                    self.wfile.write(json.dumps({'error': "Foydalanuvchilar bazasi topilmadi."},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                u_list = read_json_file(users_file, [])
+                target = user_admin.find(u_list, uid)
+                if not target:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Foydalanuvchi topilmadi'},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                caller = (self.current_session() or {}).get('user')
+                why = user_admin.protection_reason(target, caller, u_list, 'delete')
+                if why:
+                    self._set_json_headers(403)
+                    self.wfile.write(json.dumps({'error': why, 'field': 'id'},
+                                                ensure_ascii=False).encode('utf-8'))
+                    return
+                u_list = [u for u in u_list if u is not target]
+                write_json_atomic(users_file, u_list)
+                auth.destroy_sessions_for_user(target.get('username'))
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps({'message': f"Foydalanuvchi muvaffaqiyatli o'chirildi"}).encode('utf-8'))
+                self.wfile.write(json.dumps({'message': "Foydalanuvchi muvaffaqiyatli o'chirildi",
+                                             'id': target.get('id')},
+                                            ensure_ascii=False).encode('utf-8'))
 
             elif path.startswith('/api/accounting/medication-purchases/'):
                 pur_id = urllib.parse.unquote(path.replace('/api/accounting/medication-purchases/', ''))
@@ -5678,6 +5738,12 @@ def run_server():
             # Index the trail by time: without it a retention sweep, or
             # any question about a date range, reads every row.
             audit.ensure_index(_c)
+            # The user console's create request carried the typed password
+            # and the write hook stored the request as-is. New rows are
+            # masked in audit.record; this masks the ones written before.
+            _n = audit.scrub_secrets(_c)
+            if _n:
+                print(f'[✓] Masked passwords in {_n} old audit row(s).')
             # Adds patients.birth_date to a database made before it existed.
             ensure_patient_columns(_c)
             # One ward-round note per stay per day.

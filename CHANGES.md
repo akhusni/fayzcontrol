@@ -244,6 +244,26 @@ saqlash kerakmi, PO hal qiladi). "KPI reyting" ham hech qayerda kiritilmaydi.
 
 11 ta yangi test qo'shildi, jami 246 ta test o'tadi.
 
+### 2026-10-09: 4-bosqich (C) — administrator paneli
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Super-Portal — Foydalanuvchilar | Yangi hisob formasida 13 ta roldan faqat 6 tasi bor edi (sanitarka, farmatsevt, HR, statsionar menejeri, oshxona, bosh shifokor, admin yo'q) | Rollar ro'yxati serverdan olinadi (`GET /api/users/roles`, `permissions.ROLES`) — barcha 13 rol, nomi bilan |
+| Super-Portal — Foydalanuvchilar | Hisobni faqat yaratish va o'chirish mumkin edi | "Tahrirlash" oynasi: F.I.Sh, telefon, rol, xodim bilan bog'lash, holat (Faol / Bloklangan). Bloklangan xodim darhol tizimdan chiqariladi va kira olmaydi |
+| Super-Portal — Foydalanuvchilar | Parolini unutgan xodimni qaytarish yo'li yo'q edi | "Parolni tiklash" tugmasi: yangi bir martalik parol bir marta oynada ko'rsatiladi ("Nusxa" tugmasi bilan), hech qayerda saqlanmaydi; xodim kirgach uni almashtirishi shart, eski sessiyalari yopiladi |
+| Super-Portal — Foydalanuvchilar | Parol majburiy edi | Ixtiyoriy: bo'sh qoldirilsa server bir martalik parol beradi va bir marta ko'rsatadi. Yozilgan parol kamida 8 belgi |
+| Server — `/api/users` | Har qanday rol nomi qabul qilinardi (noma'lum rol bilan kirgan xodim hech narsani ko'rmasdi); login, F.I.Sh tekshirilmasdi | Rol `permissions.ROLES` dan bo'lishi, login 3-40 lotin belgi, F.I.Sh bo'sh emas, xodim ID mavjud bo'lishi shart; xato maydon nomi bilan qaytadi (400) |
+| Server — `/api/users` | Hisob ID foydalanuvchilar sonidan yasalardi va o'chirishdan keyin takrorlanardi; o'chirish shu ID li barcha hisoblarni o'chirardi; yo'q hisob uchun ham "o'chirildi" derdi | ID bo'sh raqam qidirib beriladi; faqat bitta hisob o'chiriladi; yo'q hisob — 404 |
+| Server — `/api/users` | Superadmin hisobini va o'z hisobini o'chirish, bloklash, rolini tushirish mumkin edi | Taqiqlangan (403): `superadmin` hisobi, o'z hisobi va oxirgi faol bosh administrator. Ro'yxatda "Himoyalangan" deb ko'rinadi |
+| Server — `/api/users` | Tahrirlashda parolni to'g'ridan-to'g'ri yozib qo'yish mumkin edi (almashtirish talabisiz) | Parol faqat "Parolni tiklash" orqali o'zgaradi |
+| Xavfsizlik — Audit | Yangi hisob yaratilganda yozilgan parol audit jurnaliga ochiq matnda tushardi (lokal bazada 2 414 ta yozuv) | Parollar jurnalga yozilmaydi (`[yashirilgan]`); eski yozuvlardagi parollar server ishga tushganda avtomatik yashiriladi (kim, nima, qachon o'zgarmaydi) |
+| Xavfsizlik | Rol yoki holat o'zgarsa, xodimning ochiq sessiyasi eski huquqlar bilan 12 soatgacha ishlayverardi | Rol, holat, ruxsatlar yoki xodim bog'lanishi o'zgarsa, sessiyalari yopiladi |
+| Super-Portal — Audit jurnali (yangi) | Audit jurnali yozilardi, lekin uni faqat MySQL orqali o'qish mumkin edi | 5-yorliq "Audit jurnali": sana oralig'i, foydalanuvchi, bo'lim, amal, matn bo'yicha qidiruv, sahifalash (50/100/200). Faqat o'qish uchun (`GET /api/audit`, faqat admin) |
+| Super-Portal — Kadrlar | Ishga qabul formasi maoshni `salary` deb yuborardi — server uni o'qimasdi; maydonda 10 000 000 turardi; smena ham o'qilmasdi (doim "kunduzgi") | `base_salary` va `shift_type` yuboriladi; maydon bo'sh (bo'sh = 0). Ro'yxatdagi "Oylik" ustuni haqiqiy okladni ko'rsatadi |
+| Super-Portal | Ismlar tekshirilmasdan sahifaga qo'yilardi (maxsus belgilar sahifani buzishi mumkin edi) | Foydalanuvchilar, xodimlar va audit jadvallarida barcha qiymatlar xavfsiz ko'rsatiladi |
+
+13 ta yangi test qo'shildi, jami 259 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
