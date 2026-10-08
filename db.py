@@ -1075,6 +1075,46 @@ def ensure_medication_purchases(conn):
         print(f"[!] Could not create medication_purchases table: {e}")
 
 
+_user_sessions_checked = False
+
+
+def ensure_user_sessions(conn):
+    """
+    Create user_sessions, where sign-ins are kept so a restart keeps them.
+
+    Sessions used to live only in the server's memory, so every deploy or
+    restart signed the whole clinic out mid-shift and unsaved forms were lost
+    at the next click. auth.py now records each session here and restores it
+    after a restart. Only a SHA-256 hash of the cookie token is stored: a copy
+    of this table (a backup, a dump handed to a vendor) must not be usable to
+    sign in as anyone. Times are UTC. The user record itself is not copied
+    here; it is re-read from data/users.json on restore, so a blocked or
+    deleted account or a changed role takes effect.
+    """
+    global _user_sessions_checked
+    if _user_sessions_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token_hash CHAR(64) NOT NULL PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                user_id VARCHAR(64),
+                created_at DATETIME NOT NULL,
+                last_seen DATETIME NOT NULL,
+                ip_address VARCHAR(64),
+                user_agent VARCHAR(255),
+                INDEX idx_user_sessions_username (username),
+                INDEX idx_user_sessions_last_seen (last_seen)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        _user_sessions_checked = True
+    except Exception as e:
+        print(f"[!] Could not create user_sessions table: {e}")
+
+
 def list_room_availability(conn, start_date, end_date):
     """
     The occupancy board for one date range, room by room.

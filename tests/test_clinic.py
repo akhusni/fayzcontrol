@@ -2095,6 +2095,167 @@ class PasswordStorage(unittest.TestCase):
                             'each hash must use a fresh salt')
 
 
+class SessionsSurviveRestart(unittest.TestCase):
+    """
+    Sessions lived only in the server's memory, so every restart or deploy
+    signed the whole clinic out mid-shift. They are now kept in user_sessions.
+    Restarting the server mid-suite would break the suite's own cookie, so
+    these drive auth directly: clearing the in-memory cache is what a restart
+    does to it. Sessions made here belong to this test process, not the
+    running server, and each test removes its own rows.
+    """
+
+    PROBE = 'zz-session-probe'   # not in users.json on purpose
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import auth
+        import db
+        cls.auth, cls.db = auth, db
+        conn = db.get_db()
+        try:
+            db.ensure_user_sessions(conn)
+        finally:
+            conn.close()
+
+    def _sql(self, sql, params=()):
+        conn = self.db.get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            rows = cur.fetchall() if sql.lstrip().upper().startswith('SELECT') else None
+            conn.commit()
+            return rows
+        finally:
+            conn.close()
+
+    def _rows(self, token):
+        return self._sql("SELECT * FROM user_sessions WHERE token_hash = ?",
+                         (self.auth.token_hash(token),))
+
+    def _forget(self, token):
+        """What a restart does to this process's view of the session."""
+        self.auth._SESSIONS.pop(self.auth.token_hash(token), None)
+
+    def _real_user(self):
+        user = self.auth.find_user(USERNAME)
+        self.assertTrue(user, 'the test account is missing from users.json')
+        return user
+
+    def tearDown(self):
+        self.auth.destroy_sessions_for_user(self.PROBE)
+
+    def test_a_stored_session_is_found_again_after_a_restart(self):
+        token = self.auth.create_session(self._real_user(), ip='10.0.0.9', user_agent='probe')
+        try:
+            self._forget(token)
+            sess = self.auth.get_session(token)
+            self.assertTrue(sess, 'the session did not survive losing the memory cache')
+            self.assertEqual(sess['user']['username'].lower(), USERNAME.lower())
+            self.assertNotIn('password', sess['user'])
+            row = self._rows(token)[0]
+            self.assertEqual((row['ip_address'], row['user_agent']), ('10.0.0.9', 'probe'))
+        finally:
+            self.auth.destroy_session(token)
+
+    def test_only_a_hash_of_the_token_is_stored(self):
+        token = self.auth.create_session(self._real_user())
+        try:
+            self.assertEqual(len(self._rows(token)), 1)
+            raw = self._sql("SELECT COUNT(*) AS n FROM user_sessions WHERE token_hash = ? "
+                            "OR user_agent = ? OR ip_address = ?", (token, token, token))
+            self.assertEqual(raw[0]['n'], 0, 'the raw token reached the database')
+            self.assertEqual(len(self._rows(token)[0]['token_hash']), 64)
+        finally:
+            self.auth.destroy_session(token)
+
+    def test_logout_deletes_the_row(self):
+        token = self.auth.create_session(self._real_user())
+        self.auth.destroy_session(token)
+        self.assertEqual(self._rows(token), [])
+        self.assertIsNone(self.auth.get_session(token))
+
+    def test_sign_out_everywhere_deletes_every_row_of_that_account(self):
+        probe = {'username': self.PROBE, 'role': 'reception', 'id': 'U-PROBE'}
+        first, second = self.auth.create_session(probe), self.auth.create_session(probe)
+        self._forget(second)   # one this process never saw: only in the DB
+        self.auth.destroy_sessions_for_user(self.PROBE.upper())
+        self.assertEqual(self._sql("SELECT token_hash FROM user_sessions WHERE username = ?",
+                                   (self.PROBE,)), [])
+        self.assertIsNone(self.auth.get_session(first))
+        self.assertIsNone(self.auth.get_session(second))
+
+    def test_an_expired_row_is_rejected_and_removed(self):
+        token = self.auth.create_session(self._real_user())
+        try:
+            stale = self.auth._db_time(self.auth._now() - _dt.timedelta(
+                seconds=self.auth.SESSION_IDLE_SECONDS + 60))
+            self._sql("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
+                      (stale, self.auth.token_hash(token)))
+            self._forget(token)
+            self.assertIsNone(self.auth.get_session(token))
+            self.assertEqual(self._rows(token), [])
+        finally:
+            self.auth.destroy_session(token)
+
+    def test_a_deleted_or_blocked_account_is_not_revived(self):
+        """The account is re-read on restore, not trusted from the row."""
+        token = self.auth.create_session({'username': self.PROBE, 'role': 'superadmin'})
+        self._forget(token)
+        self.assertIsNone(self.auth.get_session(token))
+        self.assertEqual(self._rows(token), [])
+
+    def test_a_row_removed_elsewhere_ends_the_cached_session(self):
+        token = self.auth.create_session(self._real_user())
+        try:
+            self._sql("DELETE FROM user_sessions WHERE token_hash = ?",
+                      (self.auth.token_hash(token),))
+            sess = self.auth._SESSIONS[self.auth.token_hash(token)]
+            sess['db_seen'] -= _dt.timedelta(seconds=self.auth.SESSION_TOUCH_SECONDS + 1)
+            self.assertIsNone(self.auth.get_session(token))
+        finally:
+            self.auth.destroy_session(token)
+
+    def test_last_seen_is_not_written_on_every_request(self):
+        token = self.auth.create_session(self._real_user())
+        try:
+            marker = self.auth._db_time(self.auth._now() - _dt.timedelta(minutes=10))
+            self._sql("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
+                      (marker, self.auth.token_hash(token)))
+            for _ in range(3):
+                self.assertTrue(self.auth.get_session(token))
+            self.assertEqual(str(self._rows(token)[0]['last_seen'])[:19],
+                             marker.strftime('%Y-%m-%d %H:%M:%S'))
+            sess = self.auth._SESSIONS[self.auth.token_hash(token)]
+            sess['db_seen'] -= _dt.timedelta(seconds=self.auth.SESSION_TOUCH_SECONDS + 1)
+            self.assertTrue(self.auth.get_session(token))
+            self.assertNotEqual(str(self._rows(token)[0]['last_seen'])[:19],
+                                marker.strftime('%Y-%m-%d %H:%M:%S'),
+                                'the throttled write never happened')
+        finally:
+            self.auth.destroy_session(token)
+
+    def test_a_database_outage_never_raises_and_keeps_cached_sessions(self):
+        """GET /api/auth/session must answer, not 500, while MySQL is down."""
+        token = self.auth.create_session(self._real_user())
+        real = self.db.get_db
+
+        def down():
+            raise ConnectionError('MySQL is down (simulated)')
+        self.db.get_db = down
+        try:
+            sess = self.auth._SESSIONS[self.auth.token_hash(token)]
+            sess['db_seen'] -= _dt.timedelta(seconds=self.auth.SESSION_TOUCH_SECONDS + 1)
+            self.assertTrue(self.auth.get_session(token), 'a cached session was lost')
+            self.assertIsNone(self.auth.get_session('not-a-real-token'))
+            self.auth.create_session({'username': self.PROBE, 'role': 'nurse'})
+            self.auth.destroy_sessions_for_user(self.PROBE)
+        finally:
+            self.db.get_db = real
+            self.auth.destroy_session(token)
+
+
 # ---------------------------------------------------------------------------
 # Bed allocation
 # ---------------------------------------------------------------------------

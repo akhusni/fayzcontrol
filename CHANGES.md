@@ -286,6 +286,21 @@ Qabulxona to'lovni o'zi olmaydi: tashrif hisobi buxgalteriyada "To'lanmagan" bo'
 
 10 ta yangi test qo'shildi, jami 269 ta test o'tadi.
 
+### 2026-10-09: 4-bosqich (E) — server qayta ishga tushganda kirish saqlanadi
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Kirish (sessiyalar) | Sessiyalar faqat server xotirasida edi: har bir yangilash yoki qayta ishga tushirishda barcha xodimlar smena o'rtasida tizimdan chiqib ketardi, to'ldirilayotgan shakllar yo'qolardi | Sessiyalar MySQL'dagi yangi `user_sessions` jadvalida saqlanadi. Server qayta ishga tushgandan keyin xodim qaytadan kirmasdan ishlashda davom etadi. 12 soatlik harakatsizlik muddati o'zgarmadi |
+| Xavfsizlik | — | Bazada cookie tokenining o'zi emas, faqat SHA-256 xeshi saqlanadi: jadval nusxasi (zaxira, dump) bilan hech kim tizimga kira olmaydi. IP manzil va brauzer nomi ham yoziladi |
+| Xavfsizlik | — | Sessiya tiklanganda xodim ma'lumoti `users.json` dan qayta o'qiladi: o'chirilgan yoki bloklangan xodim qaytib kira olmaydi, rol o'zgarsa yangisi amal qiladi |
+| Chiqish va "hamma joydan chiqarish" | — | "Chiqish", parolni almashtirish, administrator parolni tiklashi, rol/holat o'zgarishi va xodimni o'chirish bazadagi sessiyalarni ham o'chiradi — qayta ishga tushirish ularni qaytarmaydi |
+| Server unumdorligi | — | Oxirgi faollik vaqti bazaga har so'rovda emas, daqiqasiga ko'pi bilan bir marta yoziladi. Muddati o'tgan sessiyalar har kirishda va server ishga tushganda o'chiriladi |
+| MySQL ishlamay qolsa | — | `/api/auth/session` 500 bermaydi: xotiradagi sessiyalar ishlashda davom etadi, notanish sessiya "kirilmagan" deb hisoblanadi (kirish uchun baribir MySQL kerak, avvalgidek) |
+
+Serverdagi MySQL foydalanuvchisiga `user_sessions` jadvali uchun `CREATE` (birinchi ishga tushishda bir marta), `SELECT`, `INSERT`, `UPDATE`, `DELETE` huquqlari kerak. Hammani darhol tizimdan chiqarish: `DELETE FROM user_sessions;` va serverni qayta ishga tushirish.
+
+9 ta yangi test qo'shildi, jami 278 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
@@ -534,11 +549,9 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 7. `building_management.html` hali ham bronlarni `localStorage` da
    saqlaydi. Qabulxona endi unga bog'liq emas, lekin o'sha sahifaning
    o'zi ham bazaga o'tkazilishi kerak.
-8. Sessiyalar hozircha xotirada — server qayta ishga tushganda barcha
-   xodimlar qaytadan kirishi kerak.
-9. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
+8. Ro'yxatlarda sahifalash (pagination) yo'q — hozirgi hajmda muammo
    emas, yillar o'tib sekinlashadi.
-10. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
+9. `audit_logs` uchun ko'rish interfeysi (ma'lumot yoziladi, lekin
    ko'rish uchun SQL kerak).
 
 **PO qarori kerak:**

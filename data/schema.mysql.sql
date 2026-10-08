@@ -487,6 +487,21 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (performed_by_staff_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Sign-in sessions, so a server restart does not sign the clinic out. Only a
+-- SHA-256 hash of the cookie token is stored, never the token itself. Times
+-- are UTC. The server also creates this table at startup (db.ensure_user_sessions).
+CREATE TABLE IF NOT EXISTS user_sessions (
+    token_hash CHAR(64) NOT NULL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL,
+    user_id VARCHAR(64),
+    created_at DATETIME NOT NULL,
+    last_seen DATETIME NOT NULL,
+    ip_address VARCHAR(64),
+    user_agent VARCHAR(255),
+    INDEX idx_user_sessions_username (username),
+    INDEX idx_user_sessions_last_seen (last_seen)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- -----------------------------------------------------------------------------
 -- 6.1 Medication Administration Record (Nurse Station)
 -- -----------------------------------------------------------------------------

@@ -784,6 +784,7 @@ from db import (
     ensure_staff_roles,
     ensure_staff_hr_columns,
     ensure_invoice_visit_link,
+    ensure_user_sessions,
     STAFF_HR_COLUMNS,
     STAFF_ROLES,
     load_config
@@ -1305,8 +1306,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         if self.enforce_auth(path):
             return
 
-        # Answered before the database is touched, so a page can still learn
-        # whether it is signed in when MySQL is unreachable.
+        # Answered before the request opens a database connection, so a page
+        # can still learn whether it is signed in when MySQL is unreachable.
+        # (auth may read user_sessions for a session it has not cached yet,
+        # but treats a database failure as "not signed in", never as a 500.)
         if path == '/api/auth/session':
             sess = self.current_session()
             user = sess['user'] if sess else None
@@ -5020,7 +5023,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 if ok:
                     auth.note_login_success(username, ip)
-                    token = auth.create_session(found)
+                    token = auth.create_session(found, ip=ip,
+                                                user_agent=self.headers.get('User-Agent'))
                     user_info = auth.sanitize_user(found)
                     needs_change = auth.must_change_password(found)
                     is_https = self.headers.get('X-Forwarded-Proto') == 'https'
@@ -5132,7 +5136,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # so the person who just changed it stays signed in here.
                 auth.destroy_sessions_for_user(username)
                 refreshed = auth.find_user(username)
-                token = auth.create_session(refreshed)
+                token = auth.create_session(refreshed, ip=self.client_ip(),
+                                            user_agent=self.headers.get('User-Agent'))
                 is_https = self.headers.get('X-Forwarded-Proto') == 'https'
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -5941,6 +5946,10 @@ def run_server():
             ensure_roster_sanitarkas(_c)
             # Desk visits (consultation, outpatient course) get invoices.
             ensure_invoice_visit_link(_c)
+            # Sign-ins are kept in MySQL so a restart does not sign the
+            # whole clinic out; drop the ones that went idle meanwhile.
+            ensure_user_sessions(_c)
+            auth.prune_expired_sessions()
         finally:
             _c.close()
     except Exception as _e:
