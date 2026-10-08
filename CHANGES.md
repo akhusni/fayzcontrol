@@ -1,7 +1,7 @@
 # Fayz Control — O'zgarishlar Hisoboti
 
 **Loyiha:** Fayz Medical House — Hospital Management & EMR Suite
-**Holat:** 234 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
+**Holat:** 245 avtomatlashtirilgan test, barchasi muvaffaqiyatli o'tadi
 **Sana:** 2026-yil oktabr
 
 ---
@@ -221,6 +221,29 @@ Xabar guruhning asosiy chatiga boradi; alohida mavzu (topic) kerak bo'lsa
 
 6 ta yangi test qo'shildi, jami 234 ta test o'tadi.
 
+### 2026-10-09: 4-bosqich (B) — HR: davomat, oylar, xodim ma'lumotlari
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| HR — Davomat | Davomat faqat shu brauzerda saqlanardi; boshqa kompyuterda yoki keshi tozalangach yo'qolardi, bazaga yetib bormasdi | Davomat serverda saqlanadi (`POST /api/hr/attendance`): bir xodim uchun bir kunda bitta yozuv, qayta saqlash uni tuzatadi. Rad etilsa sababi qizil xabarda ko'rsatiladi |
+| HR — Davomat | Hech kim qayd etmagan xodim ham "Keldi, 08:00, 8 soat, Standart ish kuni" deb ko'rinardi | "Qayd etilmagan" deb ko'rinadi; vaqt va soat "—" |
+| HR — Davomat | Faqat bugungi kun; "Tungi smenaga rejalashtirilgan" holati bazada yo'q edi | Jadval ustida "Sana" tanlanadi (kelajak kun mumkin emas). Holatlar: Keldi, Kechikdi, Kelmadi, Ta'tilda, Kasal; alohida "Smena" (kunduzgi / tungi / 24 soat) |
+| HR — Davomat | "Ishlangan soat" qo'lda yozilardi va vaqtlarga zid bo'lishi mumkin edi | Kelgan/ketgan vaqtdan avtomatik hisoblanadi; tungi smena ertasi tongda tugashi hisobga olinadi |
+| HR — Davomat | "Bugun ishda" soni barcha kunlardagi yozuvlarni sanardi | Faqat bugungi "Keldi/Kechikdi" yozuvlari |
+| HR — Navbatchilik va Maosh | Faqat joriy oy ko'rinardi | Oy almashtirish tugmalari (‹ ›) va "Bugun"; jadval va maosh tanlangan oy bo'yicha serverdan qayta yuklanadi |
+| HR — Xodim formasi | Ishga qabul sanasi, staj, toifa, lavozim nomi, bo'lim, qavat, Telegram, protsedura haqi faqat brauzerda edi va qayta yuklashda yo'qolardi | Serverda saqlanadi (bazaga yangi ustunlar avtomatik qo'shiladi). Bo'sh qoldirilgan maydon bo'sh qoladi |
+| HR — Xodim formasi | Bo'sh maydonlar o'rniga taxmin yozilardi: "Oliy toifa", 5 yil staj, bugungi sana, "Narkologiya", "Mutaxassis" | Taxmin yozilmaydi; bo'sh bo'lsa "—" |
+| HR — Xodim formasi | Okladi 0 bo'lgan xodim (masalan, faqat navbatchilik oladigan sanitarka) tahrirlansa forma 10 000 000 ko'rsatardi va saqlasa shu yozilardi | Haqiqiy oklad (0 ham) ko'rsatiladi |
+| HR — Xodim formasi | Farmatsevt, kadrlar bo'limi, statsionar menejeri, oshxona xodimi tahrirlansa "admin" bo'lib qolardi | O'z lavozimi saqlanadi |
+| HR — Xodimni o'chirish | Tugma "butunlay o'chirish" derdi, lekin server faqat faolsizlantirardi; xodim ro'yxatdan jim yo'qolib, qayta yuklashda qaytib chiqardi | Tugma va savol "Faolsizlantirish" deydi; xodim xira, "Faolsizlantirilgan" belgisi bilan qoladi va "Faollashtirish" tugmasi bilan qaytariladi. Yozuvlari saqlanadi |
+| Server | — | `POST /api/staff/<id>/reactivate` — faqat faollikni qaytaradi, boshqa ma'lumotlarga tegmaydi. Davomat va qayta faollashtirish faqat HR (va admin) uchun; qabulxona 403 oladi |
+| Xavfsizlik | Har qanday xodim barcha maoshlar va davomatni ko'ra olardi (`/api/hr/data`, `/api/staff`) | Faqat HR, kassir (buxgalteriya yozish huquqi) va klinika egasi ko'radi |
+
+**Eslatma:** pasport/JShShIR maydoni hali ham saqlanmaydi (shaxsiy ma'lumot —
+saqlash kerakmi, PO hal qiladi). "KPI reyting" ham hech qayerda kiritilmaydi.
+
+11 ta yangi test qo'shildi, jami 246 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
@@ -436,7 +459,7 @@ versiya eskirgan kalitni kuzatardi va hech qachon ishlamasdi.
 
 ## 5. Sinov va infratuzilma
 
-- **234 avtomatlashtirilgan test**, faqat standart kutubxona.
+- **245 avtomatlashtirilgan test**, faqat standart kutubxona.
   `python3 tests/test_clinic.py`
 - Git repozitoriysi, har bir o'zgarish sababi bilan izohlangan.
 - MySQL 8+ sxemasi yangilandi; yangi jadvallar server ishga tushganda

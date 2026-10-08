@@ -4191,10 +4191,244 @@ class ServerPayroll(ApiTest):
                          'a rename stopped pay, or paid a day that named someone else')
         self.assertTrue(other['id'])
 
+    def test_salaries_stay_with_hr_and_accounting(self):
+        """/api/hr/data was open to every login and /api/staff sent salary_base to all."""
+        desk = self._account('receptionist')
+        st, _ = desk.get('/api/hr/data')
+        self.assertEqual(st, 403)
+        st, rows = desk.get('/api/staff')
+        self.assertEqual(st, 200)
+        self.assertTrue(rows, 'the staff list came back empty')
+        self.assertFalse(any('salary_base' in r for r in rows), 'the desk can read salaries')
+        st, rows = self.api.get('/api/staff')
+        self.assertTrue(any('salary_base' in r for r in rows))
+
     def test_the_desk_cannot_read_payroll(self):
         desk = self._account('receptionist')
         st, _ = desk.get('/api/hr/payroll?month=' + self.MONTH)
         self.assertEqual(st, 403)
+
+
+class HrAttendanceAndStaffRecords(ApiTest):
+    """
+    The HR page kept attendance and half of each staff form in the browser
+    only, so both were gone after a reload or on another computer, and its
+    delete button said "o'chirish" while the server only deactivated. These
+    pin POST /api/hr/attendance, the HR staff columns, and reactivation.
+    """
+
+    _account = RoleAuthorization._account
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+        self._staff = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        if self._staff:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from db import get_db
+            conn = get_db()
+            try:
+                cur = conn.cursor()
+                for sid in self._staff:
+                    cur.execute("DELETE FROM staff_attendance WHERE staff_id = ?", (sid,))
+                    cur.execute("DELETE FROM staff WHERE id = ?", (sid,))
+                conn.commit()
+            finally:
+                conn.close()
+        super().tearDown()
+
+    def _staff_member(self, name='Suite HR Xodim', role='nurse', **extra):
+        payload = {'full_name': name, 'role': role, 'base_salary': 0}
+        payload.update(extra)
+        st, body = self.api.post('/api/staff', payload)
+        self.assertEqual(st, 201, body)
+        self._staff.append(body['id'])
+        return body
+
+    def _hr_staff(self, sid):
+        st, body = self.api.get('/api/hr/data')
+        self.assertEqual(st, 200, body)
+        return next((s for s in body['staff'] if s['id'] == sid), None), body
+
+    def _attendance(self, sid):
+        _s, body = self._hr_staff(sid)
+        return [a for a in body['attendance_records'] if a['staff_id'] == sid]
+
+    @staticmethod
+    def _day(offset=-1):
+        return (_dt.date.today() + _dt.timedelta(days=offset)).isoformat()
+
+    # --- attendance -------------------------------------------------------
+
+    def test_attendance_is_saved_once_per_person_per_day(self):
+        sid = self._staff_member()['id']
+        day = self._day(-1)
+        st, body = self.api.post('/api/hr/attendance', {
+            'staff_id': sid, 'work_date': day, 'shift_type': 'day', 'status': 'present',
+            'check_in': '08:00', 'check_out': '17:30'})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body['attendance']['worked_hours'], 9.5)
+        # A second save for the same day corrects it rather than adding a row.
+        st, body = self.api.post('/api/hr/attendance', {
+            'staff_id': sid, 'work_date': day, 'shift_type': 'day', 'status': 'late',
+            'check_in': '08:15', 'late_minutes': 15, 'notes': 'Suite'})
+        self.assertEqual(st, 200, body)
+        rows = [a for a in self._attendance(sid) if str(a['work_date'])[:10] == day]
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual(rows[0]['status'], 'late')
+        self.assertEqual(rows[0]['late_minutes'], 15)
+        self.assertEqual(rows[0]['check_in_time'], '08:15')
+        self.assertIsNone(rows[0]['check_out_time'], 'the old check-out survived the correction')
+
+    def test_a_night_shift_ends_the_next_morning(self):
+        sid = self._staff_member()['id']
+        st, body = self.api.post('/api/hr/attendance', {
+            'staff_id': sid, 'work_date': self._day(-2), 'shift_type': 'night', 'status': 'present',
+            'check_in': '20:00', 'check_out': '08:00'})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body['attendance']['worked_hours'], 12.0)
+        self.assertTrue(str(body['attendance']['check_out']).startswith(self._day(-1)), body)
+
+    def test_lateness_is_kept_only_for_a_late_entry(self):
+        sid = self._staff_member()['id']
+        st, body = self.api.post('/api/hr/attendance', {
+            'staff_id': sid, 'work_date': self._day(-1), 'shift_type': 'day', 'status': 'present',
+            'check_in': '08:00', 'late_minutes': 20})
+        self.assertEqual(st, 200, body)
+        self.assertIsNone(body['attendance']['late_minutes'])
+
+    def test_bad_attendance_is_refused_and_nothing_is_written(self):
+        sid = self._staff_member()['id']
+        good = {'staff_id': sid, 'work_date': self._day(-1), 'shift_type': 'day', 'status': 'present'}
+        cases = [
+            ({'staff_id': ''}, 'staff_id'),
+            ({'staff_id': 'STF-NOBODY-999'}, 'staff_id'),
+            ({'work_date': ''}, 'work_date'),
+            ({'work_date': '2026-13-01'}, 'work_date'),
+            ({'work_date': self._day(+1)}, 'work_date'),
+            ({'status': 'scheduled_night'}, 'status'),
+            ({'shift_type': 'evening'}, 'shift_type'),
+            ({'check_in': '25:00'}, 'check_in'),
+            ({'check_out': 'tushda'}, 'check_out'),
+            ({'status': 'absent', 'check_in': '08:00'}, 'check_in'),
+            ({'status': 'late', 'late_minutes': -5}, 'late_minutes'),
+        ]
+        for change, field in cases:
+            payload = dict(good, **change)
+            st, body = self.api.post('/api/hr/attendance', payload)
+            self.assertEqual(st, 400, f'{change} was accepted: {body}')
+            self.assertEqual(body.get('field'), field, f'{change}: {body}')
+            self.assertNotIn('Traceback', json.dumps(body))
+        self.assertEqual(self._attendance(sid), [])
+
+    def test_only_hr_records_attendance(self):
+        sid = self._staff_member()['id']
+        payload = {'staff_id': sid, 'work_date': self._day(-1), 'shift_type': 'day', 'status': 'sick'}
+        desk = self._account('receptionist')
+        self.assertEqual(desk.post('/api/hr/attendance', payload)[0], 403)
+        hr = self._account('hr_manager')
+        st, body = hr.post('/api/hr/attendance', payload)
+        self.assertEqual(st, 200, body)
+
+    # --- staff HR fields --------------------------------------------------
+
+    def test_hr_form_fields_survive_a_reload(self):
+        sid = self._staff_member(
+            'Suite HR Toliq', 'doctor',
+            hire_date='2024-03-01', experience_years=7, category='1-toifa',
+            role_title_uz='Shifokor-Narkolog', department='doctors', assigned_floor='2',
+            telegram='@suite_hr', detox_procedure_fee=150000, bls_cpr_certified=True)['id']
+        row, _ = self._hr_staff(sid)
+        self.assertEqual(str(row['hire_date'])[:10], '2024-03-01')
+        self.assertEqual(row['experience_years'], 7)
+        self.assertEqual(row['category'], '1-toifa')
+        self.assertEqual(row['role_title_uz'], 'Shifokor-Narkolog')
+        self.assertEqual(row['department'], 'doctors')
+        self.assertEqual(row['assigned_floor'], '2')
+        self.assertEqual(row['telegram'], 'suite_hr')
+        self.assertEqual(float(row['detox_procedure_fee']), 150000.0)
+        self.assertEqual(row['bls_cpr_certified'], 1)
+
+        # A save from a form without these fields (the Super-Portal hire
+        # form) keeps them; a field sent blank clears it.
+        st, body = self.api.post('/api/staff', {'id': sid, 'full_name': 'Suite HR Toliq',
+                                                'role': 'doctor', 'base_salary': 0})
+        self.assertEqual(st, 201, body)
+        row, _ = self._hr_staff(sid)
+        self.assertEqual(row['category'], '1-toifa', 'a partial save wiped HR data')
+        st, body = self.api.post('/api/staff', {'id': sid, 'full_name': 'Suite HR Toliq',
+                                                'role': 'doctor', 'base_salary': 0, 'category': ''})
+        self.assertEqual(st, 201, body)
+        row, _ = self._hr_staff(sid)
+        self.assertIsNone(row['category'])
+        self.assertEqual(row['experience_years'], 7)
+
+    def test_missing_hr_fields_stay_empty(self):
+        sid = self._staff_member('Suite HR Bosh')['id']
+        row, _ = self._hr_staff(sid)
+        for key in ('hire_date', 'experience_years', 'category', 'telegram', 'bls_cpr_certified'):
+            self.assertIsNone(row.get(key), f'{key} was filled in for nobody: {row.get(key)!r}')
+
+    def test_bad_hr_fields_are_refused(self):
+        cases = [
+            ({'category': 'Professor'}, 'category'),
+            ({'department': 'kitchen'}, 'department'),
+            ({'assigned_floor': '7'}, 'assigned_floor'),
+            ({'hire_date': '01.03.2024'}, 'hire_date'),
+            ({'hire_date': '1890-01-01'}, 'hire_date'),
+            ({'experience_years': -1}, 'experience_years'),
+            ({'experience_years': 'besh'}, 'experience_years'),
+            ({'detox_procedure_fee': -5}, 'detox_procedure_fee'),
+        ]
+        for extra, field in cases:
+            payload = {'full_name': 'Suite HR Xato', 'role': 'nurse', 'base_salary': 0}
+            payload.update(extra)
+            st, body = self.api.post('/api/staff', payload)
+            if st == 201:
+                self._staff.append(body['id'])
+            self.assertEqual(st, 400, f'{extra} was accepted: {body}')
+            self.assertEqual(body.get('field'), field, f'{extra}: {body}')
+
+    def test_a_role_outside_the_short_list_is_kept(self):
+        body = self._staff_member('Suite HR Farmatsevt', 'pharmacist')
+        self.assertEqual(body['staff']['role'], 'pharmacist', 'a pharmacist was saved as admin')
+
+    # --- deactivate / reactivate -----------------------------------------
+
+    def test_deactivated_staff_stay_listed_and_can_be_reactivated(self):
+        sid = self._staff_member('Suite HR Qaytuvchi', category='2-toifa')['id']
+        st, body = self.api.delete('/api/staff/' + sid)
+        self.assertEqual(st, 200, body)
+        row, _ = self._hr_staff(sid)
+        self.assertIsNotNone(row, 'a deactivated employee vanished from HR')
+        self.assertEqual(row['status'], 'inactive')
+        st, active = self.api.get('/api/staff')
+        self.assertNotIn(sid, [s['id'] for s in active], 'an inactive employee is still offered elsewhere')
+
+        st, body = self.api.post('/api/staff/' + urllib.parse.quote(sid) + '/reactivate', {})
+        self.assertEqual(st, 200, body)
+        row, _ = self._hr_staff(sid)
+        self.assertEqual(row['status'], 'active')
+        self.assertEqual(row['category'], '2-toifa', 'reactivation rewrote the record')
+
+        # Re-saving the record reactivates too (the older route).
+        self.api.delete('/api/staff/' + sid)
+        st, body = self.api.post('/api/staff', {'id': sid, 'full_name': 'Suite HR Qaytuvchi',
+                                                'role': 'nurse', 'base_salary': 0})
+        self.assertEqual(st, 201, body)
+        row, _ = self._hr_staff(sid)
+        self.assertEqual(row['status'], 'active')
+
+    def test_reactivation_needs_hr_and_a_real_person(self):
+        sid = self._staff_member()['id']
+        self.api.delete('/api/staff/' + sid)
+        desk = self._account('receptionist')
+        self.assertEqual(desk.post('/api/staff/' + sid + '/reactivate', {})[0], 403)
+        self.assertEqual(self.api.post('/api/staff/STF-NOBODY-999/reactivate', {})[0], 404)
 
 if __name__ == '__main__':
     argv = [sys.argv[0]]

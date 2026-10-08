@@ -249,6 +249,7 @@ _ENTITY_BY_PREFIX = [
     ('/api/beds', 'beds'),
     ('/api/staff', 'staff'),
     ('/api/hr/staff', 'staff'),
+    ('/api/hr/attendance', 'staff_attendance'),
     ('/api/users', 'users'),
 ]
 
@@ -270,6 +271,8 @@ def action_for(method, path):
         return 'CHECK_OUT'
     if '/transfer' in path:
         return 'TRANSFER'
+    if path.endswith('/reactivate'):
+        return 'UPDATE'
     if path.startswith('/api/admissions') and method == 'POST':
         return 'CHECK_IN'
     if path.rstrip('/').endswith('/payments') or '/payments' in path:

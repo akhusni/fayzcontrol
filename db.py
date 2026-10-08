@@ -880,6 +880,58 @@ def ensure_staff_roles(conn):
         print(f"[!] Could not widen staff.role: {e}")
 
 
+# Columns the HR form has always collected but the staff table had no place
+# for. They lived only in the browser (and in the vendor's demo hr_db.json,
+# which describes different people under the same ids), so a reload or a
+# second computer lost them. All nullable: a value nobody entered stays empty.
+STAFF_HR_COLUMNS = (
+    ('hire_date', 'DATE NULL'),
+    ('experience_years', 'SMALLINT NULL'),
+    ('category', 'VARCHAR(64) NULL'),
+    ('role_title_uz', 'VARCHAR(255) NULL'),
+    ('department', 'VARCHAR(32) NULL'),
+    ('assigned_floor', 'VARCHAR(8) NULL'),
+    ('telegram', 'VARCHAR(64) NULL'),
+    ('detox_procedure_fee', 'DECIMAL(14,2) NULL'),
+    ('bls_cpr_certified', 'TINYINT(1) NULL'),
+)
+# The attendance form asks how late someone was; the table had no column.
+ATTENDANCE_EXTRA_COLUMNS = (
+    ('late_minutes', 'SMALLINT NULL'),
+)
+_staff_hr_columns_checked = False
+
+
+def ensure_staff_hr_columns(conn):
+    """
+    Add the HR-only staff columns and staff_attendance.late_minutes to a
+    database made before they existed. Idempotent: only missing columns are
+    added, so it is cheap to run on every start.
+    """
+    global _staff_hr_columns_checked
+    if _staff_hr_columns_checked:
+        return
+    try:
+        cur = conn.cursor()
+        for table, columns in (('staff', STAFF_HR_COLUMNS),
+                               ('staff_attendance', ATTENDANCE_EXTRA_COLUMNS)):
+            cur.execute("""
+                SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+            """, (table,))
+            have = set()
+            for r in cur.fetchall() or []:
+                have.add(r['COLUMN_NAME'] if hasattr(r, 'keys') else r[0])
+            for name, ddl in columns:
+                if name not in have:
+                    cur.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, name, ddl))
+                    print(f"[✓] {table}.{name} added.")
+        conn.commit()
+        _staff_hr_columns_checked = True
+    except Exception as e:
+        print(f"[!] Could not add the HR staff columns: {e}")
+
+
 _medication_purchases_checked = False
 
 

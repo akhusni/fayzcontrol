@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS staff (
     salary_base DECIMAL(14,2) DEFAULT 0.00 CHECK(salary_base >= 0),
     shift_type VARCHAR(32) DEFAULT 'day' CHECK(shift_type IN ('day', 'night', '24h', 'rotating')),
     is_active TINYINT(1) NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+    -- HR-only details from the HR form (db.STAFF_HR_COLUMNS adds them to older
+    -- databases). Nullable: a value nobody entered stays empty.
+    hire_date DATE NULL,
+    experience_years SMALLINT NULL,
+    category VARCHAR(64) NULL,
+    role_title_uz VARCHAR(255) NULL,
+    department VARCHAR(32) NULL,
+    assigned_floor VARCHAR(8) NULL,
+    telegram VARCHAR(64) NULL,
+    detox_procedure_fee DECIMAL(14,2) NULL,
+    bls_cpr_certified TINYINT(1) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -76,6 +87,7 @@ CREATE TABLE IF NOT EXISTS staff_attendance (
     check_in DATETIME,
     check_out DATETIME,
     status VARCHAR(32) NOT NULL DEFAULT 'present' CHECK(status IN ('present', 'absent', 'late', 'on_leave', 'sick')),
+    late_minutes SMALLINT NULL,
     notes TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_staff_work_date (staff_id, work_date),

@@ -85,6 +85,11 @@
     }
   };
 
+  // Today's date in clinic (browser) time, YYYY-MM-DD.
+  function todayIso() {
+    return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
   // Main HR State
   const State = {
     facility: {},
@@ -97,6 +102,9 @@
     payrollError: null,
     payrollSeq: 0,
     attendance: [],
+    // The day the attendance sheet shows and records (YYYY-MM-DD, clinic time).
+    attendanceDate: todayIso(),
+    rosterSeq: 0,
     activeTab: 'staff',
     staffFilterDept: 'all',
     staffFilterStatus: 'all',
@@ -159,7 +167,11 @@
       const localData = localStorage.getItem(STORAGE_KEY);
       if (localData) {
         try {
-          populateState(JSON.parse(localData));
+          // Attendance is the server's (POST /api/hr/attendance); an old
+          // browser copy must never be shown as if it were recorded.
+          const cached = JSON.parse(localData);
+          delete cached.attendance_records;
+          populateState(cached);
         } catch (e) {
           console.warn('Failed to parse local HR DB:', e);
         }
@@ -187,14 +199,15 @@
     State.attendance = data.attendance_records || [];
   }
 
-  // Offline cache of staff and attendance only (used when /api/hr/data is
-  // unreachable). Roster, tariffs and payroll are never cached here.
+  // Offline cache of the staff list only (used when /api/hr/data is
+  // unreachable). Roster, tariffs, payroll and attendance are never cached
+  // here: attendance used to live only in this cache, so it never reached
+  // the database and was lost on another computer.
   function saveToLocalStorage() {
     const payload = {
       facility_info: State.facility,
       brigades: State.brigades,
-      staff: State.staff,
-      attendance_records: State.attendance
+      staff: State.staff
     };
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (e) { /* storage full or blocked */ }
   }
@@ -320,7 +333,11 @@
   }
 
   async function loadDutyRoster() {
-    State.rosterLoadError = null;
+    // Month arrows can be clicked faster than the server answers; only the
+    // latest load may fill the roster, or an older month's answer would be
+    // shown under the newer month's label.
+    const seq = ++State.rosterSeq;
+    let loadError = null;
     let data = null;
     try {
       const res = await fetch('/api/duty-schedule');
@@ -328,11 +345,13 @@
         data = await res.json();
       } else {
         const err = await res.json().catch(() => ({}));
-        State.rosterLoadError = (err && err.error) || 'Navbatchilik jadvali serverdan yuklanmadi';
+        loadError = (err && err.error) || 'Navbatchilik jadvali serverdan yuklanmadi';
       }
     } catch (e) {
-      State.rosterLoadError = 'Server bilan aloqa yo\'q — navbatchilik jadvali yuklanmadi';
+      loadError = 'Server bilan aloqa yo\'q — navbatchilik jadvali yuklanmadi';
     }
+    if (seq !== State.rosterSeq) return false;
+    State.rosterLoadError = loadError;
 
     // Without the server roster we cannot tell saved days from empty ones,
     // so show nothing rather than a suggestion that a save could write over
@@ -362,6 +381,65 @@
       savedByDate[sg.date] ? fromServerDay(savedByDate[sg.date]) : sg
     );
     recalculateStaffDutyCounts();
+    return true;
+  }
+
+  // ==========================================================================
+  // ROSTER / PAYROLL MONTH (previous / next / current)
+  // ==========================================================================
+  // The roster and payroll tabs only ever showed the current month, so HR
+  // could not look back at last month's pay or plan the next one.
+  function isCurrentMonth() {
+    const now = new Date();
+    return State.currentYear === now.getFullYear() && State.currentMonth === now.getMonth() + 1;
+  }
+
+  async function setRosterMonth(year, month) {
+    State.currentYear = year;
+    State.currentMonth = month;
+    // A stamp or picker opened on the old month must not write into the new one.
+    State.selectedSlot = null;
+    State.monthlySchedule = [];
+    State.rosterLoading = true;
+    // Drop the old month's pay and any payroll answer still on its way.
+    State.payroll = null;
+    State.payrollError = null;
+    State.payrollSeq++;
+    renderShiftRoster();
+    renderPayrollTable();
+    const loaded = await loadDutyRoster();
+    if (loaded === false) return; // a newer month was picked meanwhile
+    State.rosterLoading = false;
+    renderAll();
+    loadPayroll();
+  }
+
+  function changeRosterMonth(delta) {
+    const d = new Date(State.currentYear, State.currentMonth - 1 + delta, 1);
+    return setRosterMonth(d.getFullYear(), d.getMonth() + 1);
+  }
+
+  function goToCurrentMonth() {
+    const now = new Date();
+    return setRosterMonth(now.getFullYear(), now.getMonth() + 1);
+  }
+
+  function monthNavHtml() {
+    return `
+      <div class="hr-month-nav" style="display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+        <button type="button" class="btn-portal btn-outline-portal" style="padding: 5px 10px;" onclick="window.FMH_HR.changeRosterMonth(-1)" title="Oldingi oy" aria-label="Oldingi oy">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <span style="font-weight: 700; color: var(--text-primary); min-width: 8.5rem; text-align: center;">${esc(monthLabel())}</span>
+        <button type="button" class="btn-portal btn-outline-portal" style="padding: 5px 10px;" onclick="window.FMH_HR.changeRosterMonth(1)" title="Keyingi oy" aria-label="Keyingi oy">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+        ${isCurrentMonth() ? '' : `
+        <button type="button" class="btn-portal btn-outline-portal" style="padding: 5px 10px;" onclick="window.FMH_HR.goToCurrentMonth()">
+          <i class="fas fa-calendar-day"></i> Bugun
+        </button>`}
+      </div>
+    `;
   }
 
   // People who may take a duty slot: active staff of that role. Sanitarkas
@@ -656,6 +734,7 @@
     }
 
     container.innerHTML = `
+      <div style="margin-bottom: 0.75rem;">${monthNavHtml()}</div>
       ${renderRosterStatusBanner()}
 
       <!-- Official Navbatchilik Tariffs Banner -->
@@ -726,6 +805,13 @@
   // Tells HR which days are only a suggestion (not saved, not paid) and
   // offers one button to save them. Also reports a roster that failed to load.
   function renderRosterStatusBanner() {
+    if (State.rosterLoading) {
+      return `
+        <div role="status" style="margin-bottom: 0.75rem; padding: 0.5rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 0.8rem; font-weight: 600;">
+          <i class="fas fa-spinner fa-spin"></i> ${esc(monthLabel())}: jadval yuklanmoqda...
+        </div>
+      `;
+    }
     if (State.rosterLoadError) {
       return `
         <div role="alert" style="margin-bottom: 0.75rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid rgba(244, 63, 94, 0.45); background: rgba(244, 63, 94, 0.1); color: #fb7185; font-size: 0.85rem; font-weight: 600;">
@@ -1342,12 +1428,15 @@
       const initials = staff.full_name ? staff.full_name.split(' ').map(n => n[0]).join('').substring(0, 2) : 'ST';
       const statusClass = staff.status === 'active' ? 'active' : 'inactive';
       const statusLabel = staff.status === 'active' ? 'Faol' : 'Noaktiv';
+      // A deactivated employee stays on the list, dimmed and labelled, with
+      // a way back; the old delete made them vanish until the next reload.
+      const isInactive = staff.status === 'inactive';
 
       const dutyKey = dutyKeyFor(staff);
       const dutyRateLabel = dutyKey ? `${formatUZS(tariff(dutyKey))}/${dutyKey === 'doctor_night' ? 'tun' : '24h'}` : '—';
 
       return `
-        <div class="staff-card" data-staff-id="${staff.id}">
+        <div class="staff-card" data-staff-id="${staff.id}"${isInactive ? ' style="opacity: 0.65;"' : ''}>
           <div class="staff-card-header">
             <div class="staff-avatar" style="background: ${staff.avatar_color || '#4f46e5'};">
               ${initials}
@@ -1356,7 +1445,8 @@
             <div class="staff-info">
               <div class="staff-name">${staff.full_name}</div>
               <div class="staff-role-badge"><i class="fas fa-id-badge"></i> ${staff.role_title_uz || staff.role}</div>
-              <div class="staff-specialty">${staff.specialty || 'Mutaxassis'}</div>
+              ${isInactive ? '<span class="status-badge badge-danger" style="margin-top: 4px;"><i class="fas fa-user-slash"></i> Faolsizlantirilgan</span>' : ''}
+              <div class="staff-specialty">${esc(staff.specialty || '—')}</div>
             </div>
           </div>
 
@@ -1364,7 +1454,7 @@
             <div class="staff-meta-chip" title="Telefon"><i class="fas fa-phone"></i> ${staff.phone || '—'}</div>
             <div class="staff-meta-chip" title="Oylik Navbatchilik"><i class="fas fa-clock"></i> ${staff.monthly_duty_count || 0} smena (${formatUZS(staff.monthly_duty_earnings)})</div>
             <div class="staff-meta-chip" title="Navbatchilik Tarifi"><i class="fas fa-tag"></i> ${dutyRateLabel}</div>
-            <div class="staff-meta-chip" title="Toifa"><i class="fas fa-award"></i> ${staff.category || 'Mutaxassis'}</div>
+            <div class="staff-meta-chip" title="Toifa"><i class="fas fa-award"></i> ${esc(staff.category || '—')}</div>
           </div>
 
           <div class="staff-kpi-bar">
@@ -1386,6 +1476,10 @@
             <button class="btn-portal btn-outline-portal" style="padding: 5px 8px; font-size: 0.76rem;" onclick="window.FMH_HR.editStaff('${staff.id}')" title="Tahrirlash">
               <i class="fas fa-edit"></i>
             </button>
+            ${isInactive ? `
+            <button class="btn-portal btn-success-portal" style="padding: 5px 10px; font-size: 0.76rem;" onclick="window.FMH_HR.reactivateStaff('${esc(staff.id)}')" title="Qayta faollashtirish">
+              <i class="fas fa-user-check"></i> Faollashtirish
+            </button>` : ''}
           </div>
         </div>
       `;
@@ -1396,33 +1490,52 @@
   // TAB 3: ATTENDANCE, TAB 4: PAYROLL
   // ==========================================================================
 
+  // The saved attendance row for one person on the sheet's day, or null.
+  function attendanceFor(staffId, day) {
+    const d = day || State.attendanceDate;
+    return State.attendance.find(a => a.staff_id === staffId && String(a.work_date || '').slice(0, 10) === d) || null;
+  }
+
+  const SHIFT_LABELS = { day: 'Kunduzgi', night: 'Tungi', '24h': '24 soat' };
+
   function renderAttendanceSheet() {
     const tbody = document.getElementById('attendance-tbody');
     if (!tbody) return;
 
-    const badge = document.getElementById('badge-att-count');
-    if (badge) badge.textContent = State.staff.length;
+    const dateInp = document.getElementById('attendance-date');
+    if (dateInp && dateInp.value !== State.attendanceDate) dateInp.value = State.attendanceDate;
 
-    tbody.innerHTML = State.staff.map((staff, idx) => {
-      const att = State.attendance.find(a => a.staff_id === staff.id) || {
-        status: 'present',
-        check_in: '08:00',
-        check_out: null,
-        worked_hours: 8.0,
-        late_minutes: 0,
-        notes: 'Standart ish kuni'
-      };
+    // Active staff only: a deactivated person has no attendance to record.
+    const people = State.staff.filter(s => s.status !== 'inactive');
 
-      let badgeHtml = '<span class="status-badge badge-present"><i class="fas fa-check"></i> Keldi</span>';
-      if (att.status === 'late') {
-        badgeHtml = `<span class="status-badge badge-late"><i class="fas fa-clock"></i> Kechikdi (${att.late_minutes} daq)</span>`;
-      } else if (att.status === 'scheduled_night') {
-        badgeHtml = '<span class="status-badge badge-shift"><i class="fas fa-moon"></i> Tungi smena</span>';
-      } else if (att.status === 'rest') {
-        badgeHtml = '<span class="status-badge badge-info"><i class="fas fa-bed"></i> Dam olishda</span>';
-      } else if (att.status === 'absent') {
+    // Someone with no saved row used to be shown as "Keldi 08:00, 8 soat,
+    // Standart ish kuni" -- attendance nobody had recorded.
+    tbody.innerHTML = people.map((staff, idx) => {
+      const att = attendanceFor(staff.id);
+
+      let badgeHtml = '<span class="status-badge badge-info"><i class="fas fa-minus"></i> Qayd etilmagan</span>';
+      if (att && att.status === 'present') {
+        badgeHtml = '<span class="status-badge badge-present"><i class="fas fa-check"></i> Keldi</span>';
+      } else if (att && att.status === 'late') {
+        const mins = att.late_minutes !== null && att.late_minutes !== undefined ? ` (${Number(att.late_minutes)} daq)` : '';
+        badgeHtml = `<span class="status-badge badge-late"><i class="fas fa-clock"></i> Kechikdi${mins}</span>`;
+      } else if (att && att.status === 'absent') {
         badgeHtml = '<span class="status-badge badge-danger"><i class="fas fa-times"></i> Kelmadi</span>';
+      } else if (att && att.status === 'on_leave') {
+        badgeHtml = '<span class="status-badge badge-info"><i class="fas fa-umbrella-beach"></i> Ta\'tilda</span>';
+      } else if (att && att.status === 'sick') {
+        badgeHtml = '<span class="status-badge badge-info"><i class="fas fa-notes-medical"></i> Kasal</span>';
       }
+      if (att && SHIFT_LABELS[att.shift_type]) {
+        badgeHtml += ` <span class="status-badge badge-shift">${SHIFT_LABELS[att.shift_type]}</span>`;
+      }
+      const cin = att && att.check_in_time ? att.check_in_time : '—';
+      const away = att && ['absent', 'on_leave', 'sick'].indexOf(att.status) >= 0;
+      // "Still at work" only makes sense for today; an old day without a
+      // check-out simply has none recorded.
+      const stillIn = att && att.check_in_time && !away && State.attendanceDate === todayIso();
+      const cout = att && att.check_out_time ? att.check_out_time : (stillIn ? 'Ish jarayonida' : '—');
+      const hours = att && att.worked_hours !== null && att.worked_hours !== undefined ? `${att.worked_hours} soat` : '—';
 
       return `
         <tr>
@@ -1432,11 +1545,11 @@
             <div style="font-size: 0.74rem; color: var(--text-secondary);">${staff.role_title_uz || staff.role}</div>
           </td>
           <td><span class="staff-meta-chip"><i class="fas fa-building"></i> ${staff.department_name_uz || staff.department}</span></td>
-          <td><span style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">${att.check_in || '—'}</span></td>
-          <td><span style="font-family: var(--font-mono); font-weight: 700; color: var(--text-muted);">${att.check_out || 'Ish jarayonida'}</span></td>
-          <td><span style="font-family: var(--font-mono); font-weight: 700; color: #34d399;">${att.worked_hours || 0} soat</span></td>
+          <td><span style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">${esc(cin)}</span></td>
+          <td><span style="font-family: var(--font-mono); font-weight: 700; color: var(--text-muted);">${esc(cout)}</span></td>
+          <td><span style="font-family: var(--font-mono); font-weight: 700; color: #34d399;">${esc(hours)}</span></td>
           <td>${badgeHtml}</td>
-          <td><span style="font-size: 0.78rem; color: var(--text-secondary);">${att.notes || '—'}</span></td>
+          <td><span style="font-size: 0.78rem; color: var(--text-secondary);">${esc((att && att.notes) || '—')}</span></td>
           <td style="text-align: center;">
             <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.74rem;" onclick="window.FMH_HR.openLogAttendanceModal('${staff.id}')">
               <i class="fas fa-user-check"></i> Qayd etish
@@ -1508,6 +1621,17 @@
     const titleEl = document.querySelector('#tab-panel-payroll .section-toolbar-card > div:first-child');
     if (titleEl) {
       titleEl.innerHTML = `<i class="fas fa-calculator" style="color: var(--purple);"></i> Shifokorlar va Xodimlar Oylik Maoshi Hisob-Kitobi (${esc(monthLabel())})`;
+    }
+    // Same month switcher as the roster tab: payroll follows the roster month.
+    const actions = document.querySelector('#tab-panel-payroll .section-toolbar-card > div:nth-child(2)');
+    if (actions) {
+      let nav = document.getElementById('payroll-month-nav');
+      if (!nav) {
+        nav = document.createElement('div');
+        nav.id = 'payroll-month-nav';
+        actions.insertBefore(nav, actions.firstChild);
+      }
+      nav.innerHTML = monthNavHtml();
     }
     let box = document.getElementById('payroll-warning-box');
     if (!box) {
@@ -1781,7 +1905,7 @@
       <div class="form-grid" style="margin-top: 1rem;">
         <div class="form-group">
           <label class="form-label">Bo'lim & Ixtisoslik</label>
-          <div style="font-weight: 600; color: #ffffff;">${staff.department_name_uz || staff.department} — ${staff.specialty}</div>
+          <div style="font-weight: 600; color: #ffffff;">${esc(staff.department_name_uz || staff.department || '—')} — ${esc(staff.specialty || '—')}</div>
         </div>
         <div class="form-group">
           <label class="form-label">Navbatchilik Tarifi & Stavka</label>
@@ -1801,7 +1925,7 @@
         </div>
         <div class="form-group">
           <label class="form-label">Tibbiy Toifasi</label>
-          <div style="font-weight: 600; color: #ffffff;">${staff.category || 'Mutaxassis'}</div>
+          <div style="font-weight: 600; color: #ffffff;">${esc(staff.category || '—')}</div>
         </div>
         <div class="form-group">
           <label class="form-label">KPI Reyting</label>
@@ -1810,9 +1934,13 @@
       </div>
 
       <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <button class="btn-portal btn-danger-portal" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.deleteStaff('${staff.id}')">
-          <i class="fas fa-trash-alt"></i> Xodimni Tizimdan O'chirish
-        </button>
+        ${staff.status === 'inactive' ? `
+        <button class="btn-portal btn-success-portal" style="padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.reactivateStaff('${esc(staff.id)}')">
+          <i class="fas fa-user-check"></i> Qayta Faollashtirish
+        </button>` : `
+        <button class="btn-portal btn-danger-portal" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.deleteStaff('${esc(staff.id)}')">
+          <i class="fas fa-user-slash"></i> Xodimni Faolsizlantirish
+        </button>`}
         <div style="display: flex; gap: 0.5rem;">
           <button class="btn-portal btn-outline-portal" style="padding: 6px 14px; font-size: 0.82rem; border-color: rgba(245, 158, 11, 0.5); color: #fbbf24;" onclick="window.FMH_HR.openEditStaffModal('${staff.id}')">
             <i class="fas fa-edit"></i> Tahrirlash
@@ -1830,10 +1958,13 @@
   async function deleteStaff(staffId) {
     const staff = State.staff.find(s => s.id === staffId);
     const staffName = staff ? staff.full_name : staffId;
+    // The server never deletes a staff row (clinical records name their
+    // author through it); it deactivates. The dialog used to promise a
+    // permanent delete.
     const confirmed = await fmhConfirm({
-      title: "Xodimni O'chirish",
-      message: `<strong>${staffName}</strong> xodimini bazadan butunlay o'chirishni tasdiqlaysizmi?`,
-      confirmText: "O'chirish",
+      title: "Xodimni Faolsizlantirish",
+      message: `<strong>${esc(staffName)}</strong> faolsizlantirilsinmi? U navbatchilik va shifokorlar ro'yxatlarida ko'rinmaydi, lekin barcha yozuvlari saqlanadi va keyin qayta faollashtirish mumkin.`,
+      confirmText: "Faolsizlantirish",
       cancelText: "Bekor Qilish",
       type: 'danger'
     });
@@ -1848,19 +1979,53 @@
       const res = await fetch('/api/staff/' + encodeURIComponent(staffId), { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showToast(err.error || `Xodim o'chirilmadi (${res.status})`, 'danger');
+        showToast(err.error || `Xodim faolsizlantirilmadi (${res.status})`, 'error');
         return;
       }
     } catch (err) {
-      showToast("Server bilan aloqa yo'q. Xodim o'chirilmadi.", 'danger');
+      showToast("Server bilan aloqa yo'q. Xodim faolsizlantirilmadi.", 'error');
       return;
     }
 
-    State.staff = State.staff.filter(s => s.id !== staffId);
-    saveToLocalStorage();
-    renderAll();
+    setStaffActive(staffId, false);
     closeAllModals();
-    showToast(`${staffName} muvaffaqiyatli o'chirildi!`, 'danger');
+    showToast(`${staffName} faolsizlantirildi. Uni "Faollashtirish" tugmasi bilan qaytarish mumkin.`, 'success');
+  }
+
+  function setStaffActive(staffId, active) {
+    const st = State.staff.find(s => s.id === staffId);
+    if (st) {
+      st.status = active ? 'active' : 'inactive';
+      st.is_active = active ? 1 : 0;
+    }
+    saveToLocalStorage();
+    recalculateStaffDutyCounts();
+    renderAll();
+  }
+
+  // POST /api/staff/<id>/reactivate only flips is_active back; it does not
+  // rewrite the record from what this page holds.
+  async function reactivateStaff(staffId) {
+    const staff = State.staff.find(s => s.id === staffId);
+    const staffName = staff ? staff.full_name : staffId;
+    try {
+      const res = await fetch('/api/staff/' + encodeURIComponent(staffId) + '/reactivate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || `Xodim faollashtirilmadi (${res.status})`, 'error');
+        return;
+      }
+    } catch (err) {
+      showToast("Server bilan aloqa yo'q. Xodim faollashtirilmadi.", 'error');
+      return;
+    }
+    setStaffActive(staffId, true);
+    closeAllModals();
+    showToast(`${staffName} qayta faollashtirildi.`, 'success');
   }
 
   // ==========================================================================
@@ -2073,6 +2238,7 @@
 
     // Reset form to clean add state
     form.reset();
+    removeExtraRoleOptions(form);
     const idInput = document.getElementById('staff-form-id');
     if (idInput) idInput.value = '';
 
@@ -2107,6 +2273,11 @@
     }, 100);
   }
 
+  function removeExtraRoleOptions(form) {
+    if (!form || !form.role) return;
+    Array.from(form.role.options).filter(o => o.dataset.extraRole).forEach(o => o.remove());
+  }
+
   function openEditStaffModal(staffId) {
     const staff = State.staff.find(s => s.id === staffId);
     if (!staff) return;
@@ -2118,6 +2289,7 @@
     if (!modal || !form) return;
 
     form.reset();
+    removeExtraRoleOptions(form);
 
     const idInput = document.getElementById('staff-form-id');
     if (idInput) idInput.value = staff.id;
@@ -2137,23 +2309,42 @@
     // Populate existing details
     if (form.full_name) form.full_name.value = staff.full_name || '';
     if (form.phone) form.phone.value = staff.phone || '+998 ';
-    if (form.role) form.role.value = staff.role || 'doctor';
+    if (form.role) {
+      // A pharmacist, HR manager, ward manager or kitchen worker has no
+      // option in this list; the select went blank and the save turned them
+      // into 'admin'. Offer their own role for this edit.
+      if (staff.role && !Array.from(form.role.options).some(o => o.value === staff.role)) {
+        const opt = document.createElement('option');
+        opt.value = staff.role;
+        opt.textContent = staff.role_title_uz || staff.role;
+        opt.dataset.extraRole = '1';
+        form.role.appendChild(opt);
+      }
+      form.role.value = staff.role || 'doctor';
+    }
     if (form.role_title_uz) form.role_title_uz.value = staff.role_title_uz || '';
     if (form.department) form.department.value = staff.department || 'doctors';
     if (form.specialty) form.specialty.value = staff.specialty || '';
-    if (form.category) form.category.value = staff.category || 'Oliy toifa';
+    // Saved on the server now (staff HR columns); an empty value stays
+    // empty instead of showing a guess that the next save would store.
+    if (form.category) form.category.value = staff.category || '';
     if (form.base_salary) {
-      form.base_salary.value = staff.base_salary || staff.salary_base || 10000000;
-      updateSalaryPreview(staff.base_salary || staff.salary_base || 10000000);
+      // A salary of 0 (a sanitarka paid only by duty shifts) is real; '||'
+      // replaced it with 10 000 000, which the next save then stored.
+      const sal = staff.base_salary ?? staff.salary_base ?? '';
+      form.base_salary.value = sal;
+      updateSalaryPreview(sal);
     }
-    if (form.detox_procedure_fee) form.detox_procedure_fee.value = staff.detox_procedure_fee || 0;
-    if (form.shift_type) form.shift_type.value = staff.shift_type || 'day_standard';
-    if (form.assigned_floor) form.assigned_floor.value = staff.assigned_floor || 'all';
+    if (form.detox_procedure_fee) form.detox_procedure_fee.value = (staff.detox_procedure_fee !== null && staff.detox_procedure_fee !== undefined) ? staff.detox_procedure_fee : '';
+    // The server stores day/night/24h/rotating; the form offers its own names.
+    if (form.shift_type) form.shift_type.value = ({ day: 'day_standard', night: 'night_only', '24h': 'shift_24h', rotating: 'on_call' })[staff.shift_type] || staff.shift_type || 'day_standard';
+    if (form.assigned_floor) form.assigned_floor.value = staff.assigned_floor || '';
+    if (form.bls_cpr_certified) form.bls_cpr_certified.checked = Number(staff.bls_cpr_certified) === 1 || staff.bls_cpr_certified === true;
     if (form.email) form.email.value = staff.email || '';
     if (form.telegram) form.telegram.value = staff.telegram || '';
     if (form.passport_pinfl) form.passport_pinfl.value = staff.passport_pinfl || '';
-    if (form.experience_years) form.experience_years.value = staff.experience_years || 5;
-    if (form.hire_date) form.hire_date.value = staff.hire_date || new Date().toISOString().split('T')[0];
+    if (form.experience_years) form.experience_years.value = (staff.experience_years !== null && staff.experience_years !== undefined) ? staff.experience_years : '';
+    if (form.hire_date) form.hire_date.value = staff.hire_date ? String(staff.hire_date).slice(0, 10) : '';
 
     // Remove active preset highlight because it's a custom edit
     document.querySelectorAll('.staff-preset-chip').forEach(c => c.classList.remove('active'));
@@ -2194,24 +2385,28 @@
       id: staffId,
       full_name: (form.full_name ? form.full_name.value : '').trim(),
       role: roleVal,
-      role_title_uz: (form.role_title_uz && form.role_title_uz.value.trim()) ? form.role_title_uz.value.trim() : (roleVal === 'doctor' ? 'Shifokor-Narkolog' : (roleVal === 'nurse' ? 'Navbatchi Hamshira' : 'Tibbiy Xodim')),
+      // The fields below are stored on the server (staff HR columns) and
+      // used to be filled with guesses (title, 5 years, today's hire date,
+      // 'Oliy toifa') when left blank. A blank now stays blank.
+      role_title_uz: form.role_title_uz ? form.role_title_uz.value.trim() : (existingStaff?.role_title_uz || ''),
       department: departmentVal,
       department_name_uz: departmentNameUz,
-      specialty: (form.specialty && form.specialty.value.trim()) ? form.specialty.value.trim() : (roleVal === 'doctor' ? 'Narkologiya' : (roleVal === 'nurse' ? 'Hamshiralik ishi' : 'Umumiy')),
+      specialty: form.specialty ? form.specialty.value.trim() : (existingStaff?.specialty || ''),
       phone: (form.phone ? form.phone.value : '').trim(),
       email: (form.email && form.email.value.trim()) ? form.email.value.trim() : (existingStaff?.email || ''),
       telegram: form.telegram ? form.telegram.value.replace('@', '').trim() : (existingStaff?.telegram || ''),
       passport_pinfl: form.passport_pinfl ? form.passport_pinfl.value.trim() : (existingStaff?.passport_pinfl || ''),
-      hire_date: (form.hire_date && form.hire_date.value) ? form.hire_date.value : (existingStaff?.hire_date || new Date().toISOString().split('T')[0]),
-      experience_years: form.experience_years ? (parseInt(form.experience_years.value) || 1) : (existingStaff?.experience_years || 5),
-      category: form.category ? form.category.value : (existingStaff?.category || 'Oliy toifa'),
+      hire_date: form.hire_date ? form.hire_date.value : (existingStaff?.hire_date || ''),
+      experience_years: form.experience_years ? form.experience_years.value.trim() : (existingStaff?.experience_years ?? ''),
+      category: form.category ? form.category.value : (existingStaff?.category || ''),
       shift_type: form.shift_type ? form.shift_type.value : (existingStaff?.shift_type || 'day_standard'),
-      assigned_floor: form.assigned_floor ? form.assigned_floor.value : (existingStaff?.assigned_floor || 'all'),
+      assigned_floor: form.assigned_floor ? form.assigned_floor.value : (existingStaff?.assigned_floor || ''),
+      bls_cpr_certified: form.bls_cpr_certified ? Boolean(form.bls_cpr_certified.checked) : (existingStaff?.bls_cpr_certified ?? ''),
       base_salary: form.base_salary ? (parseFloat(form.base_salary.value) || 0) : (existingStaff?.base_salary || 0),
       duty_rate_type: dutyRate,
       monthly_duty_count: existingStaff?.monthly_duty_count || 0,
       monthly_duty_earnings: existingStaff?.monthly_duty_earnings || 0,
-      detox_procedure_fee: form.detox_procedure_fee ? (parseFloat(form.detox_procedure_fee.value) || 0) : (existingStaff?.detox_procedure_fee || 0),
+      detox_procedure_fee: form.detox_procedure_fee ? form.detox_procedure_fee.value.trim() : (existingStaff?.detox_procedure_fee ?? ''),
       kpi_rating: existingStaff?.kpi_rating || 5.0,
       status: existingStaff?.status || 'active',
       avatar_color: existingStaff?.avatar_color || (roleVal === 'doctor' ? '#0284c7' : (roleVal === 'nurse' ? '#10b981' : '#6366f1'))
@@ -2233,6 +2428,15 @@
       const data = await res.json();
       if (data.id) staffRecord.id = data.id;
       else if (data.staff && data.staff.id) staffRecord.id = data.staff.id;
+      // Keep what the server stored (cleaned telegram, numbers, NULLs).
+      if (data.staff) {
+        ['hire_date', 'experience_years', 'category', 'role_title_uz', 'department', 'assigned_floor',
+         'telegram', 'detox_procedure_fee', 'bls_cpr_certified', 'role'].forEach(k => {
+          if (k in data.staff) staffRecord[k] = data.staff[k];
+        });
+        if (!staffRecord.role_title_uz) staffRecord.role_title_uz = staffRecord.role;
+        staffRecord.status = 'active';
+      }
     } catch (err) {
       showToast("Server bilan aloqa yo'q. Xodim saqlanmadi.", 'error');
       return;
@@ -2253,45 +2457,114 @@
     showToast(isEdit ? `${staffRecord.full_name} ma'lumotlari yangilandi!` : `${staffRecord.full_name} muvaffaqiyatli qo'shildi!`, 'success');
   }
 
+  // Times only make sense for someone who came; minutes late only for 'late'.
+  function syncAttendanceForm(form) {
+    if (!form || !form.status) return;
+    const away = ['absent', 'on_leave', 'sick'].indexOf(form.status.value) >= 0;
+    ['check_in', 'check_out'].forEach(n => {
+      if (!form[n]) return;
+      form[n].disabled = away;
+      if (away) form[n].value = '';
+    });
+    if (form.late_minutes) {
+      const late = form.status.value === 'late';
+      form.late_minutes.disabled = !late;
+      if (!late) form.late_minutes.value = '';
+    }
+  }
+
   function openLogAttendanceModal(staffId) {
     const staff = State.staff.find(s => s.id === staffId);
     if (!staff) return;
 
     State.selectedStaffId = staffId;
     const modal = document.getElementById('log-attendance-modal');
+    const form = document.getElementById('log-attendance-form');
     const staffNameEl = document.getElementById('att-modal-staff-name');
-    if (staffNameEl) staffNameEl.textContent = staff.full_name;
+    if (staffNameEl) staffNameEl.textContent = `${staff.full_name} — ${formatDate(State.attendanceDate)}`;
+
+    // Open on what is already saved for that day, so a correction starts
+    // from the record instead of from made-up defaults.
+    if (form) {
+      form.reset();
+      const att = attendanceFor(staffId);
+      const staffShift = { day: 'day', night: 'night', '24h': '24h' }[staff.shift_type] || '';
+      if (form.status) form.status.value = att ? att.status : '';
+      if (form.shift_type) form.shift_type.value = att ? att.shift_type : staffShift;
+      if (form.check_in) form.check_in.value = att && att.check_in_time ? att.check_in_time : '';
+      if (form.check_out) form.check_out.value = att && att.check_out_time ? att.check_out_time : '';
+      if (form.late_minutes) form.late_minutes.value = att && att.late_minutes !== null && att.late_minutes !== undefined ? att.late_minutes : '';
+      if (form.notes) form.notes.value = att && att.notes ? att.notes : '';
+      syncAttendanceForm(form);
+    }
     if (modal) modal.classList.add('active');
   }
 
-  function handleLogAttendanceSubmit(e) {
+  // Attendance is read back from the server after every save, so the sheet
+  // shows what was stored (including hours worked out from the times).
+  async function reloadAttendance() {
+    try {
+      const res = await fetch('/api/hr/data');
+      if (!res.ok) return false;
+      const data = await res.json();
+      State.attendance = Array.isArray(data.attendance_records) ? data.attendance_records : [];
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function handleLogAttendanceSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const staffId = State.selectedStaffId;
     if (!staffId) return;
 
-    const existingIdx = State.attendance.findIndex(a => a.staff_id === staffId);
-    const newRecord = {
-      id: `ATT-2026-${staffId}`,
+    // Used to be written to this browser only (and to a fixed date before
+    // that), so nobody else ever saw it.
+    const payload = {
       staff_id: staffId,
-      // Today's date in clinic time; this was fixed to 2026-08-15.
-      date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
-      check_in: form.check_in.value || '08:00',
-      check_out: form.check_out.value || null,
-      status: form.status.value,
-      worked_hours: parseFloat(form.worked_hours.value) || 8.0,
-      late_minutes: parseInt(form.late_minutes.value) || 0,
-      notes: form.notes.value || 'Davomat yangilandi'
+      work_date: State.attendanceDate,
+      status: form.status ? form.status.value : '',
+      shift_type: form.shift_type ? form.shift_type.value : '',
+      check_in: form.check_in && !form.check_in.disabled ? form.check_in.value : '',
+      check_out: form.check_out && !form.check_out.disabled ? form.check_out.value : '',
+      late_minutes: form.late_minutes && !form.late_minutes.disabled ? form.late_minutes.value : '',
+      notes: form.notes ? form.notes.value.trim() : ''
     };
 
-    if (existingIdx >= 0) State.attendance[existingIdx] = newRecord;
-    else State.attendance.push(newRecord);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/hr/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || `Davomat saqlanmadi (${res.status})`, 'error');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      const reloaded = await reloadAttendance();
+      if (!reloaded && data.attendance) {
+        // Saved, but the list could not be re-read: show the saved row.
+        State.attendance = State.attendance.filter(a =>
+          !(a.staff_id === staffId && String(a.work_date || '').slice(0, 10) === payload.work_date));
+        State.attendance.unshift(data.attendance);
+      }
+    } catch (err) {
+      showToast("Server bilan aloqa yo'q. Davomat saqlanmadi.", 'error');
+      return;
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
 
-    saveToLocalStorage();
     renderAttendanceSheet();
     updateKPIs();
     closeAllModals();
-    showToast('Davomat muvaffaqiyatli saqlandi!', 'success');
+    showToast('Davomat saqlandi.', 'success');
   }
 
   async function exportAllToExcel() {
@@ -2364,8 +2637,11 @@
   }
 
   function updateKPIs() {
-    const totalStaff = State.staff.length;
-    const todayAtt = State.attendance.filter(a => a.status === 'present' || a.status === 'late');
+    const totalStaff = State.staff.filter(s => s.status !== 'inactive').length;
+    // Who came TODAY; this used to count every attendance row ever saved.
+    const today = todayIso();
+    const todayAtt = State.attendance.filter(a =>
+      String(a.work_date || '').slice(0, 10) === today && (a.status === 'present' || a.status === 'late'));
 
     // Net payroll total from the server (was recomputed here with the
     // invented bonuses).
@@ -2502,6 +2778,24 @@
     const logAttForm = document.getElementById('log-attendance-form');
     if (logAttForm) {
       logAttForm.addEventListener('submit', handleLogAttendanceSubmit);
+      if (logAttForm.status) logAttForm.status.addEventListener('change', () => syncAttendanceForm(logAttForm));
+    }
+
+    // Which day the attendance sheet shows and records.
+    const attDate = document.getElementById('attendance-date');
+    if (attDate) {
+      attDate.max = todayIso();
+      attDate.value = State.attendanceDate;
+      attDate.addEventListener('change', (e) => {
+        const v = e.target.value;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v > todayIso()) {
+          e.target.value = State.attendanceDate;
+          showToast("Kelajakdagi kun uchun davomat kiritib bo'lmaydi.", 'warning');
+          return;
+        }
+        State.attendanceDate = v;
+        renderAttendanceSheet();
+      });
     }
   }
 
@@ -2588,6 +2882,9 @@
     closeAllModals,
     switchTab,
     deleteStaff,
+    reactivateStaff,
+    changeRosterMonth,
+    goToCurrentMonth,
     editStaff: (id) => openEditStaffModal(id),
     printPayslip,
     toggleTheme: () => window.FMH_Theme ? window.FMH_Theme.toggle() : null,

@@ -245,6 +245,10 @@ API_RULES = [
 
     # --- staff ------------------------------------------------------------
     ('/api/hr/staff',                 'hr',         None),
+    # Attendance is HR's to record; the '/api/hr' prefix below would also
+    # match, but the rule is spelled out so a later prefix change cannot
+    # open it up.
+    ('/api/hr/attendance',            'hr',         None),
     ('/api/hr/data',                  'hr',         'read'),
     ('/api/hr',                       'hr',         None),
     ('/api/duty-schedule',            'duty',       None),
@@ -263,9 +267,11 @@ API_READ_EXEMPT = {
     '/api/settings/pricing',
     '/api/staff',
     '/api/doctors',
-    '/api/hr/data',
     '/api/duty-schedule',
 }
+# /api/hr/data was on this list, so every signed-in member of staff could read
+# all salaries and the attendance sheet. Only the HR page uses it; it now needs
+# hr:read like the rest of /api/hr.
 
 # A treatment plan is an instruction other people carry out, so reading one is
 # granted to the nursery and pharmacy as well as to the doctors. Writing stays

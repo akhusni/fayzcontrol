@@ -485,6 +485,239 @@ def validate_amount(raw, field="Summa", allow_negative=False, maximum=10_000_000
     return value, None
 
 
+# HR-only staff fields (see db.STAFF_HR_COLUMNS). The lists match the options
+# of the HR form so a value the page cannot show back is refused, not stored.
+STAFF_DEPARTMENTS = ('doctors', 'nurses', 'administration', 'diagnostics', 'support')
+STAFF_CATEGORIES = ('Oliy toifa', '1-toifa', '2-toifa', 'Mutaxassis')
+STAFF_FLOORS = ('all', '1', '2')
+
+
+def parse_staff_hr_fields(body):
+    """
+    The HR-only staff fields present in `body`, validated.
+
+    Returns (fields, None) or (None, (message, field)). Only keys the request
+    actually sends are returned: a caller that does not know these fields (the
+    Super-Portal hire form) must not wipe what HR entered. A key sent blank
+    clears the value to NULL; nothing is filled in on anyone's behalf.
+    """
+    out = {}
+
+    def _text(key):
+        v = body.get(key)
+        return v.strip() if isinstance(v, str) else v
+
+    if 'hire_date' in body:
+        raw = _text('hire_date')
+        if raw in (None, ''):
+            out['hire_date'] = None
+        else:
+            try:
+                d = _dt.date.fromisoformat(str(raw)[:10])
+            except Exception:
+                return None, ("Ishga qabul sanasi YYYY-MM-DD ko'rinishida bo'lishi kerak.", 'hire_date')
+            today = _dt.date.today()
+            if d > today + _dt.timedelta(days=366):
+                return None, ("Ishga qabul sanasi bir yildan ko'p kelajakda bo'lishi mumkin emas.", 'hire_date')
+            if d.year < 1950:
+                return None, ("Ishga qabul sanasi haqiqiy emas.", 'hire_date')
+            out['hire_date'] = d.isoformat()
+
+    if 'experience_years' in body:
+        raw = _text('experience_years')
+        if raw in (None, ''):
+            out['experience_years'] = None
+        else:
+            try:
+                if isinstance(raw, bool):
+                    raise ValueError
+                years = float(raw)
+                if years != int(years):
+                    raise ValueError
+                years = int(years)
+            except Exception:
+                return None, ("Ish staji butun son bo'lishi kerak.", 'experience_years')
+            if years < 0 or years > 70:
+                return None, ("Ish staji 0 dan 70 yilgacha bo'lishi kerak.", 'experience_years')
+            out['experience_years'] = years
+
+    for key, allowed, label in (('category', STAFF_CATEGORIES, 'Toifa'),
+                                ('department', STAFF_DEPARTMENTS, "Bo'lim"),
+                                ('assigned_floor', STAFF_FLOORS, 'Qavat')):
+        if key in body:
+            raw = _text(key)
+            raw = None if raw in (None, '') else str(raw)
+            if raw is not None and raw not in allowed:
+                return None, (f"{label} qiymati noto'g'ri.", key)
+            out[key] = raw
+
+    if 'role_title_uz' in body:
+        raw = _text('role_title_uz')
+        raw = None if raw in (None, '') else str(raw)
+        if raw is not None and len(raw) > 255:
+            return None, ("Lavozim nomi juda uzun (255 belgigacha).", 'role_title_uz')
+        out['role_title_uz'] = raw
+
+    if 'telegram' in body:
+        raw = _text('telegram')
+        raw = None if raw in (None, '') else str(raw).lstrip('@').strip() or None
+        if raw is not None and len(raw) > 64:
+            return None, ("Telegram nomi juda uzun.", 'telegram')
+        out['telegram'] = raw
+
+    if 'detox_procedure_fee' in body:
+        raw = _text('detox_procedure_fee')
+        if raw in (None, ''):
+            out['detox_procedure_fee'] = None
+        else:
+            fee, err = validate_amount(raw, field="Protsedura haqi")
+            if err or isinstance(raw, bool) or fee != fee:
+                return None, (err or "Protsedura haqi raqam bo'lishi kerak.", 'detox_procedure_fee')
+            out['detox_procedure_fee'] = fee
+
+    if 'bls_cpr_certified' in body:
+        raw = body.get('bls_cpr_certified')
+        if raw in (None, ''):
+            out['bls_cpr_certified'] = None
+        elif isinstance(raw, bool):
+            out['bls_cpr_certified'] = 1 if raw else 0
+        elif raw in (0, 1, '0', '1'):
+            out['bls_cpr_certified'] = int(raw)
+        else:
+            return None, ("BLS/CPR belgisi noto'g'ri.", 'bls_cpr_certified')
+
+    return out, None
+
+
+ATTENDANCE_STATUSES = ('present', 'absent', 'late', 'on_leave', 'sick')
+ATTENDANCE_SHIFTS = ('day', 'night', '24h')
+# Someone who did not come has no arrival or departure time to record.
+ATTENDANCE_AWAY = ('absent', 'on_leave', 'sick')
+
+
+def _parse_hhmm(raw, field, label):
+    """'HH:MM' (or 'HH:MM:SS') -> datetime.time, or (None, message) when wrong."""
+    s = str(raw).strip()
+    try:
+        parts = s.split(':')
+        if len(parts) not in (2, 3) or not all(p.isdigit() for p in parts):
+            raise ValueError
+        return _dt.time(int(parts[0]), int(parts[1])), None
+    except Exception:
+        return None, (f"{label} SS:DD ko'rinishida bo'lishi kerak.", field)
+
+
+def parse_attendance(body):
+    """
+    One attendance entry for POST /api/hr/attendance, validated.
+
+    Returns (row, None) or (None, (message, field)). check_in/check_out are
+    times on work_date; a check-out at or before the check-in belongs to the
+    next morning (night and 24-hour shifts end the day after they start).
+    """
+    staff_id = str(body.get('staff_id') or '').strip()
+    if not staff_id:
+        return None, ("Xodim tanlanmagan.", 'staff_id')
+
+    raw_date = body.get('work_date')
+    if raw_date in (None, ''):
+        return None, ("Sana ko'rsatilishi shart.", 'work_date')
+    try:
+        work_date = _dt.date.fromisoformat(str(raw_date).strip()[:10])
+        if len(str(raw_date).strip()) != 10:
+            raise ValueError
+    except Exception:
+        return None, ("Sana YYYY-MM-DD ko'rinishida bo'lishi kerak.", 'work_date')
+    if work_date > _dt.date.today():
+        return None, ("Kelajakdagi kun uchun davomat kiritib bo'lmaydi.", 'work_date')
+    if work_date.year < 2000:
+        return None, ("Sana haqiqiy emas.", 'work_date')
+
+    status = str(body.get('status') or '').strip()
+    if status not in ATTENDANCE_STATUSES:
+        return None, ("Davomat holati noto'g'ri.", 'status')
+    shift = str(body.get('shift_type') or '').strip()
+    if shift not in ATTENDANCE_SHIFTS:
+        return None, ("Smena turi noto'g'ri (kunduzgi, tungi yoki 24 soat).", 'shift_type')
+
+    check_in = check_out = None
+    raw_in = body.get('check_in')
+    raw_out = body.get('check_out')
+    if raw_in not in (None, ''):
+        t_in, err = _parse_hhmm(raw_in, 'check_in', 'Kelgan vaqti')
+        if err:
+            return None, err
+        check_in = _dt.datetime.combine(work_date, t_in)
+    if raw_out not in (None, ''):
+        t_out, err = _parse_hhmm(raw_out, 'check_out', 'Ketgan vaqti')
+        if err:
+            return None, err
+        check_out = _dt.datetime.combine(work_date, t_out)
+        if check_in is not None and check_out <= check_in:
+            check_out += _dt.timedelta(days=1)
+    if status in ATTENDANCE_AWAY and (check_in or check_out):
+        return None, ("Kelmagan xodim uchun kelgan/ketgan vaqt kiritilmaydi.", 'check_in')
+
+    late_minutes = None
+    raw_late = body.get('late_minutes')
+    if raw_late not in (None, ''):
+        try:
+            if isinstance(raw_late, bool):
+                raise ValueError
+            late_f = float(raw_late)
+            if late_f != int(late_f):
+                raise ValueError
+            late_minutes = int(late_f)
+        except Exception:
+            return None, ("Kechikish daqiqasi butun son bo'lishi kerak.", 'late_minutes')
+        if late_minutes < 0 or late_minutes > 1440:
+            return None, ("Kechikish 0 dan 1440 daqiqagacha bo'lishi kerak.", 'late_minutes')
+    if status != 'late':
+        # Lateness only means something for a 'late' entry; a leftover number
+        # from the form must not label an on-time day as late.
+        late_minutes = None
+
+    notes = body.get('notes')
+    notes = notes.strip() if isinstance(notes, str) else None
+    if notes and len(notes) > 1000:
+        return None, ("Izoh juda uzun (1000 belgigacha).", 'notes')
+
+    return {
+        'staff_id': staff_id,
+        'work_date': work_date.isoformat(),
+        'shift_type': shift,
+        'status': status,
+        'check_in': check_in.strftime('%Y-%m-%d %H:%M:%S') if check_in else None,
+        'check_out': check_out.strftime('%Y-%m-%d %H:%M:%S') if check_out else None,
+        'late_minutes': late_minutes,
+        'notes': notes or None,
+    }, None
+
+
+def attendance_out(r):
+    """
+    An attendance row as the HR page shows it: HH:MM times and the hours
+    worked worked out from them (never typed in, so they cannot disagree).
+    """
+    row = dict(r)
+
+    def _as_dt(v):
+        if isinstance(v, _dt.datetime):
+            return v
+        if isinstance(v, str) and v:
+            try:
+                return _dt.datetime.fromisoformat(v.replace('T', ' ')[:19])
+            except Exception:
+                return None
+        return None
+
+    cin, cout = _as_dt(row.get('check_in')), _as_dt(row.get('check_out'))
+    row['check_in_time'] = cin.strftime('%H:%M') if cin else None
+    row['check_out_time'] = cout.strftime('%H:%M') if cout else None
+    row['worked_hours'] = round((cout - cin).total_seconds() / 3600.0, 1) if (cin and cout) else None
+    return row
+
+
 from db import (
     get_db,
     get_active_engine,
@@ -499,6 +732,9 @@ from db import (
     ensure_appointment_service_types,
     APPOINTMENT_SERVICE_TYPES,
     ensure_staff_roles,
+    ensure_staff_hr_columns,
+    STAFF_HR_COLUMNS,
+    STAFF_ROLES,
     load_config
 )
 
@@ -1441,6 +1677,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 else:
                     cur.execute("SELECT * FROM staff WHERE is_active = 1 ORDER BY role, full_name")
                 rows = [dict(r) for r in cur.fetchall()]
+                # Every page reads this list (doctor pickers, menus), so it
+                # carried everyone's salary to every signed-in user. Pay is
+                # for HR, the cashier who pays it and the owner (the desk has
+                # accounting:read for balances, which is not a reason to see pay).
+                _u = (self.current_session() or {}).get('user')
+                if not (permissions.can(_u, 'hr') or permissions.can(_u, 'accounting', 'write')
+                        or permissions.can(_u, 'owner')):
+                    for r in rows:
+                        r.pop('salary_base', None)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
@@ -1766,7 +2011,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     JOIN staff s ON sa.staff_id = s.id
                     ORDER BY sa.work_date DESC, sa.created_at DESC
                 """)
-                attendance = [dict(r) for r in cur.fetchall()]
+                attendance = [attendance_out(r) for r in cur.fetchall()]
 
                 dept_map = {
                     'chief_doctor': 'doctors',
@@ -1786,6 +2031,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'receptionist': 'receptionist'
                 }
 
+                dept_labels = {
+                    'doctors': "Shifokorlar Bo'limi",
+                    'nurses': "Hamshiralar Bo'limi",
+                    'administration': "Ma'muriyat & Qabulxona",
+                    'diagnostics': 'Diagnostika & Laboratoriya',
+                    'support': 'Xizmat & Xavfsizlik',
+                }
+
                 json_staff_by_id = {s.get('id'): s for s in hr_data.get('staff', []) if 'id' in s}
                 staff_list = []
                 for s in raw_staff_list:
@@ -1796,8 +2049,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     merged['base_salary'] = float(s.get('salary_base') or 0.0)
                     merged['salary_base'] = float(s.get('salary_base') or 0.0)
                     merged['department'] = merged.get('department') or dept_map.get(s.get('role'), 'doctors')
+                    # Label from the saved department: the legacy hr_db.json
+                    # label stayed behind when HR moved someone.
+                    merged['department_name_uz'] = dept_labels.get(merged['department'], merged['department'])
                     merged['role_title_uz'] = merged.get('role_title_uz') or role_title_map.get(s.get('role'), s.get('role'))
-                    merged['category'] = merged.get('category') or 'Mutaxassis'
+                    # The HR columns are now real (db.STAFF_HR_COLUMNS); an
+                    # empty one stays empty. 'Mutaxassis' was shown for
+                    # everyone whose category nobody had entered.
+                    merged['category'] = merged.get('category') or None
                     merged['kpi_rating'] = float(merged.get('kpi_rating') or 5.0)
                     if s.get('role') == 'chief_doctor':
                         merged['avatar_color'] = '#2563eb'
@@ -3103,10 +3362,72 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': 'Navbatchilik jadvali muvaffaqiyatli saqlandi'}, ensure_ascii=False).encode('utf-8'))
 
+            # POST /api/hr/attendance -> one day's attendance for one person.
+            # The HR page used to keep attendance in the browser only, so it
+            # was gone on another computer and never reached the database
+            # that GET /api/hr/data reads. One row per person per day
+            # (uq_staff_work_date): a second save for the same day corrects it.
+            elif path == '/api/hr/attendance':
+                row, _att_err = parse_attendance(body if isinstance(body, dict) else {})
+                if _att_err:
+                    self._send_validation_error(_att_err[0], _att_err[1])
+                    return
+                cur.execute("SELECT id FROM staff WHERE id = ?", (row['staff_id'],))
+                if not cur.fetchone():
+                    self._send_validation_error("Bunday xodim topilmadi.", 'staff_id')
+                    return
+                cur.execute("""
+                    INSERT INTO staff_attendance
+                        (staff_id, work_date, shift_type, check_in, check_out, status, late_minutes, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(staff_id, work_date) DO UPDATE SET
+                        shift_type = excluded.shift_type,
+                        check_in = excluded.check_in,
+                        check_out = excluded.check_out,
+                        status = excluded.status,
+                        late_minutes = excluded.late_minutes,
+                        notes = excluded.notes
+                """, (row['staff_id'], row['work_date'], row['shift_type'], row['check_in'],
+                      row['check_out'], row['status'], row['late_minutes'], row['notes']))
+                cur.execute("""
+                    SELECT sa.*, s.full_name AS staff_name, s.role, s.specialty
+                    FROM staff_attendance sa JOIN staff s ON sa.staff_id = s.id
+                    WHERE sa.staff_id = ? AND sa.work_date = ?
+                """, (row['staff_id'], row['work_date']))
+                saved = attendance_out(cur.fetchone())
+                conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'message': 'Davomat saqlandi',
+                    'id': saved.get('id'),
+                    'attendance': saved
+                }, ensure_ascii=False).encode('utf-8'))
+
+            # POST /api/staff/<id>/reactivate -> undo a deactivation.
+            # DELETE only ever set is_active = 0 (clinical records name their
+            # author through staff), but the HR page called it "o'chirish"
+            # and offered no way back. Re-saving the whole record would also
+            # work, but it rewrites every field from whatever the page holds.
+            elif path.startswith('/api/staff/') and path.endswith('/reactivate'):
+                stf_id = urllib.parse.unquote(path[len('/api/staff/'):-len('/reactivate')]).strip()
+                cur.execute("SELECT id FROM staff WHERE id = ?", (stf_id,))
+                if not stf_id or not cur.fetchone():
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Bunday xodim topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                cur.execute("UPDATE staff SET is_active = 1 WHERE id = ?", (stf_id,))
+                conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'message': 'Xodim qayta faollashtirildi', 'id': stf_id},
+                                            ensure_ascii=False).encode('utf-8'))
+
             # 4. POST /api/staff or POST /api/hr/staff (Create / Update Staff & Doctor)
             elif path == '/api/staff' or path == '/api/hr/staff':
                 raw_role = body.get('role', 'doctor')
-                valid_roles = {'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant', 'sanitar'}
+                # Every role the staff table accepts (db.STAFF_ROLES). The
+                # shorter list here turned a pharmacist, ward manager, HR
+                # manager or kitchen worker into 'admin' whenever HR saved them.
+                valid_roles = set(STAFF_ROLES)
                 role = raw_role if raw_role in valid_roles else 'admin'
 
                 full_name = (body.get('full_name') or '').strip()
@@ -3147,6 +3468,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         conn.close()
                         self._send_validation_error(_err or "Oklad raqam bo'lishi kerak.", 'base_salary')
                         return
+                hr_fields, _hr_err = parse_staff_hr_fields(body)
+                if _hr_err:
+                    conn.close()
+                    self._send_validation_error(_hr_err[0], _hr_err[1])
+                    return
 
                 cur.execute("SELECT full_name FROM staff WHERE id = ?", (staff_id,))
                 _old = cur.fetchone()
@@ -3164,26 +3490,38 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         shift_type = excluded.shift_type,
                         is_active = 1
                 """, (staff_id, full_name, role, specialty, phone, email, salary_base, shift_db))
+                # Only the HR fields this request sent are written, so a save
+                # from a form that does not have them keeps what HR entered.
+                if hr_fields:
+                    _cols = sorted(hr_fields)
+                    cur.execute("UPDATE staff SET " + ", ".join(f"{c} = ?" for c in _cols) +
+                                " WHERE id = ?", tuple(hr_fields[c] for c in _cols) + (staff_id,))
+                cur.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
+                _saved_row = cur.fetchone()
+                _saved = dict(_saved_row) if _saved_row else {}
                 conn.commit()
                 conn.close()
                 if old_name and old_name != full_name:
                     rename_in_roster(staff_id, old_name, full_name)
+                _staff_out = {k: _saved.get(k) for k in [c for c, _ddl in STAFF_HR_COLUMNS]}
+                _staff_out.update({
+                    'id': staff_id,
+                    'full_name': full_name,
+                    'role': role,
+                    'specialty': specialty,
+                    'phone': phone,
+                    'email': email,
+                    'base_salary': salary_base,
+                    'salary_base': salary_base,
+                    'shift_type': shift_raw,
+                    'is_active': 1,
+                    'status': 'active'
+                })
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
                     'message': 'Xodim muvaffaqiyatli saqlandi',
                     'id': staff_id,
-                    'staff': {
-                        'id': staff_id,
-                        'full_name': full_name,
-                        'role': role,
-                        'specialty': specialty,
-                        'phone': phone,
-                        'email': email,
-                        'base_salary': salary_base,
-                        'salary_base': salary_base,
-                        'shift_type': shift_raw,
-                        'is_active': 1
-                    }
+                    'staff': _staff_out
                 }, ensure_ascii=False).encode('utf-8'))
 
             # 5. POST /api/crm/patients (Create new patient)
@@ -5352,6 +5690,9 @@ def run_server():
             ensure_appointment_service_types(_c)
             # Sanitarkas need staff rows to be paid for duty shifts.
             ensure_staff_roles(_c)
+            # HR form fields (hire date, category, ...) and attendance
+            # lateness had no columns and were lost on reload.
+            ensure_staff_hr_columns(_c)
             ensure_roster_sanitarkas(_c)
         finally:
             _c.close()

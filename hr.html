@@ -264,9 +264,13 @@
         <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
           <i class="fas fa-clipboard-list" style="color: var(--emerald);"></i> Kunlik Davomat va Oylik Ish Vaqti Tabeli (T-13 Standarti)
         </div>
-        <button class="btn-portal btn-outline-portal" onclick="window.FMH_HR.exportAllToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
-          <i class="fas fa-file-excel"></i> Tabelni Excelga Yuklash (.xlsx)
-        </button>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <label for="attendance-date" style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);"><i class="fas fa-calendar-day"></i> Sana:</label>
+          <input type="date" id="attendance-date" class="date-custom-input">
+          <button class="btn-portal btn-outline-portal" onclick="window.FMH_HR.exportAllToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
+            <i class="fas fa-file-excel"></i> Tabelni Excelga Yuklash (.xlsx)
+          </button>
+        </div>
       </div>
 
       <div class="table-responsive-wrapper">
@@ -475,6 +479,7 @@
               <div class="form-group">
                 <label class="form-label">Tibbiy Toifasi</label>
                 <select name="category" id="staff-input-category" class="form-select">
+                  <option value="">— Belgilanmagan —</option>
                   <option value="Oliy toifa">Oliy toifa</option>
                   <option value="1-toifa">1-toifa</option>
                   <option value="2-toifa">2-toifa</option>
@@ -526,6 +531,7 @@
               <div class="form-group">
                 <label class="form-label">Biriktirilgan Qavat</label>
                 <select name="assigned_floor" id="staff-input-floor" class="form-select">
+                  <option value="">— Belgilanmagan —</option>
                   <option value="all">Barcha Qavatlar</option>
                   <option value="1">1-Qavat (4 O'rin)</option>
                   <option value="2">2-Qavat (10 O'rin)</option>
@@ -553,7 +559,7 @@
 
               <div class="form-group">
                 <label class="form-label">Ish Staji (Yil)</label>
-                <input type="number" name="experience_years" id="staff-input-exp" class="form-input" value="5" min="0">
+                <input type="number" name="experience_years" id="staff-input-exp" class="form-input" min="0" max="70" step="1">
               </div>
 
               <div class="form-group">
@@ -607,16 +613,28 @@
           <div class="form-group">
             <label class="form-label">Holat *</label>
             <select name="status" class="form-select" required>
+              <option value="">— Tanlang —</option>
               <option value="present">🟢 Keldi (O'z vaqtida)</option>
               <option value="late">🟡 Kechikib keldi</option>
-              <option value="scheduled_night">🔵 Tungi smenaga rejalashtirilgan</option>
               <option value="absent">🔴 Kelmadi (Sababsiz)</option>
+              <option value="on_leave">🔵 Ta'tilda</option>
+              <option value="sick">🟣 Kasal (Kasallik varaqasi)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Smena *</label>
+            <select name="shift_type" class="form-select" required>
+              <option value="">— Tanlang —</option>
+              <option value="day">Kunduzgi</option>
+              <option value="night">Tungi</option>
+              <option value="24h">Sutkalik (24 soat)</option>
             </select>
           </div>
 
           <div class="form-group">
             <label class="form-label">Kelgan Vaqti</label>
-            <input type="time" name="check_in" class="form-input" value="08:00">
+            <input type="time" name="check_in" class="form-input">
           </div>
 
           <div class="form-group">
@@ -625,13 +643,8 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Ishlangan Soat</label>
-            <input type="number" name="worked_hours" class="form-input" value="8" step="0.5">
-          </div>
-
-          <div class="form-group">
             <label class="form-label">Kechikish (Daqiqa)</label>
-            <input type="number" name="late_minutes" class="form-input" value="0" min="0">
+            <input type="number" name="late_minutes" class="form-input" min="0" max="1440" step="1">
           </div>
 
           <div class="form-group" style="grid-column: 1 / -1;">
@@ -808,7 +821,7 @@
   <!-- SheetJS Excel Library & HR Engine -->
   <script src="js/xlsx.full.min.js"></script>
     <script src="js/unified_print_engine.js?v=5.4"></script>
-<script src="js/hr.js?v=10.2"></script>
+<script src="js/hr.js?v=10.3"></script>
   <div id="print-area"></div>
 </body>
 </html>
