@@ -2277,7 +2277,10 @@ class SessionsSurviveRestart(unittest.TestCase):
     def test_last_seen_is_not_written_on_every_request(self):
         token = self.auth.create_session(self._real_user())
         try:
-            marker = self.auth._db_time(self.auth._now() - _dt.timedelta(minutes=10))
+            # Whole seconds: MySQL rounds a fractional second into DATETIME, so a
+            # marker taken at x.6 s came back as the next second and this test
+            # failed about one run in three.
+            marker = self.auth._db_time(self.auth._now() - _dt.timedelta(minutes=10)).replace(microsecond=0)
             self._sql("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
                       (marker, self.auth.token_hash(token)))
             for _ in range(3):
@@ -5440,6 +5443,1018 @@ class AccountingMoney(ApiTest):
         self.assertEqual(nurse.get('/api/accounting/patient-invoices?patient_id=PAT-ANY')[0], 403)
         self.assertEqual(self.api.get('/api/accounting/patient-invoices')[0], 400)
         self.assertEqual(self.api.get('/api/accounting/patient-invoices?patient_id=PAT-NOPE-0')[0], 404)
+
+
+# ---------------------------------------------------------------------------
+# Medical warehouse (inventory.py, warehouse_api.py, docs/WAREHOUSE_DESIGN.md)
+#
+# Every stock test works on items it creates itself, so none depends on what is
+# already on the shelf. The ledger is append-only and cannot be cleaned up, so
+# test items are deactivated at the end (they are named 'SuiteWH ...'), and the
+# accounting expenses that receipts create are removed so the owner's money
+# report is not polluted by test purchases.
+# ---------------------------------------------------------------------------
+
+import itertools
+
+_WH_COUNTER = itertools.count(1)
+
+
+def _wh_db():
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from db import get_db
+    return get_db()
+
+
+class _WarehouseHelpers:
+    """Shared fixtures for the warehouse test classes (not a TestCase itself)."""
+
+    SUPPLIER = f'SuiteWH Supplier {os.getpid()}'
+
+    def setUp(self):
+        super().setUp()
+        self._wh_items = []
+        self._wh_trx = []
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        for iid in self._wh_items:
+            self.api.post(f'/api/warehouse/items/{iid}/deactivate', {})
+        if self._wh_trx:
+            conn = _wh_db()
+            try:
+                cur = conn.cursor()
+                marks = ','.join(['?'] * len(self._wh_trx))
+                cur.execute(f"DELETE FROM accounting_transactions WHERE id IN ({marks})",
+                            tuple(self._wh_trx))
+                conn.commit()
+            finally:
+                conn.close()
+        super().tearDown()
+
+    _account = RoleAuthorization._account
+
+    # --- fixtures --------------------------------------------------------
+    def cid(self):
+        return f"suite-{os.getpid()}-{next(_WH_COUNTER)}-{os.urandom(3).hex()}"
+
+    def item(self, **kw):
+        n = next(_WH_COUNTER)
+        payload = {'name': f'SuiteWH Item {os.getpid()}-{n}', 'item_type': 'medicine',
+                   'base_unit': 'tabletka', 'units_per_package': 1, 'category': 'SuiteWH',
+                   'form': 'tabletka'}
+        payload.update(kw)
+        st, body = self.api.post('/api/warehouse/items', payload)
+        self.assertEqual(st, 201, f"item create failed: {body}")
+        self._wh_items.append(body['id'])
+        return body
+
+    def receive(self, item_id, packages, price, expiry=None, batch_no=None, post=True,
+                client_id=None, expect=(200, 201), **extra):
+        line = {'item_id': item_id, 'packages': packages, 'package_price': price}
+        if expiry:
+            line['expiry_date'] = expiry
+        if batch_no:
+            line['batch_no'] = batch_no
+        payload = {'client_request_id': client_id or self.cid(), 'supplier_name': self.SUPPLIER,
+                   'invoice_number': 'SUITE-1', 'payment_method': 'cash', 'post': post,
+                   'lines': [line]}
+        payload.update(extra)
+        st, body = self.api.post('/api/warehouse/receipts', payload)
+        self.assertIn(st, expect, f"receipt failed: {body}")
+        if isinstance(body, dict) and body.get('accounting_transaction_id'):
+            self._wh_trx.append(body['accounting_transaction_id'])
+        return body
+
+    def stock(self, item_id):
+        st, body = self.api.get('/api/warehouse/items/' + item_id)
+        self.assertEqual(st, 200, body)
+        return body
+
+    def qty(self, item_id):
+        return float(self.stock(item_id)['stock_quantity'])
+
+    def ledger(self, item_id, **filters):
+        q = '&'.join(f'{k}={v}' for k, v in filters.items())
+        st, body = self.api.get(f'/api/warehouse/transactions?item_id={item_id}&limit=500' + ('&' + q if q else ''))
+        self.assertEqual(st, 200, body)
+        return body['transactions']
+
+    def patient_with_rx(self, item, quantity_prescribed=None, name='Ombor Bemor'):
+        pid = self.make_patient(name)
+        rx = self.rx(pid, item, quantity_prescribed)
+        return pid, rx
+
+    def rx(self, pid, item, quantity_prescribed=None, **kw):
+        payload = {'patient_id': pid, 'medication_name': item['name'], 'medication_id': item['id'],
+                   'dosage': '1 tabletka', 'route': 'PO', 'frequency': 'Kuniga 2 mahal',
+                   'duration_days': 5}
+        if quantity_prescribed is not None:
+            payload['quantity_prescribed'] = quantity_prescribed
+            payload['quantity_unit'] = item.get('base_unit')
+        payload.update(kw)
+        st, body = self.api.post('/api/doctor/prescriptions', payload)
+        self.assertEqual(st, 201, f"prescription failed: {body}")
+        return body['id']
+
+    def dispense(self, pid, rx, qty, expect=201, client_id=None, item_id=None, **extra):
+        payload = {'client_request_id': client_id or self.cid(), 'patient_id': pid,
+                   'quantity': qty, 'prescription_id': rx}
+        if item_id:
+            payload['item_id'] = item_id
+        payload.update(extra)
+        st, body = self.api.post('/api/warehouse/dispense', payload)
+        if expect is not None:
+            self.assertEqual(st, expect, f"dispense returned {st}: {body}")
+        return st, body
+
+    def history(self, pid):
+        st, body = self.api.get('/api/warehouse/dispensings?patient_id=' + urllib.parse.quote(pid))
+        self.assertEqual(st, 200, body)
+        return body['dispensings']
+
+    def raw_get(self, client, path):
+        req = urllib.request.Request(BASE + path)
+        req.add_header('Cookie', client.cookie)
+        with urllib.request.urlopen(req) as res:
+            return res.status, res.headers.get('Content-Type'), res.read().decode('utf-8')
+
+    def snapshot(self, item_id, pid=None):
+        """Everything a failed operation must leave alone."""
+        st, item = self.api.get('/api/warehouse/items/' + item_id)
+        lots = sorted((b['id'], b['remaining_qty']) for b in item['batches'])
+        snap = {'stock': item['stock_quantity'], 'lots': lots, 'ledger': len(self.ledger(item_id))}
+        if pid:
+            snap['history'] = len(self.history(pid))
+        return snap
+
+
+class WarehouseStock(_WarehouseHelpers, ApiTest):
+    """Receiving: quantities, package conversion, cost, accounting link."""
+
+    def test_receiving_adds_exactly_what_was_received(self):
+        it = self.item()
+        self.assertEqual(self.qty(it['id']), 0)
+        r = self.receive(it['id'], 100, 1000)
+        self.assertEqual(r['status'], 'posted')
+        self.assertEqual(self.qty(it['id']), 100)
+        self.assertEqual(float(self.stock(it['id'])['available_quantity']), 100)
+        led = self.ledger(it['id'])
+        self.assertEqual([(t['txn_type'], float(t['qty_delta'])) for t in led], [('receipt', 100.0)])
+
+    def test_a_box_of_30_tablets_times_3_is_90_units_at_a_thirtieth_of_the_price(self):
+        """The Vitamin C example: 60 000 per box of 30, three boxes."""
+        it = self.item(name=f'SuiteWH Vitamin C {os.getpid()}-{next(_WH_COUNTER)}', item_type='vitamin',
+                       units_per_package=30, package_unit='quti', category='SuiteWH')
+        r = self.receive(it['id'], 3, 60000)
+        line = r['lines'][0]
+        self.assertEqual(float(line['quantity_base']), 90)
+        self.assertEqual(float(line['unit_cost']), 2000)
+        self.assertEqual(float(line['line_total']), 180000)
+        item = self.stock(it['id'])
+        self.assertEqual(float(item['stock_quantity']), 90)
+        self.assertEqual(float(item['avg_unit_cost']), 2000)
+        self.assertEqual(float(item['stock_value']), 180000)
+
+    def test_a_draft_receipt_does_not_change_stock_and_posts_once(self):
+        it = self.item()
+        r = self.receive(it['id'], 40, 500, post=False)
+        self.assertEqual(r['status'], 'draft')
+        self.assertEqual(self.qty(it['id']), 0)
+        self.assertEqual(self.ledger(it['id']), [])
+        st, posted = self.api.post(f"/api/warehouse/receipts/{r['id']}/post", {})
+        self.assertEqual(st, 200, posted)
+        if posted.get('accounting_transaction_id'):
+            self._wh_trx.append(posted['accounting_transaction_id'])
+        self.assertEqual(self.qty(it['id']), 40)
+        st, again = self.api.post(f"/api/warehouse/receipts/{r['id']}/post", {})
+        self.assertEqual(st, 409, again)
+        self.assertEqual(self.qty(it['id']), 40, 'a second post added stock again')
+
+    def test_a_cancelled_draft_cannot_be_posted(self):
+        it = self.item()
+        r = self.receive(it['id'], 5, 100, post=False)
+        st, c = self.api.post(f"/api/warehouse/receipts/{r['id']}/cancel", {})
+        self.assertEqual((st, c['status']), (200, 'cancelled'), c)
+        st, _ = self.api.post(f"/api/warehouse/receipts/{r['id']}/post", {})
+        self.assertEqual(st, 409)
+        self.assertEqual(self.qty(it['id']), 0)
+
+    def test_the_same_client_request_id_receives_once(self):
+        it = self.item()
+        cid = self.cid()
+        first = self.receive(it['id'], 10, 100, client_id=cid)
+        st_dup = self.receive(it['id'], 10, 100, client_id=cid)
+        self.assertEqual(st_dup['id'], first['id'])
+        self.assertTrue(st_dup.get('duplicate'))
+        self.assertEqual(self.qty(it['id']), 10)
+
+    def test_posting_creates_the_accounting_expense_and_links_it(self):
+        it = self.item()
+        r = self.receive(it['id'], 3, 25000, payment_method='terminal')
+        trx = r['accounting_transaction_id']
+        self.assertTrue(trx)
+        st, data = self.api.get('/api/accounting/data')
+        row = next((t for t in data['transactions'] if t['id'] == trx), None)
+        self.assertIsNotNone(row, 'the expense is not in the cash ledger')
+        self.assertEqual((row['type'], row['category']), ('expense', 'medication_purchase'))
+        self.assertEqual(float(row['amount']), 75000)
+        self.assertEqual(row.get('account_source') or row.get('account'), 'terminal_bank')
+
+    def test_buying_never_overwrites_the_patient_price(self):
+        it = self.item(unit_price=5000)
+        self.receive(it['id'], 10, 1200)
+        self.assertEqual(float(self.stock(it['id'])['unit_price']), 5000)
+
+    def test_weighted_average_cost_after_two_receipts(self):
+        it = self.item()
+        self.receive(it['id'], 10, 100)
+        self.receive(it['id'], 30, 200)
+        item = self.stock(it['id'])
+        # (10*100 + 30*200) / 40
+        self.assertEqual(float(item['avg_unit_cost']), 175)
+        self.assertEqual(float(item['stock_value']), 7000)
+        self.assertEqual(float(item['last_unit_cost']), 200)
+
+    def test_valuation_across_items_and_package_sizes(self):
+        cat = f'SuiteWH-Cat-{os.getpid()}-{next(_WH_COUNTER)}'
+        vit = self.item(item_type='vitamin', units_per_package=30, package_unit='quti', category=cat)
+        amp = self.item(units_per_package=1, category=cat)
+        self.receive(vit['id'], 3, 60000)                  # 90 tablets, 180 000
+        self.receive(amp['id'], 10, 500)                   # 10 pieces,    5 000
+        st, rep = self.api.get('/api/warehouse/reports/valuation-by-category')
+        self.assertEqual(st, 200, rep)
+        row = next(r for r in rep['rows'] if r['category'] == cat)
+        self.assertEqual((row['items'], float(row['total_value'])), (2, 185000))
+        st, rep = self.api.get('/api/warehouse/reports/valuation')
+        self.assertGreaterEqual(float(rep['totals']['total_value']), 185000)
+        by_id = {r['id']: r for r in rep['rows']}
+        self.assertEqual(float(by_id[vit['id']]['stock_value']), 180000)
+        st, summ = self.api.get('/api/warehouse/summary')
+        self.assertGreaterEqual(float(summ['total_value']), 185000)
+
+    def test_reversing_a_receipt_restores_stock_and_keeps_the_trail(self):
+        it = self.item()
+        r = self.receive(it['id'], 20, 100)
+        trx = r['accounting_transaction_id']
+        st, rev = self.api.post(f"/api/warehouse/receipts/{r['id']}/reverse", {'reason': 'Noto\'g\'ri kiritilgan'})
+        self.assertEqual(st, 200, rev)
+        self.assertEqual(rev['status'], 'reversed')
+        self.assertEqual(self.qty(it['id']), 0)
+        types = [t['txn_type'] for t in self.ledger(it['id'])]
+        self.assertEqual(sorted(types), ['receipt', 'reversal'], 'the original row must stay')
+        st, data = self.api.get('/api/accounting/data')
+        self.assertNotIn(trx, [t['id'] for t in data['transactions']], 'the expense was not voided')
+        st, again = self.api.post(f"/api/warehouse/receipts/{r['id']}/reverse", {'reason': 'yana'})
+        self.assertEqual(st, 409, again)
+        st, no_reason = self.api.post(f"/api/warehouse/receipts/{r['id']}/reverse", {})
+        self.assertIn(st, (400, 409))
+
+    def test_a_receipt_whose_stock_was_used_cannot_be_reversed(self):
+        it = self.item()
+        r = self.receive(it['id'], 10, 100)
+        pid, rx = self.patient_with_rx(it)
+        self.dispense(pid, rx, 3)
+        st, res = self.api.post(f"/api/warehouse/receipts/{r['id']}/reverse", {'reason': 'xato'})
+        self.assertEqual(st, 409, res)
+        self.assertEqual(self.qty(it['id']), 7)
+
+    def test_item_rules(self):
+        it = self.item()
+        # whole units only
+        whole = self.item(allow_fraction=0)
+        st, body = self.api.post('/api/warehouse/receipts', {
+            'client_request_id': self.cid(), 'post': True,
+            'lines': [{'item_id': whole['id'], 'packages': 2.5, 'package_price': 10}]})
+        self.assertEqual((st, body.get('field')), (400, 'packages'), body)
+        # duplicate name+strength+form
+        st, body = self.api.post('/api/warehouse/items', {'name': it['name'], 'form': it['form'],
+                                                          'base_unit': 'tabletka'})
+        self.assertEqual(st, 409, body)
+        # bad unit, bad flags
+        st, body = self.api.post('/api/warehouse/items', {'name': 'SuiteWH X', 'base_unit': 'xyz'})
+        self.assertEqual((st, body.get('field')), (400, 'base_unit'))
+        st, body = self.api.post('/api/warehouse/items', {'name': '<b>x</b>'})
+        self.assertEqual(st, 400)
+        # a negative or fractional-beyond-3dp threshold
+        st, body = self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': -1})
+        self.assertEqual((st, body.get('field')), (400, 'min_stock_level'))
+        st, body = self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 1.2345})
+        self.assertEqual(st, 400)
+        # sku is unique
+        sku = f'SUITE-{os.getpid()}-{next(_WH_COUNTER)}'
+        self.item(sku=sku)
+        st, body = self.api.post('/api/warehouse/items', {'name': 'SuiteWH Other', 'sku': sku})
+        self.assertEqual(st, 409, body)
+        # an inactive item cannot be received
+        self.api.post(f"/api/warehouse/items/{it['id']}/deactivate", {})
+        st, body = self.api.post('/api/warehouse/receipts', {
+            'client_request_id': self.cid(), 'post': True,
+            'lines': [{'item_id': it['id'], 'packages': 1, 'package_price': 10}]})
+        self.assertEqual(st, 400, body)
+
+    def test_a_receipt_can_create_its_item_and_override_the_box_size(self):
+        name = f'SuiteWH New {os.getpid()}-{next(_WH_COUNTER)}'
+        st, body = self.api.post('/api/warehouse/receipts', {
+            'client_request_id': self.cid(), 'post': True, 'supplier_name': self.SUPPLIER,
+            'lines': [{'new_item': {'name': name, 'base_unit': 'tabletka', 'category': 'SuiteWH',
+                                    'units_per_package': 10},
+                       'packages': 2, 'package_price': 5000, 'units_per_package': 20}]})
+        self.assertEqual(st, 201, body)
+        self._wh_trx.append(body['accounting_transaction_id'])
+        iid = body['lines'][0]['item_id']
+        self._wh_items.append(iid)
+        item = self.stock(iid)
+        self.assertEqual((item['name'], float(item['stock_quantity'])), (name, 40.0))
+        self.assertEqual(float(item['avg_unit_cost']), 250)      # 5000 per 20
+        self.assertEqual(float(item['units_per_package']), 10, 'a one-off box size must not change the item')
+
+    def test_expiring_soon_is_flagged_before_it_expires(self):
+        it = self.item(track_expiry=1)
+        soon = (_dt.date.today() + _dt.timedelta(days=10)).isoformat()
+        self.receive(it['id'], 20, 100, expiry=soon)       # above the default threshold of 10
+        item = self.stock(it['id'])
+        self.assertEqual(item['stock_status'], 'expiring')
+        self.assertEqual(float(item['expiring_quantity']), 20)
+        self.assertEqual(item['nearest_expiry'], soon)
+        st, alerts = self.api.get('/api/warehouse/alerts')
+        self.assertIn('expiring_soon', [a['alert_type'] for a in alerts['alerts'] if a['item_id'] == it['id']])
+        st, lst = self.api.get('/api/warehouse/items?status=expiring&limit=500')
+        self.assertIn(it['id'], [i['id'] for i in lst['items']])
+        st, rep = self.api.get('/api/warehouse/reports/expiry')
+        self.assertIn(it['name'], [r['name'] for r in rep['rows']])
+
+    def test_the_default_threshold_comes_from_settings_not_code(self):
+        it = self.item()
+        st, s = self.api.get('/api/warehouse/settings')
+        self.assertEqual(st, 200)
+        self.assertEqual(float(it['min_stock_level']), float(s['default_min_stock']))
+
+
+class WarehouseDispensing(_WarehouseHelpers, ApiTest):
+    """Giving stock to a patient: exact deduction, rules, atomicity, idempotency."""
+
+    def test_prescribing_does_not_change_stock(self):
+        it = self.item()
+        self.receive(it['id'], 30, 100)
+        before = self.snapshot(it['id'])
+        pid, rx = self.patient_with_rx(it, quantity_prescribed=10)
+        self.assertEqual(self.snapshot(it['id']), before)
+
+    def test_dispensing_5_removes_exactly_5_and_lands_in_the_patient_history(self):
+        it = self.item()
+        self.receive(it['id'], 50, 100)
+        pid, rx = self.patient_with_rx(it)
+        st, d = self.dispense(pid, rx, 5)
+        self.assertEqual(float(d['quantity']), 5)
+        self.assertEqual(self.qty(it['id']), 45)
+        hist = self.history(pid)
+        self.assertEqual(len(hist), 1)
+        h = hist[0]
+        self.assertEqual((float(h['quantity']), h['status'], h['item_id'], h['prescription_id']),
+                         (5.0, 'completed', it['id'], rx))
+        self.assertEqual(h['dosage'], '1 tabletka')           # snapshot of the order
+        self.assertEqual(float(sum(float(b['quantity']) for b in h['batches'])), 5)
+        self.assertEqual(sum(float(t['qty_delta']) for t in self.ledger(it['id'], type='dispense')), -5)
+
+    def test_more_than_is_available_is_refused_and_nothing_moves(self):
+        it = self.item()
+        self.receive(it['id'], 4, 100)
+        pid, rx = self.patient_with_rx(it)
+        before = self.snapshot(it['id'], pid)
+        st, body = self.dispense(pid, rx, 5, expect=400)
+        self.assertEqual(body.get('field'), 'quantity')
+        self.assertEqual(self.snapshot(it['id'], pid), before)
+
+    def test_a_refused_dispense_leaves_stock_ledger_and_history_unchanged(self):
+        it = self.item()
+        self.receive(it['id'], 20, 100)
+        pid, rx = self.patient_with_rx(it)
+        before = self.snapshot(it['id'], pid)
+        self.api.put(f'/api/doctor/prescriptions/{rx}/status', {'status': 'cancelled'})
+        self.dispense(pid, rx, 2, expect=400)
+        self.assertEqual(self.snapshot(it['id'], pid), before)
+
+    def test_a_failure_halfway_through_leaves_nothing_behind(self):
+        """
+        One dispensing writes lots, ledger rows, the balance and the history. A
+        crash after the first writes must undo all of it: the service never
+        commits, so the caller's rollback is the single exit.
+        """
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import inventory
+        it = self.item()
+        self.receive(it['id'], 20, 100)
+        pid, rx = self.patient_with_rx(it)
+        before = self.snapshot(it['id'], pid)
+        conn = _wh_db()
+        real = inventory._set_balance
+
+        def boom(*a, **k):
+            raise RuntimeError('simulated crash after the lots and ledger were written')
+        inventory._set_balance = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                inventory.dispense(conn, {'client_request_id': self.cid(), 'patient_id': pid,
+                                          'prescription_id': rx, 'quantity': 6}, {'username': 'suite'})
+            conn.rollback()
+        finally:
+            inventory._set_balance = real
+            conn.close()
+        self.assertEqual(self.snapshot(it['id'], pid), before)
+        # and the stock is still usable afterwards
+        self.dispense(pid, rx, 6)
+        self.assertEqual(self.qty(it['id']), 14)
+
+    def test_the_same_client_request_id_deducts_once(self):
+        it = self.item()
+        self.receive(it['id'], 20, 100)
+        pid, rx = self.patient_with_rx(it)
+        cid = self.cid()
+        st1, d1 = self.dispense(pid, rx, 4, client_id=cid)
+        st2, d2 = self.dispense(pid, rx, 4, client_id=cid, expect=200)
+        self.assertTrue(d2['duplicate'])
+        self.assertEqual(d1['id'], d2['id'])
+        self.assertEqual(self.qty(it['id']), 16)
+        self.assertEqual(len(self.history(pid)), 1)
+
+    def test_a_dispense_without_a_client_request_id_is_refused(self):
+        it = self.item()
+        self.receive(it['id'], 5, 100)
+        pid, rx = self.patient_with_rx(it)
+        st, body = self.api.post('/api/warehouse/dispense',
+                                 {'patient_id': pid, 'prescription_id': rx, 'quantity': 1})
+        self.assertEqual((st, body.get('field')), (400, 'client_request_id'))
+
+    def test_prescription_quantity_limits_and_partial_dispensing(self):
+        it = self.item()
+        self.receive(it['id'], 50, 100)
+        pid, rx = self.patient_with_rx(it, quantity_prescribed=10)
+        self.dispense(pid, rx, 6)
+        st, pending = self.api.get('/api/warehouse/prescriptions/pending?patient_id=' + urllib.parse.quote(pid))
+        self.assertEqual(st, 200, pending)
+        row = next(p for p in pending['prescriptions'] if p['prescription_id'] == rx)
+        self.assertEqual((float(row['quantity_prescribed']), float(row['dispensed_quantity']),
+                          float(row['remaining_quantity'])), (10.0, 6.0, 4.0))
+        st, body = self.dispense(pid, rx, 5, expect=400)
+        self.assertEqual(body.get('field'), 'quantity')
+        self.dispense(pid, rx, 4)
+        st, pending = self.api.get('/api/warehouse/prescriptions/pending?patient_id=' + urllib.parse.quote(pid))
+        self.assertNotIn(rx, [p['prescription_id'] for p in pending['prescriptions']])
+        self.assertEqual(self.qty(it['id']), 40)
+
+    def test_a_medicine_needs_a_prescription_but_a_consumable_does_not(self):
+        med = self.item()
+        cons = self.item(item_type='consumable', base_unit='dona')
+        self.receive(med['id'], 10, 100)
+        self.receive(cons['id'], 10, 100)
+        pid = self.make_patient('Sarf Bemor')
+        st, body = self.api.post('/api/warehouse/dispense', {
+            'client_request_id': self.cid(), 'patient_id': pid, 'item_id': med['id'], 'quantity': 1})
+        self.assertEqual((st, body.get('field')), (400, 'prescription_id'), body)
+        st, body = self.api.post('/api/warehouse/dispense', {
+            'client_request_id': self.cid(), 'patient_id': pid, 'item_id': cons['id'], 'quantity': 2})
+        self.assertEqual(st, 201, body)
+        self.assertEqual(self.qty(cons['id']), 8)
+
+    def test_a_bill_line_takes_stock_through_the_service_without_a_prescription(self):
+        """The billing and nurse code paths call the service; the screen route stays strict."""
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import inventory
+        it = self.item()
+        self.receive(it['id'], 10, 100)
+        pid = self.make_patient('Hisob Bemor')
+        cid = self.cid()
+        conn = _wh_db()
+        try:
+            d = inventory.dispense(conn, {'client_request_id': cid, 'patient_id': pid,
+                                          'item_id': it['id'], 'quantity': 2},
+                                   {'username': 'suite'}, source='billing')
+            conn.commit()
+            self.assertEqual(d['source'], 'billing')
+            found = inventory.find_dispensing_by_client_id(conn, cid)
+            self.assertEqual(found['id'], d['id'])
+            inventory.reverse_dispensing(conn, d['id'], 'Hisob qatori olib tashlandi', {'username': 'suite'})
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(self.qty(it['id']), 10)
+
+    def test_a_prescription_that_is_not_active_is_refused(self):
+        it = self.item()
+        self.receive(it['id'], 20, 100)
+        for status in ('cancelled', 'completed', 'held'):
+            pid, rx = self.patient_with_rx(it)
+            self.api.put(f'/api/doctor/prescriptions/{rx}/status', {'status': status})
+            st, body = self.dispense(pid, rx, 1, expect=400)
+            self.assertEqual(body.get('field'), 'prescription_id', (status, body))
+        self.assertEqual(self.qty(it['id']), 20)
+
+    def test_someone_elses_prescription_and_a_mismatched_item_are_refused(self):
+        a, b = self.item(), self.item()
+        self.receive(a['id'], 10, 100)
+        self.receive(b['id'], 10, 100)
+        pid1, rx1 = self.patient_with_rx(a)
+        pid2 = self.make_patient('Boshqa Bemor')
+        st, body = self.dispense(pid2, rx1, 1, expect=400)
+        self.assertEqual(body.get('field'), 'prescription_id')
+        st, body = self.dispense(pid1, rx1, 1, expect=400, item_id=b['id'])
+        self.assertEqual(body.get('field'), 'item_id')
+        self.assertEqual((self.qty(a['id']), self.qty(b['id'])), (10, 10))
+
+    def test_fractions_only_where_the_item_allows_them(self):
+        liquid = self.item(base_unit='ml', allow_fraction=1)
+        pills = self.item()
+        self.receive(liquid['id'], 10, 100)
+        self.receive(pills['id'], 10, 100)
+        pid, rx = self.patient_with_rx(liquid)
+        self.dispense(pid, rx, 2.5)
+        self.assertEqual(self.qty(liquid['id']), 7.5)
+        pid2, rx2 = self.patient_with_rx(pills)
+        st, body = self.dispense(pid2, rx2, 2.5, expect=400)
+        self.assertEqual(body.get('field'), 'quantity')
+        for bad in (0, -1, 'abc', 1.2345):
+            st, body = self.dispense(pid, rx, bad, expect=400)
+
+    def test_fefo_takes_the_earliest_expiry_first_and_expired_lots_are_never_used(self):
+        today = _dt.date.today()
+        it = self.item(track_expiry=1)
+        self.receive(it['id'], 10, 100, expiry=(today + _dt.timedelta(days=60)).isoformat(), batch_no='LATE')
+        self.receive(it['id'], 10, 100, expiry=(today + _dt.timedelta(days=20)).isoformat(), batch_no='EARLY')
+        pid, rx = self.patient_with_rx(it)
+        st, d = self.dispense(pid, rx, 12)
+        self.assertEqual([(b['batch_no'], float(b['quantity'])) for b in d['batches']],
+                         [('EARLY', 10.0), ('LATE', 2.0)])
+        # Now age the remaining lot past its expiry.
+        conn = _wh_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE inventory_batches SET expiry_date = ? WHERE item_id = ? AND batch_no = 'LATE'",
+                        ((today - _dt.timedelta(days=1)).isoformat(), it['id']))
+            conn.commit()
+        finally:
+            conn.close()
+        item = self.stock(it['id'])
+        self.assertEqual((float(item['available_quantity']), float(item['expired_quantity'])), (0.0, 8.0))
+        self.assertEqual(item['stock_status'], 'out')
+        st, body = self.dispense(pid, rx, 1, expect=400)
+        self.assertEqual(body.get('field'), 'quantity')
+        st, alerts = self.api.get('/api/warehouse/alerts')
+        mine = [a['alert_type'] for a in alerts['alerts'] if a['item_id'] == it['id']]
+        self.assertIn('expired', mine)
+        # value split: the expired part is reported separately
+        item = self.stock(it['id'])
+        self.assertEqual(float(item['expired_value']), 800)
+        self.assertEqual(float(item['available_value']), 0)
+
+    def test_track_expiry_items_need_a_future_expiry_date(self):
+        it = self.item(track_expiry=1)
+        today = _dt.date.today()
+        for expiry, field in ((None, 'expiry_date'), ((today - _dt.timedelta(days=1)).isoformat(), 'expiry_date')):
+            body = self.receive(it['id'], 1, 100, expiry=expiry, expect=(400,))
+            self.assertEqual(body.get('field'), field, body)
+        self.assertEqual(self.qty(it['id']), 0)
+
+    def test_reversing_a_dispensing_puts_it_back_and_keeps_the_trail(self):
+        it = self.item()
+        self.receive(it['id'], 30, 100)
+        pid, rx = self.patient_with_rx(it, quantity_prescribed=10)
+        st, d = self.dispense(pid, rx, 5)
+        self.assertEqual(self.qty(it['id']), 25)
+        st, rev = self.api.post(f"/api/warehouse/dispensings/{d['id']}/reverse", {'reason': 'Xato bemor'})
+        self.assertEqual(st, 200, rev)
+        self.assertEqual(rev['status'], 'reversed')
+        self.assertEqual(self.qty(it['id']), 30)
+        types = sorted(t['txn_type'] for t in self.ledger(it['id']))
+        self.assertEqual(types, ['dispense', 'receipt', 'reversal'])
+        st, again = self.api.post(f"/api/warehouse/dispensings/{d['id']}/reverse", {'reason': 'yana bir'})
+        self.assertEqual(st, 409, again)
+        self.assertEqual(self.history(pid)[0]['status'], 'reversed')
+        # the prescription has its 10 back
+        self.dispense(pid, rx, 10)
+
+    def test_parallel_requests_for_the_last_units_never_make_stock_negative(self):
+        it = self.item()
+        self.receive(it['id'], 10, 100)
+        pid, rx = self.patient_with_rx(it)
+        results = []
+
+        def go():
+            c = Client()
+            c.cookie = self.api.cookie
+            st, body = c.post('/api/warehouse/dispense', {
+                'client_request_id': self.cid(), 'patient_id': pid, 'prescription_id': rx, 'quantity': 3})
+            results.append(st)
+        threads = [threading.Thread(target=go) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(sorted(results), [201, 201, 201] + [400] * 5, results)
+        self.assertEqual(self.qty(it['id']), 1)
+
+    def test_two_processes_worth_of_connections_cannot_oversell(self):
+        """
+        The server serialises writes with one lock, which would hide a missing
+        row lock. Call the service from several connections at once instead:
+        the row locks alone must keep the balance right.
+        """
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import inventory
+        it = self.item()
+        self.receive(it['id'], 5, 100)
+        pid = self.make_patient('Parallel Bemor')
+        rxs = [self.rx(pid, it) for _ in range(5)]
+        outcome = []
+
+        def go(rx):
+            conn = _wh_db()
+            try:
+                inventory.dispense(conn, {'client_request_id': self.cid(), 'patient_id': pid,
+                                          'prescription_id': rx, 'quantity': 2}, {'username': 'suite'})
+                conn.commit()
+                outcome.append('ok')
+            except inventory.InventoryError:
+                conn.rollback()
+                outcome.append('refused')
+            except Exception as e:                       # a deadlock would show up here
+                conn.rollback()
+                outcome.append(repr(e))
+            finally:
+                conn.close()
+        threads = [threading.Thread(target=go, args=(rx,)) for rx in rxs]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(sorted(outcome), ['ok', 'ok', 'refused', 'refused', 'refused'], outcome)
+        self.assertEqual(self.qty(it['id']), 1)
+        st, rec = self.api.get('/api/warehouse/reconciliation')
+        self.assertNotIn(it['id'], [m['item_id'] for m in rec['mismatches']])
+
+
+class WarehouseAlertsAndLedger(_WarehouseHelpers, ApiTest):
+    """Low stock, adjustments, the append-only ledger, reconciliation, exports."""
+
+    def adjust(self, item_id, kind, qty, reason='Suite tuzatish', expect=201, **extra):
+        payload = {'client_request_id': self.cid(), 'item_id': item_id, 'kind': kind,
+                   'quantity': qty, 'reason': reason}
+        payload.update(extra)
+        st, body = self.api.post('/api/warehouse/adjustments', payload)
+        self.assertEqual(st, expect, body)
+        return body
+
+    def active_types(self, item_id):
+        st, body = self.api.get('/api/warehouse/alerts?status=active')
+        return sorted(a['alert_type'] for a in body['alerts'] if a['item_id'] == item_id)
+
+    def test_low_means_strictly_below_and_the_threshold_can_be_changed(self):
+        it = self.item()
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 10})
+        self.receive(it['id'], 10, 100)
+        item = self.stock(it['id'])
+        self.assertEqual(item['stock_status'], 'ok', 'equal to the threshold is not low')
+        self.assertEqual(self.active_types(it['id']), [])
+        self.adjust(it['id'], 'decrease', 1)
+        self.assertEqual(self.stock(it['id'])['stock_status'], 'low')
+        self.assertEqual(self.active_types(it['id']), ['low_stock'])
+        self.assertEqual(float(self.stock(it['id'])['shortage']), 1)
+        # threshold 10 -> 5: 9 is fine again, alert resolved
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 5})
+        self.assertEqual(self.stock(it['id'])['stock_status'], 'ok')
+        self.assertEqual(self.active_types(it['id']), [])
+        # 5 -> 20: low again
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 20})
+        self.assertEqual(self.stock(it['id'])['stock_status'], 'low')
+        self.assertEqual(self.active_types(it['id']), ['low_stock'])
+        # replenishing resolves it
+        self.receive(it['id'], 20, 100)
+        self.assertEqual(self.stock(it['id'])['stock_status'], 'ok')
+        self.assertEqual(self.active_types(it['id']), [])
+
+    def test_out_of_stock_is_not_the_same_as_low(self):
+        it = self.item()
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 10})
+        self.receive(it['id'], 3, 100)
+        self.assertEqual(self.active_types(it['id']), ['low_stock'])
+        self.adjust(it['id'], 'writeoff', 3, reason='Yaroqsiz')
+        item = self.stock(it['id'])
+        self.assertEqual(item['stock_status'], 'out')
+        self.assertEqual(self.active_types(it['id']), ['out_of_stock'])
+
+    def test_the_low_stock_view_uses_strictly_below(self):
+        it = self.item()
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 10})
+        self.receive(it['id'], 10, 100)
+        conn = _wh_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM v_pharmacy_low_stock WHERE medication_id = ?", (it['id'],))
+            self.assertIsNone(cur.fetchone(), 'stock equal to the threshold is in the low-stock view')
+        finally:
+            conn.close()
+        self.adjust(it['id'], 'decrease', 1)
+        conn = _wh_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM v_pharmacy_low_stock WHERE medication_id = ?", (it['id'],))
+            self.assertIsNotNone(cur.fetchone())
+        finally:
+            conn.close()
+
+    def test_alerts_are_not_duplicated_by_refreshing(self):
+        it = self.item()
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 10})
+        self.receive(it['id'], 2, 100)
+        for _ in range(3):
+            self.api.get('/api/warehouse/alerts')
+            self.api.get('/api/warehouse/summary')
+        st, body = self.api.get('/api/warehouse/alerts?status=active')
+        mine = [a for a in body['alerts'] if a['item_id'] == it['id']]
+        self.assertEqual(len(mine), 1, mine)
+
+    def test_summary_counts(self):
+        it = self.item()
+        self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 10})
+        st, before = self.api.get('/api/warehouse/summary')
+        self.receive(it['id'], 3, 100)
+        st, after = self.api.get('/api/warehouse/summary')
+        self.assertEqual(after['low_stock_count'], before['low_stock_count'] + 1)
+        self.assertIn('units_by_unit', after)
+        self.assertIn('settings', after)
+        self.assertEqual(after['settings']['expiry_warning_days'], 30)
+        self.assertGreaterEqual(after['low_stock_count'], 1)
+        st, listing = self.api.get('/api/warehouse/items?status=low&limit=500')
+        self.assertIn(it['id'], [i['id'] for i in listing['items']])
+        st, listing = self.api.get('/api/warehouse/items?status=bogus')
+        self.assertEqual(st, 400)
+
+    def test_adjustments_need_a_reason_and_each_kind_moves_stock_correctly(self):
+        it = self.item()
+        self.receive(it['id'], 20, 100)
+        self.adjust(it['id'], 'decrease', 4)
+        self.assertEqual(self.qty(it['id']), 16)
+        self.adjust(it['id'], 'increase', 2)
+        self.assertEqual(self.qty(it['id']), 18)
+        self.adjust(it['id'], 'supplier_return', 3)
+        self.assertEqual(self.qty(it['id']), 15)
+        self.adjust(it['id'], 'patient_return', 1)
+        self.assertEqual(self.qty(it['id']), 16)
+        body = self.adjust(it['id'], 'decrease', 1, reason='', expect=400)
+        self.assertEqual(body.get('field'), 'reason')
+        self.adjust(it['id'], 'decrease', 99, expect=400)
+        self.adjust(it['id'], 'explode', 1, expect=400)
+        self.assertEqual(self.qty(it['id']), 16)
+
+    def test_an_adjustment_repeated_with_the_same_client_id_applies_once(self):
+        it = self.item()
+        self.receive(it['id'], 10, 100)
+        cid = self.cid()
+        a = self.adjust(it['id'], 'decrease', 2, client_request_id=cid)
+        b = self.adjust(it['id'], 'decrease', 2, client_request_id=cid, expect=200)
+        self.assertTrue(b['duplicate'])
+        self.assertEqual(self.qty(it['id']), 8)
+
+    def test_a_transaction_can_be_reversed_once_and_the_original_stays(self):
+        it = self.item()
+        self.receive(it['id'], 10, 100)
+        a = self.adjust(it['id'], 'decrease', 3)
+        txn = a['transactions'][0]['id']
+        st, rev = self.api.post(f'/api/warehouse/transactions/{txn}/reverse', {'reason': 'Xato sanalgan'})
+        self.assertEqual(st, 200, rev)
+        self.assertEqual(self.qty(it['id']), 10)
+        st, again = self.api.post(f'/api/warehouse/transactions/{txn}/reverse', {'reason': 'yana'})
+        self.assertEqual(st, 409, again)
+        self.assertEqual(len(self.ledger(it['id'])), 3, 'receipt + adjustment + reversal must all remain')
+        # receipts and dispensings have their own reversal
+        receipt_row = next(t for t in self.ledger(it['id']) if t['txn_type'] == 'receipt')
+        st, body = self.api.post(f"/api/warehouse/transactions/{receipt_row['id']}/reverse", {'reason': 'xato'})
+        self.assertEqual(st, 400, body)
+
+    def test_the_ledger_is_append_only_in_the_database(self):
+        it = self.item()
+        self.receive(it['id'], 5, 100)
+        conn = _wh_db()
+        try:
+            cur = conn.cursor()
+            with self.assertRaises(Exception) as ctx:
+                cur.execute("UPDATE inventory_transactions SET qty_delta = 99 WHERE item_id = ?", (it['id'],))
+            self.assertIn('append-only', str(ctx.exception))
+            conn.rollback()
+            with self.assertRaises(Exception) as ctx:
+                cur.execute("DELETE FROM inventory_transactions WHERE item_id = ?", (it['id'],))
+            self.assertIn('append-only', str(ctx.exception))
+            conn.rollback()
+        finally:
+            conn.close()
+        self.assertEqual(len(self.ledger(it['id'])), 1)
+
+    def test_reconciliation_is_clean_after_a_sequence_of_operations(self):
+        it = self.item(track_expiry=1)
+        exp = (_dt.date.today() + _dt.timedelta(days=90)).isoformat()
+        r = self.receive(it['id'], 40, 100, expiry=exp)
+        pid, rx = self.patient_with_rx(it)
+        st, d = self.dispense(pid, rx, 7)
+        self.adjust(it['id'], 'decrease', 2)
+        self.adjust(it['id'], 'increase', 1, expiry_date=exp)
+        self.api.post(f"/api/warehouse/dispensings/{d['id']}/reverse", {'reason': 'Sinov uchun'})
+        self.dispense(pid, rx, 3)
+        st, rec = self.api.get('/api/warehouse/reconciliation')
+        self.assertEqual(st, 200)
+        self.assertNotIn(it['id'], [m['item_id'] for m in rec['mismatches']], rec['mismatches'])
+        item = self.stock(it['id'])
+        self.assertEqual(float(item['stock_quantity']), 40 - 2 + 1 - 3)
+        st, rep = self.api.get(f"/api/warehouse/reports/movement?item_id={it['id']}")
+        self.assertEqual(st, 200)
+        self.assertGreaterEqual(len(rep['rows']), 6)
+
+    def test_csv_export_and_report_catalogue(self):
+        it = self.item(name=f'=SuiteWH Formula {os.getpid()}-{next(_WH_COUNTER)}')
+        self.receive(it['id'], 3, 100)
+        status, ctype, text = self.raw_get(self.api, '/api/warehouse/reports/stock?format=csv')
+        self.assertEqual(status, 200)
+        self.assertIn('text/csv', ctype)
+        self.assertTrue(text.startswith('﻿'))
+        self.assertIn("'=SuiteWH Formula", text, 'a name starting with = must not stay a formula')
+        for name in ('low-stock', 'out-of-stock', 'expiry', 'receipts', 'dispensings', 'adjustments',
+                     'reconciliation', 'valuation', 'valuation-by-category', 'stock'):
+            st, rep = self.api.get(f'/api/warehouse/reports/{name}')
+            self.assertEqual(st, 200, (name, rep))
+            self.assertIn('columns', rep)
+        st, rep = self.api.get('/api/warehouse/reports/movement')
+        self.assertEqual(st, 400)
+        st, rep = self.api.get('/api/warehouse/reports/nonsense')
+        self.assertEqual(st, 404)
+
+    def test_the_migration_is_idempotent(self):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import inventory
+        conn = _wh_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS n FROM inventory_batches")
+            batches = cur.fetchone()['n']
+            cur.execute("SELECT COUNT(*) AS n FROM inventory_transactions")
+            ledger = cur.fetchone()['n']
+            self.assertTrue(inventory.ensure_schema(conn))
+            self.assertTrue(inventory.ensure_schema(conn))
+            cur.execute("SELECT COUNT(*) AS n FROM inventory_batches")
+            self.assertEqual(cur.fetchone()['n'], batches)
+            cur.execute("SELECT COUNT(*) AS n FROM inventory_transactions")
+            self.assertEqual(cur.fetchone()['n'], ledger)
+        finally:
+            conn.close()
+
+
+class WarehouseAccess(_WarehouseHelpers, ApiTest):
+    """Who may see and do what. Hiding a button is not a permission; these hit the API."""
+
+    COST_KEYS = ('avg_unit_cost', 'last_unit_cost', 'last_package_price', 'stock_value',
+                 'expired_value', 'available_value')
+
+    def test_anonymous_callers_get_401(self):
+        anon = Client()
+        for path in ('/api/warehouse/items', '/api/warehouse/summary', '/api/warehouse/availability'):
+            self.assertEqual(anon.get(path)[0], 401, path)
+        self.assertEqual(anon.post('/api/warehouse/dispense', {})[0], 401)
+
+    def test_front_desk_nurse_and_doctor_cannot_see_or_move_stock(self):
+        for role in ('receptionist', 'nurse', 'doctor'):
+            c = self._account(role)
+            for path in ('/api/warehouse/items', '/api/warehouse/receipts',
+                         '/api/warehouse/transactions', '/api/warehouse/dispensings',
+                         '/api/warehouse/reports/stock', '/api/warehouse/reconciliation'):
+                self.assertEqual(c.get(path)[0], 403, f'{role} read {path}')
+            for path in ('/api/warehouse/dispense', '/api/warehouse/receipts',
+                         '/api/warehouse/adjustments', '/api/warehouse/items',
+                         '/api/warehouse/suppliers'):
+                self.assertEqual(c.post(path, {})[0], 403, f'{role} wrote {path}')
+
+    def test_prescribers_and_nurses_may_ask_what_is_on_the_shelf_without_costs(self):
+        it = self.item()
+        self.receive(it['id'], 12, 1000)
+        for role in ('doctor', 'nurse'):
+            c = self._account(role)
+            st, body = c.get('/api/warehouse/availability?q=' + urllib.parse.quote(it['name']))
+            self.assertEqual(st, 200, (role, body))
+            row = next(r for r in body['items'] if r['id'] == it['id'])
+            self.assertEqual(float(row['available_quantity']), 12)
+            for k in self.COST_KEYS + ('unit_price', 'supplier_id'):
+                self.assertNotIn(k, row, f'{role} saw {k}')
+            st, summ = c.get('/api/warehouse/summary')
+            self.assertEqual(st, 200)
+            self.assertNotIn('total_value', summ)
+            self.assertNotIn('recent_receipts', summ)
+
+    def test_the_pharmacist_counts_stock_but_sees_no_costs_and_cannot_buy_or_reprice(self):
+        ph = self._account('pharmacist')
+        it = self.item()
+        self.receive(it['id'], 10, 1000)
+        st, body = ph.get('/api/warehouse/items/' + it['id'])
+        self.assertEqual(st, 200)
+        for k in self.COST_KEYS:
+            self.assertNotIn(k, body, f'the pharmacist saw {k}')
+        for b in body['batches']:
+            self.assertNotIn('unit_cost', b)
+        st, lst = ph.get('/api/warehouse/items')
+        self.assertTrue(all(k not in lst['items'][0] for k in self.COST_KEYS))
+        st, rc = ph.get('/api/warehouse/receipts')
+        self.assertEqual(st, 200)
+        self.assertTrue(all('total_amount' not in r for r in rc['receipts']))
+        st, summ = ph.get('/api/warehouse/summary')
+        self.assertNotIn('total_value', summ)
+        self.assertEqual(ph.get('/api/warehouse/reports/valuation')[0], 403)
+        self.assertEqual(ph.get('/api/warehouse/reports/valuation-by-category')[0], 403)
+        # may not receive stock, set the threshold, or touch prices
+        self.assertEqual(ph.post('/api/warehouse/receipts', {
+            'client_request_id': self.cid(), 'post': True,
+            'lines': [{'item_id': it['id'], 'packages': 1, 'package_price': 1}]})[0], 403)
+        self.assertEqual(ph.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 1})[0], 403)
+        self.assertEqual(ph.put(f"/api/warehouse/items/{it['id']}", {'unit_price': 1})[0], 403)
+        self.assertEqual(ph.put(f"/api/warehouse/items/{it['id']}", {'min_stock_level': 1})[0], 403)
+        self.assertEqual(ph.post('/api/warehouse/items', {'name': 'SuiteWH ph', 'unit_price': 5})[0], 403)
+        self.assertEqual(ph.post('/api/warehouse/items', {'name': 'SuiteWH ph2', 'min_stock_level': 5})[0], 403)
+        # but may create an item and edit its non-cost fields
+        st, made = ph.post('/api/warehouse/items', {'name': f'SuiteWH Ph {os.getpid()}-{next(_WH_COUNTER)}',
+                                                     'base_unit': 'dona'})
+        self.assertEqual(st, 201, made)
+        self._wh_items.append(made['id'])
+        self.assertNotIn('avg_unit_cost', made)
+        st, upd = ph.put(f"/api/warehouse/items/{made['id']}", {'manufacturer': 'Suite Pharm'})
+        self.assertEqual((st, upd['manufacturer']), (200, 'Suite Pharm'))
+        # and dispenses
+        pid, rx = self.patient_with_rx(it)
+        st, d = ph.post('/api/warehouse/dispense', {'client_request_id': self.cid(), 'patient_id': pid,
+                                                    'prescription_id': rx, 'quantity': 2})
+        self.assertEqual(st, 201, d)
+        self.assertNotIn('total_cost', d)
+        # the stock report is allowed (costs dropped), as CSV too
+        st, rep = ph.get('/api/warehouse/reports/stock')
+        self.assertEqual(st, 200)
+        self.assertNotIn('stock_value', [c['key'] for c in rep['columns']])
+
+    def test_the_accountant_buys_and_prices_and_sees_costs(self):
+        ac = self._account('accountant')
+        it = self.item()
+        st, body = ac.post('/api/warehouse/receipts', {
+            'client_request_id': self.cid(), 'post': True, 'supplier_name': self.SUPPLIER,
+            'lines': [{'item_id': it['id'], 'packages': 2, 'package_price': 5000}]})
+        self.assertEqual(st, 201, body)
+        self._wh_trx.append(body['accounting_transaction_id'])
+        self.assertEqual(float(body['total_amount']), 10000)
+        st, th = ac.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 4})
+        self.assertEqual((st, float(th['min_stock_level'])), (200, 4.0))
+        st, upd = ac.put(f"/api/warehouse/items/{it['id']}", {'unit_price': 9000})
+        self.assertEqual((st, float(upd['unit_price'])), (200, 9000.0))
+        st, item = ac.get('/api/warehouse/items/' + it['id'])
+        self.assertEqual(float(item['avg_unit_cost']), 5000)
+        self.assertEqual(ac.get('/api/warehouse/reports/valuation')[0], 200)
+        # but the accountant does not hand out medicine
+        pid, rx = self.patient_with_rx(it)
+        st, d = ac.post('/api/warehouse/dispense', {'client_request_id': self.cid(), 'patient_id': pid,
+                                                    'prescription_id': rx, 'quantity': 1})
+        self.assertEqual(st, 201, 'the accountant has the warehouse module (write)')
+
+    def test_oversight_roles_read_but_do_not_write(self):
+        it = self.item()
+        self.receive(it['id'], 5, 1000)
+        for role, sees_costs in (('owner', True), ('chief_doctor', False), ('ward_manager', False)):
+            c = self._account(role)
+            st, body = c.get('/api/warehouse/items/' + it['id'])
+            self.assertEqual(st, 200, (role, body))
+            self.assertEqual('avg_unit_cost' in body, sees_costs, role)
+            self.assertEqual(c.get('/api/warehouse/summary')[0], 200)
+            self.assertEqual(c.post('/api/warehouse/adjustments', {
+                'client_request_id': self.cid(), 'item_id': it['id'], 'kind': 'decrease',
+                'quantity': 1, 'reason': 'xxx'})[0], 403, role)
+            self.assertEqual(c.post('/api/warehouse/dispense', {})[0], 403, role)
+            self.assertEqual(c.post('/api/warehouse/receipts', {})[0], 403, role)
+        self.assertEqual(self.qty(it['id']), 5)
+
+    def test_warehouse_module_pages_and_routes_are_registered(self):
+        import permissions
+        self.assertIn('warehouse', permissions.MODULES)
+        self.assertEqual(permissions.PAGE_RULES['/warehouse.html'], ('warehouse', 'read'))
+        self.assertEqual(permissions.required_for_api('GET', '/api/warehouse/anything-new'),
+                         ('warehouse', 'read'))
+        self.assertFalse(permissions.authorize_api({'role': 'receptionist'}, 'GET',
+                                                   '/api/warehouse/anything-new')[0])
+        self.assertFalse(permissions.authorize_api({'role': 'nurse'}, 'POST',
+                                                   '/api/warehouse/dispense')[0])
+        self.assertTrue(permissions.authorize_api({'role': 'pharmacist'}, 'POST',
+                                                  '/api/warehouse/dispense')[0])
+        self.assertTrue(permissions.authorize_api({'role': 'superadmin'}, 'POST',
+                                                  '/api/warehouse/receipts')[0])
+        self.assertFalse(permissions.authorize_api({'role': 'pharmacist'}, 'POST',
+                                                   '/api/warehouse/receipts/RCP-1/reverse')[0])
+        self.assertEqual(permissions.visible_pages({'role': 'pharmacist'}).count('/warehouse.html'), 1)
+        self.assertNotIn('/warehouse.html', permissions.visible_pages({'role': 'receptionist'}))
+
+    def test_a_route_that_does_not_exist_is_404_for_the_superadmin(self):
+        self.assertEqual(self.api.get('/api/warehouse/no-such-thing')[0], 404)
+        self.assertEqual(self.api.post('/api/warehouse/no-such-thing', {})[0], 404)
 
 
 if __name__ == '__main__':

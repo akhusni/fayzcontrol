@@ -40,6 +40,10 @@ MODULES = {
     'admissions': "Bemorni karavotga joylashtirish",
     'facility':   "Statsionar, xonalar va karavotlar",
     'pharmacy':   "Farmakologiya va dorilar bazasi",
+    # The stock itself: receipts, lots, expiry, dispensing history. Separate
+    # from 'pharmacy' (the drug reference data) so the people who count and
+    # hand out stock are not the same set as those who read the formulary.
+    'warehouse':  "Tibbiy ombor: dori va materiallar zaxirasi",
     'crm':        "Bemorlar kartotekasi va kasallik tarixi",
     'accounting': "Kassa, to'lovlar va moliya",
     'hr':         "Kadrlar, smenalar va maosh",
@@ -68,7 +72,7 @@ ROLES = {
     'admin': {
         'label': 'Administrator',
         'permissions': ['reception', 'doctors', 'nursery', 'admissions', 'facility',
-                        'pharmacy', 'crm', 'accounting', 'hr', 'kitchen', 'admin:read', 'duty'],
+                        'pharmacy', 'warehouse', 'crm', 'accounting', 'hr', 'kitchen', 'admin:read', 'duty'],
         'home': '/superpage.html',
     },
 
@@ -76,7 +80,8 @@ ROLES = {
     'chief_doctor': {
         'label': 'Bosh shifokor',
         'permissions': ['doctors', 'crm', 'pharmacy', 'admissions', 'facility', 'nursery',
-                        'reception:read', 'accounting:read', 'hr:read', 'duty:read'],
+                        'reception:read', 'accounting:read', 'hr:read', 'duty:read',
+                        'warehouse:read'],
         'home': '/doctor.html',
     },
 
@@ -108,7 +113,9 @@ ROLES = {
     # Cash desk and financial reporting. Sees who owes what, not why clinically.
     'accountant': {
         'label': 'Buxgalter / Kassir',
-        'permissions': ['accounting', 'crm:read', 'admissions:read', 'facility:read'],
+        # 'warehouse' lets the accountant open the stock page; what makes a
+        # receipt or a cost theirs is accounting:write (see WAREHOUSE_*).
+        'permissions': ['accounting', 'warehouse', 'crm:read', 'admissions:read', 'facility:read'],
         'home': '/accounting.html',
     },
 
@@ -122,7 +129,7 @@ ROLES = {
     # Dispensing and stock. Needs to see prescriptions, not write them.
     'pharmacist': {
         'label': 'Farmatsevt',
-        'permissions': ['pharmacy', 'doctors:read', 'crm:read'],
+        'permissions': ['pharmacy', 'warehouse', 'doctors:read', 'crm:read'],
         # The hub, until a dedicated dispensing page exists.
         'home': '/superpage.html',
     },
@@ -130,7 +137,8 @@ ROLES = {
     # Ward supervision: beds, transfers, sanitation.
     'ward_manager': {
         'label': 'Statsionar menejeri',
-        'permissions': ['facility', 'admissions', 'nursery:read', 'crm:read', 'kitchen', 'duty:read'],
+        'permissions': ['facility', 'admissions', 'nursery:read', 'crm:read', 'kitchen', 'duty:read',
+                        'warehouse:read'],
         'home': '/building_management.html',
     },
 
@@ -145,7 +153,7 @@ ROLES = {
     # read-only. Accounting stays the place where money is entered.
     'owner': {
         'label': 'Klinika egasi',
-        'permissions': ['owner', 'accounting:read'],
+        'permissions': ['owner', 'accounting:read', 'warehouse:read'],
         'home': '/owner.html',
     },
 
@@ -230,6 +238,10 @@ API_RULES = [
     ('/api/reception/data',           'reception',  'read'),
 
     # --- money ------------------------------------------------------------
+    # The stock. Anything under /api/warehouse not special-cased in
+    # authorize_warehouse() below needs the warehouse module, so a route added
+    # later is denied to roles without it instead of being open.
+    ('/api/warehouse',               'warehouse',  None),
     ('/api/accounting/medication-purchases', 'accounting', None),
     ('/api/accounting/transaction',   'accounting', None),
     ('/api/accounting/invoice-items', 'accounting', 'write'),
@@ -318,6 +330,7 @@ PAGE_RULES = {
     '/accounting.html':           ('accounting', 'read'),
     '/owner.html':                ('owner',      'read'),
     '/hr.html':                   ('hr',         'read'),
+    '/warehouse.html':            ('warehouse',  'read'),
     '/medical_blank.html':        ('doctors',    'write'),
     # Both reports now live in docs/ and are not served (nested .html is
     # refused). The rules stay so that a copy put back at the top level is
@@ -424,6 +437,65 @@ SELF_SERVICE = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Warehouse (/api/warehouse/*)
+#
+# API_RULES maps a route to ONE module, but the stock has three audiences:
+# prescribers who only ask "is it on the shelf?", the people who count and hand
+# out stock, and the office that pays for it. Costs (what the clinic paid) are
+# a different thing from the patient price and are not for the shelf staff.
+# ---------------------------------------------------------------------------
+WAREHOUSE_PREFIX = '/api/warehouse'
+
+# Availability and the summary counters are readable by everyone who prescribes
+# or gives medicine (the payload carries no costs; the handler trims the
+# summary further for roles outside the warehouse module).
+WAREHOUSE_PUBLIC_READS = ('availability', 'summary')
+WAREHOUSE_PUBLIC_READERS = ('warehouse', 'pharmacy', 'accounting', 'doctors', 'nursery')
+
+
+def can_see_costs(user):
+    """
+    Purchase costs, stock valuation and supplier prices: the cashier who pays
+    the invoices, the owner who follows the money, and the superadmin. A
+    pharmacist counts boxes, not prices.
+    """
+    return (can(user, 'accounting', 'write') or can(user, 'owner', 'read'))
+
+
+def authorize_warehouse(user, method, path):
+    """
+    Decide a /api/warehouse request. Same contract as authorize_api.
+
+    * availability / summary (GET): any prescriber or stock reader.
+    * receipts (create, post, cancel, reverse) and a threshold change: need the
+      warehouse module AND accounting:write, because they move money or set
+      what counts as "low".
+    * everything else: the warehouse module (read for GET, write otherwise),
+      via the API_RULES entry. Dispensing is warehouse:write only; the nurse's
+      round takes stock through the service, not through this route.
+    """
+    parts = [s for s in path[len(WAREHOUSE_PREFIX):].split('/') if s]
+    head = parts[0] if parts else ''
+    if method == 'GET' and len(parts) == 1 and head in WAREHOUSE_PUBLIC_READS:
+        if any(can(user, m, 'read') for m in WAREHOUSE_PUBLIC_READERS):
+            return True, None
+        return False, 'warehouse:read required'
+    money_route = (head == 'receipts' and method != 'GET') or (
+        method == 'PUT' and head == 'items' and len(parts) == 3 and parts[2] == 'threshold')
+    if money_route:
+        if can(user, 'warehouse', 'read') and can(user, 'accounting', 'write'):
+            return True, None
+        return False, 'accounting:write required'
+    required = required_for_api(method, path)
+    if required is None:
+        return False, f'no permission rule covers {method} {path}'
+    module, action = required
+    if can(user, module, action):
+        return True, None
+    return False, f'{module}:{action} required'
+
+
 def authorize_api(user, method, path):
     """
     Decide an API request.
@@ -433,6 +505,8 @@ def authorize_api(user, method, path):
     """
     if path in SELF_SERVICE:
         return True, None
+    if path == WAREHOUSE_PREFIX or path.startswith(WAREHOUSE_PREFIX + '/'):
+        return authorize_warehouse(user, method, path)
     # Reading a plan: allowed for any module that has to act on it.
     if method == 'GET' and path.startswith('/api/treatment-plans'):
         if any(can(user, m, 'read') for m in PLAN_READERS):

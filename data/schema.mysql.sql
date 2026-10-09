@@ -274,10 +274,31 @@ CREATE TABLE IF NOT EXISTS medications_catalog (
     form VARCHAR(64) NOT NULL,
     standard_dosage VARCHAR(128),
     unit_price DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK(unit_price >= 0),
-    stock_quantity INT NOT NULL DEFAULT 0 CHECK(stock_quantity >= 0),
-    min_stock_level INT NOT NULL DEFAULT 10,
+    -- Stock is in the item's base unit and may be fractional (see inventory.py,
+    -- docs/WAREHOUSE_DESIGN.md). It is a cached balance: the lots and the ledger
+    -- in inventory_batches / inventory_transactions are the source of truth.
+    stock_quantity DECIMAL(14,3) NOT NULL DEFAULT 0 CHECK(stock_quantity >= 0),
+    min_stock_level DECIMAL(14,3) NOT NULL DEFAULT 10,
     is_active TINYINT(1) NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sku VARCHAR(64) NULL,
+    barcode VARCHAR(64) NULL,
+    generic_name VARCHAR(255) NULL,
+    strength VARCHAR(64) NULL,
+    manufacturer VARCHAR(255) NULL,
+    item_type VARCHAR(24) NOT NULL DEFAULT 'medicine' CHECK(item_type IN ('medicine', 'vitamin', 'injection', 'syringe', 'consumable', 'equipment', 'other')),
+    description TEXT NULL,
+    base_unit VARCHAR(32) NOT NULL DEFAULT 'dona',
+    package_unit VARCHAR(32) NULL,
+    units_per_package DECIMAL(14,3) NOT NULL DEFAULT 1 CHECK(units_per_package > 0),
+    allow_fraction TINYINT(1) NOT NULL DEFAULT 0,
+    track_expiry TINYINT(1) NOT NULL DEFAULT 0,
+    supplier_id VARCHAR(64) NULL,
+    last_package_price DECIMAL(18,2) NULL,
+    last_unit_cost DECIMAL(18,4) NULL,
+    avg_unit_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_med_sku (sku)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS prescriptions (
@@ -295,6 +316,8 @@ CREATE TABLE IF NOT EXISTS prescriptions (
     timing VARCHAR(128),
     instructions TEXT,
     status VARCHAR(32) NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'completed', 'cancelled', 'held')),
+    quantity_prescribed DECIMAL(14,3) NULL, -- how much was prescribed, in the item's base unit; NULL = not stated
+    quantity_unit VARCHAR(32) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -472,6 +495,228 @@ CREATE TABLE IF NOT EXISTS medication_purchases (
     FOREIGN KEY (accounting_transaction_id) REFERENCES accounting_transactions(id) ON UPDATE CASCADE ON DELETE SET NULL,
     FOREIGN KEY (recorded_by_staff_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL,
     INDEX idx_med_purchase_date (purchase_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- Medical warehouse (inventory.py, docs/WAREHOUSE_DESIGN.md). The server also
+-- creates and upgrades all of this at startup (inventory.ensure_schema).
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS inventory_settings (
+    setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_suppliers (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(64) NULL,
+    address VARCHAR(255) NULL,
+    notes TEXT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_inv_supplier_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE medications_catalog ADD CONSTRAINT fk_med_supplier
+    FOREIGN KEY (supplier_id) REFERENCES inventory_suppliers(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS inventory_receipts (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    supplier_id VARCHAR(64) NULL,
+    supplier_name VARCHAR(255) NULL,
+    invoice_number VARCHAR(128) NULL,
+    receipt_date DATE NOT NULL,
+    payment_method VARCHAR(32) NOT NULL DEFAULT 'cash' CHECK(payment_method IN (
+        'cash', 'cash_register', 'terminal', 'card_transfer', 'payme_click', 'bank_wire'
+    )),
+    status VARCHAR(16) NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'posted', 'reversed', 'cancelled')),
+    notes TEXT NULL,
+    total_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    client_request_id VARCHAR(64) NULL,
+    accounting_transaction_id VARCHAR(128) NULL,
+    accounting_transaction_ref VARCHAR(128) NULL,
+    created_by VARCHAR(128) NULL,
+    created_by_staff_id VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    posted_at DATETIME NULL,
+    posted_by VARCHAR(128) NULL,
+    cancelled_at DATETIME NULL,
+    reversed_at DATETIME NULL,
+    reversed_by VARCHAR(128) NULL,
+    reverse_reason VARCHAR(500) NULL,
+    UNIQUE KEY uq_inv_receipt_client (client_request_id),
+    KEY idx_inv_receipt_date (receipt_date, status),
+    KEY idx_inv_receipt_supplier (supplier_id),
+    CONSTRAINT fk_inv_receipt_supplier FOREIGN KEY (supplier_id)
+        REFERENCES inventory_suppliers(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_inv_receipt_acc FOREIGN KEY (accounting_transaction_id)
+        REFERENCES accounting_transactions(id) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_receipt_lines (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    receipt_id VARCHAR(64) NOT NULL,
+    line_no INT NOT NULL,
+    item_id VARCHAR(64) NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    packages DECIMAL(14,3) NOT NULL CHECK(packages > 0),
+    units_per_package DECIMAL(14,3) NOT NULL CHECK(units_per_package > 0),
+    quantity_base DECIMAL(14,3) NOT NULL CHECK(quantity_base > 0),
+    package_price DECIMAL(18,2) NOT NULL CHECK(package_price >= 0),
+    unit_cost DECIMAL(18,4) NOT NULL CHECK(unit_cost >= 0),
+    line_total DECIMAL(18,2) NOT NULL CHECK(line_total >= 0),
+    batch_no VARCHAR(64) NULL,
+    expiry_date DATE NULL,
+    batch_id BIGINT NULL,
+    KEY idx_inv_line_receipt (receipt_id, line_no),
+    KEY idx_inv_line_item (item_id),
+    CONSTRAINT fk_inv_line_receipt FOREIGN KEY (receipt_id)
+        REFERENCES inventory_receipts(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_inv_line_item FOREIGN KEY (item_id)
+        REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_batches (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    item_id VARCHAR(64) NOT NULL,
+    batch_no VARCHAR(64) NOT NULL,
+    expiry_date DATE NULL,
+    received_qty DECIMAL(14,3) NOT NULL CHECK(received_qty > 0),
+    remaining_qty DECIMAL(14,3) NOT NULL CHECK(remaining_qty >= 0),
+    unit_cost DECIMAL(18,4) NOT NULL DEFAULT 0 CHECK(unit_cost >= 0),
+    source VARCHAR(16) NOT NULL DEFAULT 'receipt',
+    receipt_id VARCHAR(64) NULL,
+    receipt_line_id BIGINT NULL,
+    supplier_id VARCHAR(64) NULL,
+    received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_inv_batch_item (item_id, expiry_date, id),
+    KEY idx_inv_batch_receipt (receipt_id),
+    CONSTRAINT chk_inv_batch_le CHECK(remaining_qty <= received_qty),
+    CONSTRAINT fk_inv_batch_item FOREIGN KEY (item_id)
+        REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_inv_batch_receipt FOREIGN KEY (receipt_id)
+        REFERENCES inventory_receipts(id) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_transactions (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    txn_type VARCHAR(24) NOT NULL CHECK(txn_type IN (
+        'receipt', 'dispense', 'adjustment_in', 'adjustment_out', 'supplier_return',
+        'patient_return', 'writeoff', 'reversal', 'opening'
+    )),
+    item_id VARCHAR(64) NOT NULL,
+    batch_id BIGINT NULL,
+    qty_delta DECIMAL(14,3) NOT NULL CHECK(qty_delta <> 0),
+    balance_before DECIMAL(14,3) NOT NULL,
+    balance_after DECIMAL(14,3) NOT NULL,
+    unit_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    value_delta DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    source VARCHAR(24) NULL,
+    operation_id VARCHAR(64) NULL,
+    patient_id VARCHAR(64) NULL,
+    prescription_id VARCHAR(64) NULL,
+    consultation_id VARCHAR(64) NULL,
+    admission_id VARCHAR(64) NULL,
+    receipt_id VARCHAR(64) NULL,
+    dispensing_id VARCHAR(64) NULL,
+    supplier_id VARCHAR(64) NULL,
+    accounting_transaction_id VARCHAR(128) NULL,
+    performed_by VARCHAR(128) NULL,
+    performed_by_staff_id VARCHAR(64) NULL,
+    reason VARCHAR(500) NULL,
+    notes TEXT NULL,
+    reversal_of BIGINT NULL,
+    client_request_id VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_inv_txn_reversal (reversal_of),
+    UNIQUE KEY uq_inv_txn_client (client_request_id),
+    KEY idx_inv_txn_item (item_id, id),
+    KEY idx_inv_txn_patient (patient_id),
+    KEY idx_inv_txn_created (created_at),
+    KEY idx_inv_txn_operation (operation_id),
+    KEY idx_inv_txn_dispensing (dispensing_id),
+    KEY idx_inv_txn_receipt (receipt_id),
+    CONSTRAINT fk_inv_txn_item FOREIGN KEY (item_id)
+        REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_inv_txn_batch FOREIGN KEY (batch_id)
+        REFERENCES inventory_batches(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_inv_txn_reversal FOREIGN KEY (reversal_of)
+        REFERENCES inventory_transactions(id) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_dispensings (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    client_request_id VARCHAR(64) NULL,
+    patient_id VARCHAR(64) NOT NULL,
+    patient_name VARCHAR(255) NULL,
+    prescription_id VARCHAR(64) NULL,
+    consultation_id VARCHAR(64) NULL,
+    admission_id VARCHAR(64) NULL,
+    item_id VARCHAR(64) NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    base_unit VARCHAR(32) NULL,
+    quantity DECIMAL(14,3) NOT NULL CHECK(quantity > 0),
+    unit_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    total_cost DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    dosage VARCHAR(128) NULL,
+    route VARCHAR(64) NULL,
+    frequency VARCHAR(64) NULL,
+    instructions TEXT NULL,
+    rx_doctor_id VARCHAR(64) NULL,
+    rx_doctor_name VARCHAR(255) NULL,
+    source VARCHAR(16) NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'nurse_round', 'billing')),
+    status VARCHAR(16) NOT NULL DEFAULT 'completed' CHECK(status IN ('completed', 'reversed')),
+    notes TEXT NULL,
+    dispensed_by VARCHAR(128) NULL,
+    dispensed_by_staff_id VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reversed_at DATETIME NULL,
+    reversed_by VARCHAR(128) NULL,
+    reverse_reason VARCHAR(500) NULL,
+    UNIQUE KEY uq_inv_disp_client (client_request_id),
+    KEY idx_inv_disp_patient (patient_id, created_at),
+    KEY idx_inv_disp_item (item_id, created_at),
+    KEY idx_inv_disp_rx (prescription_id, status),
+    CONSTRAINT fk_inv_disp_item FOREIGN KEY (item_id)
+        REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_dispensing_batches (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    dispensing_id VARCHAR(64) NOT NULL,
+    batch_id BIGINT NOT NULL,
+    batch_no VARCHAR(64) NULL,
+    expiry_date DATE NULL,
+    quantity DECIMAL(14,3) NOT NULL CHECK(quantity > 0),
+    unit_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    txn_id BIGINT NULL,
+    KEY idx_inv_dbatch_disp (dispensing_id),
+    CONSTRAINT fk_inv_dbatch_disp FOREIGN KEY (dispensing_id)
+        REFERENCES inventory_dispensings(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_inv_dbatch_batch FOREIGN KEY (batch_id)
+        REFERENCES inventory_batches(id) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_alerts (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    item_id VARCHAR(64) NOT NULL,
+    alert_type VARCHAR(24) NOT NULL CHECK(alert_type IN ('low_stock', 'out_of_stock', 'expired', 'expiring_soon')),
+    batch_id BIGINT NULL,
+    batch_key BIGINT NOT NULL DEFAULT 0,
+    status VARCHAR(12) NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'resolved')),
+    active_marker TINYINT NULL,
+    message VARCHAR(255) NULL,
+    quantity DECIMAL(14,3) NULL,
+    threshold DECIMAL(14,3) NULL,
+    expiry_date DATE NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    UNIQUE KEY uq_inv_alert_active (item_id, alert_type, batch_key, active_marker),
+    KEY idx_inv_alert_status (status, alert_type),
+    CONSTRAINT fk_inv_alert_item FOREIGN KEY (item_id)
+        REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -913,6 +1158,15 @@ SELECT
     (SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE() AND status != 'cancelled') AS today_appointments_count,
     (SELECT COUNT(*) FROM prescriptions WHERE status = 'active') AS active_prescriptions_count;
 
+-- The warehouse ledger is append-only: corrections are reversal rows. Creating
+-- triggers needs the TRIGGER privilege and, with binary logging on,
+-- log_bin_trust_function_creators=1 (or SUPER): if the application user lacks it
+-- the server logs a warning at startup and an administrator runs these two
+-- statements once.
+CREATE TRIGGER trg_inv_txn_no_update BEFORE UPDATE ON inventory_transactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_transactions is append-only';
+CREATE TRIGGER trg_inv_txn_no_delete BEFORE DELETE ON inventory_transactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_transactions is append-only';
+
+-- Low stock means strictly BELOW the threshold (it used to be <=).
 CREATE OR REPLACE VIEW v_pharmacy_low_stock AS
 SELECT
     id AS medication_id,
@@ -924,7 +1178,7 @@ SELECT
     (min_stock_level - stock_quantity) AS deficit_quantity,
     unit_price
 FROM medications_catalog
-WHERE stock_quantity <= min_stock_level AND is_active = 1
+WHERE stock_quantity < min_stock_level AND is_active = 1
 ORDER BY (stock_quantity - min_stock_level) ASC;
 
 SET FOREIGN_KEY_CHECKS = 1;

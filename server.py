@@ -808,6 +808,8 @@ import user_admin
 import nursery
 import owner_report
 import consultation
+import inventory
+import warehouse_api
 import payroll
 
 
@@ -1491,6 +1493,40 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
 
     # ------------------------------------------------------------------------
+    # Warehouse (/api/warehouse/*). The logic is in inventory.py and the routes
+    # in warehouse_api.py; this only hands over the request and writes the
+    # answer, so a 400 keeps the shape _send_validation_error gives everywhere.
+    # ------------------------------------------------------------------------
+    def _handle_warehouse(self, method, path, query, body, conn):
+        user = (self.current_session() or {}).get('user')
+        ctx = {
+            'parse_date_param': parse_date_param,
+            'normalize_payment_method': normalize_payment_method,
+            'account_source_for': account_source_for,
+        }
+        status, payload = warehouse_api.handle(method, path, query, body, user, conn, ctx)
+        if isinstance(payload, dict) and '_csv' in payload:
+            data = payload['_csv'].encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/csv; charset=utf-8')
+            self.send_header('Content-Disposition', 'attachment; filename="%s"' % payload['_filename'])
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        note = payload.pop('_notify', None) if isinstance(payload, dict) else None
+        if status == 400 and isinstance(payload, dict) and 'error' in payload:
+            self._send_validation_error(payload['error'], payload.get('field'))
+        else:
+            self._set_json_headers(status)
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+        if note and telegram_service:
+            try:
+                telegram_service.notify_accounting_transaction_entered_async(note)
+            except Exception as _e_notify:
+                print(f"[Telegram Notify Error] {_e_notify}")
+
+    # ------------------------------------------------------------------------
     # API GET HANDLERS (100% Real MySQL 8.0 Database Data)
     # ------------------------------------------------------------------------
     def handle_api_get(self, path, query):
@@ -1499,8 +1535,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             conn = get_db()
             cur = conn.cursor()
 
+            # Warehouse stock, lots, ledger and reports.
+            if path.startswith('/api/warehouse'):
+                self._handle_warehouse('GET', path, query, None, conn)
+
             # 0. /api/stats/summary -> Real-Time Hospital KPI summary
-            if path == '/api/stats/summary':
+            elif path == '/api/stats/summary':
                 cur.execute("SELECT * FROM v_daily_hospital_kpi")
                 kpi_row = cur.fetchone()
                 
@@ -2763,8 +2803,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             conn = get_db()
             cur = conn.cursor()
 
+            # Warehouse writes: one request is one transaction (warehouse_api.handle
+            # commits on success and rolls back on any failure).
+            if path.startswith('/api/warehouse'):
+                self._handle_warehouse('POST', path, {}, body, conn)
+
             # 1. POST /api/admissions (Book / Admit Inpatient via Atomic db.py Workflow)
-            if path == '/api/admissions':
+            elif path == '/api/admissions':
                 patient_id = body.get('patient_id')
                 patient_name = (body.get('patient_name') or '').strip()
                 patient_phone = body.get('patient_phone', '')
@@ -4362,6 +4407,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # records which account wrote it.
                 rx_doctor = self._actor_staff_id(body, 'doctor_id')
 
+                # Optional warehouse link: the catalogue item and how much was
+                # prescribed (in that item's base unit). Neither is invented:
+                # absent stays NULL, and a quantity with no unit stated is kept
+                # as given. Prescribing never changes stock (inventory.py).
+                rx_extra = {}
+                rx_link = str(body.get('medication_id') or '').strip()
+                if rx_link:
+                    cur.execute("SELECT 1 FROM medications_catalog WHERE id = ?", (rx_link,))
+                    if not cur.fetchone():
+                        self._send_validation_error("Ombordagi dori topilmadi.", 'medication_id')
+                        return
+                    rx_extra['medication_id'] = rx_link
+                if body.get('quantity_prescribed') not in (None, ''):
+                    try:
+                        rx_extra['quantity_prescribed'] = inventory.parse_qty(
+                            body.get('quantity_prescribed'), 'quantity_prescribed', 'Buyurilgan miqdor')
+                        rx_extra['quantity_unit'] = inventory.parse_text(
+                            body.get('quantity_unit'), 'quantity_unit', 'Miqdor birligi', 32)
+                    except inventory.InventoryError as _e_rx:
+                        self._send_validation_error(_e_rx.message, _e_rx.field)
+                        return
+
                 cur.execute("""
                     INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, route, frequency, duration_days, timing, instructions, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -4380,6 +4447,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     (body.get('instructions') or '').strip() or None,
                     body.get('status', 'active')
                 ))
+                if rx_extra:
+                    cur.execute("UPDATE prescriptions SET " + ", ".join(f"{k} = ?" for k in rx_extra)
+                                + " WHERE id = ?", list(rx_extra.values()) + [rx_id])
                 conn.commit()
                 conn.close()
                 self._set_json_headers(201)
@@ -5548,8 +5618,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             conn = get_db()
             cur = conn.cursor()
 
+            if path.startswith('/api/warehouse'):
+                self._handle_warehouse('PUT', path, {}, body, conn)
+
             # PUT /api/doctor/prescriptions/<id>/status
-            if path.startswith('/api/doctor/prescriptions/') and path.endswith('/status'):
+            elif path.startswith('/api/doctor/prescriptions/') and path.endswith('/status'):
                 rx_id = path.split('/')[4]
                 new_status = body.get('status', 'completed')
                 cur.execute("UPDATE prescriptions SET status = ? WHERE id = ?", (new_status, rx_id))
@@ -6146,6 +6219,9 @@ def run_server():
         ('appointment requests', ensure_appointment_requests),
         # Table for clinic medication purchases and restock expenses.
         ('medication purchases', ensure_medication_purchases),
+        # The medical warehouse: lots, ledger, receipts, alerts (inventory.py).
+        # Also brings the low-stock and expiry alerts up to date after a restart.
+        ('warehouse schema', inventory.ensure_schema),
         # Older databases refuse 'consultation' appointments.
         ('appointment service types', ensure_appointment_service_types),
         # Sanitarkas need staff rows to be paid for duty shifts.

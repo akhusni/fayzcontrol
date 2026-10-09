@@ -333,6 +333,36 @@ Ko'rinadigan o'zgarishlar: Buxgalteriya → Maosh bo'limida "Maosh oyi" tanlagic
 
 17 ta yangi test qo'shildi, jami 295 ta test o'tadi.
 
+### 2026-10-10: Ombor (W1a) — zaxira va harakat daftari
+
+Tibbiy ombor serveri (`inventory.py`, yo'llar `warehouse_api.py`, `/api/warehouse/*`). Loyiha: `docs/WAREHOUSE_DESIGN.md`. Sahifa (interfeys) va eski kodlarni (hamshira dozasi, hisob qatori, dori xaridi) yangi xizmatga o'tkazish keyingi qadam; hozircha ular eski usulda ishlayveradi.
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Ombor — qoldiq | Qoldiq oddiy son edi: u qayerdan kelgani va qayerga ketgani hech qayerda yozilmasdi; hisob buzilsa, sababini topib bo'lmasdi | Har bir o'zgarish o'zgarmas **harakat daftariga** (`inventory_transactions`) yoziladi, shu bilan bir tranzaksiyada. Bazaning o'zi daftardagi yozuvni o'zgartirish va o'chirishni rad etadi (tuzatish — teskari yozuv bilan). Qoldiq, partiyalar va daftar `GET /api/warehouse/reconciliation` bilan solishtiriladi |
+| Ombor — partiyalar | Yaroqlilik muddati va partiya hisobi yo'q edi | Har bir kirim partiya (`inventory_batches`) ochadi. Dori beriladigan paytda eng erta muddatli partiya birinchi olinadi (FEFO); muddati o'tgan partiyadan berib bo'lmaydi; muddati tugayotgan va o'tgan partiyalar ogohlantirishga tushadi |
+| Ombor — narxlar | Dori xaridi bemorga sotiladigan narxni (`unit_price`) xarid narxi bilan **ustiga yozib yuborardi** | Uch narx ajratildi: **xarid narxi**, **o'rtacha tannarx** (har kirimda o'rtacha hisoblanadi) va **bemor narxi** (xarid unga tegmaydi). Ombor qiymati = qoldiq × o'rtacha tannarx; jami / muddati o'tgan / yaroqli qismlarga bo'linadi |
+| Ombor — o'lchov | Qoldiq faqat butun son; qadoq (quti) va dona farqi yo'q edi | Hamma miqdor eng kichik birlikda (tabletka, ml, dona…), kasr bo'lishi mumkin (faqat ruxsat berilgan mahsulotlarda). 3 quti × 30 tabletka = 90 tabletka, narxi qutining 1/30 qismi |
+| Ombor — kirim hujjati | Xarid darhol qoldiqqa qo'shilardi; xato bo'lsa faqat o'chirish mumkin edi | Qoralama (qoldiqqa tegmaydi) → tasdiqlash → (bekor qilish yoki qaytarish). Tasdiqlash bitta tranzaksiyada: partiyalar, daftar, o'rtacha tannarx, buxgalteriya xarajati (`medication_purchase`) va ogohlantirishlar. Ikkinchi marta tasdiqlab bo'lmaydi. Qaytarilganda xarajat bekor qilinadi, daftardagi yozuvlar qoladi; mahsulotning bir qismi ishlatilgan bo'lsa qaytarib bo'lmaydi |
+| Ombor — dori berish | Retsept yozilishi yoki doza berilishi qoldiqni tekshirmasdi va nima haqiqatda berilgani saqlanmasdi | Retsept qoldiqni o'zgartirmaydi. Dori faqat faol retsept bo'yicha beriladi (bekor qilingan, yakunlangan, to'xtatilgan retsept rad etiladi), qoldiqdan ko'p berib bo'lmaydi, retseptda yozilgan miqdordan ortiq ham. Qisman berish mumkin. Bemor tarixi (`GET /dispensings?patient_id=`) **haqiqatda berilgan** miqdor, partiya, doza va shifokorni saqlaydi. Berish bekor qilinsa, qoldiq qaytadi, tarix qoladi |
+| Ombor — takroriy bosish | Ikki marta bosish yoki qayta yuborish ikki marta ayirardi | `client_request_id` — bir xil so'rov bir marta bajariladi, ikkinchisi birinchi natijani qaytaradi |
+| Ombor — bir vaqtda ishlash | Ikki kishi oxirgi donani bir vaqtda olsa, qoldiq manfiy bo'lishi mumkin edi | Mahsulot va partiya qatorlari qulflanadi; oxirgi birliklarga parallel so'rovlar qoldiqni manfiy qilmaydi (sinovdan o'tgan). Xato bo'lsa, qoldiq, daftar va tarixning hech biri o'zgarmaydi |
+| Ombor — kam qoldiq | "Kam" deb qoldiq **teng** bo'lganda ham aytilardi (`<=`) | Faqat qoldiq minimaldan **qat'iy kam** bo'lsa (`<`). "Tugagan" (qoldiq 0) alohida holat. Minimal qoldiq oldindan 10 (sozlamadan olinadi, kodga yozilmagan), buxgalter har bir mahsulot uchun o'zgartiradi. `v_pharmacy_low_stock` va egasi hisobotidagi "kam" belgisi ham shunga moslandi |
+| Ombor — ruxsatlar | Ombor uchun alohida huquq yo'q edi | Yangi `warehouse` moduli: farmatsevt va buxgalter — o'qish va yozish; bosh shifokor, statsionar menejeri, klinika egasi — faqat o'qish. Shifokor va hamshira faqat "bor-yo'qligini" so'raydi (`/availability`, narxsiz). **Narxlar va qiymat** (xarid narxi, tannarx, jami qiymat, kirim summalari) faqat buxgalter, egasi va bosh administratorga ko'rinadi; kirim hujjati, minimal qoldiq va bemor narxini faqat buxgalter o'zgartiradi (farmatsevt 403 oladi) |
+| Ombor — hisobotlar | — | `GET /reports/<nom>`: qoldiq, kam qoldiq, tugagan, muddat, qiymat (jami va kategoriya bo'yicha), kirimlar, berilganlar, tuzatishlar, harakat (mahsulot bo'yicha), solishtirish. `?format=csv` — Excel uchun fayl (formula bo'lib ketadigan matn zararsizlantiriladi) |
+| Dori retsepti | Retseptda ombor mahsuloti va buyurilgan miqdor saqlanmasdi | `POST /api/doctor/prescriptions` ixtiyoriy `medication_id`, `quantity_prescribed`, `quantity_unit` qabul qiladi (bo'sh bo'lsa bo'sh qoladi, hech narsa o'ylab topilmaydi) |
+| Baza | `stock_quantity` va `min_stock_level` butun son edi | `DECIMAL(14,3)`; mavjud qoldiq uchun "OCHILISH" partiyasi va daftarga "opening" yozuvi qo'shildi (tannarx 0 — haqiqiysi noma'lum, o'ylab topilmadi). Migratsiya takroran ishga tushsa ham xavfsiz; hamma o'zgarish `data/schema.mysql.sql` ga ko'chirildi |
+
+Ko'rinadigan o'zgarishlar: yangi `/api/warehouse/*` yo'llari va `warehouse` huquqi; Super-Portal va boshqa sahifalar hozircha o'zgarmadi; bemorga sotiladigan narx endi xarid bilan o'zgarmaydi (faqat yangi `POST /api/warehouse/receipts` orqali; eski `/api/accounting/medication-purchases` hali eski usulda ishlaydi).
+
+**Administrator uchun (bir marta):** daftarni "o'zgarmas" qiluvchi ikkita trigger (`trg_inv_txn_no_update`, `trg_inv_txn_no_delete`) uchun MySQL foydalanuvchisiga `TRIGGER` huquqi va `log_bin_trust_function_creators=1` (yoki SUPER) kerak. Dastur foydalanuvchisida bu huquq bo'lmasa, server ishga tushganda logga "trigger ... failed" yozadi va ishlashda davom etadi; shunda `data/schema.mysql.sql` ichidagi ikkita `CREATE TRIGGER` buyrug'ini administrator bir marta qo'lda bajaradi (shundan keyingina daftar bazaning o'zi tomonidan himoyalanadi).
+
+**Hali qilinmagan (keyingi qadam):** (1) `warehouse.html` sahifasi va menyu; (2) hamshira dozasi, hisob qatori (invoice-items), eski dori xaridi va bemorni o'chirish yangi xizmatga ulanadi — shu paytgacha ular qoldiqni eski usulda o'zgartiradi va `GET /reconciliation` o'sha mahsulotlarni "mos kelmaydi" deb ko'rsatadi; (3) hamshira hisobotida (`medicine_usage`) kasr qoldiq butun songa qirqiladi.
+
+Boshqa tuzatma: `SessionsSurviveRestart.test_last_seen_is_not_written_on_every_request` sinovi kasr soniya sababli uch martadan birida xato berardi — butun soniyaga keltirildi (dastur kodi o'zgarmadi).
+
+53 ta yangi test qo'shildi, jami 348 ta test o'tadi.
+
 ## 2. Interfeys va foydalanish qulayligi
 
 | Muammo | Yechim |
