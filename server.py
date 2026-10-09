@@ -1090,6 +1090,74 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         self._set_json_headers(400, cors=cors)
         self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
+    def _send_inventory_error(self, e):
+        """A warehouse refusal as the JSON the pages already understand (400 with a field, 409 for a conflict)."""
+        if e.status == 400:
+            self._send_validation_error(e.message, e.field)
+            return
+        payload = {'error': e.message}
+        if e.field:
+            payload['field'] = e.field
+        self._set_json_headers(e.status)
+        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+
+    def _rx_warehouse_fields(self, cur, body):
+        """
+        The optional warehouse part of a prescription: (extra_columns, error).
+
+        medication_id (must exist in the catalogue), quantity_prescribed and
+        quantity_unit. Nothing is invented: absent stays absent, and a quantity
+        is kept exactly as the doctor wrote it. Prescribing never touches stock.
+        """
+        extra = {}
+        link = str(body.get('medication_id') or '').strip()
+        if link:
+            cur.execute("SELECT 1 FROM medications_catalog WHERE id = ?", (link,))
+            if not cur.fetchone():
+                return None, ("Ombordagi dori topilmadi.", 'medication_id')
+            extra['medication_id'] = link
+        if body.get('quantity_prescribed') not in (None, ''):
+            try:
+                extra['quantity_prescribed'] = inventory.parse_qty(
+                    body.get('quantity_prescribed'), 'quantity_prescribed', 'Buyurilgan miqdor')
+                extra['quantity_unit'] = inventory.parse_text(
+                    body.get('quantity_unit'), 'quantity_unit', 'Miqdor birligi', 32)
+            except inventory.InventoryError as e_rx:
+                return None, (e_rx.message, e_rx.field)
+        return extra, None
+
+    def _rx_stock_warning(self, conn, rx_name, extra):
+        """Advice for the prescriber when the shelf holds less than was prescribed (never blocks, never writes)."""
+        if extra.get('quantity_prescribed') is None:
+            return None
+        try:
+            return inventory.stock_warning(conn, extra.get('medication_id'), rx_name,
+                                           extra['quantity_prescribed'])
+        except Exception:
+            traceback.print_exc()
+            return None
+
+    def _with_warehouse_view(self, conn, rows):
+        """Add dispensed / remaining / available to prescription rows; a failure must not hide the prescriptions."""
+        try:
+            inventory.enrich_prescriptions(conn, rows)
+        except Exception:
+            traceback.print_exc()
+        return rows
+
+    def _patient_dispensings(self, conn, patient_id):
+        try:
+            return inventory.patient_dispensings(conn, patient_id)
+        except Exception:
+            traceback.print_exc()
+            return []
+
+    def _stock_actor(self):
+        """Who moves stock, for the ledger: the signed-in account, never a name typed into a request."""
+        sess = self.current_session()
+        user = (sess or {}).get('user') or {}
+        return {'username': user.get('username'), 'staff_id': user.get('staff_id') or None}
+
     def _send_enquiry_ok(self, request_id=None):
         """
         The reply the website shows its visitor.
@@ -1812,6 +1880,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     fin = cur.fetchone()
                     pt_dict['financials'] = dict(fin) if fin else {'total_billed': 0, 'total_paid': 0, 'balance_due': 0}
 
+                    # The patient card shows what was dispensed to the patient,
+                    # but only to clinical readers: a front-desk or cash-desk
+                    # login that opens the same card sees no medication detail.
+                    _u = (self.current_session() or {}).get('user')
+                    if any(permissions.can(_u, _m, 'read') for _m in ('doctors', 'nursery', 'pharmacy')):
+                        pt_dict['dispensings'] = self._patient_dispensings(conn, actual_id)
+
                     self._set_json_headers(200)
                     self.wfile.write(json.dumps(pt_dict, ensure_ascii=False).encode('utf-8'))
 
@@ -2046,6 +2121,16 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # Pharmacy stock
                 cur.execute("SELECT id, name, category, form, standard_dosage, unit_price, stock_quantity, min_stock_level FROM medications_catalog WHERE is_active = 1")
                 pharmacy_stock = [dict(r) for r in cur.fetchall()]
+                # What can really be given (non-expired lots) and the
+                # warehouse's own verdict (strictly below the threshold is
+                # low), so the page does not keep a second, looser rule.
+                try:
+                    _avail = inventory.available_map(conn, [m['id'] for m in pharmacy_stock])
+                    for m in pharmacy_stock:
+                        m['available_quantity'] = _avail.get(m['id'], 0)
+                        m['stock_status'] = inventory.compute_status(m['available_quantity'], m['min_stock_level'])
+                except Exception:
+                    traceback.print_exc()
 
                 # Patients billing ledger
                 cur.execute("SELECT * FROM v_financial_ledger")
@@ -2501,7 +2586,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         LEFT JOIN staff s ON rx.doctor_id = s.id
                         ORDER BY rx.created_at DESC
                     """)
-                rows = [dict(r) for r in cur.fetchall()]
+                rows = self._with_warehouse_view(conn, [dict(r) for r in cur.fetchall()])
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
@@ -2637,7 +2722,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                     # Prescriptions
                     cur.execute("SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC", (actual_id,))
-                    patient['prescriptions'] = [dict(r) for r in cur.fetchall()]
+                    patient['prescriptions'] = self._with_warehouse_view(conn, [dict(r) for r in cur.fetchall()])
+                    # What the warehouse actually handed to this patient (no costs).
+                    patient['dispensings'] = self._patient_dispensings(conn, actual_id)
 
                     # Daily Notes
                     cur.execute("SELECT * FROM doctor_daily_notes WHERE patient_id = ? ORDER BY note_date DESC", (actual_id,))
@@ -3282,17 +3369,26 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if code.startswith('MED:'):
                     med_id = code[4:]
                     cur.execute(
-                        "SELECT id, name, form, unit_price, stock_quantity FROM medications_catalog "
-                        "WHERE id = ? AND is_active = 1 FOR UPDATE", (med_id,))
+                        "SELECT id, name, form, unit_price FROM medications_catalog "
+                        "WHERE id = ? AND is_active = 1", (med_id,))
                     med = cur.fetchone()
                     if not med:
                         self._send_validation_error("Dori omborda topilmadi.", 'service_code')
                         return
-                    if int(med['stock_quantity'] or 0) < qty:
+                    # Whose medicine it is: the bill belongs to a stay or to a
+                    # desk visit, and the warehouse history is kept per patient.
+                    cur.execute(
+                        "SELECT COALESCE(a.patient_id, ap.patient_id) AS patient_id, inv.admission_id "
+                        "FROM invoices inv LEFT JOIN admissions a ON a.id = inv.admission_id "
+                        "LEFT JOIN appointments ap ON ap.id = inv.appointment_id WHERE inv.id = ?",
+                        (invoice_id,))
+                    bill_owner = cur.fetchone()
+                    if not bill_owner or not bill_owner['patient_id']:
                         self._send_validation_error(
-                            f"Omborda yetarli qoldiq yo'q. Mavjud: {int(med['stock_quantity'] or 0)}.",
-                            'quantity')
+                            "Hisobning bemori aniqlanmadi: dorini ombordan chiqarib bo'lmaydi.", 'invoice_id')
                         return
+                    # Availability is judged by the warehouse service below,
+                    # on the lots, in the same transaction as the bill line.
                     item_name = med['name'] + (f" ({med['form']})" if med.get('form') else '')
                     unit_price = float(med['unit_price'] or 0)
                     item_type = 'medication'
@@ -3321,9 +3417,25 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                      datetime.date.today().isoformat()))
                 item_id = cur.lastrowid
                 if med_id:
-                    cur.execute(
-                        "UPDATE medications_catalog SET stock_quantity = stock_quantity - ? WHERE id = ?",
-                        (qty, med_id))
+                    # The medicine leaves the shelf through the warehouse
+                    # ledger (source 'billing'); the price above is still the
+                    # patient price. If the shelf cannot cover it the bill
+                    # line is rolled back with it, so a patient is never
+                    # charged for stock that was not there.
+                    try:
+                        inventory.dispense(conn, {
+                            'client_request_id': inventory.unique_client_id(conn, f"billing-{item_id}"),
+                            'patient_id': bill_owner['patient_id'],
+                            'admission_id': bill_owner['admission_id'],
+                            'item_id': med_id, 'quantity': qty,
+                            'notes': f"Hisob {invoice_id}, qator {item_id}",
+                        }, self._stock_actor(), source='billing')
+                    except inventory.InventoryError as e_inv:
+                        conn.rollback()
+                        if not e_inv.field:
+                            e_inv.field = 'quantity'
+                        self._send_inventory_error(e_inv)
+                        return
                 conn.commit()
                 cur.execute("SELECT total_billed, net_amount, total_paid, balance_due, payment_status "
                             "FROM invoices WHERE id = ?", (invoice_id,))
@@ -3349,7 +3461,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_validation_error("Ombordagi dorini tanlang", 'medication_id')
                     return
                 try:
-                    key, settled = nursery.link_medicine_name(conn, med_name, med_id)
+                    _la = self._stock_actor()
+                    key, settled = nursery.link_medicine_name(
+                        conn, med_name, med_id, username=_la.get('username'), staff_id=_la.get('staff_id'))
                 except LookupError:
                     self._send_validation_error("Bunday dori omborda topilmadi", 'medication_id')
                     return
@@ -3427,7 +3541,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         'form': form,
                         'quantity': qty,
                         'unit_price': unit_p,
-                        'total_price': total_p
+                        'total_price': total_p,
+                        'units_per_package': it.get('units_per_package'),
+                        'batch_no': it.get('batch_no'),
+                        'expiry_date': it.get('expiry_date')
                     })
                     item_summaries.append(f"{med_name} ({qty:g} {form} x {unit_p:,.0f} so'm)")
 
@@ -3438,116 +3555,116 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 actor_sid = self._actor_staff_id(body, 'recorded_by_staff_id')
-                trx_id = new_record_id(cur, 'accounting_transactions', 'TRX-MED-2026')
+                stock_actor = self._stock_actor()
+                stock_actor['staff_id'] = actor_sid or stock_actor.get('staff_id')
 
-                desc_parts = [f"Dori xaridi: {', '.join(item_summaries)}"]
-                if supplier_name:
-                    desc_parts.append(f"Yetkazib beruvchi: {supplier_name}")
-                if invoice_number:
-                    desc_parts.append(f"Chek №: {invoice_number}")
-                if notes:
-                    desc_parts.append(f"Izoh: {notes}")
-                trx_desc = ". ".join(desc_parts)
-                if len(trx_desc) > 500:
-                    trx_desc = trx_desc[:497] + "..."
-
-                # 1. Insert into accounting_transactions as EXPENSE
-                cur.execute("""
-                    INSERT INTO accounting_transactions (
-                        id, transaction_type, category, amount, payment_method,
-                        account_source, description, transaction_date, recorded_by_staff_id
-                    ) VALUES (?, 'expense', 'medication_purchase', ?, ?, ?, ?, ?, ?)
-                """, (
-                    trx_id,
-                    grand_total,
-                    payment_method,
-                    account_source,
-                    trx_desc,
-                    purchase_date,
-                    actor_sid
-                ))
-
-                # 2. Insert into medication_purchases and update medications_catalog
-                created_purchases = []
+                # The purchase is booked as a posted warehouse receipt
+                # (inventory.create_receipt): lots, ledger rows, weighted
+                # average cost and the cash-desk expense happen in one
+                # transaction. The price typed here is what the clinic PAID
+                # (cost); it no longer overwrites the patient price
+                # (medications_catalog.unit_price), which used to make every
+                # purchase silently re-price what patients are billed.
+                lines = []
                 for it in validated_items:
-                    pur_id = new_record_id(cur, 'medication_purchases', 'PUR-MED-2026')
-                    target_med_id = it['medication_id']
-
-                    if target_med_id:
-                        cur.execute("SELECT id FROM medications_catalog WHERE id = ?", (target_med_id,))
-                        if not cur.fetchone():
-                            target_med_id = None
-
+                    target_med_id = None
+                    if it['medication_id']:
+                        cur.execute("SELECT id FROM medications_catalog WHERE id = ?", (it['medication_id'],))
+                        _row = cur.fetchone()
+                        target_med_id = _row['id'] if _row else None
                     if not target_med_id:
-                        cur.execute("SELECT id FROM medications_catalog WHERE LOWER(name) = LOWER(?) LIMIT 1", (it['medication_name'],))
-                        existing_med = cur.fetchone()
-                        if existing_med:
-                            target_med_id = existing_med['id']
-
+                        cur.execute("SELECT id FROM medications_catalog WHERE LOWER(name) = LOWER(?) LIMIT 1",
+                                    (it['medication_name'],))
+                        _row = cur.fetchone()
+                        target_med_id = _row['id'] if _row else None
+                    line = {'packages': str(int(it['quantity'])), 'package_price': str(it['unit_price'])}
+                    for _opt in ('units_per_package', 'batch_no', 'expiry_date'):
+                        if it.get(_opt) not in (None, ''):
+                            line[_opt] = it[_opt]
                     if target_med_id:
-                        cur.execute("""
-                            UPDATE medications_catalog
-                            SET stock_quantity = stock_quantity + ?,
-                                unit_price = ?
-                            WHERE id = ?
-                        """, (int(it['quantity']), it['unit_price'], target_med_id))
+                        line['item_id'] = target_med_id
                     else:
-                        target_med_id = new_record_id(cur, 'medications_catalog', 'MED')
+                        # A medicine the warehouse does not know yet becomes an
+                        # item with plain defaults. Its patient price stays 0
+                        # (unknown, not invented): accounting sets it on the
+                        # warehouse page.
+                        line['new_item'] = {
+                            'name': it['medication_name'][:255], 'category': it['category'][:128],
+                            'form': it['form'][:64], 'item_type': 'medicine',
+                            'base_unit': it['form'].lower() if it['form'].lower() in inventory.UNITS else 'dona',
+                            'units_per_package': 1,
+                        }
+                    lines.append(line)
+
+                try:
+                    receipt = inventory.create_receipt(conn, {
+                        'client_request_id': body.get('client_request_id'),
+                        'receipt_date': purchase_date,
+                        'supplier_name': supplier_name or None,
+                        'invoice_number': invoice_number or None,
+                        'notes': notes or None,
+                        'lines': lines,
+                    }, stock_actor, post=True, payment_method=payment_method,
+                        account_source_fn=account_source_for)
+                except inventory.InventoryError as e_inv:
+                    conn.rollback()
+                    conn.close()
+                    # The page's own words for these two fields.
+                    e_inv.field = {'packages': 'quantity', 'package_price': 'unit_price',
+                                   'lines': 'items'}.get(e_inv.field, e_inv.field)
+                    self._send_inventory_error(e_inv)
+                    return
+
+                trx_id = receipt.get('accounting_transaction_id')
+                receipt_id = receipt['id']
+                created_purchases = []
+                if receipt.get('duplicate'):
+                    # The same client_request_id again: nothing was booked
+                    # twice; answer with what the first request created.
+                    cur.execute("SELECT id FROM medication_purchases WHERE receipt_id = ? ORDER BY created_at, id",
+                                (receipt_id,))
+                    created_purchases = [r['id'] for r in cur.fetchall()]
+                    grand_total = float(receipt.get('total_amount') or 0)
+                else:
+                    grand_total = float(receipt.get('total_amount') or 0)
+                    # The list the accounting page shows: one row per bought
+                    # line, tied to its receipt so a delete can reverse it.
+                    for it, ln in zip(validated_items, receipt['lines']):
+                        pur_id = new_record_id(cur, 'medication_purchases', 'PUR-MED-2026')
                         cur.execute("""
-                            INSERT INTO medications_catalog (
-                                id, name, category, form, standard_dosage,
-                                unit_price, stock_quantity, min_stock_level, is_active
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 10, 1)
+                            INSERT INTO medication_purchases (
+                                id, purchase_date, medication_id, medication_name,
+                                category, form, quantity, unit_price, total_price,
+                                payment_method, supplier_name, invoice_number, notes,
+                                accounting_transaction_id, recorded_by_staff_id, receipt_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            target_med_id,
+                            pur_id,
+                            purchase_date,
+                            ln['item_id'],
                             it['medication_name'],
                             it['category'],
                             it['form'],
-                            None,  # dosage is a clinical fact the purchase form never asks for
+                            it['quantity'],
                             it['unit_price'],
-                            int(it['quantity'])
+                            it['total_price'],
+                            payment_method,
+                            supplier_name or None,
+                            invoice_number or None,
+                            notes or None,
+                            trx_id,
+                            actor_sid,
+                            receipt_id
                         ))
-
-                    cur.execute("""
-                        INSERT INTO medication_purchases (
-                            id, purchase_date, medication_id, medication_name,
-                            category, form, quantity, unit_price, total_price,
-                            payment_method, supplier_name, invoice_number, notes,
-                            accounting_transaction_id, recorded_by_staff_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        pur_id,
-                        purchase_date,
-                        target_med_id,
-                        it['medication_name'],
-                        it['category'],
-                        it['form'],
-                        it['quantity'],
-                        it['unit_price'],
-                        it['total_price'],
-                        payment_method,
-                        supplier_name or None,
-                        invoice_number or None,
-                        notes or None,
-                        trx_id,
-                        actor_sid
-                    ))
-                    created_purchases.append(pur_id)
+                        created_purchases.append(pur_id)
 
                 conn.commit()
 
-                if telegram_service:
+                if telegram_service and trx_id and not receipt.get('duplicate'):
                     try:
-                        telegram_service.notify_accounting_transaction_entered_async({
-                            'id': trx_id,
-                            'transaction_type': 'expense',
-                            'category': 'medication_purchase',
-                            'amount': grand_total,
-                            'payment_method': payment_method,
-                            'description': trx_desc,
-                            'date': purchase_date,
-                            'recorded_by_staff_id': actor_sid
-                        })
+                        _note = warehouse_api._notify_for(conn, trx_id)
+                        if _note:
+                            telegram_service.notify_accounting_transaction_entered_async(_note)
                     except Exception as _e_notify:
                         print(f"[Telegram Notify Error] {_e_notify}")
 
@@ -3556,6 +3673,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({
                     'message': "Dori xaridi muvaffaqiyatli saqlandi va kassa xarajatiga yozildi",
                     'transaction_id': trx_id,
+                    'receipt_id': receipt_id,
                     'purchase_ids': created_purchases,
                     'amount': grand_total
                 }, ensure_ascii=False).encode('utf-8'))
@@ -4411,23 +4529,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # prescribed (in that item's base unit). Neither is invented:
                 # absent stays NULL, and a quantity with no unit stated is kept
                 # as given. Prescribing never changes stock (inventory.py).
-                rx_extra = {}
-                rx_link = str(body.get('medication_id') or '').strip()
-                if rx_link:
-                    cur.execute("SELECT 1 FROM medications_catalog WHERE id = ?", (rx_link,))
-                    if not cur.fetchone():
-                        self._send_validation_error("Ombordagi dori topilmadi.", 'medication_id')
-                        return
-                    rx_extra['medication_id'] = rx_link
-                if body.get('quantity_prescribed') not in (None, ''):
-                    try:
-                        rx_extra['quantity_prescribed'] = inventory.parse_qty(
-                            body.get('quantity_prescribed'), 'quantity_prescribed', 'Buyurilgan miqdor')
-                        rx_extra['quantity_unit'] = inventory.parse_text(
-                            body.get('quantity_unit'), 'quantity_unit', 'Miqdor birligi', 32)
-                    except inventory.InventoryError as _e_rx:
-                        self._send_validation_error(_e_rx.message, _e_rx.field)
-                        return
+                rx_extra, _rx_err = self._rx_warehouse_fields(cur, body)
+                if _rx_err:
+                    self._send_validation_error(_rx_err[0], _rx_err[1])
+                    return
 
                 cur.execute("""
                     INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, route, frequency, duration_days, timing, instructions, status)
@@ -4451,9 +4556,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     cur.execute("UPDATE prescriptions SET " + ", ".join(f"{k} = ?" for k in rx_extra)
                                 + " WHERE id = ?", list(rx_extra.values()) + [rx_id])
                 conn.commit()
+                reply = {'message': 'Prescription created', 'id': rx_id}
+                warning = self._rx_stock_warning(conn, med, rx_extra)
+                if warning:
+                    reply['stock_warning'] = warning
                 conn.close()
                 self._set_json_headers(201)
-                self.wfile.write(json.dumps({'message': 'Prescription created', 'id': rx_id}).encode('utf-8'))
+                self.wfile.write(json.dumps(reply).encode('utf-8'))
 
             # 10. POST /api/doctor/notes -- the daily ward-round assessment.
             #
@@ -4674,7 +4783,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         _drug = (rx.get('medication_name') or rx.get('name')).strip()
                         self._send_validation_error(f"{_drug}: {_err[0]}", _err[1])
                         return
-                    rx_checked.append((rx, _days))
+                    _rx_extra, _rx_err = self._rx_warehouse_fields(cur, rx)
+                    if _rx_err:
+                        _drug = (rx.get('medication_name') or rx.get('name')).strip()
+                        self._send_validation_error(f"{_drug}: {_rx_err[0]}", _rx_err[1])
+                        return
+                    rx_checked.append((rx, _days, _rx_extra))
                 pt_address = pt_data.get('address') or body.get('address') or ''
                 pt_emergency = pt_data.get('emergency_contact') or body.get('emergency_contact') or ''
 
@@ -4832,7 +4946,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.commit()
 
                 saved_rx = []
-                for rx, duration in rx_checked:
+                stock_warnings = []
+                for rx, duration, rx_extra in rx_checked:
                     rx_id = new_record_id(cur, 'prescriptions', 'RX-2026')
                     med_name = (rx.get('medication_name') or rx.get('name')).strip()
                     # Optional parts stay empty rather than guessed; the
@@ -4861,7 +4976,14 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         timing,
                         instructions
                     ))
+                    if rx_extra:
+                        cur.execute("UPDATE prescriptions SET " + ", ".join(f"{k} = ?" for k in rx_extra)
+                                    + " WHERE id = ?", list(rx_extra.values()) + [rx_id])
                     saved_rx.append(rx_id)
+                    _w = self._rx_stock_warning(conn, med_name, rx_extra)
+                    if _w:
+                        _w['prescription_id'] = rx_id
+                        stock_warnings.append(_w)
 
                 conn.commit()
                 conn.close()
@@ -4878,6 +5000,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'admission_id': admission_id,
                     'history_id': hid,
                     'prescriptions_count': len(saved_rx),
+                    'stock_warnings': stock_warnings,
                     'consultation_type': consultation_type
                 }, ensure_ascii=False).encode('utf-8'))
 
@@ -5202,9 +5325,16 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         conn, rx_id, day, slot_index, status,
                         staff_id=staff_id,
                         notes=(body.get('notes') or None),
-                        slot_label=(body.get('slot_label') or None))
+                        slot_label=(body.get('slot_label') or None),
+                        username=self._stock_actor().get('username'))
                 except LookupError as e:
                     self._send_validation_error(str(e), 'prescription_id')
+                    return
+                except inventory.InventoryError as e:
+                    # Putting a corrected dose's stock back was refused (the
+                    # lots no longer add up). Nothing was saved.
+                    conn.rollback()
+                    self._send_inventory_error(e)
                     return
 
                 self._set_json_headers(201)
@@ -5629,6 +5759,46 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.commit()
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({'message': 'Prescription status updated', 'status': new_status}).encode('utf-8'))
+
+            # PUT /api/doctor/prescriptions/<id> -- the warehouse part of an
+            # order: which stock item, how much was prescribed, in what unit.
+            # Dose, route, frequency and course are the doctor's clinical
+            # words and are not editable here. Never changes stock; answers
+            # with a stock_warning when the shelf holds less than prescribed.
+            elif path.startswith('/api/doctor/prescriptions/') and path.count('/') == 4:
+                rx_id = urllib.parse.unquote(path.split('/')[4])
+                cur.execute("SELECT id, medication_name, medication_id, status FROM prescriptions WHERE id = ?", (rx_id,))
+                rx_row = cur.fetchone()
+                if not rx_row:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Retsept topilmadi'}).encode('utf-8'))
+                    return
+                if rx_row['status'] not in ('active', 'held'):
+                    self._send_validation_error("Faqat faol yoki to'xtatilgan retseptni o'zgartirish mumkin.", 'status')
+                    return
+                rx_extra, _rx_err = self._rx_warehouse_fields(cur, body)
+                if _rx_err:
+                    self._send_validation_error(_rx_err[0], _rx_err[1])
+                    return
+                clear_qty = 'quantity_prescribed' in body and body.get('quantity_prescribed') in (None, '')
+                if clear_qty:
+                    rx_extra['quantity_prescribed'] = None
+                    rx_extra['quantity_unit'] = None
+                if not rx_extra:
+                    self._send_validation_error("O'zgartirish uchun medication_id yoki quantity_prescribed kiriting.", 'quantity_prescribed')
+                    return
+                cur.execute("UPDATE prescriptions SET " + ", ".join(f"{k} = ?" for k in rx_extra)
+                            + " WHERE id = ?", list(rx_extra.values()) + [rx_id])
+                conn.commit()
+                reply = {'message': 'Prescription updated', 'id': rx_id}
+                _qty = rx_extra.get('quantity_prescribed')
+                if _qty is not None:
+                    _w = self._rx_stock_warning(conn, rx_row['medication_name'],
+                                                dict(rx_extra, medication_id=rx_extra.get('medication_id') or rx_row['medication_id']))
+                    if _w:
+                        reply['stock_warning'] = _w
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(reply).encode('utf-8'))
 
             # PUT /api/reception/appointment/<id>/cancel
             #
@@ -6126,29 +6296,54 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': 'Xarid yozuvi topilmadi'}).encode('utf-8'))
                     return
 
-                # Deduct stock in catalog
-                if pur.get('medication_id'):
-                    cur.execute("""
-                        UPDATE medications_catalog
-                        SET stock_quantity = GREATEST(0, stock_quantity - ?)
-                        WHERE id = ?
-                    """, (int(pur['quantity']), pur['medication_id']))
-
-                # Clean up or adjust accounting transaction
-                trx_id = pur.get('accounting_transaction_id')
-                if trx_id:
-                    cur.execute("SELECT COUNT(*) AS c FROM medication_purchases WHERE accounting_transaction_id = ? AND id != ?", (trx_id, pur_id))
-                    row_c = cur.fetchone()
-                    other_count = (row_c['c'] if isinstance(row_c, dict) or hasattr(row_c, 'keys') else row_c[0])
-                    if other_count == 0:
-                        cur.execute("DELETE FROM accounting_transactions WHERE id = ?", (trx_id,))
+                # A purchase is a posted warehouse receipt: deleting it reverses
+                # the receipt through the ledger (stock out at its receipt
+                # cost, average cost recomputed, the cash-desk expense voided).
+                # That is refused once any of its stock has been used or
+                # written off, because the purchase can no longer be undone
+                # without making the shelf count wrong. The receipt is one
+                # document, so every line bought with it is withdrawn together.
+                receipt_id = pur.get('receipt_id')
+                removed_ids = [pur_id]
+                try:
+                    if receipt_id:
+                        inventory.reverse_receipt(
+                            conn, receipt_id, f"Xarid yozuvi o'chirildi ({pur_id})", self._stock_actor())
+                        cur.execute("SELECT id FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
+                        removed_ids = [r['id'] for r in cur.fetchall()]
+                        cur.execute("DELETE FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
                     else:
-                        cur.execute("UPDATE accounting_transactions SET amount = GREATEST(0.01, amount - ?) WHERE id = ?", (float(pur['total_price']), trx_id))
-
-                cur.execute("DELETE FROM medication_purchases WHERE id = ?", (pur_id,))
+                        # Bought before the warehouse existed: there is no
+                        # receipt to reverse. Take back what that purchase
+                        # added, but never more than is on the shelf, as an
+                        # explicit correction in the ledger.
+                        if pur.get('medication_id'):
+                            _want = _dec.Decimal(str(pur['quantity']))
+                            _have = inventory.available_map(conn, [pur['medication_id']]).get(
+                                pur['medication_id'], _dec.Decimal(0))
+                            _take = min(_want, _have)
+                            if _take > 0:
+                                inventory.adjust(conn, {
+                                    'kind': 'decrease', 'item_id': pur['medication_id'],
+                                    'quantity': _take,
+                                    'reason': f"Eski xarid yozuvi o'chirildi ({pur_id})"}, self._stock_actor())
+                        trx_id = pur.get('accounting_transaction_id')
+                        if trx_id:
+                            cur.execute("SELECT COUNT(*) AS c FROM medication_purchases WHERE accounting_transaction_id = ? AND id != ?", (trx_id, pur_id))
+                            row_c = cur.fetchone()
+                            other_count = (row_c['c'] if isinstance(row_c, dict) or hasattr(row_c, 'keys') else row_c[0])
+                            if other_count == 0:
+                                cur.execute("DELETE FROM accounting_transactions WHERE id = ?", (trx_id,))
+                            else:
+                                cur.execute("UPDATE accounting_transactions SET amount = GREATEST(0.01, amount - ?) WHERE id = ?", (float(pur['total_price']), trx_id))
+                        cur.execute("DELETE FROM medication_purchases WHERE id = ?", (pur_id,))
+                except inventory.InventoryError as e_inv:
+                    conn.rollback()
+                    self._send_inventory_error(e_inv)
+                    return
                 conn.commit()
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps({'message': 'Dori xaridi bekor qilindi va ombor qayta hisoblandi'}).encode('utf-8'))
+                self.wfile.write(json.dumps({'message': 'Dori xaridi bekor qilindi va ombor qayta hisoblandi', 'removed_purchase_ids': removed_ids}).encode('utf-8'))
 
             else:
                 self._set_json_headers(404)

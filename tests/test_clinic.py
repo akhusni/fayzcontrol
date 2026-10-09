@@ -3480,13 +3480,35 @@ class MedicineStock(ApiTest):
     _order = NurseStation._order
     _admitted_patient = NurseStation._admitted_patient
 
+    def _db(self):
+        return _wh_db()
+
     def _stock_item(self, name, qty=5, price=2000):
         st, res = self.api.post('/api/accounting/medication-purchases', {
             'items': [{'medication_name': name, 'form': 'ampula', 'quantity': qty, 'unit_price': price}],
         })
         self.assertEqual(st, 201, res)
-        self.addCleanup(self.api.delete, '/api/accounting/medication-purchases/' + res['purchase_ids'][0])
+        self.addCleanup(self._drop_purchase, res['purchase_ids'][0], name, res.get('transaction_id'))
         return self._find_stock(name)
+
+    def _drop_purchase(self, purchase_id, name, trx_id):
+        """
+        Undo the purchase. Once a dose has used some of it the warehouse (rightly)
+        refuses to reverse the receipt, so the probe item is retired and its
+        expense removed by hand instead.
+        """
+        st, _ = self.api.delete('/api/accounting/medication-purchases/' + purchase_id)
+        if st == 200:
+            return
+        conn = self._db()
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE medications_catalog SET is_active = 0 WHERE name = ?", (name,))
+            if trx_id:
+                cur.execute("DELETE FROM accounting_transactions WHERE id = ?", (trx_id,))
+            conn.commit()
+        finally:
+            conn.close()
 
     def _find_stock(self, name):
         st, data = self.api.get('/api/accounting/data')
@@ -4185,41 +4207,46 @@ class SecondPassFixes(ApiTest):
         self.assertEqual(st, 403)
 
     def test_a_medicine_added_to_a_bill_comes_off_the_shelf(self):
-        st, data = self.api.get('/api/accounting/data')
-        med = next((m for m in data.get('pharmacy_stock', [])
-                    if int(m.get('stock_quantity') or 0) >= 2), None)
-        if not med:
-            self.skipTest('no stock item with 2 or more units')
+        # Its own item and lot: the stock goes through the warehouse ledger now,
+        # so the test must not borrow (or hand-edit) a real item's balance.
+        n = os.getpid()
+        st, item = self.api.post('/api/warehouse/items', {
+            'name': f'SuiteBill Med {n}', 'item_type': 'medicine', 'base_unit': 'tabletka',
+            'category': 'SuiteWH', 'form': 'tabletka', 'unit_price': 1500})
+        self.assertEqual(st, 201, item)
+        self.addCleanup(self.api.post, f"/api/warehouse/items/{item['id']}/deactivate", {})
+        st, rec = self.api.post('/api/warehouse/receipts', {
+            'client_request_id': f'suite-bill-{n}-{os.urandom(3).hex()}', 'supplier_name': 'Suite Supplier',
+            'payment_method': 'cash', 'post': True,
+            'lines': [{'item_id': item['id'], 'packages': 5, 'package_price': 700}]})
+        self.assertEqual(st, 201, rec)
+        if rec.get('accounting_transaction_id'):
+            self.addCleanup(self._drop_expense, rec['accounting_transaction_id'])
         start = (_dt.date.today() + _dt.timedelta(days=460)).isoformat()
         end = (_dt.date.today() + _dt.timedelta(days=462)).isoformat()
         pid = self.make_patient('Dori Hisob Probe')
         _, adm = self.admit(pid, BED_A, start, end)
         inv = self._invoice_id(adm['admission_id'])
-        stock = int(med['stock_quantity'])
+        st, body = self.api.post('/api/accounting/invoice-items', {
+            'invoice_id': inv, 'service_code': 'MED:' + item['id'], 'quantity': 2})
+        self.assertEqual(st, 201, body)
+        self.assertEqual(body['item_type'], 'medication')
+        self.assertAlmostEqual(body['unit_price'], 1500.0, delta=0.01)
+        st, res = self.api.post('/api/accounting/invoice-items', {
+            'invoice_id': inv, 'service_code': 'MED:' + item['id'], 'quantity': 50})
+        self.assertEqual(st, 400, 'more than the shelf holds was billed')
+        st, now = self.api.get('/api/warehouse/items/' + item['id'])
+        self.assertEqual(float(now['stock_quantity']), 3.0)
+        self.assertEqual(float(now['available_quantity']), 3.0)
+
+    def _drop_expense(self, trx_id):
+        conn = self._db()
         try:
-            st, body = self.api.post('/api/accounting/invoice-items', {
-                'invoice_id': inv, 'service_code': 'MED:' + med['id'], 'quantity': 2})
-            self.assertEqual(st, 201, body)
-            self.assertEqual(body['item_type'], 'medication')
-            st, res = self.api.post('/api/accounting/invoice-items', {
-                'invoice_id': inv, 'service_code': 'MED:' + med['id'], 'quantity': stock + 50})
-            self.assertEqual(st, 400, 'more than the shelf holds was billed')
-            conn = self._db()
-            try:
-                cur = conn.cursor()
-                cur.execute("SELECT stock_quantity FROM medications_catalog WHERE id = ?", (med['id'],))
-                self.assertEqual(int(cur.fetchone()['stock_quantity']), stock - 2)
-            finally:
-                conn.close()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM accounting_transactions WHERE id = ?", (trx_id,))
+            conn.commit()
         finally:
-            conn = self._db()
-            try:
-                cur = conn.cursor()
-                cur.execute("UPDATE medications_catalog SET stock_quantity = ? WHERE id = ?",
-                            (stock, med['id']))
-                conn.commit()
-            finally:
-                conn.close()
+            conn.close()
 
     # --- clinical records ------------------------------------------------
 
@@ -6455,6 +6482,492 @@ class WarehouseAccess(_WarehouseHelpers, ApiTest):
     def test_a_route_that_does_not_exist_is_404_for_the_superadmin(self):
         self.assertEqual(self.api.get('/api/warehouse/no-such-thing')[0], 404)
         self.assertEqual(self.api.post('/api/warehouse/no-such-thing', {})[0], 404)
+
+
+class WarehouseMigration(_WarehouseHelpers, ApiTest):
+    """
+    W1b: every older stock path (nurse doses, bill lines, purchases) now goes
+    through the warehouse ledger, prescriptions carry a quantity and warn
+    about short stock, and the patient's history lists what was dispensed.
+    """
+    _order = NurseStation._order
+    _admitted_patient = NurseStation._admitted_patient
+    _invoice_id = SecondPassFixes._invoice_id
+    _db = SecondPassFixes._db
+
+    def setUp(self):
+        super().setUp()
+        self._by_name = []
+        self._expenses = []
+
+    def tearDown(self):
+        if self._by_name or self._expenses:
+            conn = self._db()
+            try:
+                cur = conn.cursor()
+                for name in self._by_name:
+                    cur.execute("UPDATE medications_catalog SET is_active = 0 WHERE name = ?", (name,))
+                for trx in self._expenses:
+                    cur.execute("DELETE FROM accounting_transactions WHERE id = ?", (trx,))
+                conn.commit()
+            finally:
+                conn.close()
+        super().tearDown()
+
+    # --- helpers ---------------------------------------------------------
+    def stocked(self, packages=10, price=500, **kw):
+        it = self.item(**kw)
+        self.receive(it['id'], packages, price)
+        return it
+
+    def clean_in_ledger(self, item_id):
+        st, rec = self.api.get('/api/warehouse/reconciliation')
+        self.assertEqual(st, 200, rec)
+        self.assertNotIn(item_id, [m['item_id'] for m in rec['mismatches']],
+                         f"item {item_id} no longer reconciles: {rec['mismatches']}")
+
+    def give(self, rx, slot, status='given'):
+        st, body = self.api.post('/api/nursery/administer', {
+            'prescription_id': rx, 'slot_index': slot, 'status': status})
+        self.assertIn(st, (200, 201), body)
+
+    def purchase(self, items, expect=201, **extra):
+        payload = {'payment_method': 'cash', 'supplier_name': 'Suite Supplier', 'items': items}
+        payload.update(extra)
+        st, res = self.api.post('/api/accounting/medication-purchases', payload)
+        self.assertEqual(st, expect, res)
+        if st == 201:
+            if res.get('transaction_id'):
+                self._expenses.append(res['transaction_id'])
+            for it in items:
+                self._by_name.append(it['medication_name'])
+        return res
+
+    def by_name(self, name):
+        st, data = self.api.get('/api/warehouse/items?q=' + urllib.parse.quote(name))
+        self.assertEqual(st, 200, data)
+        return next(i for i in data['items'] if i['name'] == name)
+
+    # --- nurse doses -----------------------------------------------------
+    def test_a_given_dose_takes_exactly_one_unit_through_the_ledger_and_undo_restores_it(self):
+        it = self.stocked(10)
+        pid, adm = self._admitted_patient('Ombor Hamshira', BED_A)
+        rx = self._order(pid, adm, name=it['name'], frequency='Kuniga 2 mahal')
+
+        self.give(rx, 0)
+        self.assertEqual(self.qty(it['id']), 9)
+        rows = [t for t in self.ledger(it['id']) if t['txn_type'] == 'dispense']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['source'], float(rows[0]['qty_delta']), rows[0]['prescription_id']),
+                         ('nurse_round', -1.0, rx))
+        history = self.history(pid)
+        self.assertEqual([(h['source'], h['status'], float(h['quantity'])) for h in history],
+                         [('nurse_round', 'completed', 1.0)])
+        self.clean_in_ledger(it['id'])
+
+        # Saving the same given dose again is an amendment, not a second unit.
+        self.give(rx, 0)
+        self.assertEqual(self.qty(it['id']), 9)
+        self.assertEqual(len(self.history(pid)), 1)
+
+        # Undoing it reverses that very dispensing; the history keeps both facts.
+        self.give(rx, 0, status='missed')
+        self.assertEqual(self.qty(it['id']), 10)
+        self.assertEqual([h['status'] for h in self.history(pid)], ['reversed'])
+        self.assertTrue(any(t['txn_type'] == 'reversal' for t in self.ledger(it['id'])))
+        self.clean_in_ledger(it['id'])
+
+        # Giving it again creates a NEW dispensing.
+        self.give(rx, 0)
+        self.assertEqual(self.qty(it['id']), 9)
+        self.assertEqual(sorted(h['status'] for h in self.history(pid)), ['completed', 'reversed'])
+        self.clean_in_ledger(it['id'])
+
+    def test_an_empty_shelf_still_records_the_dose_and_never_goes_negative(self):
+        it = self.stocked(2)
+        pid, adm = self._admitted_patient('Ombor Bosh Javon', BED_B)
+        rx = self._order(pid, adm, name=it['name'], frequency='Kuniga 3 mahal')
+        for slot in (0, 1, 2):
+            self.give(rx, slot)
+        self.assertEqual(self.qty(it['id']), 0)
+        self.assertEqual(len(self.history(pid)), 2, 'only the two real units were dispensed')
+        st, rnd = self.api.get('/api/nursery/round')
+        dose_states = [d['state'] for p in rnd['patients'] if p['patient_id'] == pid for d in p['doses']]
+        self.assertEqual(dose_states.count('given'), 3, 'the third dose was recorded as given')
+        # The dose that took nothing puts nothing back; the ones that did, do.
+        self.give(rx, 2, status='missed')
+        self.assertEqual(self.qty(it['id']), 0)
+        self.give(rx, 0, status='missed')
+        self.assertEqual(self.qty(it['id']), 1)
+        self.assertGreaterEqual(self.qty(it['id']), 0)
+        self.clean_in_ledger(it['id'])
+
+    def test_a_dose_is_not_capped_by_the_prescribed_quantity(self):
+        """The cap guards the counter; a dose already given must still leave the shelf."""
+        it = self.stocked(10)
+        pid, adm = self._admitted_patient('Ombor Chegara', BED_C)
+        rx = self._order(pid, adm, name=it['name'], frequency='Kuniga 2 mahal')
+        self.api.put(f'/api/doctor/prescriptions/{rx}', {
+            'medication_id': it['id'], 'quantity_prescribed': 1, 'quantity_unit': 'tabletka'})
+        self.give(rx, 0)
+        self.give(rx, 1)
+        self.assertEqual(self.qty(it['id']), 8)
+        self.clean_in_ledger(it['id'])
+
+    def test_fractional_stock_is_not_truncated_by_the_readers(self):
+        it = self.item(base_unit='ml', form='ml', allow_fraction=1)
+        self.receive(it['id'], 2.5, 400)
+        self.assertEqual(self.qty(it['id']), 2.5)
+        st, _ = self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 2})
+        self.assertEqual(st, 200)
+        pid, adm = self._admitted_patient('Ombor Kasr', BED_A)
+        rx = self._order(pid, adm, name=it['name'], frequency='Kuniga 2 mahal')
+        self.give(rx, 0)
+        self.assertEqual(self.qty(it['id']), 1.5)
+        today = _dt.date.today().isoformat()
+        st, usage = self.api.get(f'/api/accounting/medicine-usage?start={today}&end={today}')
+        self.assertEqual(st, 200, usage)
+        row = next(r for r in usage['linked'] if r['name'] == it['name'])
+        self.assertEqual((row['stock_quantity'], row['available_quantity']), (1.5, 1.5))
+        self.assertTrue(row['low'], '1.5 is strictly below the threshold of 2')
+        st, data = self.api.get('/api/accounting/data')
+        m = next(x for x in data['pharmacy_stock'] if x['id'] == it['id'])
+        self.assertEqual((float(m['stock_quantity']), m['stock_status']), (1.5, 'low'))
+
+    def test_a_threshold_equal_to_the_stock_is_not_low(self):
+        it = self.stocked(5)
+        st, _ = self.api.put(f"/api/warehouse/items/{it['id']}/threshold", {'min_stock_level': 5})
+        self.assertEqual(st, 200)
+        st, data = self.api.get('/api/accounting/data')
+        m = next(x for x in data['pharmacy_stock'] if x['id'] == it['id'])
+        self.assertEqual(m['stock_status'], 'ok')
+
+    def test_linking_a_name_settles_the_earlier_doses_through_the_ledger(self):
+        it = self.stocked(5)
+        rx_name = f'suite  alias name {os.getpid()} {os.urandom(2).hex()}'
+        pid, adm = self._admitted_patient('Ombor Bogla', BED_B)
+        rx = self._order(pid, adm, name=rx_name, frequency='Kuniga 2 mahal')
+        self.give(rx, 0)
+        self.assertEqual(self.qty(it['id']), 5, 'an unknown name takes nothing yet')
+        st, res = self.api.post('/api/accounting/medicine-links',
+                                {'medication_name': rx_name, 'medication_id': it['id']})
+        self.assertEqual((st, res['settled_doses']), (200, 1), res)
+        self.assertEqual(self.qty(it['id']), 4)
+        self.assertEqual([h['source'] for h in self.history(pid)], ['nurse_round'])
+        self.give(rx, 0, status='missed')
+        self.assertEqual(self.qty(it['id']), 5)
+        self.clean_in_ledger(it['id'])
+
+    # --- bill lines --------------------------------------------------------
+    def test_a_medicine_bill_line_comes_off_the_shelf_through_the_ledger(self):
+        it = self.stocked(5, unit_price=2500)
+        pid = self.make_patient('Ombor Hisob')
+        start = (_dt.date.today() + _dt.timedelta(days=470)).isoformat()
+        end = (_dt.date.today() + _dt.timedelta(days=472)).isoformat()
+        _, adm = self.admit(pid, BED_C, start, end)
+        inv = self._invoice_id(adm['admission_id'])
+        before = float(self.invoice_for(adm['admission_id'])['total_billed'])
+        st, body = self.api.post('/api/accounting/invoice-items', {
+            'invoice_id': inv, 'service_code': 'MED:' + it['id'], 'quantity': 3})
+        self.assertEqual(st, 201, body)
+        self.assertAlmostEqual(body['unit_price'], 2500.0, delta=0.01)
+        self.assertEqual(self.qty(it['id']), 2)
+        row = next(t for t in self.ledger(it['id']) if t['txn_type'] == 'dispense')
+        self.assertEqual((row['source'], float(row['qty_delta']), row['patient_id']),
+                         ('billing', -3.0, pid))
+        self.assertEqual(self.history(pid)[0]['source'], 'billing')
+        self.assertAlmostEqual(float(self.invoice_for(adm['admission_id'])['total_billed']) - before,
+                               7500.0, delta=0.01)
+        # More than is on the shelf: refused, and the bill line goes with it.
+        mid = float(self.invoice_for(adm['admission_id'])['total_billed'])
+        st, res = self.api.post('/api/accounting/invoice-items', {
+            'invoice_id': inv, 'service_code': 'MED:' + it['id'], 'quantity': 3})
+        self.assertEqual(st, 400, res)
+        self.assertEqual(res.get('field'), 'quantity')
+        self.assertEqual(self.qty(it['id']), 2)
+        self.assertEqual(float(self.invoice_for(adm['admission_id'])['total_billed']), mid,
+                         'a patient was charged for stock that was not there')
+        self.clean_in_ledger(it['id'])
+
+    # --- purchases ---------------------------------------------------------
+    def test_a_purchase_is_a_posted_receipt_and_leaves_the_patient_price_alone(self):
+        it = self.item(unit_price=1234)
+        res = self.purchase([{'medication_name': it['name'], 'medication_id': it['id'],
+                              'form': 'tabletka', 'quantity': 10, 'unit_price': 40}])
+        self.assertEqual(res['amount'], 400.0)
+        st, rec = self.api.get('/api/warehouse/receipts/' + res['receipt_id'])
+        self.assertEqual(st, 200, rec)
+        self.assertEqual((rec['status'], rec['accounting_transaction_id']), ('posted', res['transaction_id']))
+        self.assertEqual(self.qty(it['id']), 10)
+        full = self.stock(it['id'])
+        self.assertEqual(len(full['batches']), 1)
+        self.assertEqual(float(full['unit_price']), 1234.0, 'the purchase price overwrote the patient price')
+        self.assertEqual(float(full['avg_unit_cost']), 40.0)
+        self.assertEqual(float(full['last_unit_cost']), 40.0)
+        st, acc = self.api.get('/api/accounting/data')
+        txn = next(t for t in acc['transactions'] if t['id'] == res['transaction_id'])
+        self.assertEqual((txn['type'], txn['category'], float(txn['amount'])),
+                         ('expense', 'medication_purchase', 400.0))
+        st, plist = self.api.get('/api/accounting/medication-purchases')
+        self.assertTrue(any(p['id'] == res['purchase_ids'][0] for p in plist))
+        self.clean_in_ledger(it['id'])
+
+    def test_a_new_medicine_from_a_purchase_becomes_an_item_with_no_invented_price(self):
+        name = f'Suite Purchase New {os.getpid()}-{os.urandom(2).hex()}'
+        res = self.purchase([{'medication_name': name, 'form': 'flakon', 'quantity': 4, 'unit_price': 900}])
+        item = self.by_name(name)
+        self.assertEqual((item['base_unit'], float(item['stock_quantity'])), ('flakon', 4.0))
+        self.assertEqual(float(item['unit_price']), 0.0, 'the patient price must not be invented from the cost')
+        self.assertEqual(float(item['avg_unit_cost']), 900.0)
+        st, rec = self.api.get('/api/warehouse/receipts/' + res['receipt_id'])
+        self.assertEqual(rec['status'], 'posted')
+
+    def test_the_same_client_request_id_books_a_purchase_once(self):
+        name = f'Suite Purchase Dup {os.getpid()}-{os.urandom(2).hex()}'
+        cid = self.cid()
+        first = self.purchase([{'medication_name': name, 'quantity': 3, 'unit_price': 100}],
+                              client_request_id=cid)
+        again = self.purchase([{'medication_name': name, 'quantity': 3, 'unit_price': 100}],
+                              client_request_id=cid)
+        self.assertEqual(first['purchase_ids'], again['purchase_ids'])
+        self.assertEqual(float(self.by_name(name)['stock_quantity']), 3.0)
+
+    def test_deleting_a_purchase_reverses_its_receipt(self):
+        it = self.item()
+        res = self.purchase([{'medication_name': it['name'], 'medication_id': it['id'],
+                              'quantity': 6, 'unit_price': 50}])
+        self.assertEqual(self.qty(it['id']), 6)
+        st, body = self.api.delete('/api/accounting/medication-purchases/' + res['purchase_ids'][0])
+        self.assertEqual(st, 200, body)
+        self.assertEqual(self.qty(it['id']), 0)
+        st, rec = self.api.get('/api/warehouse/receipts/' + res['receipt_id'])
+        self.assertEqual(rec['status'], 'reversed')
+        st, acc = self.api.get('/api/accounting/data')
+        self.assertFalse(any(t['id'] == res['transaction_id'] for t in acc['transactions']),
+                         'the expense of a withdrawn purchase is still booked')
+        st, plist = self.api.get('/api/accounting/medication-purchases')
+        self.assertFalse(any(p['id'] == res['purchase_ids'][0] for p in plist))
+        self.clean_in_ledger(it['id'])
+
+    def test_a_purchase_whose_stock_was_used_cannot_be_deleted(self):
+        it = self.item(item_type='consumable')
+        res = self.purchase([{'medication_name': it['name'], 'medication_id': it['id'],
+                              'quantity': 5, 'unit_price': 10}])
+        pid = self.make_patient('Ombor Ishlatilgan')
+        st, _ = self.api.post('/api/warehouse/dispense', {
+            'client_request_id': self.cid(), 'patient_id': pid, 'item_id': it['id'], 'quantity': 1})
+        self.assertEqual(st, 201)
+        before = self.snapshot(it['id'])
+        st, body = self.api.delete('/api/accounting/medication-purchases/' + res['purchase_ids'][0])
+        self.assertEqual(st, 409, body)
+        self.assertIn("ishlatilgan", body['error'])
+        self.assertEqual(self.snapshot(it['id']), before)
+        st, rec = self.api.get('/api/warehouse/receipts/' + res['receipt_id'])
+        self.assertEqual(rec['status'], 'posted')
+        st, plist = self.api.get('/api/accounting/medication-purchases')
+        self.assertTrue(any(p['id'] == res['purchase_ids'][0] for p in plist))
+        self.assertEqual(self.qty(it['id']), 4)
+
+    def test_a_purchase_with_two_lines_is_withdrawn_as_one_document(self):
+        a, b = self.item(), self.item()
+        res = self.purchase([
+            {'medication_name': a['name'], 'medication_id': a['id'], 'quantity': 2, 'unit_price': 10},
+            {'medication_name': b['name'], 'medication_id': b['id'], 'quantity': 3, 'unit_price': 20}])
+        self.assertEqual(len(res['purchase_ids']), 2)
+        self.assertEqual(res['amount'], 80.0)
+        st, body = self.api.delete('/api/accounting/medication-purchases/' + res['purchase_ids'][0])
+        self.assertEqual(st, 200, body)
+        self.assertEqual(sorted(body['removed_purchase_ids']), sorted(res['purchase_ids']))
+        self.assertEqual((self.qty(a['id']), self.qty(b['id'])), (0, 0))
+
+    def test_a_fractional_purchase_quantity_is_still_refused(self):
+        st, res = self.api.post('/api/accounting/medication-purchases', {
+            'items': [{'medication_name': 'Suite probe med', 'quantity': 2.5, 'unit_price': 1000}]})
+        self.assertEqual((st, res.get('field')), (400, 'quantity'))
+
+    # --- prescriptions -----------------------------------------------------
+    def test_a_prescription_with_a_quantity_warns_about_short_stock_and_changes_nothing(self):
+        it = self.stocked(5)
+        pid = self.make_patient('Ombor Retsept')
+        before = self.snapshot(it['id'], pid)
+        st, body = self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'medication_name': it['name'], 'medication_id': it['id'],
+            'dosage': '1 tabletka', 'route': 'PO', 'frequency': 'Kuniga 2 mahal', 'duration_days': 5,
+            'quantity_prescribed': 8, 'quantity_unit': 'tabletka'})
+        self.assertEqual(st, 201, body)
+        w = body['stock_warning']
+        self.assertEqual((w['item_name'], float(w['available_quantity']), float(w['prescribed_quantity']), w['unit']),
+                         (it['name'], 5.0, 8.0, 'tabletka'))
+        self.assertEqual(self.snapshot(it['id'], pid), before, 'prescribing must not touch stock')
+
+        st, body = self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'medication_name': it['name'], 'medication_id': it['id'],
+            'dosage': '1 tabletka', 'route': 'PO', 'frequency': 'Kuniga 2 mahal', 'duration_days': 5,
+            'quantity_prescribed': 3, 'quantity_unit': 'tabletka'})
+        self.assertEqual(st, 201, body)
+        self.assertNotIn('stock_warning', body)
+        st, body = self.api.post('/api/doctor/prescriptions', {
+            'patient_id': pid, 'medication_name': it['name'],
+            'dosage': '1 tabletka', 'route': 'PO', 'frequency': 'Kuniga 2 mahal', 'duration_days': 5})
+        self.assertEqual(st, 201, body)
+        self.assertNotIn('stock_warning', body)
+        self.assertEqual(self.snapshot(it['id'], pid), before)
+
+    def test_prescriptions_list_shows_dispensed_remaining_and_availability(self):
+        it = self.stocked(5)
+        pid, rx = self.patient_with_rx(it, quantity_prescribed=4)
+        self.dispense(pid, rx, 3)
+        st, rows = self.api.get('/api/doctor/prescriptions?patient_id=' + urllib.parse.quote(pid))
+        self.assertEqual(st, 200, rows)
+        row = next(r for r in rows if r['id'] == rx)
+        self.assertEqual((float(row['quantity_prescribed']), row['quantity_unit']), (4.0, 'tabletka'))
+        self.assertEqual((float(row['quantity_dispensed']), float(row['remaining_quantity'])), (3.0, 1.0))
+        self.assertEqual((float(row['available_quantity']), row['available_unit']), (2.0, 'tabletka'))
+        self.assertEqual(row['warehouse_item_id'], it['id'])
+        # A reversed dispensing no longer counts as given.
+        did = self.history(pid)[0]['id']
+        st, _ = self.api.post(f'/api/warehouse/dispensings/{did}/reverse', {'reason': 'Xato berilgan'})
+        self.assertEqual(st, 200)
+        st, rows = self.api.get('/api/doctor/prescriptions?patient_id=' + urllib.parse.quote(pid))
+        row = next(r for r in rows if r['id'] == rx)
+        self.assertEqual((float(row['quantity_dispensed']), float(row['remaining_quantity'])), (0.0, 4.0))
+        # The clinical dossier carries the same view.
+        st, dossier = self.api.get('/api/doctor/clinical/' + urllib.parse.quote(pid))
+        drow = next(r for r in dossier['prescriptions'] if r['id'] == rx)
+        self.assertEqual(float(drow['remaining_quantity']), 4.0)
+
+    def test_the_warehouse_part_of_a_prescription_can_be_edited_with_a_warning(self):
+        it = self.stocked(5)
+        pid, rx = self.patient_with_rx(it)
+        before = self.snapshot(it['id'], pid)
+        st, body = self.api.put(f'/api/doctor/prescriptions/{rx}', {
+            'quantity_prescribed': 20, 'quantity_unit': 'tabletka'})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(float(body['stock_warning']['prescribed_quantity']), 20.0)
+        for bad in ({'quantity_prescribed': -1}, {'quantity_prescribed': 'ko`p'}, {'medication_id': 'MED-NOPE'}, {}):
+            st, res = self.api.put(f'/api/doctor/prescriptions/{rx}', bad)
+            self.assertEqual(st, 400, (bad, res))
+        st, body = self.api.put(f'/api/doctor/prescriptions/{rx}', {'quantity_prescribed': ''})
+        self.assertEqual(st, 200, body)
+        st, rows = self.api.get('/api/doctor/prescriptions?patient_id=' + urllib.parse.quote(pid))
+        row = next(r for r in rows if r['id'] == rx)
+        self.assertIsNone(row['quantity_prescribed'])
+        self.assertEqual(self.snapshot(it['id'], pid), before)
+        st, _ = self.api.put('/api/doctor/prescriptions/RX-NO-SUCH', {'quantity_prescribed': 1})
+        self.assertEqual(st, 404)
+
+    def test_a_consultation_case_order_takes_a_quantity_and_warns(self):
+        it = self.stocked(2)
+        pid = self.make_patient('Ombor Konsultatsiya')
+        st, body = self.api.post('/api/doctor/consultation-case', {
+            'patient_id': pid, 'consultation_type': 'outpatient',
+            'prescriptions': [{'medication_name': it['name'], 'medication_id': it['id'],
+                               'dosage': '1 tabletka', 'route': 'PO', 'frequency': 'Kuniga 1 mahal',
+                               'duration_days': 3, 'quantity_prescribed': 6, 'quantity_unit': 'tabletka'}]})
+        self.assertIn(st, (200, 201), body)
+        self.assertEqual(len(body['stock_warnings']), 1)
+        self.assertEqual(float(body['stock_warnings'][0]['available_quantity']), 2.0)
+        st, rows = self.api.get('/api/doctor/prescriptions?patient_id=' + urllib.parse.quote(pid))
+        self.assertEqual(float(rows[0]['quantity_prescribed']), 6.0)
+        self.assertEqual(self.qty(it['id']), 2)
+        # A bad quantity refuses the whole case before anything is saved.
+        st, body = self.api.post('/api/doctor/consultation-case', {
+            'patient_id': pid, 'consultation_type': 'outpatient',
+            'prescriptions': [{'medication_name': it['name'], 'dosage': '1', 'route': 'PO',
+                               'frequency': 'Kuniga 1 mahal', 'duration_days': 3,
+                               'quantity_prescribed': -2}]})
+        self.assertEqual((st, body.get('field')), (400, 'quantity_prescribed'))
+
+    # --- patient history ---------------------------------------------------
+    def test_the_patient_history_lists_what_was_dispensed_and_not_before(self):
+        it = self.stocked(5)
+        pid, rx = self.patient_with_rx(it, quantity_prescribed=4)
+        st, dossier = self.api.get('/api/doctor/clinical/' + urllib.parse.quote(pid))
+        self.assertEqual((st, dossier['dispensings']), (200, []))
+        self.dispense(pid, rx, 2)
+        st, dossier = self.api.get('/api/doctor/clinical/' + urllib.parse.quote(pid))
+        self.assertEqual(len(dossier['dispensings']), 1)
+        d = dossier['dispensings'][0]
+        self.assertEqual((d['item_name'], float(d['quantity']), d['unit'], d['prescription_id'], d['status']),
+                         (it['name'], 2.0, 'tabletka', rx, 'completed'))
+        self.assertEqual((d['dosage'], d['route'], d['frequency']), ('1 tabletka', 'PO', 'Kuniga 2 mahal'))
+        for key in ('prescribed_by', 'dispensed_by', 'dispensed_at', 'batch_numbers',
+                    'reversal_transaction_ids', 'reversed_at'):
+            self.assertIn(key, d)
+        self.assertEqual(len(d['batch_numbers']), 1)
+        self.assertEqual(d['dispensed_by'] is not None, True)
+        self.assertNotIn('unit_cost', d)
+        self.assertNotIn('total_cost', d)
+        # Reversal is visible, with its ledger reference.
+        st, _ = self.api.post(f"/api/warehouse/dispensings/{d['id']}/reverse", {'reason': 'Xato'})
+        self.assertEqual(st, 200)
+        st, dossier = self.api.get('/api/doctor/clinical/' + urllib.parse.quote(pid))
+        d = dossier['dispensings'][0]
+        self.assertEqual(d['status'], 'reversed')
+        self.assertTrue(d['reversal_transaction_ids'])
+        self.assertEqual(d['reverse_reason'], 'Xato')
+
+    def test_the_patient_card_shows_dispensings_only_to_clinical_readers(self):
+        it = self.stocked(5)
+        pid, rx = self.patient_with_rx(it)
+        self.dispense(pid, rx, 1)
+        st, card = self.api.get('/api/crm/patients/' + urllib.parse.quote(pid))
+        self.assertEqual(st, 200)
+        self.assertEqual(len(card['dispensings']), 1)
+        doctor = self._account('doctor')
+        st, card = doctor.get('/api/crm/patients/' + urllib.parse.quote(pid))
+        self.assertEqual((st, len(card['dispensings'])), (200, 1))
+        desk = self._account('receptionist')
+        st, card = desk.get('/api/crm/patients/' + urllib.parse.quote(pid))
+        self.assertEqual(st, 200)
+        self.assertNotIn('dispensings', card, 'the front desk was shown what medicine a patient received')
+        st, rows = desk.get('/api/warehouse/dispensings?patient_id=' + urllib.parse.quote(pid))
+        self.assertEqual(st, 403)
+
+    def test_deleting_a_patient_keeps_the_history_and_the_stock_consistent(self):
+        it = self.stocked(5)
+        pid, rx = self.patient_with_rx(it)
+        self.dispense(pid, rx, 2)
+        self.assertEqual(self.qty(it['id']), 3)
+        st, _ = self.api.delete('/api/patients/' + pid)
+        self.assertEqual(st, 200)
+        self._patients = [p for p in self._patients if p != pid]
+        # The stock already left the shelf; the history stays, without a patient record.
+        self.assertEqual(self.qty(it['id']), 3)
+        self.assertEqual(len(self.history(pid)), 1)
+        self.clean_in_ledger(it['id'])
+
+    # --- regression guard ----------------------------------------------------
+    def test_nothing_outside_inventory_py_writes_stock(self):
+        """
+        Stock moves only through inventory.py (design principle 1). A direct
+        write elsewhere is how the shelf count and the ledger drifted apart.
+        """
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        patterns = [re.compile(p, re.I) for p in (
+            r"SET\s+stock_quantity",
+            r"stock_quantity\s*=[^=]",
+            r"(UPDATE|INSERT\s+(IGNORE\s+)?INTO|DELETE\s+FROM|REPLACE\s+INTO)\s+inventory_"
+            r"(batches|transactions|dispensings|dispensing_batches)",
+            r"INSERT\s+(IGNORE\s+)?INTO\s+medications_catalog",
+            r"remaining_qty\s*=[^=]",
+        )]
+        skip_dirs = {'tests', 'scripts', 'pymysql.broken.vendored', '.git', 'docs', 'node_modules'}
+        offenders = []
+        for base, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            for fn in files:
+                if not fn.endswith('.py') or (fn == 'inventory.py' and base == root):
+                    continue
+                path = os.path.join(base, fn)
+                with open(path, encoding='utf-8', errors='replace') as f:
+                    for n, line in enumerate(f, 1):
+                        if line.lstrip().startswith('#'):
+                            continue
+                        for pat in patterns:
+                            if pat.search(line):
+                                offenders.append(f"{os.path.relpath(path, root)}:{n}: {line.strip()[:90]}")
+        self.assertEqual(offenders, [], "stock is written outside inventory.py")
 
 
 if __name__ == '__main__':

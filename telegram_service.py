@@ -151,6 +151,15 @@ def format_currency(val):
         return str(val)
 
 
+def _fmt_qty(val):
+    """A stock quantity without trailing zeros (12.000 -> 12, 2.500 -> 2.5); stock is decimal, never cast to int."""
+    try:
+        import inventory
+        return inventory.format_qty(val)
+    except Exception:
+        return str(val if val is not None else 0)
+
+
 # -----------------------------------------------------------------------------
 # 1. HAMSHIRALAR HISOBOTI (Topic: 2)
 # -----------------------------------------------------------------------------
@@ -410,12 +419,25 @@ def fetch_comprehensive_financial_data(target_date=None):
 
     # 5. Medications Catalog (Pharmacy Valuation)
     cur.execute("""
-        SELECT *, (stock_quantity * unit_price) AS total_value,
-               (stock_quantity <= min_stock_level) AS is_low_stock
+        SELECT *, (stock_quantity * unit_price) AS total_value
         FROM medications_catalog
-        ORDER BY is_low_stock DESC, name ASC
+        ORDER BY name ASC
     """)
     pharmacy_stock = [dict(r) for r in cur.fetchall()]
+    # Low means strictly below the item's threshold (or nothing usable left),
+    # judged on what can really be given (non-expired lots) by the warehouse's
+    # own rule, not a second copy of it here.
+    try:
+        import inventory
+        _avail = inventory.available_map(conn, [m['id'] for m in pharmacy_stock])
+        for m in pharmacy_stock:
+            m['is_low_stock'] = inventory.compute_status(
+                _avail.get(m['id'], 0), m.get('min_stock_level') or 0) in ('low', 'out')
+    except Exception as _e_low:
+        print(f"[Telegram] low-stock flag fell back to the cached balance: {_e_low}")
+        for m in pharmacy_stock:
+            m['is_low_stock'] = (m.get('stock_quantity') or 0) < (m.get('min_stock_level') or 0)
+    pharmacy_stock.sort(key=lambda m: (not m['is_low_stock'], str(m.get('name') or '')))
 
     # 6. Staff & Payroll
     cur.execute("SELECT * FROM staff ORDER BY role, full_name")
@@ -909,7 +931,7 @@ def generate_comprehensive_excel(data, output_path):
         tot_val = float(med.get("total_value") or 0)
         vals = [
             idx, med.get("name"), med.get("category"), med.get("form"),
-            med.get("stock_quantity"), med.get("min_stock_level"),
+            float(med.get("stock_quantity") or 0), float(med.get("min_stock_level") or 0),
             float(med.get("unit_price") or 0), tot_val
         ]
         for c_i, val in enumerate(vals, start=1):
@@ -1251,8 +1273,8 @@ def generate_comprehensive_pdf(data, output_path):
             Paragraph(f"{low_flag}{med.get('name')}", td_bold),
             Paragraph(str(med.get("category") or ""), td_style),
             Paragraph(str(med.get("form") or ""), td_style),
-            Paragraph(str(med.get("stock_quantity")), td_style),
-            Paragraph(str(med.get("min_stock_level")), td_style),
+            Paragraph(_fmt_qty(med.get("stock_quantity")), td_style),
+            Paragraph(_fmt_qty(med.get("min_stock_level")), td_style),
             Paragraph(format_currency(med.get("unit_price")), td_right),
             Paragraph(format_currency(med.get("total_value")), td_right),
         ])

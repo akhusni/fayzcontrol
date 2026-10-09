@@ -1104,6 +1104,15 @@ def ensure_medication_purchases(conn):
                 INDEX idx_med_purchase_date (purchase_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+        # Which warehouse receipt (inventory_receipts) booked this purchase.
+        # Rows made before the warehouse existed have none.
+        cur.execute("""SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medication_purchases'
+                         AND COLUMN_NAME = 'receipt_id'""")
+        _n = cur.fetchone()
+        if not (_n['n'] if hasattr(_n, 'keys') else _n[0]):
+            cur.execute("ALTER TABLE medication_purchases ADD COLUMN receipt_id VARCHAR(64) NULL")
+            cur.execute("CREATE INDEX idx_med_purchase_receipt ON medication_purchases (receipt_id)")
         conn.commit()
         _medication_purchases_checked = True
     except Exception as e:

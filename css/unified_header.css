@@ -945,7 +945,11 @@ body.day-mode .kpi-value {
 }
 
 /* Confirmation Modal (Unified Dialogs) */
-.fmh-confirm-overlay {
+/* js/fmh_dialogs.js builds .fmh-confirm-backdrop and .fmh-confirm-icon-badge;
+   only the older -overlay / -icon-wrap names were styled, so every confirm
+   dialog rendered unpositioned at the end of the page. Both names now match. */
+.fmh-confirm-overlay,
+.fmh-confirm-backdrop {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -983,7 +987,8 @@ body.day-mode .kpi-value {
   color: #0f172a !important;
 }
 
-.fmh-confirm-icon-wrap {
+.fmh-confirm-icon-wrap,
+.fmh-confirm-icon-badge {
   width: 56px !important;
   height: 56px !important;
   border-radius: 50% !important;
@@ -1592,4 +1597,10 @@ html.fmh-nav-pending .portal-master-nav {
   .portal-master-nav.fmh-menu-many .portal-nav-pill:not(.active) span {
     display: none !important;
   }
+}
+
+/* type "warning" (fmhConfirm) had no icon colour */
+.fmh-confirm-icon-warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #f59e0b !important;
 }

@@ -275,7 +275,7 @@ def summary(conn, start, end):
             'cost': usage['total_cost'],
             'doses': usage['total_doses'],
             'top': [{'name': r['name'], 'doses': r['doses'], 'cost': r['cost'],
-                     'left': r['stock_quantity'], 'low': r['stock_quantity'] < r['min_stock_level']}
+                     'left': r['available_quantity'], 'low': r['low']}
                     for r in usage['linked'][:6]],
         },
         'entries': entries[:600],

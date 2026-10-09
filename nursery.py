@@ -127,6 +127,9 @@ _STOCK_COLUMNS = (
     ('stock_medication_id', "VARCHAR(64) NULL"),
     ('stock_units', "INT NOT NULL DEFAULT 0"),
     ('stock_unit_cost', "DECIMAL(14,2) NULL"),
+    # The warehouse dispensing this dose created (inventory.py). Undoing the
+    # dose reverses exactly that record.
+    ('stock_dispensing_id', "VARCHAR(64) NULL"),
 )
 
 
@@ -565,13 +568,83 @@ def build_round(conn, day):
     }
 
 
+def _nurse_client_id(conn, prescription_id, day, slot_index):
+    """
+    A deterministic idempotency key for the dispensing of one dose
+    (nurse-<prescription>-<date>-<slot>); a dose given again after an undo gets
+    the next free `-rN` suffix, so the reversed record stays in the history.
+    """
+    import hashlib
+    import inventory
+    base = f"nurse-{prescription_id}-{day.isoformat()}-{int(slot_index)}"
+    if len(base) > 50 or not re.match(r'^[A-Za-z0-9_-]+$', base):
+        base = 'nurse-' + hashlib.sha1(base.encode('utf-8')).hexdigest()[:40]
+    return inventory.unique_client_id(conn, base)
+
+
+def _settle_dose_stock(conn, cur, rx, day, slot_index, actor, notes=None):
+    """
+    Take one unit of the prescribed drug off the warehouse for a dose that was
+    given. Returns (dispensing_id, units, unit_cost).
+
+    An empty shelf, an order the warehouse refuses or a drug the warehouse does
+    not know must not stop the nurse recording a dose she has already given, so
+    those return (None, 0, <average cost>): the dose is recorded and removes
+    nothing. The attempt runs inside a savepoint so a refusal leaves no half
+    written lots behind.
+    """
+    import inventory
+    item = resolve_stock_item(cur, rx['medication_id'], rx['medication_name'])
+    if not item:
+        return None, 0, None
+    icur = inventory._cursor(conn)
+    icur.execute("SELECT avg_unit_cost FROM medications_catalog WHERE id = ?", (item['id'],))
+    row = icur.fetchone()
+    avg = row['avg_unit_cost'] if row else None
+    icur.execute("SAVEPOINT nurse_dose")
+    try:
+        d = inventory.dispense(conn, {
+            'client_request_id': _nurse_client_id(conn, rx['id'], day, slot_index),
+            'patient_id': rx['patient_id'],
+            'prescription_id': rx['id'],
+            'admission_id': rx['admission_id'],
+            'quantity': 1,
+            'notes': notes,
+        }, actor, source='nurse_round')
+        icur.execute("RELEASE SAVEPOINT nurse_dose")
+        return d['id'], 1, d['unit_cost']
+    except inventory.InventoryError:
+        icur.execute("ROLLBACK TO SAVEPOINT nurse_dose")
+        return None, 0, avg
+
+
+def _undo_dose_stock(conn, prev, patient_id, actor):
+    """Put back what a dose took, exactly: its dispensing is reversed (or, for a
+    dose recorded before the ledger existed, the units come back as a return)."""
+    import inventory
+    reason = "Doza tuzatildi (hamshira jurnali)"
+    if prev['stock_dispensing_id']:
+        d = inventory.get_dispensing(conn, prev['stock_dispensing_id'], can_cost=True)
+        if d['status'] == 'completed':
+            inventory.reverse_dispensing(conn, d['id'], reason, actor)
+    elif prev['stock_medication_id'] and prev['stock_units']:
+        inventory.adjust(conn, {
+            'kind': 'patient_return', 'item_id': prev['stock_medication_id'],
+            'quantity': int(prev['stock_units']), 'patient_id': patient_id,
+            'reason': reason + " - eski yozuv"}, actor)
+
+
 def record_dose(conn, prescription_id, day, slot_index, status,
-                staff_id=None, notes=None, slot_label=None):
+                staff_id=None, notes=None, slot_label=None, username=None):
     """
     Record or amend one dose.
 
     Upserts on (prescription_id, date, slot) so correcting a mistaken entry
     updates it rather than adding a second row for the same dose.
+
+    A given dose takes one unit through the warehouse ledger
+    (inventory.dispense, source 'nurse_round'); undoing or changing it
+    reverses that dispensing. Nothing here writes stock directly.
     """
     ensure_schema(conn)
     if status not in STATUSES:
@@ -610,37 +683,45 @@ def record_dose(conn, prescription_id, day, slot_index, status,
         return True
 
     # Stock: what this dose took before, and what it should take now.
+    import inventory
+    actor = {'username': username, 'staff_id': staff_id}
     cur.execute("""
-        SELECT stock_medication_id, stock_units FROM medication_administrations
+        SELECT stock_medication_id, stock_units, stock_unit_cost, stock_dispensing_id
+        FROM medication_administrations
         WHERE prescription_id = ? AND scheduled_date = ? AND slot_index = ?
         FOR UPDATE
     """, (prescription_id, day.isoformat(), int(slot_index)))
     prev = cur.fetchone()
-    if prev and prev['stock_medication_id'] and prev['stock_units']:
-        cur.execute("UPDATE medications_catalog SET stock_quantity = stock_quantity + ? WHERE id = ?",
-                    (int(prev['stock_units']), prev['stock_medication_id']))
 
-    stock_id, stock_units, stock_cost = None, 0, None
+    stock_id, stock_units, stock_cost, disp_id = None, 0, None, None
+    item = None
     if status == 'given':
         item = resolve_stock_item(cur, rx['medication_id'], rx['medication_name'])
         if item:
-            stock_id, stock_cost = item['id'], item['unit_price']
-            # An empty shelf still records the dose (the nurse gave it from
-            # somewhere); it just removes nothing, so a later correction
-            # cannot put back a unit that was never taken.
-            cur.execute("""
-                UPDATE medications_catalog SET stock_quantity = stock_quantity - 1
-                WHERE id = ? AND stock_quantity > 0
-            """, (stock_id,))
-            stock_units = 1 if cur.rowcount else 0
+            stock_id = item['id']
+
+    # Saving the same given dose again is not a second unit: its dispensing is
+    # kept as it is (and a retry therefore changes nothing).
+    keep = False
+    if prev and prev['stock_dispensing_id'] and stock_id and prev['stock_medication_id'] == stock_id:
+        kept = inventory.get_dispensing(conn, prev['stock_dispensing_id'], can_cost=True)
+        keep = kept['status'] == 'completed'
+    if keep:
+        disp_id, stock_units, stock_cost = prev['stock_dispensing_id'], int(prev['stock_units']), prev['stock_unit_cost']
+    else:
+        if prev:
+            _undo_dose_stock(conn, prev, rx['patient_id'], actor)
+        if stock_id:
+            disp_id, stock_units, stock_cost = _settle_dose_stock(
+                conn, cur, rx, day, slot_index, actor, notes=None)
 
     cur.execute("""
         INSERT INTO medication_administrations
             (prescription_id, admission_id, patient_id, scheduled_date,
              slot_index, slot_label, status, administered_at,
              administered_by_staff_id, notes,
-             stock_medication_id, stock_units, stock_unit_cost)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             stock_medication_id, stock_units, stock_unit_cost, stock_dispensing_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             status = VALUES(status),
             slot_label = VALUES(slot_label),
@@ -649,10 +730,11 @@ def record_dose(conn, prescription_id, day, slot_index, status,
             notes = VALUES(notes),
             stock_medication_id = VALUES(stock_medication_id),
             stock_units = VALUES(stock_units),
-            stock_unit_cost = VALUES(stock_unit_cost)
+            stock_unit_cost = VALUES(stock_unit_cost),
+            stock_dispensing_id = VALUES(stock_dispensing_id)
     """, (prescription_id, rx['admission_id'], rx['patient_id'], day.isoformat(),
           int(slot_index), slot_label, status, administered_at, staff_id, notes,
-          stock_id, stock_units, stock_cost))
+          stock_id, stock_units, stock_cost, disp_id))
     conn.commit()
     return True
 
@@ -693,11 +775,25 @@ def medicine_usage(conn, start, end):
         ORDER BY doses DESC
     """, (start, end))
     unlinked = [dict(r) for r in cur.fetchall()]
+    # Stock is a decimal quantity (a solution can be measured), so it is
+    # converted, never cast to int. `available_quantity` is what can really be
+    # given (non-expired lots) and `low` follows the warehouse rule: strictly
+    # below the threshold, or nothing usable.
+    import inventory
+    try:
+        avail = inventory.available_map(conn, [r['medication_id'] for r in linked])
+    except Exception:
+        avail = None
     for row in linked:
-        for k in ('cost',):
-            row[k] = float(row[k] or 0)
-        for k in ('doses', 'units_taken', 'stock_quantity', 'min_stock_level'):
-            row[k] = int(row[k] or 0)
+        row['cost'] = float(row['cost'] or 0)
+        row['doses'] = int(row['doses'] or 0)
+        row['units_taken'] = float(row['units_taken'] or 0)
+        row['stock_quantity'] = float(row['stock_quantity'] or 0)
+        row['min_stock_level'] = float(row['min_stock_level'] or 0)
+        got = row['stock_quantity'] if avail is None else float(avail.get(row['medication_id'], 0))
+        row['available_quantity'] = got
+        row['low'] = inventory.compute_status(got, row['min_stock_level']) in ('low', 'out') \
+            if avail is not None else got < row['min_stock_level']
     for row in unlinked:
         row['doses'] = int(row['doses'] or 0)
     return {
@@ -710,7 +806,7 @@ def medicine_usage(conn, start, end):
     }
 
 
-def link_medicine_name(conn, medication_name, medication_id):
+def link_medicine_name(conn, medication_name, medication_id, username=None, staff_id=None):
     """Point a prescribed name at a stock item for all doses from now on."""
     ensure_schema(conn)
     key = alias_key(medication_name)
@@ -728,28 +824,33 @@ def link_medicine_name(conn, medication_name, medication_id):
     """, (key, medication_id))
 
     # Doses already given under this name were used from the shelf too: take
-    # them off now, so linking leaves the stock count right and the name stops
-    # showing as unlinked.
-    cur.execute("SELECT unit_price FROM medications_catalog WHERE id = ?", (medication_id,))
-    cost = cur.fetchone()['unit_price']
+    # them off now (through the warehouse ledger, one dispensing per dose), so
+    # linking leaves the stock count right and the name stops showing as
+    # unlinked. The person linking is the actor; each dose keeps the nurse who
+    # gave it.
     cur.execute("""
-        SELECT ma.id, rx.medication_name FROM medication_administrations ma
+        SELECT ma.id, ma.prescription_id, ma.scheduled_date, ma.slot_index,
+               rx.id AS rx_id, rx.patient_id, rx.admission_id, rx.medication_id,
+               rx.medication_name
+        FROM medication_administrations ma
         JOIN prescriptions rx ON rx.id = ma.prescription_id
         WHERE ma.status = 'given' AND ma.stock_medication_id IS NULL
     """)
-    pending = [r['id'] for r in cur.fetchall() if alias_key(r['medication_name']) == key]
+    pending = [dict(r) for r in cur.fetchall() if alias_key(r['medication_name']) == key]
+    actor = {'username': username, 'staff_id': staff_id}
     settled = 0
-    for adm_id in pending:
-        cur.execute("""
-            UPDATE medications_catalog SET stock_quantity = stock_quantity - 1
-            WHERE id = ? AND stock_quantity > 0
-        """, (medication_id,))
-        units = 1 if cur.rowcount else 0
+    for p in pending:
+        rx = {'id': p['rx_id'], 'patient_id': p['patient_id'], 'admission_id': p['admission_id'],
+              'medication_id': p['medication_id'], 'medication_name': p['medication_name']}
+        day = p['scheduled_date']
+        if isinstance(day, str):
+            day = _dt.date.fromisoformat(day)
+        disp_id, units, cost = _settle_dose_stock(conn, cur, rx, day, p['slot_index'], actor)
         cur.execute("""
             UPDATE medication_administrations
-            SET stock_medication_id = ?, stock_units = ?, stock_unit_cost = ?
+            SET stock_medication_id = ?, stock_units = ?, stock_unit_cost = ?, stock_dispensing_id = ?
             WHERE id = ?
-        """, (medication_id, units, cost, adm_id))
+        """, (medication_id, units, cost, disp_id, p['id']))
         settled += 1
     conn.commit()
     return key, settled

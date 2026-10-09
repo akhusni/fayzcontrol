@@ -65,6 +65,9 @@
     pharmacology: [],
     anamnesisMap: {},
     prescriptionsMap: {},
+    // What the warehouse actually handed to each patient: {patientId: {status, rows}}.
+    // Filled only from the server answer and never written to localStorage.
+    dispensings: {},
     dailyNotesMap: {},
     currentFilter: 'all',
     searchQuery: '',
@@ -487,6 +490,7 @@
 
   async function selectPatient(patient) {
     state.selectedPatient = patient;
+    state.dispensings[patient.id] = { status: 'loading', rows: [] };
     renderPatientList();
     renderWorkstation();
 
@@ -512,10 +516,20 @@
           if (!state.epicrisisMap) state.epicrisisMap = {};
           state.epicrisisMap[patient.id] = bundle.discharge_epicrisis;
         }
+        // Dispensing history comes from the server only; an answer without
+        // the list is shown as "could not load", never as "nothing given".
+        state.dispensings[patient.id] = Array.isArray(bundle.dispensings)
+          ? { status: 'ok', rows: bundle.dispensings }
+          : { status: 'error', rows: [] };
         renderWorkstation();
+      } else {
+        state.dispensings[patient.id] = { status: 'error', rows: [] };
+        renderDispensingHistory();
       }
     } catch (e) {
       console.warn("Could not fetch clinical bundle from MySQL API", e);
+      state.dispensings[patient.id] = { status: 'error', rows: [] };
+      renderDispensingHistory();
     }
   }
 
@@ -749,6 +763,7 @@
 
     renderAnamnesisTab();
     renderPrescriptionsTab();
+    renderDispensingHistory();
     renderDailyNotesTab();
     renderEpicrisisTab();
   }
@@ -946,7 +961,7 @@
     if (rxList.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+          <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
             ${filter !== 'all' ? 'Ushbu toifadagi dorilar mavjud emas.' : 'Hozircha ushbu bemorga dori-darmonlar tayinlanmagan. Yuqoridagi formadan yangi dori yoki tayyor protokol qo\'shing.'}
           </td>
         </tr>
@@ -965,6 +980,7 @@
           <td><span class="status-pill status-completed">${rx.route}</span></td>
           <td>${rx.frequency}<div style="font-size: 0.74rem; color: var(--text-muted);">${rx.timing || ''}</div></td>
           <td><strong>${rx.duration_days} kun</strong></td>
+          <td>${rxQtyCell(rx)}</td>
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td>
             <div style="display: flex; gap: 4px;">
@@ -988,6 +1004,292 @@
       btn.classList.toggle('active', btn.getAttribute('data-rx-filter') === status);
     });
     renderPrescriptionsTab();
+  }
+
+  // --- WAREHOUSE LINK & DISPENSING HISTORY ---------------------------------
+  // The doctor may tie an order to a warehouse item and a total quantity. That
+  // is information for the prescriber and the person handing the drug out:
+  // saving an order never removes anything from the shelf (stock leaves only
+  // when it is handed out, see inventory.py), and a shortage is a warning,
+  // never a block. Nothing here is guessed: no item or quantity means none.
+  const wh = { item: null, results: [], seq: 0, timer: null, autoName: '', ready: false };
+
+  // 12 -> "12", 2.5 -> "2.5": quantities can be fractions (ml, half tablets).
+  function fmtQty(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return String(Math.round(n * 1000) / 1000);
+  }
+
+  // "2026-10-10T14:23:11" -> "10.10.2026 14:23"; anything else is shown as sent.
+  function fmtDateTime(v) {
+    if (!v) return '—';
+    const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : escapeHtml(v);
+  }
+
+  // The server decides low / out (it knows about expired lots); this only maps
+  // its stock_status to a colour. 'out' also covers nothing usable on hand.
+  function whStockClass(item) {
+    const a = Number(item.available_quantity);
+    if (item.stock_status === 'out' || !(a > 0)) return 'out';
+    if (item.stock_status === 'low') return 'low';
+    return 'ok';
+  }
+
+  function whCurrentQuery() {
+    const own = (document.getElementById('rx-wh-search')?.value || '').trim();
+    return own || (document.getElementById('rx-drug-name')?.value || '').trim();
+  }
+
+  function whQuery() {
+    clearTimeout(wh.timer);
+    const text = whCurrentQuery();
+    if (text.length < 2) {
+      wh.seq++;
+      wh.results = [];
+      renderWhResults();
+      return;
+    }
+    wh.timer = setTimeout(() => runWhSearch(text), 300);
+  }
+
+  async function runWhSearch(text) {
+    const mySeq = ++wh.seq;
+    let results = null; // null = the warehouse could not be read
+    try {
+      const res = await fetch(`/api/warehouse/availability?q=${encodeURIComponent(text)}&limit=8`);
+      if (res.ok) {
+        const data = await res.json();
+        results = Array.isArray(data.items) ? data.items : [];
+      }
+    } catch (e) { /* offline: handled as unavailable below */ }
+    if (mySeq !== wh.seq) return; // a newer search has started
+    wh.results = results;
+    // After a pick from the drug list: link the item automatically only when
+    // exactly one warehouse item has that very name.
+    if (results && wh.autoName && !wh.item) {
+      const exact = results.filter(i => String(i.name || '').trim().toLowerCase() === wh.autoName);
+      if (exact.length === 1) selectWarehouseItem(exact[0]);
+    }
+    wh.autoName = '';
+    renderWhResults();
+  }
+
+  function renderWhResults() {
+    const box = document.getElementById('rx-wh-results');
+    if (!box) return;
+    if (wh.results === null) {
+      box.innerHTML = `<div class="rx-wh-hint">Ombor ma'lumoti hozir mavjud emas. Retsept ombor bilan bog'lanmasdan saqlanadi.</div>`;
+      return;
+    }
+    if (!wh.results.length) {
+      box.innerHTML = whCurrentQuery().length >= 2 ? `<div class="rx-wh-hint">Omborda mos dori topilmadi.</div>` : '';
+      return;
+    }
+    box.innerHTML = `<div class="rx-wh-hint" style="width: 100%; margin: 0;"><i class="fas fa-check-circle" style="color: var(--emerald);"></i> Omborda bor — bog'lash uchun tanlang:</div>` +
+      wh.results.map(it => {
+        const cls = whStockClass(it);
+        const unit = it.base_unit ? ' ' + it.base_unit : '';
+        const label = [it.name, it.strength, it.form].filter(Boolean).join(' · ');
+        const badge = cls === 'out' ? 'Tugagan' : `${fmtQty(it.available_quantity)}${unit}`;
+        const sel = wh.item && wh.item.id === it.id ? ' is-selected' : '';
+        return `<button type="button" class="rx-wh-chip${sel}" data-wh-id="${escapeHtml(it.id)}">
+          <i class="fas fa-warehouse"></i> ${escapeHtml(label)}
+          <span class="rx-wh-badge ${cls}">${escapeHtml(badge)}</span>
+        </button>`;
+      }).join('');
+  }
+
+  function updateWhStatus() {
+    const el = document.getElementById('rx-wh-status');
+    if (!el) return;
+    const item = wh.item;
+    if (!item) {
+      el.innerHTML = `Ombor dorisi tanlanmagan.<span class="rx-wh-note">Retsept ombordan hech narsa olmaydi: dori faqat berilganda chiqariladi.</span>`;
+      return;
+    }
+    const unit = escapeHtml(item.base_unit || '');
+    const avail = Number(item.available_quantity) || 0;
+    const qtyRaw = (document.getElementById('rx-qty')?.value || '').trim();
+    const qty = qtyRaw === '' ? null : Number(qtyRaw);
+    const notes = [];
+    let line;
+    if (whStockClass(item) === 'out') {
+      line = `<span class="out">Ombordan tugagan</span>`;
+      notes.push("Ogohlantirish xolos: retseptni baribir saqlash mumkin.");
+    } else if (qty !== null && isFinite(qty) && qty > avail) {
+      line = `<span class="out">Yetarli emas: ${fmtQty(avail)} mavjud, ${fmtQty(qty)} kerak</span>`;
+      notes.push("Ogohlantirish xolos: retseptni baribir saqlash mumkin.");
+    } else if (whStockClass(item) === 'low') {
+      line = `<span class="low">Omborda: ${fmtQty(avail)} ${unit} (kam qolgan)</span>`;
+    } else {
+      line = `<span class="ok">Omborda: ${fmtQty(avail)} ${unit}</span>`;
+    }
+    if (qty !== null && isFinite(qty) && !item.allow_fraction && qty !== Math.floor(qty)) {
+      notes.push("Bu dori faqat butun sonda beriladi.");
+    }
+    el.innerHTML = `<strong>${escapeHtml(item.name)}</strong>
+      <button type="button" class="rx-wh-clear" data-wh-clear="1" title="Tanlovni bekor qilish"><i class="fas fa-times"></i></button><br>
+      ${line}${notes.map(n => `<span class="rx-wh-note">${escapeHtml(n)}</span>`).join('')}`;
+  }
+
+  function selectWarehouseItem(item) {
+    wh.item = item;
+    wh.autoName = '';
+    const unitEl = document.getElementById('rx-qty-unit');
+    if (unitEl) unitEl.value = item.base_unit || '';
+    // The typed name is kept (it is what the nurse sheet shows); only an empty
+    // name is filled from the warehouse item.
+    const nameEl = document.getElementById('rx-drug-name');
+    if (nameEl && !nameEl.value.trim()) nameEl.value = item.name || '';
+    renderWhResults();
+    updateWhStatus();
+  }
+
+  function clearWarehouseItem() {
+    wh.item = null;
+    const unitEl = document.getElementById('rx-qty-unit');
+    if (unitEl) unitEl.value = '';
+    renderWhResults();
+    updateWhStatus();
+  }
+
+  function resetWarehousePanel() {
+    clearTimeout(wh.timer);
+    wh.seq++;
+    wh.item = null;
+    wh.results = [];
+    wh.autoName = '';
+    ['rx-wh-search', 'rx-qty', 'rx-qty-unit'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    renderWhResults();
+    updateWhStatus();
+  }
+
+  // The drug list (pharmacology) pick keeps working as before; on top of it the
+  // warehouse is searched by that name. An item the doctor already chose by
+  // hand is not replaced, and a late answer never overrides a manual choice.
+  function whOnDrugPicked(med) {
+    if (!med || wh.item) return;
+    const name = String(med.name || med.paper_name || '').trim();
+    if (name.length < 2) return;
+    const own = document.getElementById('rx-wh-search');
+    if (own) own.value = '';
+    wh.autoName = name.toLowerCase();
+    clearTimeout(wh.timer);
+    runWhSearch(name);
+  }
+
+  function whOnNameTyped(value) {
+    if (!value || !value.trim()) {
+      clearTimeout(wh.timer);
+      wh.seq++;
+      wh.results = [];
+      if (wh.item) clearWarehouseItem(); else renderWhResults();
+      return;
+    }
+    if (!(document.getElementById('rx-wh-search')?.value || '').trim()) whQuery();
+  }
+
+  function setupWarehousePanel() {
+    if (wh.ready) return;
+    const search = document.getElementById('rx-wh-search');
+    const qty = document.getElementById('rx-qty');
+    const results = document.getElementById('rx-wh-results');
+    const status = document.getElementById('rx-wh-status');
+    if (!search || !qty || !results || !status) return;
+    wh.ready = true;
+    search.addEventListener('input', whQuery);
+    qty.addEventListener('input', updateWhStatus);
+    // Item ids come from the server: they are read from data-attributes here,
+    // never pasted into an inline handler.
+    results.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rx-wh-chip');
+      if (!btn || !Array.isArray(wh.results)) return;
+      const id = btn.getAttribute('data-wh-id');
+      if (wh.item && wh.item.id === id) { clearWarehouseItem(); return; }
+      const item = wh.results.find(i => i.id === id);
+      if (item) selectWarehouseItem(item);
+    });
+    status.addEventListener('click', (e) => {
+      if (e.target.closest('[data-wh-clear]')) clearWarehouseItem();
+    });
+    updateWhStatus();
+  }
+
+  // Prescribed / given / left for one order, plus what the shelf holds now.
+  function rxQtyCell(rx) {
+    const hasQty = rx.quantity_prescribed !== null && rx.quantity_prescribed !== undefined && rx.quantity_prescribed !== '';
+    const unit = rx.quantity_unit || rx.available_unit || '';
+    const u = unit ? ' ' + escapeHtml(unit) : '';
+    const lines = [];
+    if (hasQty) {
+      lines.push(`Buyurilgan: <strong>${fmtQty(rx.quantity_prescribed)}${u}</strong>`);
+    } else {
+      lines.push(`<span class="rx-qty-muted">Miqdor ko'rsatilmagan</span>`);
+    }
+    if (rx.quantity_dispensed !== null && rx.quantity_dispensed !== undefined && (hasQty || Number(rx.quantity_dispensed) > 0)) {
+      lines.push(`Berilgan: <strong>${fmtQty(rx.quantity_dispensed)}${u}</strong>`);
+    }
+    if (hasQty && rx.remaining_quantity !== null && rx.remaining_quantity !== undefined) {
+      lines.push(`Qolgan: <strong>${fmtQty(rx.remaining_quantity)}${u}</strong>`);
+    }
+    if ((rx.status || 'active') === 'active' && rx.available_quantity !== null && rx.available_quantity !== undefined) {
+      const avail = Number(rx.available_quantity) || 0;
+      const need = (rx.remaining_quantity !== null && rx.remaining_quantity !== undefined)
+        ? Number(rx.remaining_quantity)
+        : (hasQty ? Number(rx.quantity_prescribed) : null);
+      if (avail <= 0) {
+        lines.push(`<span class="rx-wh-badge out">Ombordan tugagan</span>`);
+      } else if (need !== null && need > avail) {
+        lines.push(`<span class="rx-wh-badge out">Omborda yetarli emas: ${fmtQty(avail)}${u}</span>`);
+      } else {
+        lines.push(`<span class="rx-wh-badge ok">Omborda: ${fmtQty(avail)}${u}</span>`);
+      }
+    }
+    return `<div class="rx-qty-cell">${lines.join('<br>')}</div>`;
+  }
+
+  // "Berilgan dori va materiallar": the server's dispensing rows for the open
+  // patient, exactly as sent (actual quantity, unit, lot). Reversed rows stay
+  // visible, struck through, with the reason.
+  function renderDispensingHistory() {
+    const tbody = document.getElementById('dsp-table-body');
+    const p = state.selectedPatient;
+    if (!tbody || !p) return;
+    const rec = state.dispensings[p.id];
+    const message = (text) => {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">${text}</td></tr>`;
+    };
+    if (!rec || rec.status === 'loading') { message('Yuklanmoqda...'); return; }
+    if (rec.status === 'error') { message("Berilgan dorilar ro'yxatini yuklab bo'lmadi."); return; }
+    if (!rec.rows.length) { message('Hali dori berilmagan.'); return; }
+
+    tbody.innerHTML = rec.rows.map(d => {
+      const reversed = d.status === 'reversed';
+      const strike = reversed ? ' dsp-strike' : '';
+      const dose = [d.dosage, d.route, d.frequency, d.instructions].filter(Boolean).map(escapeHtml).join(' • ');
+      const lots = Array.isArray(d.batch_numbers) && d.batch_numbers.length ? d.batch_numbers.map(escapeHtml).join(', ') : '—';
+      const status = reversed
+        ? `<span class="status-pill status-cancelled">Qaytarilgan</span>
+           <span class="dsp-note">${fmtDateTime(d.reversed_at)}${d.reversed_by ? ' · ' + escapeHtml(d.reversed_by) : ''}${d.reverse_reason ? '<br>Sabab: ' + escapeHtml(d.reverse_reason) : ''}</span>`
+        : `<span class="status-pill status-active">Berilgan</span>`;
+      return `
+        <tr class="${reversed ? 'dsp-reversed' : ''}">
+          <td style="white-space: nowrap;"><span class="${strike.trim()}">${fmtDateTime(d.dispensed_at)}</span></td>
+          <td><strong class="${strike.trim()}">${escapeHtml(d.item_name || '—')}</strong></td>
+          <td><strong class="${strike.trim()}">${fmtQty(d.quantity)}${d.unit ? ' ' + escapeHtml(d.unit) : ''}</strong></td>
+          <td><span class="${strike.trim()}">${dose || '—'}</span></td>
+          <td>${escapeHtml(d.prescribed_by || '—')}</td>
+          <td>${escapeHtml(d.dispensed_by || '—')}</td>
+          <td>${lots}</td>
+          <td>${status}</td>
+        </tr>`;
+    }).join('');
   }
 
   function setRxField(field, value) {
@@ -1095,12 +1397,14 @@
       if (el) el.value = med.instructions;
     }
 
+    whOnDrugPicked(med);
     updateDrugDetailsBanner(med);
   }
 
   function quickSelectMed(nameOrNum) {
     const med = findMedication(String(nameOrNum));
     if (med) {
+      clearWarehouseItem(); // a different drug: the earlier warehouse link no longer applies
       applyMedicationToRxForm(med);
       showToast(`⚡ "${med.name}" formaga tezkor yuklandi!`, 'success');
     } else {
@@ -1193,6 +1497,7 @@
   }
 
   function onDrugNameInput(value) {
+    whOnNameTyped(value);
     if (!value || !value.trim()) {
       clearDrugDetailsBanner();
       return;
@@ -1507,6 +1812,8 @@
     if (med.default_timing) document.getElementById('rx-timing').value = med.default_timing;
     if (med.default_duration) document.getElementById('rx-duration').value = med.default_duration;
     if (med.instructions) document.getElementById('rx-instructions').value = med.instructions;
+    clearWarehouseItem(); // a different drug: the earlier warehouse link no longer applies
+    whOnDrugPicked(med);
     closeClinicMedsModal();
     showToast(`✅ "${med.name}" tayinlov formasiga yuklandi!`, 'success');
     if (drugInput) drugInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1606,12 +1913,28 @@
         status: 'active',
         doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
       };
+
+      // Optional warehouse link (form only: protocol and clinic-list orders
+      // carry none). A quantity is kept exactly as typed; an empty field
+      // stays empty and no quantity is invented.
+      const qtyRaw = (document.getElementById('rx-qty')?.value || '').trim();
+      if (qtyRaw !== '') {
+        const qty = Number(qtyRaw);
+        if (!isFinite(qty) || qty <= 0) {
+          showToast("Miqdor 0 dan katta son bo'lishi kerak.", 'warning');
+          return;
+        }
+        rxData.quantity_prescribed = qty;
+        if (wh.item) rxData.quantity_unit = wh.item.base_unit;
+      }
+      if (wh.item) rxData.medication_id = wh.item.id;
     }
 
     // The order is shown as given only once the server has stored it. The
     // answer used to be ignored, so an order the server refused (no dose, no
     // route) still appeared on this list with a success message -- and never
     // reached the nurse station, which reads the database.
+    let stockWarning = null;
     try {
       const res = await fetch('/api/doctor/prescriptions', {
         method: 'POST',
@@ -1630,9 +1953,19 @@
         showToast(err.error || "Retsept saqlanmadi. Qayta urinib ko'ring.", 'danger');
         return false;
       }
+      // The order is saved either way; the server only advises when the shelf
+      // holds less than was prescribed.
+      const saved = await res.json().catch(() => ({}));
+      stockWarning = saved && saved.stock_warning ? saved.stock_warning : null;
     } catch (e) {
       showToast("Server bilan aloqa yo'q — retsept saqlanmadi.", 'danger');
       return false;
+    }
+
+    // Nothing has been handed out yet: dispensed is 0 and all of it remains.
+    if (rxData.quantity_prescribed !== undefined) {
+      rxData.quantity_dispensed = 0;
+      rxData.remaining_quantity = rxData.quantity_prescribed;
     }
 
     if (!state.prescriptionsMap[p.id]) state.prescriptionsMap[p.id] = [];
@@ -1650,9 +1983,11 @@
       document.getElementById('rx-dosage').value = '';
       document.getElementById('rx-instructions').value = '';
       clearDrugDetailsBanner();
+      resetWarehousePanel();
     }
 
     showToast(`💊 <strong>${rxData.medication_name}</strong> retsept varaqasiga muvaffaqiyatli qo'shildi!`);
+    if (stockWarning && stockWarning.message) showToast(escapeHtml(stockWarning.message), 'warning');
     renderPrescriptionsTab();
     updateTabBadges();
     updateKPIs();
@@ -2432,6 +2767,7 @@
         input: rxInput,
         getMedications: () => state.pharmacology,
         onSelect: (med) => {
+          clearWarehouseItem(); // a different drug picked from the list: drop the earlier warehouse link
           applyMedicationToRxForm(med);
         },
         onInput: (val) => {
@@ -2503,6 +2839,7 @@
     }
 
     setupDrugAutocomplete();
+    setupWarehousePanel();
   }
 
   async function deleteCurrentPatient() {
@@ -2707,7 +3044,7 @@
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_DOCTOR);
     [STORAGE_KEYS.ANAMNESIS, STORAGE_KEYS.PRESCRIPTIONS, STORAGE_KEYS.DAILY_NOTES]
       .forEach(k => localStorage.removeItem(k));
-    state.anamnesisMap = {}; state.prescriptionsMap = {}; state.dailyNotesMap = {};
+    state.anamnesisMap = {}; state.prescriptionsMap = {}; state.dailyNotesMap = {}; state.dispensings = {};
     state.authenticatedDoctor = null;
     state.activeDoctorId = '';
     showDoctorAuthModal();

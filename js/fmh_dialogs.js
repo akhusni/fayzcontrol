@@ -288,6 +288,7 @@
     { group: 'statsionar', key: '/building_management.html', label: 'Statsionar',     icon: 'fa-bed',            pill: 'pill-building',   title: 'Karavotlar xaritasi' },
     { group: 'statsionar', key: '/duty_schedule.html',       label: 'Navbatchilik',   icon: 'fa-calendar-check', pill: 'pill-hr',         title: 'Navbatchilik jadvali' },
     { group: 'moliya',     key: '/accounting.html',          label: 'Buxgalteriya',   icon: 'fa-coins',          pill: 'pill-accounting', title: 'Kassa, hisoblar, ombor' },
+    { group: 'moliya',     key: '/warehouse.html',           label: 'Ombor',          icon: 'fa-boxes-stacked',  pill: 'pill-accounting', title: 'Dori va materiallar ombori' },
     { group: 'moliya',     key: '/owner.html',               label: 'Pul oqimi',      icon: 'fa-chart-line',     pill: 'pill-accounting', title: 'Rahbar uchun pul oqimi' },
     { group: 'kadrlar',    key: '/hr.html',                  label: 'HR & Kadrlar',   icon: 'fa-users-cog',      pill: 'pill-hr',         title: 'Xodimlar, davomat, oylik' },
     { group: 'boshqaruv',  key: '/superpage.html',           label: 'Super-Portal',   icon: 'fa-crown',          pill: 'pill-super',      title: 'Boshqaruv markazi' },

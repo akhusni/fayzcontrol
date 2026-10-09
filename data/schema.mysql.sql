@@ -491,10 +491,12 @@ CREATE TABLE IF NOT EXISTS medication_purchases (
     accounting_transaction_id VARCHAR(128),
     recorded_by_staff_id VARCHAR(64),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    receipt_id VARCHAR(64) NULL,
     FOREIGN KEY (medication_id) REFERENCES medications_catalog(id) ON UPDATE CASCADE ON DELETE SET NULL,
     FOREIGN KEY (accounting_transaction_id) REFERENCES accounting_transactions(id) ON UPDATE CASCADE ON DELETE SET NULL,
     FOREIGN KEY (recorded_by_staff_id) REFERENCES staff(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    INDEX idx_med_purchase_date (purchase_date)
+    INDEX idx_med_purchase_date (purchase_date),
+    INDEX idx_med_purchase_receipt (receipt_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
@@ -775,6 +777,13 @@ CREATE TABLE IF NOT EXISTS medication_administrations (
     notes TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    -- Warehouse link (nursery.py adds these at startup on older databases):
+    -- the stock item, units taken, unit cost and the inventory_dispensings row
+    -- a given dose created. Undoing the dose reverses exactly that row.
+    stock_medication_id VARCHAR(64) NULL,
+    stock_units INT NOT NULL DEFAULT 0,
+    stock_unit_cost DECIMAL(14,2) NULL,
+    stock_dispensing_id VARCHAR(64) NULL,
     -- One record per prescription per slot per day: recording the same dose
     -- twice is a data-entry slip, not a second dose.
     UNIQUE KEY uq_dose (prescription_id, scheduled_date, slot_index),

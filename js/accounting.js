@@ -120,6 +120,22 @@
     return new Intl.NumberFormat('uz-UZ').format(Math.round(amount)) + " so'm";
   }
 
+  // Stock quantities can be fractions (ml, half tablets): 12 -> "12", 2.5 -> "2.5",
+  // and a float tail such as 0.30000000000000004 never reaches the screen.
+  function fmtQty(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return String(Math.round(n * 1000) / 1000);
+  }
+
+  // What a bill line can really take off the shelf: the server's usable
+  // (non-expired) quantity when it sent one, else the cached on-hand figure.
+  function billableQty(m) {
+    const a = (m.available_quantity === null || m.available_quantity === undefined) ? Number(m.stock) : Number(m.available_quantity);
+    return isFinite(a) ? a : 0;
+  }
+
   function formatShortUZS(amount) {
     if (isNaN(amount) || amount === null) amount = 0;
     if (amount >= 1000000) {
@@ -304,8 +320,15 @@
             form: m.form || m.unit || 'dona',
             unit_price: Number(m.unit_price) || 0,
             standard_dosage: m.standard_dosage || '',
-            min_stock_level: Number(m.min_stock_level) || 10,
-            status: (m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0)) <= (Number(m.min_stock_level) || 15) ? 'low' : 'adequate'
+            // 0 is a real threshold ("no minimum"), so it must not turn into 10.
+            min_stock_level: (m.min_stock_level === null || m.min_stock_level === undefined || m.min_stock_level === '' || !isFinite(Number(m.min_stock_level))) ? 10 : Number(m.min_stock_level),
+            available_quantity: m.available_quantity,
+            stock_status: m.stock_status,
+            // Low = strictly below the threshold or nothing usable; the server
+            // decides (it knows expired lots), the comparison is only a fallback.
+            status: m.stock_status
+              ? ((m.stock_status === 'low' || m.stock_status === 'out') ? 'low' : 'adequate')
+              : ((m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0)) < (isFinite(Number(m.min_stock_level)) && m.min_stock_level !== null && m.min_stock_level !== '' ? Number(m.min_stock_level) : 15) ? 'low' : 'adequate')
           }));
         }
       }
@@ -1025,15 +1048,15 @@
     }
 
     tbody.innerHTML = usage.linked.length ? usage.linked.map(r => {
-      const low = r.stock_quantity <= r.min_stock_level;
-      const shortfall = r.doses - r.units_taken;
+      const low = (r.low !== undefined) ? !!r.low : r.stock_quantity < r.min_stock_level;
+      const shortfall = Math.round((Number(r.doses) - Number(r.units_taken)) * 1000) / 1000;
       return `
         <tr>
           <td><strong>${esc(r.name)}</strong><br><small style="color: var(--text-muted);">${esc(r.form)}</small></td>
           <td>${r.doses}</td>
-          <td>${r.units_taken}${shortfall > 0 ? ` <small style="color: var(--warning);">(${shortfall} tasi uchun omborda qoldiq yo'q edi)</small>` : ''}</td>
+          <td>${fmtQty(r.units_taken)}${shortfall > 0 ? ` <small style="color: var(--warning);">(${fmtQty(shortfall)} tasi uchun omborda qoldiq yo'q edi)</small>` : ''}</td>
           <td>${formatUZS(r.cost)}</td>
-          <td style="color: ${low ? 'var(--warning)' : 'inherit'}; font-weight: 700;">${r.stock_quantity}</td>
+          <td style="color: ${low ? 'var(--warning)' : 'inherit'}; font-weight: 700;">${fmtQty(r.stock_quantity)}</td>
         </tr>`;
     }).join('') : `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Bu davrda ombordagi dorilardan berilmagan</td></tr>`;
 
@@ -1253,8 +1276,13 @@
       const stock = item.stock !== undefined ? Number(item.stock) : Number(item.stock_quantity || 0);
       const unitPrice = Number(item.unit_price) || 0;
       const totalVal = stock * unitPrice;
-      const minStock = Number(item.min_stock_level) || 15;
-      const isLow = stock <= minStock;
+      const minStock = Number(item.min_stock_level);
+      // The server's verdict wins (strictly below the threshold, expired lots
+      // not counted); the comparison is only a fallback and is strict too.
+      const isLow = item.stock_status ? (item.stock_status === 'low' || item.stock_status === 'out') : stock < minStock;
+      const availNum = (item.available_quantity === null || item.available_quantity === undefined) ? null : Number(item.available_quantity);
+      const usableNote = (availNum !== null && isFinite(availNum) && availNum < stock)
+        ? `<br><small style="color: var(--text-muted); font-weight: 400;">yaroqli: ${fmtQty(availNum)}</small>` : '';
       const badge = isLow
         ? `<span class="badge-status badge-unpaid"><i class="fas fa-exclamation-triangle"></i> Kam qolgan</span>`
         : `<span class="badge-status badge-paid"><i class="fas fa-check-circle"></i> Yetarli</span>`;
@@ -1269,7 +1297,7 @@
             ${item.standard_dosage ? `<br><small style="color: var(--text-muted);">${esc(item.standard_dosage)}</small>` : ''}
           </td>
           <td>${esc(groupName)}</td>
-          <td class="mono-val" style="font-weight: 700; color: ${isLow ? 'var(--rose)' : 'var(--primary)'};">${stock} ${esc(unitName)}</td>
+          <td class="mono-val" style="font-weight: 700; color: ${isLow ? 'var(--rose)' : 'var(--primary)'};">${fmtQty(stock)} ${esc(unitName)}${usableNote}</td>
           <td class="mono-val">${formatUZS(unitPrice)}</td>
           <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">${formatUZS(totalVal)}</td>
           <td>${badge}</td>
@@ -1798,8 +1826,8 @@
       const parts = [];
       parts.push('<optgroup label="Dorixona Ombordagi Dorilar (Ombordan hisobdan chiqariladi)">' +
         (meds.length ? meds.map(m =>
-          `<option value="MED:${esc(m.id)}" data-price="${Number(m.unit_price) || 0}" data-type="pharmacy"${m.stock > 0 ? '' : ' disabled'}>` +
-          `💊 ${esc(m.name)}${m.form ? ' (' + esc(m.form) + ')' : ''} — ${formatUZS(Number(m.unit_price) || 0)} · qoldiq ${Number(m.stock) || 0}</option>`
+          `<option value="MED:${esc(m.id)}" data-price="${Number(m.unit_price) || 0}" data-type="pharmacy"${billableQty(m) > 0 ? '' : ' disabled'}>` +
+          `💊 ${esc(m.name)}${m.form ? ' (' + esc(m.form) + ')' : ''} — ${formatUZS(Number(m.unit_price) || 0)} · qoldiq ${fmtQty(billableQty(m))}</option>`
         ).join('') : '<option value="" disabled>Ombor ma\'lumoti yuklanmagan</option>') +
         '</optgroup>');
       if (svcs) {
@@ -2355,6 +2383,14 @@
   // ==========================================================================
 
   let medPurchaseRowCount = 0;
+  let medPurRequestId = '';
+
+  function newRequestId() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    } catch (e) { /* fall through */ }
+    return 'medpur-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
 
   function openMedPurchaseModal(prefillMedId = null) {
     const modal = document.getElementById('medication-purchase-modal');
@@ -2374,6 +2410,9 @@
     const tbody = document.getElementById('medpur-items-tbody');
     if (tbody) tbody.innerHTML = '';
     medPurchaseRowCount = 0;
+    // One id per open form: a double click or a retry after a lost answer
+    // returns the first purchase instead of booking a second expense.
+    medPurRequestId = newRequestId();
 
     let prefill = null;
     if (prefillMedId && accountingData && Array.isArray(accountingData.pharmacy_stock)) {
@@ -2404,7 +2443,16 @@
         <datalist id="${datalistId}">
           ${catalog.map(m => `<option value="${esc(m.name)}" data-id="${m.id}" data-category="${esc(m.group || m.category || '')}" data-form="${esc(m.unit || m.form || '')}" data-price="${m.unit_price || 0}"></option>`).join('')}
         </datalist>
-        <input type="hidden" class="medpur-item-id" value="${initialData ? initialData.id : ''}">
+        <input type="hidden" class="medpur-item-id" value="${initialData ? esc(initialData.id) : ''}">
+        <details class="medpur-extra" style="margin-top: 6px;">
+          <summary style="cursor: pointer; font-size: 0.74rem; color: var(--text-muted);">Qadoq / partiya / muddat (ixtiyoriy)</summary>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+            <input type="number" class="form-input medpur-item-upp" min="0" step="any" placeholder="Qadoqda necha birlik" title="Bir qadoqda nechta birlik (dona, ml...). Bo'sh qoldirilsa 1." style="flex: 1 1 110px; font-size: 0.8rem;">
+            <input type="text" class="form-input medpur-item-batch" maxlength="64" placeholder="Partiya №" style="flex: 1 1 90px; font-size: 0.8rem;">
+            <input type="date" class="form-input medpur-item-expiry" title="Yaroqlilik muddati" style="flex: 1 1 130px; font-size: 0.8rem;">
+          </div>
+          <div class="medpur-item-note" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;"></div>
+        </details>
       </td>
       <td style="padding: 6px 8px;">
         <input type="text" class="form-input medpur-item-cat" placeholder="Guruhi" style="font-size: 0.82rem;" value="${initialData ? esc(initialData.group || initialData.category || '') : ''}">
@@ -2413,7 +2461,7 @@
         <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="Narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="${initialData ? (initialData.unit_price || 0) : ''}">
+        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="Narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="">
       </td>
       <td style="padding: 6px 8px;" class="mono-val medpur-item-total" style="font-weight: 700; color: var(--rose);">
         0 so'm
@@ -2440,13 +2488,15 @@
       if (match) {
         idInput.value = match.id;
         if (!catInput.value) catInput.value = match.group || match.category || '';
-        if (!priceInput.value || Number(priceInput.value) === 0) priceInput.value = match.unit_price || '';
+        // The price field is what the clinic PAID. The catalogue's unit_price is
+        // what the patient is billed, so it is never offered here as a cost.
       }
       updateMedPurchaseTotals();
     });
 
     qtyInput.addEventListener('input', updateMedPurchaseTotals);
     priceInput.addEventListener('input', updateMedPurchaseTotals);
+    tr.querySelector('.medpur-item-upp').addEventListener('input', updateMedPurchaseTotals);
 
     removeBtn.addEventListener('click', () => {
       if (tbody.querySelectorAll('tr').length > 1) {
@@ -2470,6 +2520,14 @@
       grandTotal += total;
       const totalCell = tr.querySelector('.medpur-item-total');
       if (totalCell) totalCell.textContent = formatUZS(total);
+      // With a package size, quantity counts packages and the price is per package.
+      const upp = parseFloat(tr.querySelector('.medpur-item-upp')?.value) || 0;
+      const note = tr.querySelector('.medpur-item-note');
+      if (note) {
+        note.textContent = (upp > 0 && upp !== 1)
+          ? `Miqdor = qadoq soni, narx = bir qadoq narxi. Omborga: ${fmtQty(qty)} × ${fmtQty(upp)} = ${fmtQty(qty * upp)} birlik (1 birlik ≈ ${formatUZS(price / upp)}).`
+          : '';
+      }
     });
 
     const grandDisp = document.getElementById('medpur-grand-total-disp');
@@ -2487,6 +2545,7 @@
 
     const rows = document.querySelectorAll('#medpur-items-tbody tr');
     const items = [];
+    let rowError = null;
 
     rows.forEach(tr => {
       const name = tr.querySelector('.medpur-item-name')?.value.trim();
@@ -2496,16 +2555,37 @@
       const price = parseFloat(tr.querySelector('.medpur-item-price')?.value) || 0;
 
       if (name && qty > 0 && price >= 0) {
-        items.push({
+        const item = {
           medication_id: medId,
           medication_name: name,
           category: cat,
           form: 'dona',
           quantity: qty,
           unit_price: price
-        });
+        };
+        // Optional receipt details, sent only when typed (the server keeps
+        // them on the lot; nothing is guessed when they are empty).
+        const uppRaw = (tr.querySelector('.medpur-item-upp')?.value || '').trim();
+        if (uppRaw !== '') {
+          const upp = Number(uppRaw);
+          if (!isFinite(upp) || upp <= 0) {
+            rowError = `"${name}": qadoqdagi birlik soni 0 dan katta bo'lishi kerak.`;
+          } else {
+            item.units_per_package = upp;
+          }
+        }
+        const batchNo = (tr.querySelector('.medpur-item-batch')?.value || '').trim();
+        if (batchNo) item.batch_no = batchNo;
+        const expiry = (tr.querySelector('.medpur-item-expiry')?.value || '').trim();
+        if (expiry) item.expiry_date = expiry;
+        items.push(item);
       }
     });
+
+    if (rowError) {
+      showToast(rowError, 'warning');
+      return;
+    }
 
     if (items.length === 0) {
       showToast("Iltimos, kamida bitta dori vositasi va uning narxini kiriting!", 'warning');
@@ -2518,7 +2598,8 @@
       supplier_name: supplier,
       invoice_number: invoice,
       notes: notes,
-      items: items
+      items: items,
+      client_request_id: medPurRequestId || undefined
     };
 
     try {
@@ -2736,10 +2817,10 @@
       "№": index + 1,
       "Dori Nomi": item.name,
       "Farmakologik Guruhi": item.group,
-      "Ombordagi Qoldiq": `${item.stock} ${item.unit}`,
-      "Birligi Narxi (so'm)": item.unit_price,
-      "Jami Qiymati (so'm)": item.stock * item.unit_price,
-      "Holat": item.stock <= 15 ? "Kam qolgan" : "Yetarli"
+      "Ombordagi Qoldiq": `${fmtQty(item.stock)} ${item.unit}`,
+      "Bemorga Narxi (so'm)": item.unit_price,
+      "Jami (bemor narxida, so'm)": item.stock * item.unit_price,
+      "Holat": item.status === 'low' ? "Kam qolgan" : "Yetarli"
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -2812,7 +2893,7 @@
       "№": index + 1,
       "Dori Nomi": p.name,
       "Guruh": p.group,
-      "Qoldiq": `${p.stock} ${p.unit}`,
+      "Qoldiq": `${fmtQty(p.stock)} ${p.unit}`,
       "Narx": p.unit_price,
       "Jami Qiymat": p.stock * p.unit_price
     }));

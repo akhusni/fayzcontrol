@@ -1729,7 +1729,11 @@ def dispense(conn, data, actor=None, source='manual'):
             raise InventoryError("Retsept topilmadi.", 'prescription_id')
         if rx['patient_id'] != pid:
             raise InventoryError("Retsept boshqa bemorga tegishli.", 'prescription_id')
-        if rx['status'] != 'active':
+        # A dose the nurse records as given is a fact, not a request: refusing
+        # it because the order was since held or completed would only let the
+        # shelf drift from reality. Only a hand-over at the counter ('manual')
+        # and a bill line insist on an active order.
+        if rx['status'] != 'active' and source != 'nurse_round':
             raise InventoryError(_rx_state_error(rx['status']), 'prescription_id')
         rx_item = _resolve_item_for_rx(cur, rx)
         if not rx_item:
@@ -1772,7 +1776,10 @@ def dispense(conn, data, actor=None, source='manual'):
                              'prescription_id')
     qty = _quantity_for_item(data.get('quantity'), item)
 
-    if rx is not None and rx.get('quantity_prescribed') is not None:
+    # The prescribed-quantity cap guards the pharmacy counter. A nurse's dose
+    # was already given to the patient: capping it would leave the dose
+    # recorded but the stock untouched.
+    if rx is not None and rx.get('quantity_prescribed') is not None and source != 'nurse_round':
         remaining = _dec(rx['quantity_prescribed']) - _dispensed_so_far(cur, rx_id)
         if qty > remaining:
             raise InventoryError(f"Retseptda qolgan miqdor: {max(remaining, ZERO)} {item['base_unit']}. "
@@ -1847,6 +1854,22 @@ def _attach_dispensing_batches(cur, rows):
     for r in rows:
         r['batches'] = by.get(r['id'], [])
     return rows
+
+
+def unique_client_id(conn, base):
+    """
+    `base` if no dispensing uses it yet, else `base-r1`, `base-r2`, ...
+
+    A dose that is undone and given again must create a NEW dispensing (the old
+    one stays in the history as reversed), but a plain retry of the same save
+    must stay idempotent. Callers that keep a link to their own dispensing use
+    this for the first case only.
+    """
+    cur = _cursor(conn)
+    cur.execute("SELECT COUNT(*) AS n FROM inventory_dispensings WHERE client_request_id = ? "
+                "OR client_request_id LIKE ?", (base, base.replace('_', '\\_') + '-r%'))
+    n = int(cur.fetchone()['n'])
+    return base if n == 0 else f"{base}-r{n}"
 
 
 def find_dispensing_by_client_id(conn, client_request_id):
@@ -1941,6 +1964,144 @@ def reverse_dispensing(conn, dispensing_id, reason, actor=None):
     out = get_dispensing(conn, dispensing_id, can_cost=True)
     out['duplicate'] = False
     return out
+
+
+def format_qty(value):
+    """12.000 -> '12', 2.500 -> '2.5': a quantity as a person would write it."""
+    text = format(_q(value), 'f')
+    return text.rstrip('0').rstrip('.') if '.' in text else text
+
+
+# What a clinical screen may show about a dispensing: no unit_cost / total_cost.
+_HISTORY_FIELDS = ('id', 'item_id', 'item_name', 'quantity', 'base_unit', 'dosage', 'route', 'frequency',
+                   'instructions', 'prescription_id', 'consultation_id', 'admission_id', 'rx_doctor_id',
+                   'source', 'status', 'notes', 'reversed_at', 'reversed_by', 'reverse_reason')
+
+
+def patient_dispensings(conn, patient_id, limit=200):
+    """
+    What was actually handed to one patient, newest first, for the doctor page
+    and the patient card. Cost fields are never included (clinical readers).
+
+    Rows are the append-only dispensing history, so they survive the deletion
+    of a prescription and carry their own snapshot of what was ordered.
+    """
+    ensure_ready(conn)
+    cur = _cursor(conn)
+    cur.execute("""SELECT d.*, st.full_name AS dispenser_name
+                   FROM inventory_dispensings d
+                   LEFT JOIN staff st ON st.id = d.dispensed_by_staff_id
+                   WHERE d.patient_id = ?
+                   ORDER BY d.created_at DESC, d.id DESC LIMIT ?""",
+                (patient_id, max(1, min(int(limit), 500))))
+    rows = cur.fetchall()
+    if not rows:
+        return []
+    _attach_dispensing_batches(cur, rows)
+    ids = [r['id'] for r in rows]
+    marks = ','.join(['?'] * len(ids))
+    cur.execute(f"""SELECT dispensing_id, id FROM inventory_transactions
+                    WHERE txn_type = 'reversal' AND dispensing_id IN ({marks}) ORDER BY id""", ids)
+    reversals = {}
+    for t in cur.fetchall():
+        reversals.setdefault(t['dispensing_id'], []).append(t['id'])
+    out = []
+    for r in rows:
+        row = {k: r.get(k) for k in _HISTORY_FIELDS}
+        row['unit'] = r['base_unit']
+        row['prescribed_by'] = r['rx_doctor_name']
+        row['dispensed_by'] = r['dispenser_name'] or r['dispensed_by']
+        row['dispensed_at'] = r['created_at']
+        row['batch_numbers'] = [b['batch_no'] for b in r['batches']]
+        row['reversal_transaction_ids'] = reversals.get(r['id'], [])
+        out.append(row)
+    return out
+
+
+def available_map(conn, item_ids):
+    """{item_id: usable (non-expired) quantity} straight from the lots, for readers that only need it."""
+    ids = sorted({i for i in item_ids if i})
+    if not ids:
+        return {}
+    cur = _cursor(conn)
+    marks = ','.join(['?'] * len(ids))
+    cur.execute(f"""SELECT item_id, SUM(remaining_qty) AS q FROM inventory_batches
+                    WHERE remaining_qty > 0 AND (expiry_date IS NULL OR expiry_date >= ?)
+                      AND item_id IN ({marks}) GROUP BY item_id""", [_today()] + ids)
+    got = {r['item_id']: _dec(r['q']) for r in cur.fetchall()}
+    return {i: got.get(i, ZERO) for i in ids}
+
+
+def _item_lookup(cur):
+    """Maps used to find the warehouse item behind a prescribed name (same order as the nurse round)."""
+    import nursery
+    cur.execute("SELECT id, name FROM medications_catalog")
+    by_name = {}
+    for r in cur.fetchall():
+        by_name.setdefault(nursery.alias_key(r['name']), r['id'])
+    cur.execute("SELECT alias_key, medication_id FROM medication_aliases")
+    by_alias = {r['alias_key']: r['medication_id'] for r in cur.fetchall()}
+    return nursery.alias_key, by_name, by_alias
+
+
+def stock_warning(conn, medication_id, medication_name, prescribed):
+    """
+    A warning dict when the usable stock of a prescribed drug is below the
+    prescribed quantity, else None. It is advice for the doctor only: it never
+    blocks the prescription and nothing here writes to stock.
+    """
+    ensure_ready(conn)
+    if prescribed is None:
+        return None
+    import nursery
+    cur = _cursor(conn)
+    row = nursery.resolve_stock_item(cur, medication_id, medication_name)
+    if not row:
+        return None
+    item = _get_item_row(cur, row['id'])
+    available, wanted = _dec(item['available_quantity']), _dec(prescribed)
+    if available >= wanted:
+        return None
+    unit = item['base_unit']
+    return {'item_id': item['id'], 'item_name': item['name'],
+            'available_quantity': available, 'prescribed_quantity': _q(wanted), 'unit': unit,
+            'message': (f"Omborda {item['name']} yetarli emas: mavjud {format_qty(available)} {unit}, "
+                        f"buyurilgan {format_qty(wanted)} {unit}.")}
+
+
+def enrich_prescriptions(conn, rows):
+    """
+    Add the warehouse view to prescription rows (dicts, changed in place):
+    quantity_dispensed (completed, non-reversed), remaining_quantity, the item
+    it draws from and how much of it can be given now. Rows whose drug maps to
+    no warehouse item get nulls, never a guess.
+    """
+    ensure_ready(conn)
+    if not rows:
+        return rows
+    cur = _cursor(conn)
+    ids = [r['id'] for r in rows]
+    marks = ','.join(['?'] * len(ids))
+    cur.execute(f"""SELECT prescription_id, SUM(quantity) AS q FROM inventory_dispensings
+                    WHERE status = 'completed' AND prescription_id IN ({marks})
+                    GROUP BY prescription_id""", ids)
+    given = {r['prescription_id']: _dec(r['q']) for r in cur.fetchall()}
+    alias_key, by_name, by_alias = _item_lookup(cur)
+    items = {i['id']: i for i in _fetch_items(cur, '', (), _today())}
+    for rx in rows:
+        iid = rx.get('medication_id') if rx.get('medication_id') in items else None
+        if not iid:
+            key = alias_key(rx.get('medication_name'))
+            iid = by_name.get(key) or by_alias.get(key)
+        prescribed = rx.get('quantity_prescribed')
+        done = given.get(rx['id'], ZERO)
+        rx['quantity_dispensed'] = _q(done)
+        rx['remaining_quantity'] = None if prescribed is None else _q(max(_dec(prescribed) - done, ZERO))
+        it = items.get(iid)
+        rx['warehouse_item_id'] = it['id'] if it else None
+        rx['available_quantity'] = it['available_quantity'] if it else None
+        rx['available_unit'] = it['base_unit'] if it else None
+    return rows
 
 
 def pending_prescriptions(conn, patient_id=None, limit=200):

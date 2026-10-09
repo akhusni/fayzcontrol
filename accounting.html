@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <!-- Stylesheets -->
   <link rel="stylesheet" href="css/accounting.css?v=3.0">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.1">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
@@ -410,6 +410,10 @@
           <i class="fas fa-pills" style="color: var(--primary);"></i> Farmakologiya, Dori-Darmon Xarajatlari & Omborxona
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <!-- The full warehouse (lots, expiry, ledger, receipts, dispensing) lives on its own page. -->
+          <a class="btn-portal btn-primary-portal" href="/warehouse.html" style="background: linear-gradient(135deg, #059669, #047857); text-decoration: none; display: inline-flex; align-items: center; gap: 6px;" title="Partiyalar, yaroqlilik muddati, kirim va chiqim jurnali">
+            <i class="fas fa-warehouse"></i> Ombor sahifasi
+          </a>
           <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1);">
             <i class="fas fa-plus-circle"></i> Yangi Dori Xaridini Kiritish (Chiqim)
           </button>
@@ -431,7 +435,7 @@
         <div class="kpi-card kpi-profit">
           <div class="kpi-header"><span class="kpi-label">Omborxona Umumiy Qiymati</span><div class="kpi-icon"><i class="fas fa-boxes"></i></div></div>
           <div class="kpi-value" id="pharm-total-valuation">—</div>
-          <div class="kpi-sub">Barcha dorilar qoldiq tannarxi</div>
+          <div class="kpi-sub">Qoldiq &times; bemor narxi (haqiqiy tannarx &mdash; Ombor sahifasida)</div>
         </div>
         <div class="kpi-card kpi-expense">
           <div class="kpi-header"><span class="kpi-label">Dori Xarajatlari (Chiqim)</span><div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div></div>
@@ -515,8 +519,8 @@
                 <th>Dori Nomi & Dozasi</th>
                 <th>Farmakologik Guruhi</th>
                 <th>Ombordagi Qoldiq</th>
-                <th>Birligi Narxi</th>
-                <th>Jami Qiymati</th>
+                <th>Bemorga Narxi (birlik)</th>
+                <th>Jami (bemor narxida)</th>
                 <th>Holat</th>
                 <th>Amal</th>
               </tr>
@@ -1062,6 +1066,11 @@
             </span>
           </div>
 
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            <i class="fas fa-info-circle"></i> Har bir dorida &laquo;Qadoq / partiya / muddat&raquo; qatorini ochib, qadoqdagi dona sonini, partiya raqamini va yaroqlilik muddatini kiritish mumkin.
+            Ko'p partiyali yoki kasr miqdorli kirim &mdash; <a href="/warehouse.html" style="color: var(--primary);">Ombor sahifasida</a>.
+          </div>
+
           <div>
             <label class="form-label" for="medpur-notes-input">Qo'shimcha Izoh</label>
             <input type="text" id="medpur-notes-input" class="form-input" placeholder="Partiya muddati, saqlash sharoiti yoki boshqa izoh...">
@@ -1080,7 +1089,7 @@
 
   <script src="js/xlsx.full.min.js"></script>
   <script src="js/unified_print_engine.js?v=5.4"></script>
-  <script src="js/accounting.js?v=10.4"></script>
+  <script src="js/accounting.js?v=10.6"></script>
   <div id="print-area"></div>
 </body>
 </html>

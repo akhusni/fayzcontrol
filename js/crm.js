@@ -450,6 +450,69 @@
     `;
   }
 
+  // "Berilgan dori va materiallar": what the warehouse actually handed to this
+  // patient, rendered only from the server's `dispensings` list. The key is
+  // absent for logins that may not see medication detail (front desk, cash
+  // desk) and when the card could not be loaded, and then nothing is shown --
+  // an absent list is never presented as "nothing was given".
+  function dispensingsHtml(p) {
+    if (!Array.isArray(p.dispensings)) return '';
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    // 12 -> "12", 2.5 -> "2.5" (quantities can be fractions).
+    const qty = (v) => {
+      const n = Number(v);
+      return (v === null || v === undefined || v === '' || !isFinite(n)) ? '—' : String(Math.round(n * 1000) / 1000);
+    };
+    const when = (v) => {
+      const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+      return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : esc(v || '—');
+    };
+    const rows = p.dispensings.length ? p.dispensings.map(d => {
+      const reversed = d.status === 'reversed';
+      const cut = reversed ? ' style="text-decoration: line-through; color: var(--text-muted);"' : '';
+      const dose = [d.dosage, d.route, d.frequency, d.instructions].filter(Boolean).map(esc).join(' • ');
+      const lots = Array.isArray(d.batch_numbers) && d.batch_numbers.length ? d.batch_numbers.map(esc).join(', ') : '—';
+      const status = reversed
+        ? `<span class="badge-status status-discharged">Qaytarilgan</span>
+           <div style="font-size: 0.72rem; color: var(--rose); margin-top: 2px;">${when(d.reversed_at)}${d.reversed_by ? ' · ' + esc(d.reversed_by) : ''}${d.reverse_reason ? '<br>Sabab: ' + esc(d.reverse_reason) : ''}</div>`
+        : `<span class="badge-status status-active">Berilgan</span>`;
+      return `
+        <tr>
+          <td style="white-space: nowrap;"><span${cut}>${when(d.dispensed_at)}</span></td>
+          <td><strong${cut}>${esc(d.item_name || '—')}</strong></td>
+          <td><strong${cut}>${qty(d.quantity)}${d.unit ? ' ' + esc(d.unit) : ''}</strong></td>
+          <td><span${cut}>${dose || '—'}</span></td>
+          <td>${esc(d.prescribed_by || '—')}</td>
+          <td>${esc(d.dispensed_by || '—')}</td>
+          <td>${lots}</td>
+          <td>${status}</td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Hali dori berilmagan.</td></tr>`;
+
+    return `
+      <h4 style="font-family: var(--font-heading); font-size: 1.05rem; margin: 1.5rem 0 0.75rem;">
+        <i class="fas fa-box-open"></i> Berilgan dori va materiallar
+      </h4>
+      <div class="crm-table-wrapper">
+        <table class="crm-table">
+          <thead>
+            <tr>
+              <th>Sana va vaqt</th>
+              <th>Dori / material</th>
+              <th>Berilgan miqdor</th>
+              <th>Doza / ko'rsatma</th>
+              <th>Tayinlagan</th>
+              <th>Bergan</th>
+              <th>Partiya</th>
+              <th>Holati</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
   // Render Medical History Tab
   function renderDossierMedicalPane(p) {
     const pane = document.getElementById('pane-medical');
@@ -511,7 +574,7 @@
     }
     timelineHtml += `</div>`;
 
-    pane.innerHTML = vitalsHtml + timelineHtml;
+    pane.innerHTML = vitalsHtml + timelineHtml + dispensingsHtml(p);
   }
 
   // Render Financial Ledger Tab

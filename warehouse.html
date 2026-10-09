@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Tibbiy Ombor | Fayz Medical House</title>
+  <meta name="description" content="Dori va materiallar ombori: qoldiq, kirim, dori berish, harakatlar va hisobotlar.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/warehouse.css?v=1.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
+
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
+</head>
+<body class="warehouse-portal">
+
+  <!-- ===================================================================
+       UNIFIED PORTAL HEADER
+       The menu is rebuilt from the signed-in user's permissions by
+       fmh_dialogs.js; the pills below are only the fallback.
+       =================================================================== -->
+  <header class="portal-header">
+    <div class="portal-nav-wrapper">
+
+      <a href="superpage.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo">
+          <i class="fas fa-hospital-alt"></i>
+        </div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">HOSPITAL MANAGEMENT SUITE</div>
+        </div>
+      </a>
+
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="Yagona Boshqaruv Markazi">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Kassa, hisoblar">
+            <i class="fas fa-coins"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="warehouse.html" class="portal-nav-pill pill-accounting active" title="Dori va materiallar ombori">
+            <i class="fas fa-boxes-stacked"></i> <span>Ombor</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="portal-actions-cluster">
+        <button type="button" class="btn-unified-theme-toggle" title="Kunduzgi / tungi rejim" aria-label="Kunduzgi yoki tungi rejimni almashtirish">
+          <i class="fas fa-adjust"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="portal-container wh-main" id="wh-main">
+
+    <div class="wh-titlebar">
+      <div>
+        <h1 class="wh-title"><i class="fas fa-boxes-stacked" aria-hidden="true"></i> Tibbiy ombor</h1>
+        <p class="wh-subtitle" id="wh-subtitle">Dori va materiallar zaxirasi, kirim va berish hisobi</p>
+      </div>
+      <div class="wh-title-actions">
+        <button type="button" class="wh-btn" id="wh-refresh" title="Ma'lumotlarni qayta yuklash">
+          <i class="fas fa-rotate" aria-hidden="true"></i> <span>Yangilash</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Global message: the page could not start (session, settings, permission). -->
+    <div id="wh-fatal" class="wh-state wh-state-error" role="alert" hidden></div>
+
+    <nav class="wh-tabs" id="wh-tabs" role="tablist" aria-label="Ombor bo'limlari">
+      <button type="button" class="wh-tab" role="tab" id="tab-dashboard"  data-tab="dashboard"  aria-controls="panel-dashboard"  aria-selected="true"><i class="fas fa-gauge-high" aria-hidden="true"></i> <span>Umumiy</span></button>
+      <button type="button" class="wh-tab" role="tab" id="tab-inventory"  data-tab="inventory"  aria-controls="panel-inventory"  aria-selected="false" tabindex="-1"><i class="fas fa-pills" aria-hidden="true"></i> <span>Mahsulotlar</span></button>
+      <button type="button" class="wh-tab" role="tab" id="tab-receipts"   data-tab="receipts"   aria-controls="panel-receipts"   aria-selected="false" tabindex="-1"><i class="fas fa-truck-ramp-box" aria-hidden="true"></i> <span>Kirim</span></button>
+      <button type="button" class="wh-tab" role="tab" id="tab-dispensing" data-tab="dispensing" aria-controls="panel-dispensing" aria-selected="false" tabindex="-1"><i class="fas fa-hand-holding-medical" aria-hidden="true"></i> <span>Berish</span></button>
+      <button type="button" class="wh-tab" role="tab" id="tab-ledger"     data-tab="ledger"     aria-controls="panel-ledger"     aria-selected="false" tabindex="-1"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> <span>Harakatlar</span></button>
+      <button type="button" class="wh-tab" role="tab" id="tab-reports"    data-tab="reports"    aria-controls="panel-reports"    aria-selected="false" tabindex="-1"><i class="fas fa-file-lines" aria-hidden="true"></i> <span>Hisobotlar</span></button>
+    </nav>
+
+    <section class="wh-panel" id="panel-dashboard"  role="tabpanel" aria-labelledby="tab-dashboard"></section>
+    <section class="wh-panel" id="panel-inventory"  role="tabpanel" aria-labelledby="tab-inventory"  hidden></section>
+    <section class="wh-panel" id="panel-receipts"   role="tabpanel" aria-labelledby="tab-receipts"   hidden></section>
+    <section class="wh-panel" id="panel-dispensing" role="tabpanel" aria-labelledby="tab-dispensing" hidden></section>
+    <section class="wh-panel" id="panel-ledger"     role="tabpanel" aria-labelledby="tab-ledger"     hidden></section>
+    <section class="wh-panel" id="panel-reports"    role="tabpanel" aria-labelledby="tab-reports"    hidden></section>
+
+  </main>
+
+  <script src="js/warehouse.js?v=1.0"></script>
+</body>
+</html>
