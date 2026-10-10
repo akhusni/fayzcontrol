@@ -4640,6 +4640,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                                 + " WHERE id = ?", list(rx_extra.values()) + [rx_id])
                 conn.commit()
                 reply = {'message': 'Prescription created', 'id': rx_id}
+                # Echo what was stored (the unit is forced to the item's base unit).
+                for _k in ('medication_id', 'quantity_prescribed', 'quantity_unit'):
+                    if rx_extra.get(_k) is not None:
+                        reply[_k] = rx_extra[_k]
                 warning = self._rx_stock_warning(conn, med, rx_extra)
                 if warning:
                     reply['stock_warning'] = warning

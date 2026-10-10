@@ -269,14 +269,13 @@ def _strip_item(item, can_cost):
 
 
 def _bool_field(body, key):
-    """A real boolean: true/false or the strings "true"/"false". Absent is False."""
+    """A real JSON boolean. Absent is False. A string such as "false" is refused
+    (a client that sends it by mistake would otherwise post a draft receipt)."""
     v = body.get(key)
     if v is None:
         return False
     if isinstance(v, bool):
         return v
-    if isinstance(v, str) and v in ('true', 'false'):
-        return v == 'true'
     raise InventoryError(f"{key} true yoki false bo'lishi kerak.", key)
 
 

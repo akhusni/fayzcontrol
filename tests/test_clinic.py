@@ -7546,14 +7546,16 @@ class WarehouseReviewFixes(_WarehouseHelpers, ApiTest):
 
     def test_l1_post_must_be_a_real_boolean(self):
         it = self.item()
-        for bad in ('yes', 1, 0, 'TRUE', [], {}):
+        # A string like "false" must not be read as an instruction: a client
+        # that sends it by mistake would otherwise post a draft receipt.
+        for bad in ('yes', 'true', 'false', 1, 0, 'TRUE', [], {}):
             st, body = self._post_receipt(it, post=bad)
             self.assertEqual((st, body.get('field')), (400, 'post'), bad)
         self.assertEqual(self.qty(it['id']), 0)
-        st, body = self._post_receipt(it, post='true')
+        st, body = self._post_receipt(it, post=True)
         self.assertEqual((st, body['status']), (201, 'posted'), body)
         self._wh_trx.append(body['accounting_transaction_id'])
-        st, body = self._post_receipt(it, post='false')
+        st, body = self._post_receipt(it, post=False)
         self.assertEqual((st, body['status']), (201, 'draft'))
 
     def test_l2_a_resent_request_with_post_posts_the_draft_once(self):
