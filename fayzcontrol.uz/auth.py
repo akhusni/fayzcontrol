@@ -34,14 +34,20 @@ USERS_PATH = os.path.join(BASE_DIR, 'data', 'users.json')
 _PBKDF2_ROUNDS = 240_000
 _HASH_PREFIX = 'pbkdf2_sha256'
 
-# Sessions live in memory: a clinic restart requires signing in again, which is
-# an acceptable trade for not having to add a session table or a dependency.
+# Sessions are recorded in MySQL (table user_sessions) so a restart or deploy
+# no longer signs every member of staff out mid-shift. This dict is only a
+# cache in front of that table, keyed by the SHA-256 hash of the token (the
+# raw token is never kept server-side, in memory or in the database). See the
+# Sessions section below.
 _SESSIONS = {}
 _SESSION_LOCK = threading.RLock()
 
 SESSION_COOKIE = 'fmh_session'
 # A shift plus a margin. Idle sessions past this are rejected and discarded.
 SESSION_IDLE_SECONDS = int(os.environ.get('FMH_SESSION_IDLE_SECONDS', 12 * 3600))
+# How often a session's last_seen is written to the database. Every page loads
+# several API calls; writing each one would turn every read into a write.
+SESSION_TOUCH_SECONDS = int(os.environ.get('FMH_SESSION_TOUCH_SECONDS', 60))
 
 # Endpoints reachable without a session. Everything else under /api/ requires one.
 PUBLIC_API_PATHS = {
@@ -252,42 +258,286 @@ def sanitize_user(user):
 # Sessions
 # ---------------------------------------------------------------------------
 
+#
+# The database is the source of truth; _SESSIONS caches what this process has
+# already seen. A lookup that misses the cache (the first request after a
+# restart) reads user_sessions, checks the idle timeout, and re-reads the
+# account from users.json, so a blocked or deleted account or a changed role
+# takes effect instead of being revived from a stale copy.
+#
+# The database can be down while the server is up. GET /api/auth/session must
+# still answer then (pages use it to decide whether to show the login
+# screen), so every database call here is best-effort: a failure is logged,
+# a cached session keeps working, and an uncached one is treated as signed
+# out. Nothing in this section raises.
+# ---------------------------------------------------------------------------
+
 def _now():
     return _dt.datetime.now(_dt.timezone.utc)
 
 
-def create_session(user):
-    token = secrets.token_urlsafe(32)
+def _db_time(moment):
+    """A UTC instant as the naive DATETIME MySQL stores."""
+    return moment.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+
+
+def _from_db_time(value):
+    # db.DictRow hands DATETIME columns back as 'YYYY-MM-DD HH:MM:SS' strings,
+    # not datetime objects; accept both, or every restore reads as expired.
+    if isinstance(value, str):
+        try:
+            value = _dt.datetime.strptime(value[:19].replace('T', ' '), '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return None
+    if isinstance(value, _dt.datetime):
+        return value.replace(tzinfo=_dt.timezone.utc)
+    return None
+
+
+def token_hash(token):
+    """What is stored for a token: a leaked table must not be a set of logins."""
+    return hashlib.sha256((token or '').encode('utf-8')).hexdigest()
+
+
+def _db_run(fn):
+    """
+    Run fn(cursor) on a short-lived autocommit connection of its own.
+
+    Separate from the request's connection on purpose: a session must be
+    recorded (or revoked) even when the request's own transaction is later
+    rolled back, and it must not wait for that transaction's locks.
+    Returns (ok, result).
+    """
+    conn = None
+    try:
+        import db  # imported late: auth is loaded before the DB layer
+        conn = db.get_db()
+        cur = conn.cursor()
+        result = fn(cur)
+        conn.commit()
+        return True, result
+    except Exception as e:
+        print(f"[auth] session store unavailable: {e}")
+        return False, None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+# Sessions revoked by this process, kept in memory as well as deleted from
+# user_sessions. If that DELETE failed (MySQL briefly away), the row stayed
+# and a later _restore -- or a _touch re-inserting a row it believed was
+# never written -- brought a signed-out session back. token hash -> when;
+# username -> "sessions created before this moment are revoked" (sign out
+# everywhere). Entries older than the idle limit are dropped: a session idle
+# that long is expired anyway.
+_REVOKED_TOKENS = {}
+_REVOKED_USERS = {}
+
+
+def _prune_revoked(now):
+    limit = _dt.timedelta(seconds=SESSION_IDLE_SECONDS)
+    for table in (_REVOKED_TOKENS, _REVOKED_USERS):
+        for k in [k for k, t in table.items() if now - t > limit]:
+            table.pop(k, None)
+
+
+def _is_revoked(key, username, created):
     with _SESSION_LOCK:
-        _SESSIONS[token] = {
-            'user': sanitize_user(user),
-            'created': _now(),
-            'last_seen': _now(),
-        }
+        if key in _REVOKED_TOKENS:
+            return True
+        after = _REVOKED_USERS.get((username or '').lower())
+    return bool(after and created and created < after)
+
+
+def _db_insert(key, sess):
+    def run(cur):
+        cur.execute(
+            "INSERT INTO user_sessions (token_hash, username, user_id, created_at, "
+            "last_seen, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen)",
+            (key, sess['username'], sess['user'].get('id'),
+             _db_time(sess['created']), _db_time(sess['last_seen']),
+             sess.get('ip'), sess.get('user_agent')))
+    ok, _ = _db_run(run)
+    return ok
+
+
+def prune_expired_sessions():
+    """Delete rows idle past the timeout, so the table does not grow forever."""
+    cutoff = _db_time(_now() - _dt.timedelta(seconds=SESSION_IDLE_SECONDS))
+
+    def run(cur):
+        cur.execute("DELETE FROM user_sessions WHERE last_seen < ?", (cutoff,))
+        return cur.rowcount
+    ok, n = _db_run(run)
+    with _SESSION_LOCK:
+        now = _now()
+        for key in [k for k, s in _SESSIONS.items()
+                    if (now - s['last_seen']).total_seconds() > SESSION_IDLE_SECONDS]:
+            _SESSIONS.pop(key, None)
+    return n if ok else 0
+
+
+def create_session(user, ip=None, user_agent=None):
+    token = secrets.token_urlsafe(32)
+    key = token_hash(token)
+    now = _now()
+    sess = {
+        'user': sanitize_user(user),
+        'username': ((user or {}).get('username') or '').lower(),
+        'created': now,
+        'last_seen': now,
+        'db_seen': now,
+        'ip': (ip or None) and str(ip)[:64],
+        'user_agent': (user_agent or None) and str(user_agent)[:255],
+    }
+    # Login already needs MySQL, so this normally succeeds. If it does not,
+    # the session still works from memory (and is written on a later touch);
+    # it just would not survive a restart.
+    sess['persisted'] = _db_insert(key, sess)
+    with _SESSION_LOCK:
+        _SESSIONS[key] = sess
+    # Sign-ins are rare enough to carry the clean-up of abandoned sessions.
+    prune_expired_sessions()
     return token
+
+
+def _touch(key, sess, now):
+    """
+    Write last_seen at most once per SESSION_TOUCH_SECONDS.
+
+    A missing row means the session was revoked behind this process's back
+    (an operator cleared the table, or another process signed the user out),
+    so the cached copy is dropped. Returns False when the session must end.
+    """
+    # A session destroyed while this request was already holding it must not
+    # carry on, nor be written back below.
+    if _is_revoked(key, sess.get('username'), sess.get('created')):
+        with _SESSION_LOCK:
+            _SESSIONS.pop(key, None)
+        return False
+    if (now - sess.get('db_seen', now)).total_seconds() < SESSION_TOUCH_SECONDS:
+        return True
+    # Stamp first, so a database outage costs one attempt a minute, not one
+    # per request.
+    sess['db_seen'] = now
+    if not sess.get('persisted'):
+        sess['persisted'] = _db_insert(key, sess)
+        return True
+
+    def run(cur):
+        cur.execute("UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
+                    (_db_time(now), key))
+        if cur.rowcount:
+            return True
+        # PyMySQL's rowcount counts rows *changed*: an UPDATE writing the
+        # last_seen second already stored reports 0, which read as "revoked"
+        # and signed the person out. Ask whether the row exists instead.
+        cur.execute("SELECT 1 FROM user_sessions WHERE token_hash = ?", (key,))
+        return bool(cur.fetchone())
+    ok, rows = _db_run(run)
+    if ok and not rows:
+        with _SESSION_LOCK:
+            _SESSIONS.pop(key, None)
+        return False
+    return True
+
+
+def _restore(key):
+    """Rebuild a session from user_sessions after a restart. None if invalid."""
+    def run(cur):
+        cur.execute("SELECT username, created_at, last_seen, ip_address, user_agent "
+                    "FROM user_sessions WHERE token_hash = ?", (key,))
+        return cur.fetchone()
+    ok, row = _db_run(run)
+    if not ok or not row:
+        return None
+    now = _now()
+    if _is_revoked(key, row.get('username'), _from_db_time(row.get('created_at'))):
+        # Revoked here, but the DELETE did not reach the database: retry it.
+        _db_run(lambda cur: cur.execute(
+            "DELETE FROM user_sessions WHERE token_hash = ?", (key,)))
+        return None
+    last_seen = _from_db_time(row.get('last_seen'))
+    user = None
+    if last_seen and (now - last_seen).total_seconds() <= SESSION_IDLE_SECONDS:
+        try:
+            users = load_users()
+        except Exception as e:
+            print(f"[auth] could not read users.json to restore a session: {e}")
+            return None
+        if not users:
+            # users.json missing or empty (iCloud once renamed it to
+            # data/users). That says nothing about this account, so refuse
+            # this request but keep the row: deleting it signed the whole
+            # clinic out for a file that was back a minute later.
+            print("[auth] users.json is missing or empty; session not restored, row kept.")
+            return None
+        uname = (row.get('username') or '').strip().lower()
+        user = next((u for u in users if (u.get('username') or '').lower() == uname), None) if uname else None
+    if not user or not user.get('is_active', True):
+        # Expired, or the account was deleted or blocked while the server
+        # was down: the row is worthless, so remove it.
+        _db_run(lambda cur: cur.execute(
+            "DELETE FROM user_sessions WHERE token_hash = ?", (key,)))
+        return None
+    sess = {
+        'user': sanitize_user(user),
+        'username': (user.get('username') or '').lower(),
+        'created': _from_db_time(row.get('created_at')) or now,
+        'last_seen': now,
+        'db_seen': now,
+        'ip': row.get('ip_address'),
+        'user_agent': row.get('user_agent'),
+        'persisted': True,
+    }
+    _db_run(lambda cur: cur.execute(
+        "UPDATE user_sessions SET last_seen = ? WHERE token_hash = ?",
+        (_db_time(now), key)))
+    with _SESSION_LOCK:
+        _SESSIONS[key] = sess
+    return sess
 
 
 def get_session(token):
     """Return the session for a token, refreshing its activity stamp."""
     if not token:
         return None
+    key = token_hash(token)
+    now = _now()
+    expired = False
     with _SESSION_LOCK:
-        sess = _SESSIONS.get(token)
-        if not sess:
-            return None
-        idle = (_now() - sess['last_seen']).total_seconds()
-        if idle > SESSION_IDLE_SECONDS:
-            _SESSIONS.pop(token, None)
-            return None
-        sess['last_seen'] = _now()
-        return sess
+        sess = _SESSIONS.get(key)
+        if sess:
+            if (now - sess['last_seen']).total_seconds() > SESSION_IDLE_SECONDS:
+                _SESSIONS.pop(key, None)
+                sess, expired = None, True
+            else:
+                sess['last_seen'] = now
+    if sess:
+        return sess if _touch(key, sess, now) else None
+    if expired:
+        _db_run(lambda cur: cur.execute(
+            "DELETE FROM user_sessions WHERE token_hash = ?", (key,)))
+        return None
+    return _restore(key)
 
 
 def destroy_session(token):
     if not token:
         return
+    key = token_hash(token)
+    now = _now()
     with _SESSION_LOCK:
-        _SESSIONS.pop(token, None)
+        _SESSIONS.pop(key, None)
+        _prune_revoked(now)
+        _REVOKED_TOKENS[key] = now
+    _db_run(lambda cur: cur.execute(
+        "DELETE FROM user_sessions WHERE token_hash = ?", (key,)))
 
 
 def active_session_count():
@@ -295,18 +545,23 @@ def active_session_count():
         return len(_SESSIONS)
 
 
-def sessions_for_user(username):
-    """Tokens currently held by one account, so they can all be revoked."""
-    uname = (username or '').lower()
-    with _SESSION_LOCK:
-        return [t for t, s in _SESSIONS.items()
-                if (s['user'].get('username') or '').lower() == uname]
-
-
 def destroy_sessions_for_user(username):
-    """Sign an account out everywhere — used after a password change."""
-    for token in sessions_for_user(username):
-        destroy_session(token)
+    """
+    Sign an account out everywhere: after a password change or reset, a role,
+    block or permission change, or deletion. The database rows go too --
+    otherwise the next restart would bring the revoked sessions back.
+    """
+    uname = (username or '').lower()
+    if not uname:
+        return
+    now = _now()
+    with _SESSION_LOCK:
+        for key in [k for k, s in _SESSIONS.items() if s.get('username') == uname]:
+            _SESSIONS.pop(key, None)
+        _prune_revoked(now)
+        _REVOKED_USERS[uname] = now
+    _db_run(lambda cur: cur.execute(
+        "DELETE FROM user_sessions WHERE username = ?", (uname,)))
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +644,12 @@ def note_login_success(username, ip):
     with _FAILURE_LOCK:
         _FAILURES.pop(f'user:{(username or "").lower()}', None)
         _FAILURES.pop(f'ip:{ip or "-"}', None)
+
+
+def clear_user_lockout(username):
+    """Forget one account's failed attempts (an administrator reset its password)."""
+    with _FAILURE_LOCK:
+        _FAILURES.pop(f'user:{(username or "").lower()}', None)
 
 
 # ---------------------------------------------------------------------------

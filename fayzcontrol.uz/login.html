@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <style>
     /* Reuses the palette tokens defined in unified_header.css so the screen
@@ -229,15 +229,26 @@
       const btn = document.getElementById('btn-login');
       const errBox = document.getElementById('login-error');
 
-      // Only same-origin relative paths are honoured, so ?next= cannot be used
-      // to bounce a signed-in user to another site.
-      function safeNext() {
-        const raw = new URLSearchParams(location.search).get('next') || '/superpage.html';
-        try {
-          const decoded = decodeURIComponent(raw);
-          if (decoded.startsWith('/') && !decoded.startsWith('//')) return decoded;
-        } catch (e) {}
-        return '/superpage.html';
+      // ?next= is honoured only for a same-origin page this role may open.
+      // A plain "starts with one slash" test let /\evil.com and /<tab>/evil.com
+      // through, because browsers read a backslash as a slash and drop tabs,
+      // so a crafted login link sent staff to another site after sign-in.
+      // Anything else lands on the role's own home sent by the server.
+      function safeNext(pages, home) {
+        const fallback = home || '/';
+        const raw = new URLSearchParams(location.search).get('next');
+        if (!raw || /[\\\x00-\x1f]/.test(raw)) return fallback;
+        let u;
+        try { u = new URL(raw, location.origin); } catch (e) { return fallback; }
+        if (u.origin !== location.origin) return fallback;
+        if (['/', '/login.html', '/change-password.html', '/index.html'].includes(u.pathname)) return fallback;
+        if (Array.isArray(pages) && u.pathname.endsWith('.html') && !pages.includes(u.pathname)) return fallback;
+        return u.pathname + u.search + u.hash;
+      }
+
+      function landingFor(d) {
+        if (d.must_change_password) return '/change-password.html';
+        return safeNext(d.pages, d.home);
       }
 
       function showError(msg) {
@@ -253,7 +264,7 @@
       // Already signed in? Go straight through.
       fetch('/api/auth/session')
         .then(r => r.json())
-        .then(d => { if (d && d.authenticated) location.replace(safeNext()); })
+        .then(d => { if (d && d.authenticated) location.replace(landingFor(d)); })
         .catch(() => {});
 
       form.addEventListener('submit', async (e) => {
@@ -282,7 +293,7 @@
           const data = await res.json().catch(() => ({}));
 
           if (res.ok) {
-            location.replace(safeNext());
+            location.replace(landingFor(data));
             return;
           }
           showError(data.error || "Login yoki parol noto'g'ri.");

@@ -945,7 +945,11 @@ body.day-mode .kpi-value {
 }
 
 /* Confirmation Modal (Unified Dialogs) */
-.fmh-confirm-overlay {
+/* js/fmh_dialogs.js builds .fmh-confirm-backdrop and .fmh-confirm-icon-badge;
+   only the older -overlay / -icon-wrap names were styled, so every confirm
+   dialog rendered unpositioned at the end of the page. Both names now match. */
+.fmh-confirm-overlay,
+.fmh-confirm-backdrop {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -983,7 +987,8 @@ body.day-mode .kpi-value {
   color: #0f172a !important;
 }
 
-.fmh-confirm-icon-wrap {
+.fmh-confirm-icon-wrap,
+.fmh-confirm-icon-badge {
   width: 56px !important;
   height: 56px !important;
   border-radius: 50% !important;
@@ -1550,4 +1555,52 @@ body.super-portal-page .portal-master-nav .portal-nav-pill:not(.active) span {
     max-width: none !important;
     padding-right: 0.5rem !important;
   }
+}
+
+/* ==========================================================================
+   ONE MENU (js/fmh_dialogs.js renders it from the session)
+   - Static pills are hidden until the shared menu replaces them, so the old
+     per-page row does not flash first.
+   - A thin rule separates the departments.
+   - With more than 7 pills (admin roles) only the current page keeps its
+     label below 1800px; the rest show the icon, with the name as a tooltip.
+   ========================================================================== */
+html.fmh-nav-pending .portal-master-nav {
+  visibility: hidden !important;
+}
+
+.portal-master-nav .fmh-nav-sep {
+  flex: none !important;
+  width: 1px !important;
+  height: 18px !important;
+  margin: 0 3px !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+[data-theme="day"] .portal-master-nav .fmh-nav-sep, body.day-mode .portal-master-nav .fmh-nav-sep {
+  background: #cbd5e1 !important;
+}
+
+.portal-nav-pill.pill-nurse { color: #f472b6 !important; }
+[data-theme="day"] .portal-nav-pill.pill-nurse, body.day-mode .portal-nav-pill.pill-nurse { color: #db2777 !important; }
+.portal-nav-pill.pill-nurse.active {
+  background: rgba(236, 72, 153, 0.18) !important;
+  border-color: rgba(244, 114, 182, 0.4) !important;
+  color: #f472b6 !important;
+}
+[data-theme="day"] .portal-nav-pill.pill-nurse.active, body.day-mode .portal-nav-pill.pill-nurse.active {
+  background: #fce7f3 !important;
+  border-color: #f9a8d4 !important;
+  color: #be185d !important;
+}
+
+@media (max-width: 1800px) {
+  .portal-master-nav.fmh-menu-many .portal-nav-pill:not(.active) span {
+    display: none !important;
+  }
+}
+
+/* type "warning" (fmhConfirm) had no icon colour */
+.fmh-confirm-icon-warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #f59e0b !important;
 }

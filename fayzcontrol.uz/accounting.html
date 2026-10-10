@@ -14,11 +14,12 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <!-- Stylesheets -->
   <link rel="stylesheet" href="css/accounting.css?v=3.0">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.3"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
+  <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="accounting-portal">
 
@@ -196,7 +197,7 @@
         <button class="date-range-btn" data-range="today" onclick="window.FMH_Accounting.setDateRangePreset('today')">Bugun</button>
         <button class="date-range-btn" data-range="yesterday" onclick="window.FMH_Accounting.setDateRangePreset('yesterday')">Kecha</button>
         <button class="date-range-btn" data-range="week" onclick="window.FMH_Accounting.setDateRangePreset('week')">Shu Hafta (7 kun)</button>
-        <button class="date-range-btn" data-range="month" onclick="window.FMH_Accounting.setDateRangePreset('month')">Shu Oy (Avgust)</button>
+        <button class="date-range-btn" id="accounting-month-btn" data-range="month" onclick="window.FMH_Accounting.setDateRangePreset('month')">Shu Oy</button>
       </div>
 
       <div class="date-custom-inputs">
@@ -222,7 +223,7 @@
           <span class="tab-badge" id="badge-txns-count">—</span>
         </button>
         <button class="tab-btn" data-tab="doctors">
-          <i class="fas fa-user-md"></i> Shifokorlar Oyligi & Gonorar
+          <i class="fas fa-user-md"></i> Xodimlar Oyligi
         </button>
         <button class="tab-btn" data-tab="analytics">
           <i class="fas fa-chart-pie"></i> Moliya Analitikasi & Dinamika
@@ -355,10 +356,14 @@
     <section class="tab-panel" id="tab-panel-doctors">
       <div class="section-toolbar-card" style="margin-bottom: 0.5rem;">
         <div id="accounting-doctors-title" style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
-          <i class="fas fa-user-md" style="color: var(--primary);"></i> Shifokorlar Oylik Maoshi va Gonorar Qayti
+          <i class="fas fa-user-md" style="color: var(--primary);"></i> Xodimlar Oylik Maoshi — Kadrlar hisobi
         </div>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-secondary);" title="Qaysi oy uchun maosh hisoblanadi va to'lanadi">
+          Maosh oyi:
+          <input type="month" id="accounting-payroll-month" class="date-custom-input">
+        </label>
         <button class="btn-portal btn-outline-portal" onclick="window.FMH_Accounting.exportDoctorsToExcel()" style="border-color: rgba(16, 185, 129, 0.4); color: var(--emerald);">
-          <i class="fas fa-file-excel"></i> Shifokorlar Oyligini Excelga Yuklash (.xlsx)
+          <i class="fas fa-file-excel"></i> Oylik Qaydnomani Excelga Yuklash (.xlsx)
         </button>
       </div>
 
@@ -405,6 +410,10 @@
           <i class="fas fa-pills" style="color: var(--primary);"></i> Farmakologiya, Dori-Darmon Xarajatlari & Omborxona
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <!-- The full warehouse (lots, expiry, ledger, receipts, dispensing) lives on its own page. -->
+          <a class="btn-portal btn-primary-portal" href="/warehouse.html" style="background: linear-gradient(135deg, #059669, #047857); text-decoration: none; display: inline-flex; align-items: center; gap: 6px;" title="Partiyalar, yaroqlilik muddati, kirim va chiqim jurnali">
+            <i class="fas fa-warehouse"></i> Ombor sahifasi
+          </a>
           <button class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.openMedPurchaseModal()" style="background: linear-gradient(135deg, #0284c7, #0369a1);">
             <i class="fas fa-plus-circle"></i> Yangi Dori Xaridini Kiritish (Chiqim)
           </button>
@@ -426,7 +435,7 @@
         <div class="kpi-card kpi-profit">
           <div class="kpi-header"><span class="kpi-label">Omborxona Umumiy Qiymati</span><div class="kpi-icon"><i class="fas fa-boxes"></i></div></div>
           <div class="kpi-value" id="pharm-total-valuation">—</div>
-          <div class="kpi-sub">Barcha dorilar qoldiq tannarxi</div>
+          <div class="kpi-sub">Qoldiq &times; bemor narxi (haqiqiy tannarx &mdash; Ombor sahifasida)</div>
         </div>
         <div class="kpi-card kpi-expense">
           <div class="kpi-header"><span class="kpi-label">Dori Xarajatlari (Chiqim)</span><div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div></div>
@@ -510,8 +519,8 @@
                 <th>Dori Nomi & Dozasi</th>
                 <th>Farmakologik Guruhi</th>
                 <th>Ombordagi Qoldiq</th>
-                <th>Birligi Narxi</th>
-                <th>Jami Qiymati</th>
+                <th>Bemorga Narxi (birlik)</th>
+                <th>Jami (bemor narxida)</th>
                 <th>Holat</th>
                 <th>Amal</th>
               </tr>
@@ -521,6 +530,44 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- BLOCK 3: MEDICINE USE ON THE WARD (doses given -> stock taken) -->
+      <div class="chart-box-card" style="padding: 1.25rem; margin-top: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-syringe" style="color: var(--purple);"></i>
+              Dori Sarfi (Bemorlarga berilgan dorilar)
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+              Hamshira "berildi" deb belgilagan har bir doza ombordan 1 birlik kamaytiradi
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <input type="date" id="med-usage-start" class="form-input" style="width: auto;" onchange="window.FMH_Accounting.loadMedicineUsage()">
+            <span style="color: var(--text-muted);">—</span>
+            <input type="date" id="med-usage-end" class="form-input" style="width: auto;" onchange="window.FMH_Accounting.loadMedicineUsage()">
+          </div>
+        </div>
+        <div id="med-usage-summary" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;"></div>
+        <div class="table-responsive-wrapper">
+          <table class="finance-table">
+            <thead>
+              <tr>
+                <th>Dori</th>
+                <th>Berilgan dozalar</th>
+                <th>Ombordan olindi</th>
+                <th>Tannarxi</th>
+                <th>Hozirgi qoldiq</th>
+              </tr>
+            </thead>
+            <tbody id="med-usage-tbody">
+              <!-- Rendered dynamically by JS -->
+            </tbody>
+          </table>
+        </div>
+        <div id="med-unlinked-box" style="margin-top: 1rem;"></div>
       </div>
     </section>
 
@@ -671,6 +718,24 @@
         <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Accounting.printInvoice()">
           <i class="fas fa-print"></i> Kvitansiyani Chop Etish (Print)
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 3b: ALL INVOICES OF ONE PATIENT (READ-ONLY)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="patient-invoices-modal">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-folder-open" style="color: #38bdf8;"></i> Bemorning Barcha Hisoblari</div>
+        <button type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="patient-invoices-content">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Yopish</button>
       </div>
     </div>
   </div>
@@ -902,7 +967,7 @@
 
             <div>
               <label class="form-label" for="incasso-collector-name">Inkassator / Mas'ul Xodim *</label>
-              <input type="text" id="incasso-collector-name" class="form-input" value="Xusnitdinov Azamat" required>
+              <input type="text" id="incasso-collector-name" class="form-input" value="" placeholder="F.I.Sh." required>
             </div>
 
             <div class="form-group-full">
@@ -980,7 +1045,7 @@
                   <th style="padding: 6px 8px; width: 34%;">Dori Nomi *</th>
                   <th style="padding: 6px 8px; width: 18%;">Guruhi</th>
                   <th style="padding: 6px 8px; width: 12%;">Miqdori *</th>
-                  <th style="padding: 6px 8px; width: 16%;">Donasi Narxi (so'm) *</th>
+                  <th style="padding: 6px 8px; width: 16%;">Narxi (so'm) *</th>
                   <th style="padding: 6px 8px; width: 16%;">Jami Summa</th>
                   <th style="padding: 6px 4px; width: 4%;"></th>
                 </tr>
@@ -1001,6 +1066,11 @@
             </span>
           </div>
 
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            <i class="fas fa-info-circle"></i> Har bir dorida &laquo;Qadoq / partiya / muddat&raquo; qatorini ochib, qadoqdagi dona sonini, partiya raqamini va yaroqlilik muddatini kiritish mumkin.
+            Ko'p partiyali yoki kasr miqdorli kirim &mdash; <a href="/warehouse.html" style="color: var(--primary);">Ombor sahifasida</a>.
+          </div>
+
           <div>
             <label class="form-label" for="medpur-notes-input">Qo'shimcha Izoh</label>
             <input type="text" id="medpur-notes-input" class="form-input" placeholder="Partiya muddati, saqlash sharoiti yoki boshqa izoh...">
@@ -1018,8 +1088,8 @@
   </div>
 
   <script src="js/xlsx.full.min.js"></script>
-  <script src="js/unified_print_engine.js?v=5.3"></script>
-  <script src="js/accounting.js?v=9.4"></script>
+  <script src="js/unified_print_engine.js?v=5.4"></script>
+  <script src="js/accounting.js?v=10.7"></script>
   <div id="print-area"></div>
 </body>
 </html>

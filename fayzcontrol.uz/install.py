@@ -87,7 +87,6 @@ def run_installation():
         ('hr.html', 'Kadrlar & Oylik'),
         ('crm.html', 'Bemorlar CRM'),
         ('medical_blank.html', 'A4 Tibbiy Blanklar'),
-        ('grand_total_report.html', 'Grand Total Baza Hisoboti')
     ]
     for p_file, p_name in pages:
         full_p = os.path.join(BASE_DIR, p_file)

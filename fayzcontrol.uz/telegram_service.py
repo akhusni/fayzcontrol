@@ -26,12 +26,40 @@ import db
 import nursery
 
 # Telegram Configuration
-BOT_TOKEN = "8433988355:AAHbkHqZSkhXjMmqN-SxPRbvzAp1tir2BI0"
-CHAT_ID = -1004441223890
+# The bot token used to be hard-coded here and was pushed to a public GitHub
+# repo, so anyone could post as the clinic bot. It now comes only from the
+# environment; with no token the bot stays off, which also keeps local test
+# runs from posting fake payments into the real staff group.
+BOT_TOKEN = os.environ.get("FMH_TELEGRAM_BOT_TOKEN", "").strip()
+ENABLED = bool(BOT_TOKEN)
+
+
+def _env_int(name, default):
+    """
+    An integer from the environment, or `default` when unset or not a number.
+
+    These were parsed with int() at import time, so a typo in the service
+    file ("--5", "5a") raised here; server.py imports this module inside a
+    try, so every Telegram notice silently stopped. One log line instead.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[!] {name}={raw!r} is not a number; using {default!r}.")
+        return default
+
+
+CHAT_ID = _env_int("FMH_TELEGRAM_CHAT_ID", -1004441223890)
 
 TOPIC_NURSES = 2        # "Hamshira"
 TOPIC_DOCTORS = 4       # "Doctor"
 TOPIC_ACCOUNTING = 6    # "Bugalteriya"
+# Website enquiries. The group has no reception topic, so they go to the
+# group's main thread unless FMH_TELEGRAM_ENQUIRY_TOPIC names one.
+TOPIC_ENQUIRIES = _env_int("FMH_TELEGRAM_ENQUIRY_TOPIC", None)
 
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -41,10 +69,12 @@ def send_telegram_message(message_thread_id, text, parse_mode="HTML"):
     url = f"{API_BASE}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
-        "message_thread_id": message_thread_id,
         "text": text,
         "parse_mode": parse_mode
     }
+    # None means the group's main thread; Telegram rejects a null topic id.
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
@@ -119,6 +149,15 @@ def format_currency(val):
         return f"{int(round(float(val))):,}".replace(",", " ")
     except Exception:
         return str(val)
+
+
+def _fmt_qty(val):
+    """A stock quantity without trailing zeros (12.000 -> 12, 2.500 -> 2.5); stock is decimal, never cast to int."""
+    try:
+        import inventory
+        return inventory.format_qty(val)
+    except Exception:
+        return str(val if val is not None else 0)
 
 
 # -----------------------------------------------------------------------------
@@ -371,20 +410,38 @@ def fetch_comprehensive_financial_data(target_date=None):
         SELECT ii.*, inv.admission_id, p.full_name AS patient_name, p.patient_code
         FROM invoice_items ii
         JOIN invoices inv ON ii.invoice_id = inv.id
-        JOIN admissions a ON inv.admission_id = a.id
-        JOIN patients p ON a.patient_id = p.id
+        LEFT JOIN admissions a ON inv.admission_id = a.id
+        LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+        JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
         ORDER BY ii.created_at DESC
     """)
     invoice_items = [dict(r) for r in cur.fetchall()]
 
-    # 5. Medications Catalog (Pharmacy Valuation)
+    # 5. Medications Catalog (Pharmacy Valuation). Valued at what the clinic
+    # paid (weighted-average cost), NOT at the patient price; an item whose cost
+    # is not known yet (opening stock) is shown as "—" and adds nothing to the total.
     cur.execute("""
-        SELECT *, (stock_quantity * unit_price) AS total_value,
-               (stock_quantity <= min_stock_level) AS is_low_stock
+        SELECT *,
+               CASE WHEN avg_unit_cost > 0 THEN avg_unit_cost ELSE NULL END AS unit_cost,
+               CASE WHEN avg_unit_cost > 0 THEN stock_quantity * avg_unit_cost ELSE NULL END AS total_value
         FROM medications_catalog
-        ORDER BY is_low_stock DESC, name ASC
+        ORDER BY name ASC
     """)
     pharmacy_stock = [dict(r) for r in cur.fetchall()]
+    # Low means strictly below the item's threshold (or nothing usable left),
+    # judged on what can really be given (non-expired lots) by the warehouse's
+    # own rule, not a second copy of it here.
+    try:
+        import inventory
+        _avail = inventory.available_map(conn, [m['id'] for m in pharmacy_stock])
+        for m in pharmacy_stock:
+            m['is_low_stock'] = inventory.compute_status(
+                _avail.get(m['id'], 0), m.get('min_stock_level') or 0) in ('low', 'out')
+    except Exception as _e_low:
+        print(f"[Telegram] low-stock flag fell back to the cached balance: {_e_low}")
+        for m in pharmacy_stock:
+            m['is_low_stock'] = (m.get('stock_quantity') or 0) < (m.get('min_stock_level') or 0)
+    pharmacy_stock.sort(key=lambda m: (not m['is_low_stock'], str(m.get('name') or '')))
 
     # 6. Staff & Payroll
     cur.execute("SELECT * FROM staff ORDER BY role, full_name")
@@ -736,7 +793,8 @@ def generate_comprehensive_excel(data, output_path):
             idx,
             inv.get("patient_code"),
             inv.get("patient_name"),
-            f"{inv.get('room_number')}-{inv.get('bed_code')}",
+            # A desk visit (consultation, outpatient) has no bed.
+            f"{inv.get('room_number')}-{inv.get('bed_code')}" if inv.get('bed_code') else "Ambulator",
             inv.get("program_type"),
             float(inv.get("total_billed") or 0),
             float(inv.get("discount_amount") or 0),
@@ -863,7 +921,7 @@ def generate_comprehensive_excel(data, output_path):
     t5.fill = PatternFill(start_color=NAVY, fill_type="solid")
     t5.alignment = Alignment(horizontal="center", vertical="center")
 
-    headers_med = ["№", "Dori Nomi", "Kategoriya", "Formasi", "Qoldiq (Soni)", "Min Me'yor", "Birlik Narxi (UZS)", "Zaxira Qiymati (UZS)"]
+    headers_med = ["№", "Dori Nomi", "Kategoriya", "Formasi", "Qoldiq (Soni)", "Min Me'yor", "O'rtacha tannarx (UZS)", "Zaxira Qiymati (UZS)"]
     ws5.row_dimensions[2].height = 24
     for c_i, h in enumerate(headers_med, start=1):
         cell = ws5.cell(row=2, column=c_i, value=h)
@@ -874,11 +932,11 @@ def generate_comprehensive_excel(data, output_path):
 
     r_med = 3
     for idx, med in enumerate(data["pharmacy_stock"], start=1):
-        tot_val = float(med.get("total_value") or 0)
+        tot_val = float(med["total_value"]) if med.get("total_value") is not None else "—"
         vals = [
             idx, med.get("name"), med.get("category"), med.get("form"),
-            med.get("stock_quantity"), med.get("min_stock_level"),
-            float(med.get("unit_price") or 0), tot_val
+            float(med.get("stock_quantity") or 0), float(med.get("min_stock_level") or 0),
+            float(med["unit_cost"]) if med.get("unit_cost") is not None else "—", tot_val
         ]
         for c_i, val in enumerate(vals, start=1):
             cell = ws5.cell(row=r_med, column=c_i, value=val)
@@ -1118,7 +1176,7 @@ def generate_comprehensive_pdf(data, output_path):
             Paragraph(str(idx), td_style),
             Paragraph(str(inv.get("patient_name") or ""), td_bold),
             Paragraph(str(inv.get("patient_code") or ""), td_style),
-            Paragraph(f"{inv.get('room_number')}-{inv.get('bed_code')}", td_style),
+            Paragraph(f"{inv.get('room_number')}-{inv.get('bed_code')}" if inv.get('bed_code') else "Ambulator", td_style),
             Paragraph(format_currency(inv.get("total_billed")), td_right),
             Paragraph(format_currency(inv.get("discount_amount")), td_right),
             Paragraph(format_currency(inv.get("net_amount")), td_right),
@@ -1207,7 +1265,7 @@ def generate_comprehensive_pdf(data, output_path):
         Paragraph("Formasi", th_style),
         Paragraph("Qoldiq", th_style),
         Paragraph("Min Me'yor", th_style),
-        Paragraph("Birlik Narxi", th_style),
+        Paragraph("O'rtacha tannarx", th_style),
         Paragraph("Zaxira Qiymati (UZS)", th_style)
     ]
     med_data = [med_heads]
@@ -1219,10 +1277,10 @@ def generate_comprehensive_pdf(data, output_path):
             Paragraph(f"{low_flag}{med.get('name')}", td_bold),
             Paragraph(str(med.get("category") or ""), td_style),
             Paragraph(str(med.get("form") or ""), td_style),
-            Paragraph(str(med.get("stock_quantity")), td_style),
-            Paragraph(str(med.get("min_stock_level")), td_style),
-            Paragraph(format_currency(med.get("unit_price")), td_right),
-            Paragraph(format_currency(med.get("total_value")), td_right),
+            Paragraph(_fmt_qty(med.get("stock_quantity")), td_style),
+            Paragraph(_fmt_qty(med.get("min_stock_level")), td_style),
+            Paragraph(format_currency(med.get("unit_cost")) if med.get("unit_cost") is not None else "—", td_right),
+            Paragraph(format_currency(med.get("total_value")) if med.get("total_value") is not None else "—", td_right),
         ])
 
     med_table = Table(med_data, colWidths=[18, 120, 85, 75, 42, 50, 65, 85])
@@ -1532,8 +1590,31 @@ def generate_and_send_daily_closing_report(target_date=None):
     return True
 
 
-# Global scheduler state
-_last_closing_date = None
+# Global scheduler state. The last closing date is kept on disk: held only in
+# memory, every restart after 21:00 (a deploy, a crash) posted the day's
+# closing report again.
+_STATE_FILE = os.path.join(BASE_DIR, 'data', 'telegram_state.json')
+
+
+def _load_last_closing_date():
+    try:
+        with open(_STATE_FILE, encoding='utf-8') as f:
+            return json.load(f).get('last_closing_date')
+    except Exception:
+        return None
+
+
+def _save_last_closing_date(day_iso):
+    tmp = _STATE_FILE + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'last_closing_date': day_iso}, f)
+        os.replace(tmp, _STATE_FILE)
+    except Exception as e:
+        print(f"[Daily Closing Scheduler] holat saqlanmadi: {e}")
+
+
+_last_closing_date = _load_last_closing_date()
 _scheduler_started = False
 _scheduler_lock = threading.Lock()
 
@@ -1557,8 +1638,9 @@ def start_daily_closing_scheduler():
                 today_iso = now.date().isoformat()
                 if now.hour >= 21 and _last_closing_date != today_iso:
                     print(f"[*] Soat 21:00! Kunlik moliya yakuni hisoboti yuborilmoqda: {today_iso}")
-                    generate_and_send_daily_closing_report()
                     _last_closing_date = today_iso
+                    _save_last_closing_date(today_iso)
+                    generate_and_send_daily_closing_report()
             except Exception as e:
                 print(f"[Daily Closing Scheduler Error] {e}")
             import time
@@ -1603,15 +1685,29 @@ def _is_already_notified(txn_id):
         return str(txn_id) in _notified_transaction_ids
 
 
+def _claim(txn_id):
+    """Atomically take the right to announce txn_id; False if already taken.
+
+    The ids used to be marked only after the message went out, so the 5-second
+    watchdog could pick up a payment the request thread was still sending and
+    post it a second time.
+    """
+    with _notified_lock:
+        key = str(txn_id)
+        if key in _notified_transaction_ids:
+            return False
+        _notified_transaction_ids.add(key)
+        return True
+
+
 def notify_payment_entered_sync(pay_data):
     """
     Kassa/Bemor to'lovi (yoki qaytarish) tizimga kiritilganda darhol Telegramga xabar berish.
     """
     pay_id = pay_data.get('id')
-    txn_key = f"TXN-{pay_id}" if pay_id else None
-    if txn_key and _is_already_notified(txn_key):
+    if pay_id and _is_already_notified(f"TXN-{pay_id}"):
         return
-    if pay_id and _is_already_notified(pay_id):
+    if pay_id and not _claim(pay_id):
         return
 
     amount = float(pay_data.get('amount') or 0)
@@ -1655,7 +1751,8 @@ def notify_payment_entered_sync(pay_data):
                        r.room_number, b.bed_code
                 FROM invoices inv
                 LEFT JOIN admissions a ON inv.admission_id = a.id
-                LEFT JOIN patients p ON a.patient_id = p.id
+                LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+                LEFT JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
                 LEFT JOIN beds b ON a.bed_id = b.id
                 LEFT JOIN rooms r ON b.room_id = r.id
                 WHERE inv.id = ?
@@ -1748,7 +1845,7 @@ def notify_accounting_transaction_entered_sync(txn_data):
     Operatsion xarajat (chiqim), kirim yoki inkassatsiya kiritilganda darhol Telegramga xabar berish.
     """
     trx_id = txn_data.get('id')
-    if trx_id and _is_already_notified(trx_id):
+    if trx_id and not _claim(trx_id):
         return
 
     txn_type = txn_data.get('transaction_type') or txn_data.get('type') or 'expense'
@@ -1850,6 +1947,45 @@ def notify_accounting_transaction_entered_async(txn_data):
     threading.Thread(target=notify_accounting_transaction_entered_sync, args=(txn_data,), daemon=True).start()
 
 
+def notify_enquiry_sync(req):
+    """
+    Tell the staff group a website enquiry has arrived.
+
+    Only what the desk needs to call back -- name, phone, preferred date and
+    the visitor's note -- and nothing else from the request (no IP, no id).
+    The text comes from the open internet, so it is HTML-escaped: a name like
+    "<b>" would otherwise either restyle the message or make Telegram refuse
+    it. A no-op without a bot token, and it never raises.
+    """
+    if not ENABLED:
+        return None
+    try:
+        import html as _html
+
+        def esc(v, limit):
+            return _html.escape(str(v or '').strip()[:limit])
+
+        lines = [
+            "🌐 <b>Saytdan yangi so'rov</b>",
+            f"👤 {esc(req.get('full_name'), 160) or '—'}",
+            f"📞 {esc(req.get('phone'), 60) or '—'}",
+        ]
+        if req.get('preferred_date'):
+            lines.append(f"📅 Istalgan sana: {esc(req.get('preferred_date'), 10)}")
+        if (req.get('note') or '').strip():
+            lines.append(f"📝 {esc(req.get('note'), 500)}")
+        lines.append("Qabulxona → «Saytdan So'rovlar» bo'limida ko'rib chiqing.")
+        return send_telegram_message(TOPIC_ENQUIRIES, "\n".join(lines))
+    except Exception as e:
+        print(f"[ERROR] Enquiry notice failed: {e}")
+        return None
+
+
+def notify_enquiry_async(req):
+    """Background thread, so the website's request never waits on Telegram."""
+    threading.Thread(target=notify_enquiry_sync, args=(dict(req),), daemon=True).start()
+
+
 def start_transaction_watchdog():
     """
     Background watchdog daemon thread:
@@ -1889,6 +2025,10 @@ def start_transaction_watchdog():
                 for row in rows:
                     t_id = row['id']
                     if not _is_already_notified(t_id):
+                        if row.get('payment_id'):
+                            # The payment id is what the request thread claims;
+                            # remember the row too so it is checked only once.
+                            _mark_as_notified(t_id)
                         # Trigger notification
                         if row.get('payment_id'):
                             # It's a payment-linked transaction
@@ -2002,6 +2142,9 @@ def run_polling():
 
 
 if __name__ == "__main__":
+    if not ENABLED:
+        print("[!] FMH_TELEGRAM_BOT_TOKEN o'rnatilmagan - Telegram bot o'chiq.")
+        sys.exit(1)
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
         if arg in ("--nurses", "-n", "nurses"):

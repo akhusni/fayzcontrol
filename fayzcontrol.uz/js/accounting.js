@@ -4,7 +4,7 @@
  * - Real-time KPI summary (Gross Revenue, Expenses, Net Profit, Debt, Kassa Balances)
  * - Inpatient Billing Ledger synced with 14 beds and bookings (FMH_FACILITY_14BEDS_STORAGE_V7)
  * - POS & Cash Flow Transaction Journal (Kirim / Chiqim)
- * - Doctor Payroll & Commission Calculations
+ * - Staff payroll from the server (GET /api/hr/payroll) and salary payouts
  * - Medication Dispensation & Extra Services to Patient Bill (Ombordan hisobdan chiqarish)
  * - Cash Incasso to Bank (Kassa Inkassatsiyasi)
  * - Custom Date Range Filtering (Bugun, Kecha, Shu Hafta, Shu Oy, Custom Range)
@@ -28,6 +28,20 @@
   let statusFilter = 'all';
   let txnTypeFilter = 'all';
   let txnMethodFilter = 'all';
+  // The payroll month the salary section shows and pays (YYYY-MM). It was
+  // always the current calendar month, so last month's pay could not be paid
+  // once the month had turned. Empty until init picks the current month.
+  let payrollMonth = '';
+
+  const UI_PAYMENT_METHODS = {
+    cash: 'cash', cash_register: 'cash',
+    terminal: 'terminal', card: 'terminal',
+    online: 'online', payme_click: 'online', card_transfer: 'online', click: 'online', payme: 'online',
+    bank: 'bank', bank_wire: 'bank'
+  };
+  function uiPaymentMethod(m) {
+    return UI_PAYMENT_METHODS[String(m || '').toLowerCase()] || m;
+  }
 
   // Date Range Filter State
   let dateRangeMode = 'all';
@@ -65,18 +79,61 @@
     };
   }
 
+  // The rates come from the one price list (js/fmh_pricing.js). This table
+  // used to carry its own 720 000 / 1 100 000 / ..., and those figures were
+  // sent as the daily price of a new bill, so a price changed in the editor
+  // never reached accounting.
+  function listedRate(id) {
+    return (window.FMH_Pricing && window.FMH_Pricing.rate(id)) || 0;
+  }
+
   const OFFICIAL_RATES = {
-    "statsionar_shared": { name: "Statsionar (1 karavot / 720 ming)", rate: 720000, desc: "2 kishilik xonada 1 ta o'rin" },
-    "statsionar_full_room": { name: "Statsionar Butun Xona (1 kishi / VIP Solo)", rate: 1100000, desc: "Butun xona 1 kishi uchun (2-o'rin berilmaydi)" },
-    "kunlik_statsionar": { name: "Kunlik Statsionar (Kunduzgi o'rin)", rate: 630000, desc: "Faqat kunduzgi vaqtda muolaja olish" },
-    "ambulator_1": { name: "Ambulator (Kuniga 1 mahal muolaja)", rate: 310000, desc: "Kuniga 1 mahal qatnab muolaja" },
-    "ambulator_2": { name: "Ambulator (Kuniga 2 mahal muolaja)", rate: 500000, desc: "Kuniga 2 mahal qatnab muolaja" }
+    "statsionar_shared": { name: "Statsionar (1 karavot / 720 ming)", get rate() { return listedRate('statsionar_shared'); }, desc: "2 kishilik xonada 1 ta o'rin" },
+    "statsionar_full_room": { name: "Statsionar Butun Xona (1 kishi / VIP Solo)", get rate() { return listedRate('statsionar_full_room'); }, desc: "Butun xona 1 kishi uchun (2-o'rin berilmaydi)" },
+    "kunlik_statsionar": { name: "Kunlik Statsionar (Kunduzgi o'rin)", get rate() { return listedRate('kunlik_statsionar'); }, desc: "Faqat kunduzgi vaqtda muolaja olish" },
+    "ambulator_1": { name: "Ambulator (Kuniga 1 mahal muolaja)", get rate() { return listedRate('ambulator_1'); }, desc: "Kuniga 1 mahal qatnab muolaja" },
+    "ambulator_2": { name: "Ambulator (Kuniga 2 mahal muolaja)", get rate() { return listedRate('ambulator_2'); }, desc: "Kuniga 2 mahal qatnab muolaja" }
   };
+
+  // Bills raised for a desk visit carry the appointment's service type.
+  const VISIT_LABELS = {
+    consultation: 'Shifokor konsultatsiyasi',
+    outpatient: 'Ambulator muolaja kursi'
+  };
+
+  // The new-bill <select> in accounting.html has the prices typed into its
+  // option text; they are rewritten from the price list once it is loaded.
+  function applyListedPackageLabels() {
+    document.querySelectorAll('#newbill-package-select option').forEach(opt => {
+      const rate = listedRate(opt.value);
+      const cut = opt.textContent.lastIndexOf(' — ');
+      if (rate > 0 && cut > 0) {
+        const spaced = String(Math.round(rate)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        opt.textContent = `${opt.textContent.slice(0, cut)} — ${spaced} so'm / kun`;
+      }
+    });
+  }
 
   // Format currency helper (e.g. 720 000 so'm)
   function formatUZS(amount) {
     if (isNaN(amount) || amount === null) amount = 0;
     return new Intl.NumberFormat('uz-UZ').format(Math.round(amount)) + " so'm";
+  }
+
+  // Stock quantities can be fractions (ml, half tablets): 12 -> "12", 2.5 -> "2.5",
+  // and a float tail such as 0.30000000000000004 never reaches the screen.
+  function fmtQty(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return String(Math.round(n * 1000) / 1000);
+  }
+
+  // What a bill line can really take off the shelf: the server's usable
+  // (non-expired) quantity when it sent one, else the cached on-hand figure.
+  function billableQty(m) {
+    const a = (m.available_quantity === null || m.available_quantity === undefined) ? Number(m.stock) : Number(m.available_quantity);
+    return isFinite(a) ? a : 0;
   }
 
   function formatShortUZS(amount) {
@@ -98,6 +155,15 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  // A value passed to an inline onclick="f(...)" must be a JS string literal:
+  // the browser decodes the attribute before running it, so an id holding a
+  // quote (appointment ids were once copied from the request into invoice
+  // ids) ended the string and ran as script. JSON.stringify makes a safe
+  // literal; esc() keeps it inside the attribute.
+  function jsArg(v) {
+    return esc(JSON.stringify(String(v)));
   }
 
   // Toast notification helper
@@ -138,7 +204,7 @@
           },
           patients_billing: [],
           transactions: [],
-          doctors_payroll: [],
+          payroll_lines: [],
           pharmacy_stock: [],
           medication_purchases: []
         };
@@ -162,20 +228,36 @@
         ];
       }
 
-      if (!accountingData.doctors_payroll || !Array.isArray(accountingData.doctors_payroll)) {
-        accountingData.doctors_payroll = [];
-      }
+      // The payroll is never taken from the browser cache: it is the
+      // server's figure for this month or nothing.
+      accountingData.payroll_lines = [];
+      accountingData.payroll_info = null;
+      delete accountingData.doctors_payroll;
 
       // Sync with MySQL Financial Ledger, Admissions & Staff
       await syncWithLedgerAndBackend();
+      await loadPayroll();
 
       const mBtn = document.getElementById('accounting-month-btn');
       if (mBtn) {
         mBtn.textContent = `Shu Oy (${new Date().toLocaleDateString('uz-UZ', { month: 'long' })})`;
       }
-      const payrollTitle = document.getElementById('accounting-doctors-title');
-      if (payrollTitle) {
-        payrollTitle.innerHTML = `<i class="fas fa-user-md" style="color: var(--primary);"></i> Shifokorlar Oylik Maoshi va Gonorar Qayti (${new Date().toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' })})`;
+      updatePayrollTitle();
+      const monthInput = document.getElementById('accounting-payroll-month');
+      if (monthInput) {
+        monthInput.value = currentPayrollMonth();
+        monthInput.max = getTodayISO().slice(0, 7);
+        monthInput.addEventListener('change', async () => {
+          const v = String(monthInput.value || '');
+          if (!/^\d{4}-\d{2}$/.test(v) || v > getTodayISO().slice(0, 7)) {
+            monthInput.value = currentPayrollMonth();
+            return;
+          }
+          payrollMonth = v;
+          updatePayrollTitle();
+          await loadPayroll();
+          renderDoctorsPayroll();
+        });
       }
 
       setupEventListeners();
@@ -211,10 +293,20 @@
       if (accRes.ok) {
         const liveAcc = await accRes.json();
         if (liveAcc.transactions && Array.isArray(liveAcc.transactions)) {
-          accountingData.transactions = liveAcc.transactions;
+          // The server stores the database's method names (payme_click,
+          // bank_wire, ...) but the balances, filter and labels here speak
+          // cash/terminal/online/bank; unmapped rows silently fell out of
+          // every cash-desk balance.
+          accountingData.transactions = liveAcc.transactions.map(t => ({
+            ...t,
+            payment_method: uiPaymentMethod(t.payment_method)
+          }));
         }
         if (liveAcc.medication_purchases && Array.isArray(liveAcc.medication_purchases)) {
           accountingData.medication_purchases = liveAcc.medication_purchases;
+        }
+        if (Array.isArray(liveAcc.invoice_items)) {
+          accountingData.invoice_items = liveAcc.invoice_items;
         }
         if (liveAcc.pharmacy_stock && Array.isArray(liveAcc.pharmacy_stock)) {
           accountingData.pharmacy_stock = liveAcc.pharmacy_stock.map(m => ({
@@ -228,8 +320,15 @@
             form: m.form || m.unit || 'dona',
             unit_price: Number(m.unit_price) || 0,
             standard_dosage: m.standard_dosage || '',
-            min_stock_level: Number(m.min_stock_level) || 10,
-            status: (m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0)) <= (Number(m.min_stock_level) || 15) ? 'low' : 'adequate'
+            // 0 is a real threshold ("no minimum"), so it must not turn into 10.
+            min_stock_level: (m.min_stock_level === null || m.min_stock_level === undefined || m.min_stock_level === '' || !isFinite(Number(m.min_stock_level))) ? 10 : Number(m.min_stock_level),
+            available_quantity: m.available_quantity,
+            stock_status: m.stock_status,
+            // Low = strictly below the threshold or nothing usable; the server
+            // decides (it knows expired lots), the comparison is only a fallback.
+            status: m.stock_status
+              ? ((m.stock_status === 'low' || m.stock_status === 'out') ? 'low' : 'adequate')
+              : ((m.stock !== undefined ? Number(m.stock) : Number(m.stock_quantity || 0)) < (isFinite(Number(m.min_stock_level)) && m.min_stock_level !== null && m.min_stock_level !== '' ? Number(m.min_stock_level) : 15) ? 'low' : 'adequate')
           }));
         }
       }
@@ -237,14 +336,15 @@
       if (staffRes.ok) {
         const staffList = await staffRes.json();
         if (Array.isArray(staffList)) {
-          const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || s.full_name.toLowerCase().includes('dr'));
-          accountingData.doctors_payroll = docStaff.map((d) => ({
+          // Only the new-bill form's doctor picker uses this list now. Pay
+          // used to be built here too, from 8 500 000 / 12 000 000 and an
+          // 8-10 % "commission" typed into this file; it now comes from the
+          // server payroll (loadPayroll).
+          const docStaff = staffList.filter(s => s.role === 'doctor' || s.role === 'chief_doctor' || (s.specialty && s.specialty.trim() !== '') || String(s.full_name || '').toLowerCase().includes('dr'));
+          accountingData.doctors_list = docStaff.map((d) => ({
             id: d.id,
             name: d.full_name,
-            role: d.specialty || d.role || 'Shifokor',
-            base_salary: d.role === 'chief_doctor' ? 12000000 : 8500000,
-            commission_rate: d.role === 'chief_doctor' ? 10 : 8,
-            status: 'calculated'
+            role: d.specialty || d.role || 'Shifokor'
           }));
         }
       }
@@ -253,21 +353,36 @@
         const ledgerRows = await ledgerRes.json();
         if (Array.isArray(ledgerRows)) {
           accountingData.patients_billing = ledgerRows.map(row => {
+            // A desk visit (consultation or outpatient course) is billed on
+            // its appointment: no bed, no daily price, no length.
+            const isVisit = !row.admission_id;
             return {
               id: row.invoice_id,
               booking_id: row.admission_id,
-              bed_id: row.bed_id || 'BED-1A',
+              appointment_id: row.appointment_id || null,
+              patient_id: row.patient_id || null,
+              is_visit: isVisit,
+              // These used to fall back to bed BED-1A, a fake phone number,
+              // today and a 10-day stay, so a bill missing them showed (and
+              // printed) a stay nobody had. Missing stays missing ("—").
+              bed_id: row.bed_id || null,
               bed_name: row.room_number ? `${row.room_number}-xona (${row.bed_code || ''})` : (row.bed_code || 'Ambulator'),
               patient_name: row.patient_name || 'Bemor',
-              patient_phone: row.patient_phone || '+998 (90) --- -- --',
-              patient_city: 'Toshkent sh.',
-              program: row.program_type || 'Statsionar',
-              package_type: row.daily_price >= 1100000 ? 'statsionar_full_room' : 'statsionar_shared',
+              patient_phone: row.patient_phone || '',
+              patient_city: '',
+              program: VISIT_LABELS[row.program_type] || row.program_type || '—',
+              // The stay's own programme decides the package; the price is
+              // only a guess for a programme that is not a package id.
+              package_type: isVisit ? null : (OFFICIAL_RATES[row.program_type] ? row.program_type
+                : ((listedRate('statsionar_full_room') > 0 &&
+                    Number(row.daily_price) >= listedRate('statsionar_full_room'))
+                   ? 'statsionar_full_room' : 'statsionar_shared')),
               doctor: row.doctor_name || 'Shifokor biriktirilmagan',
-              start_date: row.start_date || getTodayISO(),
-              end_date: row.end_date || getOffsetDateStr(10),
-              days_count: row.total_days || 10,
-              daily_rate: row.daily_price || 720000,
+              start_date: row.start_date ? String(row.start_date).slice(0, 10) : '',
+              end_date: row.end_date ? String(row.end_date).slice(0, 10) : '',
+              days_count: Number(row.total_days) > 0 ? Number(row.total_days) : null,
+              // A stay with no stored rate shows 0, not an invented 720 000.
+              daily_rate: Number(row.daily_price) || 0,
               gross_due: Number(row.total_billed) || 0,
               discount_amount: Number(row.discount_amount) || 0,
               total_due: row.net_amount || row.total_billed,
@@ -277,7 +392,20 @@
               paid_bank: 0,
               total_paid: row.total_paid || 0,
               debt_remaining: row.balance_due || 0,
-              extra_services: [],
+              // Saved bill lines from the server; the totals above already
+              // include them (the invoice triggers add them up).
+              extra_services: (accountingData.invoice_items || [])
+                .filter(it => it.invoice_id === row.invoice_id)
+                .map(it => ({
+                  id: it.id,
+                  name: it.service_name,
+                  type: it.item_type,
+                  unit_price: Number(it.unit_price) || 0,
+                  qty: Number(it.quantity) || 1,
+                  total: Number(it.total_amount) || 0,
+                  notes: '',
+                  added_at: it.created_at
+                })),
               status: row.payment_status || 'unpaid',
               created_at: row.created_at || new Date().toISOString()
             };
@@ -297,115 +425,82 @@
     }
   }
 
-  // Synchronize with building management 14 beds bookings
-  function syncWithInpatientBookings() {
-    try {
-      const bedsStored = localStorage.getItem(BEDS_STORAGE_KEY);
-      if (!bedsStored) return;
-
-      const bedsData = JSON.parse(bedsStored);
-      if (!bedsData || !Array.isArray(bedsData)) return;
-
-      let changed = false;
-
-      bedsData.forEach(booking => {
-        if (!booking || !booking.patient_name) return;
-
-        // Check if patient already exists in billing
-        let bill = accountingData.patients_billing.find(b => b.booking_id === String(booking.id));
-
-        // Determine rate
-        let dailyRate = 720000;
-        let progName = "Statsionar (1 karavot / 720 ming)";
-        let packageKey = "statsionar_shared";
-
-        if (booking.is_full_room || (booking.program && (booking.program.includes("Butun Xona") || booking.program.includes("1.1 mln"))) || (booking.notes && booking.notes.includes("Butun xona"))) {
-          dailyRate = 1100000;
-          progName = "Statsionar Butun Xona (1 kishi / VIP Solo)";
-          packageKey = "statsionar_full_room";
-        } else if (booking.program && (booking.program.includes("Kunlik") || booking.program.includes("630 ming"))) {
-          dailyRate = 630000;
-          progName = "Kunlik Statsionar (Kunduzgi o'rin)";
-          packageKey = "kunlik_statsionar";
-        }
-
-        // Calculate days (default 10 days or actual date range)
-        let days = 10;
-        if (booking.start_date && booking.end_date) {
-          const d1 = new Date(booking.start_date);
-          const d2 = new Date(booking.end_date);
-          const diffTime = Math.abs(d2 - d1);
-          days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-        }
-        const totalDue = days * dailyRate;
-
-        if (!bill) {
-          const newBill = {
-            id: `BILL-2026-${String(accountingData.patients_billing.length + 1).padStart(3, '0')}`,
-            booking_id: String(booking.id),
-            bed_id: booking.bed_id,
-            bed_name: getBedName(booking.bed_id),
-            patient_name: booking.patient_name,
-            patient_phone: booking.patient_phone || "+998 (90) --- -- --",
-            patient_city: "Toshkent sh.",
-            program: progName,
-            package_type: packageKey,
-            doctor: booking.doctor || "Dr. Rustam Ziyayev (Bosh Narkolog)",
-            start_date: booking.start_date || getTodayISO(),
-            end_date: booking.end_date || getOffsetDateStr(10),
-            days_count: days,
-            daily_rate: dailyRate,
-            total_due: totalDue,
-            paid_cash: 0,
-            paid_terminal: 0,
-            paid_online: 0,
-            paid_bank: 0,
-            total_paid: 0,
-            debt_remaining: totalDue,
-            extra_services: [],
-            status: "unpaid",
-            created_at: new Date().toISOString()
-          };
-          accountingData.patients_billing.push(newBill);
-          changed = true;
-        } else {
-          if (bill.patient_name !== booking.patient_name || bill.bed_id !== booking.bed_id) {
-            bill.patient_name = booking.patient_name;
-            bill.bed_id = booking.bed_id;
-            bill.bed_name = getBedName(booking.bed_id);
-            bill.doctor = booking.doctor;
-            changed = true;
-          }
-        }
-      });
-
-      if (changed) {
-        saveData();
-      }
-    } catch (e) {
-      console.warn("Could not sync with beds storage:", e);
-    }
+  // The month's pay, from the server (GET /api/hr/payroll): base salary
+  // plus the duty shifts saved on the roster, minus income tax and pension,
+  // exactly as the HR page shows it. This page used to work out its own
+  // "doctors payroll" from figures typed into this file (8 500 000 /
+  // 12 000 000 and an 8-10 % share of patient bills that nobody had ever
+  // set), and paid that out -- a second pay formula next to HR's.
+  // There is no recorded commission rate, so no commission is shown; the PO
+  // decides whether doctors get one (CHANGES.md).
+  function currentPayrollMonth() {
+    if (!payrollMonth) payrollMonth = getTodayISO().slice(0, 7);
+    return payrollMonth;
   }
 
-  function getBedName(bedId) {
-    const cleanId = String(bedId || '').toLowerCase().trim();
-    const bedNames = {
-      "bed-1a": "11-xona 1A karavot",
-      "bed-1b": "11-xona 1B karavot",
-      "bed-2a": "12-xona 2A karavot",
-      "bed-2b": "12-xona 2B karavot",
-      "bed-21a": "21-xona 21A karavot",
-      "bed-21b": "21-xona 21B karavot",
-      "bed-22a": "22-xona 22A karavot",
-      "bed-22b": "22-xona 22B karavot",
-      "bed-23a": "23-xona 23A karavot",
-      "bed-23b": "23-xona 23B karavot",
-      "bed-24a": "24-xona 24A karavot",
-      "bed-24b": "24-xona 24B karavot",
-      "bed-25a": "25-xona 25A karavot",
-      "bed-25b": "25-xona 25B karavot"
+  function updatePayrollTitle() {
+    const payrollTitle = document.getElementById('accounting-doctors-title');
+    if (!payrollTitle) return;
+    const [y, m] = currentPayrollMonth().split('-').map(Number);
+    const label = new Date(y, m - 1, 1).toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' });
+    payrollTitle.innerHTML = `<i class="fas fa-user-md" style="color: var(--primary);"></i> Xodimlar Oylik Maoshi — Kadrlar hisobi (${esc(label)})`;
+  }
+
+  async function loadPayroll() {
+    const month = currentPayrollMonth();
+    let res;
+    try {
+      res = await fetch('/api/hr/payroll?month=' + encodeURIComponent(month));
+    } catch (e) {
+      accountingData.payroll_lines = [];
+      accountingData.payroll_info = { month, error: "Server bilan aloqa yo'q — maosh hisobi yuklanmadi." };
+      return;
+    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      accountingData.payroll_lines = [];
+      accountingData.payroll_info = {
+        month,
+        error: res.status === 403
+          ? "Maosh hisobi faqat buxgalteriya va kadrlar bo'limiga ko'rinadi."
+          : (body.error || `Maosh hisobi yuklanmadi (${res.status}).`)
+      };
+      return;
+    }
+    accountingData.payroll_lines = (Array.isArray(body.staff) ? body.staff : []).map(l => ({
+      id: l.staff_id,
+      name: l.full_name || '',
+      role: l.role || '',
+      is_active: l.is_active !== false,
+      base_salary: Number(l.base_salary) || 0,
+      duty_shifts: Number(l.duty_shifts) || 0,
+      duty_pay: Number(l.duty_pay) || 0,
+      gross: Number(l.gross) || 0,
+      income_tax: Number(l.income_tax) || 0,
+      pension: Number(l.pension) || 0,
+      deductions: Number(l.deductions) || 0,
+      net: Number(l.net) || 0
+    }));
+    accountingData.payroll_info = {
+      month: body.month || month,
+      totals: body.totals || null,
+      rates: body.rates || null,
+      unlinked: Array.isArray(body.unlinked_shifts) ? body.unlinked_shifts : [],
+      mismatches: Array.isArray(body.name_mismatches) ? body.name_mismatches : []
     };
-    return bedNames[cleanId] || (bedId ? bedId : "Ambulator Qabul");
+  }
+
+  // Paid for the picked payroll month if the journal holds a salary payout
+  // for this person and that month. Worked out on every render from the
+  // synced journal, so the badge cannot drift back to "calculated" and invite
+  // a second payout. Older payouts carry no payroll_month and count by the
+  // day they were recorded; the server makes the same check and refuses a
+  // repeat, so this is only the early warning.
+  function payrollPaid(staffId) {
+    const month = currentPayrollMonth();
+    return (accountingData.transactions || []).some(t =>
+      t.category === 'salary' && t.related_staff_id === staffId &&
+      String(t.payroll_month || t.date || '').slice(0, 7) === month);
   }
 
   // ==========================================================================
@@ -645,15 +740,16 @@
         statusBadge = `<span class="badge-status badge-unpaid"><i class="fas fa-exclamation-circle"></i> To'lanmagan</span>`;
       }
 
-      let priceTag = `<span style="font-family: var(--font-mono); font-size: 0.72rem; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 2px 6px; border-radius: 4px;">${formatShortUZS(b.daily_rate)}/kun</span>`;
+      // A desk visit has no daily rate; its price is the bill line itself.
+      let priceTag = b.is_visit ? '' : `<span style="font-family: var(--font-mono); font-size: 0.72rem; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 2px 6px; border-radius: 4px;">${formatShortUZS(b.daily_rate)}/kun</span>`;
 
       let extraServicesHTML = '';
       if (b.extra_services && b.extra_services.length > 0) {
         extraServicesHTML = `
           <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
             ${b.extra_services.map(s => `
-              <span class="extra-service-pill" title="${s.notes || ''}">
-                <i class="fas fa-plus-circle"></i> ${s.name} (${s.qty}x = +${formatShortUZS(s.total)})
+              <span class="extra-service-pill" title="${esc(s.notes || '')}">
+                <i class="fas fa-plus-circle"></i> ${esc(s.name)} (${s.qty}x = +${formatShortUZS(s.total)})
               </span>
             `).join('')}
           </div>
@@ -666,31 +762,31 @@
         : `<td class="mono-val" style="color: ${b.debt_remaining > 0 ? 'var(--rose)' : 'var(--text-muted)'}; font-weight: 700;">${b.debt_remaining > 0 ? formatUZS(b.debt_remaining) : '— 0'}</td>`;
 
       const payButton = isRefundDue
-        ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" onclick="window.FMH_Accounting.openPaymentModal('${b.id}', true)" title="Bemorga ortiqcha to'langan pulni qaytarish (Refund Payout)">
+        ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" onclick="window.FMH_Accounting.openPaymentModal(${jsArg(b.id)}, true)" title="Bemorga ortiqcha to'langan pulni qaytarish (Refund Payout)">
              <i class="fas fa-undo"></i> Qaytarish
            </button>`
-        : `<button class="btn-portal btn-primary-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openPaymentModal('${b.id}')" title="To'lov Qabul Qilish">
+        : `<button class="btn-portal btn-primary-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openPaymentModal(${jsArg(b.id)})" title="To'lov Qabul Qilish">
              <i class="fas fa-hand-holding-usd"></i> To'lov
            </button>`;
 
       return `
         <tr>
-          <td class="mono-val" style="color: var(--primary); font-weight: 700;">${b.id}</td>
+          <td class="mono-val" style="color: var(--primary); font-weight: 700;">${esc(b.id)}</td>
           <td>
             <div class="patient-cell">
-              <span class="patient-name-bold">${b.patient_name}</span>
-              <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${b.patient_phone} • ${b.patient_city || 'Toshkent'}</span>
+              <span class="patient-name-bold">${esc(b.patient_name)}</span>
+              <span class="patient-details-sub"><i class="fas fa-phone-alt"></i> ${esc(b.patient_phone || '—')}${b.patient_city ? ' • ' + esc(b.patient_city) : ''}</span>
             </div>
           </td>
           <td>
             <div style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-              ${b.bed_name || 'Ambulator'} ${priceTag}
+              ${esc(b.bed_name || 'Ambulator')} ${priceTag}
             </div>
-            <div class="patient-details-sub">${b.program} (${b.days_count} kun)</div>
+            <div class="patient-details-sub">${esc(b.program)} (${b.days_count ? b.days_count + ' kun' : (b.is_visit ? esc(b.start_date || '—') : '—')})</div>
             ${extraServicesHTML}
           </td>
           <td>
-            <span style="font-size: 0.8rem; color: var(--text-secondary);">${b.doctor || 'Shifokor biriktirilmagan'}</span>
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">${esc(b.doctor || 'Shifokor biriktirilmagan')}</span>
           </td>
           <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">
             ${formatUZS(b.total_due)}
@@ -703,12 +799,15 @@
           <td>
             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
               ${payButton}
-              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; color: var(--purple); border-color: rgba(168, 85, 247, 0.4);" onclick="window.FMH_Accounting.openAddServiceModal('${b.id}')" title="Qo'shimcha Dori/Xizmat Qo'shish">
+              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem; color: var(--purple); border-color: rgba(168, 85, 247, 0.4);" onclick="window.FMH_Accounting.openAddServiceModal(${jsArg(b.id)})" title="Qo'shimcha Dori/Xizmat Qo'shish">
                 <i class="fas fa-plus"></i> Xizmat
               </button>
-              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openInvoiceReceipt('${b.id}')" title="Kvitansiya / Chek">
+              <button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openInvoiceReceipt(${jsArg(b.id)})" title="Kvitansiya / Chek">
                 <i class="fas fa-receipt"></i> Chek
               </button>
+              ${b.patient_id ? `<button class="btn-portal btn-outline-portal" style="padding: 4px 8px; font-size: 0.75rem;" data-patient-id="${esc(b.patient_id)}" onclick="window.FMH_Accounting.openPatientInvoices(this.dataset.patientId)" title="Bemorning barcha hisoblari">
+                <i class="fas fa-folder-open"></i> Hisoblar
+              </button>` : ''}
             </div>
           </td>
         </tr>
@@ -772,10 +871,10 @@
 
       return `
         <tr>
-          <td class="mono-val" style="color: var(--text-muted); font-size: 0.78rem;">${t.id}</td>
+          <td class="mono-val" style="color: var(--text-muted); font-size: 0.78rem;">${esc(t.id)}</td>
           <td>
-            <div style="font-weight: 600; color: var(--text-primary);">${t.title}</div>
-            <div class="patient-details-sub">${t.notes || ''}</div>
+            <div style="font-weight: 600; color: var(--text-primary);">${esc(t.title)}</div>
+            <div class="patient-details-sub">${esc(t.notes || '')}</div>
           </td>
           <td>${badge}</td>
           <td class="mono-val" style="font-weight: 800; font-size: 0.95rem; color: ${isIncome ? 'var(--emerald)' : 'var(--rose)'};">
@@ -789,7 +888,7 @@
             <div class="patient-details-sub"><i class="fas fa-user-check"></i> ${t.cashier || 'Buxgalter'}</div>
           </td>
           <td>
-            <button class="btn-portal btn-outline-portal" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.printTxnReceipt('${t.id}')">
+            <button class="btn-portal btn-outline-portal" style="padding: 3px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.printTxnReceipt(${jsArg(t.id)})">
               <i class="fas fa-receipt"></i> Kvitansiya
             </button>
           </td>
@@ -799,77 +898,91 @@
   }
 
   // ==========================================================================
-  // RENDER TAB: DOCTOR PAYROLL & COMMISSIONS
+  // RENDER TAB: STAFF PAYROLL (from the server; see loadPayroll)
   // ==========================================================================
+
+  const ROLE_LABELS = {
+    chief_doctor: 'Bosh shifokor', doctor: 'Shifokor', nurse: 'Hamshira',
+    sanitar: 'Sanitarka', receptionist: 'Qabulxona', accountant: 'Buxgalter',
+    admin: 'Administrator', pharmacist: 'Farmatsevt', hr_manager: 'Kadrlar bo\'limi',
+    ward_manager: 'Statsionar menejeri', kitchen_staff: 'Oshxona', support: 'Xodim'
+  };
 
   function renderDoctorsPayroll() {
     const grid = document.getElementById('doctors-payroll-grid');
     if (!grid || !accountingData) return;
 
-    const list = Array.isArray(accountingData.doctors_payroll) ? accountingData.doctors_payroll : [];
-
-    if (list.length === 0) {
-      grid.innerHTML = `
+    const info = accountingData.payroll_info;
+    const list = Array.isArray(accountingData.payroll_lines) ? accountingData.payroll_lines : [];
+    const emptyBox = (title, text) => `
         <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted); background: var(--card-bg); border-radius: 12px; border: 1px dashed var(--border-color);">
           <i class="fas fa-user-md" style="font-size: 2.2rem; margin-bottom: 0.75rem; opacity: 0.5; color: var(--primary);"></i>
-          <div style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Hozircha shifokorlar oylik qaydnomasi bo'sh</div>
-          <div style="font-size: 0.85rem;">Kadrlar (HR) bo'limida yangi shifokorlar qo'shilgach, ularning oylik maoshi va gonorarlari avtomatik hisoblanadi.</div>
-        </div>
-      `;
+          <div style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">${esc(title)}</div>
+          <div style="font-size: 0.85rem;">${esc(text)}</div>
+        </div>`;
+
+    if (info && info.error) {
+      grid.innerHTML = emptyBox("Maosh hisobi ko'rsatilmaydi", info.error);
+      return;
+    }
+    if (list.length === 0) {
+      grid.innerHTML = emptyBox("Hozircha oylik qaydnomasi bo'sh",
+        "Kadrlar (HR) bo'limida xodimlar va ularning maoshi kiritilgach, bu yerda ko'rinadi.");
       return;
     }
 
-    grid.innerHTML = list.map(doc => {
-      const myPatients = (accountingData.patients_billing || []).filter(p => {
-        const pDoc = (p.doctor || '').toLowerCase();
-        const dName = (doc.name || '').toLowerCase().replace('dr.', '').trim();
-        return dName && pDoc.includes(dName);
-      });
+    // Roster days the server could not pay to anyone are reported, not
+    // guessed at: HR has to fix the roster or the staff record.
+    const unlinked = (info && info.unlinked) || [];
+    const mismatches = (info && info.mismatches) || [];
+    const skipped = unlinked.reduce((s, u) => s + (Number(u.shifts) || 0), 0) +
+                    mismatches.reduce((s, m) => s + (Number(m.shifts) || 0), 0);
+    const warning = skipped > 0 ? `
+        <div style="grid-column: 1/-1; padding: 0.75rem 1rem; border-radius: 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 0.85rem;">
+          <i class="fas fa-exclamation-triangle"></i> Navbatchilik jadvalidagi ${skipped} ta smena hech bir xodimga bog'lanmagan yoki ismi mos kelmaydi — ular maoshga qo'shilmadi. Kadrlar bo'limida tekshiring.
+        </div>` : '';
 
-      const patientCount = myPatients.length;
-      const revenueGen = myPatients.reduce((sum, p) => sum + (Number(p.total_due) || 0), 0);
-      const commissionEarned = Math.round(revenueGen * ((Number(doc.commission_rate) || 0) / 100));
-      const totalPayable = (Number(doc.base_salary) || 0) + commissionEarned;
-
+    grid.innerHTML = warning + list.map(doc => {
+      const paid = payrollPaid(doc.id);
       return `
         <div class="doctor-payroll-card">
           <div class="doc-card-header">
             <div class="doc-avatar"><i class="fas fa-user-md"></i></div>
             <div class="doc-info">
-              <div class="doc-name">${doc.name}</div>
-              <div class="doc-role">${doc.role || 'Shifokor'}</div>
+              <div class="doc-name">${esc(doc.name)}</div>
+              <div class="doc-role">${esc(ROLE_LABELS[doc.role] || doc.role || 'Xodim')}${doc.is_active ? '' : ' (faol emas)'}</div>
             </div>
-            <span class="badge-status ${doc.status === 'paid' ? 'badge-paid' : 'badge-partial'}">
-              ${doc.status === 'paid' ? "To'langan" : "Hisoblangan"}
+            <span class="badge-status ${paid ? 'badge-paid' : 'badge-partial'}">
+              ${paid ? "To'langan" : "Hisoblangan"}
             </span>
           </div>
 
           <div class="doc-stats-row">
             <div class="doc-stat-item">
-              <div class="label">Bemorlar Soni (Oy)</div>
-              <div class="val" style="color: var(--primary);">${patientCount} ta bemor</div>
-            </div>
-            <div class="doc-stat-item">
-              <div class="label">Klinikaga Tushum</div>
-              <div class="val">${formatShortUZS(revenueGen)}</div>
-            </div>
-            <div class="doc-stat-item">
               <div class="label">Asosiy Oylik Maosh</div>
-              <div class="val">${formatShortUZS(doc.base_salary || 0)}</div>
+              <div class="val">${formatShortUZS(doc.base_salary)}</div>
             </div>
             <div class="doc-stat-item">
-              <div class="label">Gonorar Ulushi (${doc.commission_rate || 0}%)</div>
-              <div class="val" style="color: var(--emerald);">+${formatShortUZS(commissionEarned)}</div>
+              <div class="label">Navbatchilik (${doc.duty_shifts} smena)</div>
+              <div class="val" style="color: var(--emerald);">+${formatShortUZS(doc.duty_pay)}</div>
+            </div>
+            <div class="doc-stat-item">
+              <div class="label">Hisoblangan (brutto)</div>
+              <div class="val">${formatShortUZS(doc.gross)}</div>
+            </div>
+            <div class="doc-stat-item">
+              <div class="label">Ushlab qolinadi (soliq + pensiya)</div>
+              <div class="val" style="color: var(--rose);">-${formatShortUZS(doc.deductions)}</div>
             </div>
           </div>
 
           <div class="doc-total-payable-box">
-            <div class="doc-payable-label">Jami To'lanadigan Maosh:</div>
-            <div class="doc-payable-amount">${formatUZS(totalPayable)}</div>
+            <div class="doc-payable-label">Qo'lga beriladi (sof):</div>
+            <div class="doc-payable-amount">${formatUZS(doc.net)}</div>
           </div>
 
           <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button class="btn-portal btn-success-portal" style="width: 100%;" onclick="window.FMH_Accounting.payoutDoctorSalary('${doc.id}')">
+            <button class="btn-portal btn-success-portal" style="width: 100%;" data-staff-id="${esc(doc.id)}" onclick="window.FMH_Accounting.payoutDoctorSalary(this.dataset.staffId)">
               <i class="fas fa-check-circle"></i> Oylik Maoshni To'lash (Kassadan Chiqim)
             </button>
           </div>
@@ -895,6 +1008,113 @@
     const input = document.getElementById('search-pharmacy-stock-input');
     pharmacyStockSearchQuery = input ? input.value.trim().toLowerCase() : '';
     renderPharmacyInventory();
+  }
+
+  // ------------------------------------------------------------
+  // MEDICINE USE: doses the nurses marked "given", what they took
+  // from stock and what that cost at the buying price.
+  // ------------------------------------------------------------
+  function isoDay(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  async function loadMedicineUsage() {
+    const startEl = document.getElementById('med-usage-start');
+    const endEl = document.getElementById('med-usage-end');
+    const tbody = document.getElementById('med-usage-tbody');
+    if (!startEl || !endEl || !tbody) return;
+    if (!startEl.value || !endEl.value) {
+      const now = new Date();
+      startEl.value = isoDay(new Date(now.getFullYear(), now.getMonth(), 1));
+      endEl.value = isoDay(now);
+    }
+    let usage;
+    try {
+      const res = await fetch(`/api/accounting/medicine-usage?start=${encodeURIComponent(startEl.value)}&end=${encodeURIComponent(endEl.value)}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.FMH_Toast(body.error || `Dori sarfini yuklab bo'lmadi (${res.status})`, 'danger');
+        return;
+      }
+      usage = body;
+    } catch (e) {
+      window.FMH_Toast("Server bilan aloqa yo'q", 'danger');
+      return;
+    }
+
+    const summary = document.getElementById('med-usage-summary');
+    if (summary) {
+      summary.innerHTML = `Jami berilgan dozalar: <strong>${usage.total_doses}</strong> • Ombordagi dorilar tannarxi: <strong>${formatUZS(usage.total_cost)}</strong>`;
+    }
+
+    tbody.innerHTML = usage.linked.length ? usage.linked.map(r => {
+      const low = (r.low !== undefined) ? !!r.low : r.stock_quantity < r.min_stock_level;
+      const shortfall = Math.round((Number(r.doses) - Number(r.units_taken)) * 1000) / 1000;
+      return `
+        <tr>
+          <td><strong>${esc(r.name)}</strong><br><small style="color: var(--text-muted);">${esc(r.form)}</small></td>
+          <td>${r.doses}</td>
+          <td>${fmtQty(r.units_taken)}${shortfall > 0 ? ` <small style="color: var(--warning);">(${fmtQty(shortfall)} tasi uchun omborda qoldiq yo'q edi)</small>` : ''}</td>
+          <td>${formatUZS(r.cost)}</td>
+          <td style="color: ${low ? 'var(--warning)' : 'inherit'}; font-weight: 700;">${fmtQty(r.stock_quantity)}</td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Bu davrda ombordagi dorilardan berilmagan</td></tr>`;
+
+    const box = document.getElementById('med-unlinked-box');
+    if (!box) return;
+    if (!usage.unlinked.length) {
+      box.innerHTML = '';
+      return;
+    }
+    const stock = Array.isArray(accountingData && accountingData.pharmacy_stock) ? accountingData.pharmacy_stock : [];
+    const options = stock.map(m => `<option value="${esc(m.id)}">${esc(m.name)} (${esc(m.form)})</option>`).join('');
+    box.innerHTML = `
+      <div style="font-weight: 700; margin-bottom: 0.5rem; color: var(--warning);">
+        <i class="fas fa-link"></i> Ombor bilan bog'lanmagan dorilar
+      </div>
+      <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+        Shifokor yozgan nom ombordagi nomga mos kelmadi, shuning uchun bu dozalar ombordan ayirilmadi. Bir marta bog'lang — keyingi dozalar avtomatik hisoblanadi.
+      </div>
+      ${usage.unlinked.map((u, i) => `
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; border-top: 1px solid var(--border-color);">
+          <span style="flex: 1 1 200px;"><strong>${esc(u.medication_name)}</strong> — ${u.doses} doza</span>
+          <select class="form-input med-link-select" data-idx="${i}" style="flex: 1 1 200px; width: auto;">
+            <option value="">Ombordagi dorini tanlang...</option>${options}
+          </select>
+          <button type="button" class="btn-portal btn-primary-portal med-link-btn" data-idx="${i}">Bog'lash</button>
+        </div>`).join('')}
+    `;
+    box.querySelectorAll('.med-link-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.idx);
+        const sel = box.querySelector(`.med-link-select[data-idx="${idx}"]`);
+        linkMedicineName(usage.unlinked[idx].medication_name, sel ? sel.value : '');
+      });
+    });
+  }
+
+  async function linkMedicineName(name, medicationId) {
+    if (!medicationId) {
+      window.FMH_Toast("Ombordagi dorini tanlang", 'warning');
+      return;
+    }
+    try {
+      const res = await fetch('/api/accounting/medicine-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medication_name: name, medication_id: medicationId })
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.FMH_Toast(body.error || `Bog'lab bo'lmadi (${res.status})`, 'danger');
+        return;
+      }
+      const past = Number(body.settled_doses) || 0;
+      window.FMH_Toast(`"${name}" ombor bilan bog'landi.${past ? ` Avval berilgan ${past} doza ham ombordan ayirildi.` : ''} Keyingi dozalar avtomatik ayiriladi.`, 'success');
+      loadMedicineUsage();
+    } catch (e) {
+      window.FMH_Toast("Server bilan aloqa yo'q", 'danger');
+    }
   }
 
   function renderMedicationPurchases() {
@@ -978,12 +1198,12 @@
       }
 
       const receiptBtn = p.accounting_transaction_id
-        ? `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem;" onclick="window.FMH_Accounting.printTxnReceipt('${p.accounting_transaction_id}')" title="Kassa Cheki">
+        ? `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem;" onclick="window.FMH_Accounting.printTxnReceipt(${jsArg(p.accounting_transaction_id)})" title="Kassa Cheki">
              <i class="fas fa-receipt"></i> Chek
            </button>`
         : '';
 
-      const deleteBtn = `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" onclick="window.FMH_Accounting.deleteMedPurchase('${p.id}')" title="Xaridni bekor qilish">
+      const deleteBtn = `<button class="btn-portal btn-outline-portal" style="padding: 2px 7px; font-size: 0.72rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" onclick="window.FMH_Accounting.deleteMedPurchase(${jsArg(p.id)})" title="Xaridni bekor qilish">
                            <i class="fas fa-trash-alt"></i>
                          </button>`;
 
@@ -1056,8 +1276,13 @@
       const stock = item.stock !== undefined ? Number(item.stock) : Number(item.stock_quantity || 0);
       const unitPrice = Number(item.unit_price) || 0;
       const totalVal = stock * unitPrice;
-      const minStock = Number(item.min_stock_level) || 15;
-      const isLow = stock <= minStock;
+      const minStock = Number(item.min_stock_level);
+      // The server's verdict wins (strictly below the threshold, expired lots
+      // not counted); the comparison is only a fallback and is strict too.
+      const isLow = item.stock_status ? (item.stock_status === 'low' || item.stock_status === 'out') : stock < minStock;
+      const availNum = (item.available_quantity === null || item.available_quantity === undefined) ? null : Number(item.available_quantity);
+      const usableNote = (availNum !== null && isFinite(availNum) && availNum < stock)
+        ? `<br><small style="color: var(--text-muted); font-weight: 400;">yaroqli: ${fmtQty(availNum)}</small>` : '';
       const badge = isLow
         ? `<span class="badge-status badge-unpaid"><i class="fas fa-exclamation-triangle"></i> Kam qolgan</span>`
         : `<span class="badge-status badge-paid"><i class="fas fa-check-circle"></i> Yetarli</span>`;
@@ -1072,12 +1297,12 @@
             ${item.standard_dosage ? `<br><small style="color: var(--text-muted);">${esc(item.standard_dosage)}</small>` : ''}
           </td>
           <td>${esc(groupName)}</td>
-          <td class="mono-val" style="font-weight: 700; color: ${isLow ? 'var(--rose)' : 'var(--primary)'};">${stock} ${esc(unitName)}</td>
+          <td class="mono-val" style="font-weight: 700; color: ${isLow ? 'var(--rose)' : 'var(--primary)'};">${fmtQty(stock)} ${esc(unitName)}${usableNote}</td>
           <td class="mono-val">${formatUZS(unitPrice)}</td>
           <td class="mono-val" style="font-weight: 700; color: var(--text-primary);">${formatUZS(totalVal)}</td>
           <td>${badge}</td>
           <td>
-            <button class="btn-portal btn-outline-portal" style="padding: 2px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openMedPurchaseModal('${item.id}')" title="Ushbu dorini xarid qilish (Kirim)">
+            <button class="btn-portal btn-outline-portal" style="padding: 2px 8px; font-size: 0.75rem;" onclick="window.FMH_Accounting.openMedPurchaseModal(${jsArg(item.id)})" title="Ushbu dorini xarid qilish (Kirim)">
               <i class="fas fa-plus"></i> Xarid
             </button>
           </td>
@@ -1129,12 +1354,11 @@
         }
       });
 
-      // Also sum patient collections in this month
-      (accountingData.patients_billing || []).forEach(p => {
-        if ((p.start_date || p.created_at || '').startsWith(mStr)) {
-          incomeData[3 - i] += (Number(p.total_paid) || 0);
-        }
-      });
+      // Patient payments are already in the transactions above: the
+      // payments trigger writes each one into accounting_transactions on the
+      // day it was paid. Adding the bills' total_paid as well counted every
+      // patient payment twice (and on the stay's start month, not the day
+      // the money came in).
     }
 
     const maxVal = Math.max(10000000, ...incomeData, ...expenseData) * 1.25;
@@ -1205,10 +1429,18 @@
     let kunlikAmt = 0;
     let ambulatorAmt = 0;
     let pharmacyAmt = 0;
+    let consultAmt = 0;
 
     (accountingData.patients_billing || []).forEach(p => {
       const prog = (p.program || '').toLowerCase();
       const due = Number(p.total_due) || 0;
+      // A desk visit's whole bill is its one line: count it once, under its
+      // own heading, not again as an "extra service".
+      if (p.is_visit) {
+        if (prog.includes('konsultatsiya')) consultAmt += due;
+        else ambulatorAmt += due;
+        return;
+      }
       if (prog.includes('kunlik') || prog.includes('630')) {
         kunlikAmt += due;
       } else if (prog.includes('ambulator') || prog.includes('310') || prog.includes('500')) {
@@ -1222,13 +1454,14 @@
       });
     });
 
-    const totalAll = statsionarAmt + kunlikAmt + ambulatorAmt + pharmacyAmt;
+    const totalAll = statsionarAmt + kunlikAmt + ambulatorAmt + consultAmt + pharmacyAmt;
     const calcPct = (amt) => totalAll > 0 ? Math.round((amt / totalAll) * 100) : 0;
 
     const depts = [
       { name: "Statsionar Davolanish (720 ming / 1.1 mln)", amount: statsionarAmt, color: "#38bdf8", pct: calcPct(statsionarAmt) },
       { name: "Kunlik Statsionar (630 ming / kun)", amount: kunlikAmt, color: "#10b981", pct: calcPct(kunlikAmt) },
       { name: "Ambulator Muolajalar (310 ming & 500 ming)", amount: ambulatorAmt, color: "#a855f7", pct: calcPct(ambulatorAmt) },
+      { name: "Shifokor Konsultatsiyalari", amount: consultAmt, color: "#818cf8", pct: calcPct(consultAmt) },
       { name: "Farmakologiya & Qo'shimcha Xizmatlar", amount: pharmacyAmt, color: "#f59e0b", pct: calcPct(pharmacyAmt) }
     ];
 
@@ -1263,23 +1496,25 @@
     const now = new Date();
     const dateFormatted = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
 
-    // Itemized table rows
-    let itemRows = `
+    // Itemized table rows. Only a stay has a bed-days line; a desk visit
+    // (consultation, outpatient course) is just its own bill line below.
+    const hasStayRow = !bill.is_visit && bill.days_count;
+    let itemRows = hasStayRow ? `
       <tr>
         <td>1</td>
-        <td><strong>${bill.program}</strong><br><small style="color: #64748b;">${bill.bed_name} • Shifokor nazorati, muolajalar va parhez taomnoma</small></td>
+        <td><strong>${esc(bill.program)}</strong><br><small style="color: #64748b;">${esc(bill.bed_name)} • Shifokor nazorati, muolajalar va parhez taomnoma</small></td>
         <td style="text-align: center; font-weight: 700;">${bill.days_count} kun</td>
         <td style="text-align: right;">${formatUZS(bill.daily_rate)}</td>
         <td style="text-align: right; font-weight: 700;">${formatUZS(bill.days_count * bill.daily_rate)}</td>
       </tr>
-    `;
+    ` : '';
 
     if (bill.extra_services && bill.extra_services.length > 0) {
       bill.extra_services.forEach((s, i) => {
         itemRows += `
           <tr>
-            <td>${i + 2}</td>
-            <td><strong>${s.name}</strong><br><small style="color: #64748b;">Qo'shimcha tayinlangan muolaja / dori (${s.notes || 'Shifokor ko\'rsatmasi'})</small></td>
+            <td>${i + (hasStayRow ? 2 : 1)}</td>
+            <td><strong>${esc(s.name)}</strong><br><small style="color: #64748b;">Qo'shimcha tayinlangan muolaja / dori (${esc(s.notes || 'Shifokor ko\'rsatmasi')})</small></td>
             <td style="text-align: center; font-weight: 700;">${s.qty} ta</td>
             <td style="text-align: right;">${formatUZS(s.unit_price)}</td>
             <td style="text-align: right; font-weight: 700; color: #a855f7;">${formatUZS(s.total)}</td>
@@ -1312,16 +1547,18 @@
         <div class="inv-meta-grid">
           <div class="inv-meta-col">
             <div class="title">Bemor Ma'lumotlari:</div>
-            <div class="name">${bill.patient_name}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Tel: ${bill.patient_phone}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Manzil: ${bill.patient_city || 'Toshkent'}</div>
+            <div class="name">${esc(bill.patient_name)}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Tel: ${esc(bill.patient_phone || '—')}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Manzil: ${bill.patient_city || '—'}</div>
           </div>
           <div class="inv-meta-col">
             <div class="title">Muolaja / Tarif Paketi:</div>
-            <div style="font-weight: 700; color: #0f172a;">${bill.program}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Joy: ${bill.bed_name || 'Ambulator'}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Davomiyligi: ${bill.days_count} kun (${bill.start_date} — ${bill.end_date})</div>
-            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${bill.doctor}</div>
+            <div style="font-weight: 700; color: #0f172a;">${esc(bill.program)}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Joy: ${esc(bill.bed_name || 'Ambulator')}</div>
+            <div style="font-size: 0.8rem; color: #475569;">${bill.is_visit
+              ? `Sana: ${esc(bill.start_date || '—')}`
+              : `Davomiyligi: ${bill.days_count ? bill.days_count + ' kun' : '—'} (${esc(bill.start_date || '—')} — ${esc(bill.end_date || '—')})`}</div>
+            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${esc(bill.doctor || '—')}</div>
           </div>
         </div>
 
@@ -1374,7 +1611,7 @@
           </div>
 
           <div style="text-align: right;">
-            <div>Kassir-Buxgalter: ____________________ / Dilnoza R.</div>
+            <div>Kassir-Buxgalter: ____________________</div>
             <div style="margin-top: 6px;">Bemor (Vakil): ____________________ / ${bill.patient_name.split(' ')[0]}</div>
           </div>
         </div>
@@ -1411,7 +1648,7 @@
           </div>
           <div style="display: flex; justify-content: space-between;">
             <span style="color: #64748b;">Tavsif:</span>
-            <span style="text-align: right; font-weight: 600;">${t.title}</span>
+            <span style="text-align: right; font-weight: 600;">${esc(t.title)}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
             <span style="color: #64748b;">To'lov Usuli:</span>
@@ -1529,15 +1766,22 @@
           payment_date: getTodayISO()
         })
       });
-      if (res.ok) {
-        if (isRefund) {
-          showToast(`💸 ${bill.patient_name} uchun ${formatUZS(Math.abs(amount))} qaytarish kassa jurnaliga kiritildi!`, 'info');
-        } else {
-          showToast(`✅ ${bill.patient_name} uchun ${formatUZS(amount)} to'lov muvaffaqiyatli qabul qilindi!`, 'success');
-        }
+      // A refused payment used to close the form with no message, so the
+      // cashier could not tell it had not been recorded. The form now stays
+      // open with the server's reason.
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || `To'lov saqlanmadi (${res.status})`, 'danger');
+        return;
+      }
+      if (isRefund) {
+        showToast(`💸 ${bill.patient_name} uchun ${formatUZS(Math.abs(amount))} qaytarish kassa jurnaliga kiritildi!`, 'info');
+      } else {
+        showToast(`✅ ${bill.patient_name} uchun ${formatUZS(amount)} to'lov muvaffaqiyatli qabul qilindi!`, 'success');
       }
     } catch (err) {
-      console.warn("Payment offline save:", err);
+      showToast("Server bilan aloqa yo'q — to'lov saqlanmadi.", 'danger');
+      return;
     }
 
     closeAllModals();
@@ -1561,8 +1805,52 @@
     document.getElementById('addsvc-qty-input').value = 1;
     document.getElementById('addsvc-notes-input').value = '';
 
+    fillAddServiceOptions();
     updateAddServiceCalculation();
     modal.classList.add('active');
+  }
+
+  // The choice list used to be 8 fixed demo medicines (ids no stock item
+  // has) and 5 services at prices typed into the page. It is now the real
+  // stock with its prices, and the services from the one price list.
+  let addSvcPricing = null;
+  function fillAddServiceOptions() {
+    const select = document.getElementById('addsvc-item-select');
+    if (!select) return;
+    const build = () => {
+      const meds = (accountingData.pharmacy_stock || []).filter(m => m.id);
+      const svcs = (addSvcPricing && Array.isArray(addSvcPricing.additional_services))
+        ? addSvcPricing.additional_services : null;
+      const keepServices = svcs ? null : select.querySelector('optgroup[data-group="services"]') ||
+        Array.from(select.querySelectorAll('optgroup')).find(g => g.querySelector('option[value^="srv-"]'));
+      const parts = [];
+      parts.push('<optgroup label="Dorixona Ombordagi Dorilar (Ombordan hisobdan chiqariladi)">' +
+        (meds.length ? meds.map(m =>
+          `<option value="MED:${esc(m.id)}" data-price="${Number(m.unit_price) || 0}" data-type="pharmacy"${billableQty(m) > 0 ? '' : ' disabled'}>` +
+          `💊 ${esc(m.name)}${m.form ? ' (' + esc(m.form) + ')' : ''} — ${formatUZS(Number(m.unit_price) || 0)} · qoldiq ${fmtQty(billableQty(m))}</option>`
+        ).join('') : '<option value="" disabled>Ombor ma\'lumoti yuklanmagan</option>') +
+        '</optgroup>');
+      if (svcs) {
+        parts.push('<optgroup data-group="services" label="Qo\'shimcha Tibbiy Muolajalar & Tekshiruvlar">' +
+          svcs.map(s => `<option value="${esc(s.id)}" data-price="${Number(s.price) || 0}" data-type="procedure">` +
+            `${esc(s.name)} — ${formatUZS(Number(s.price) || 0)}</option>`).join('') +
+          '</optgroup>');
+      } else if (keepServices) {
+        keepServices.setAttribute('data-group', 'services');
+        parts.push(keepServices.outerHTML);
+      }
+      select.innerHTML = parts.join('');
+      const first = select.querySelector('option:not([disabled])');
+      if (first) select.value = first.value;
+      updateAddServiceCalculation();
+    };
+    build();
+    if (!addSvcPricing) {
+      fetch('/api/settings/pricing', { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(p => { if (p && Array.isArray(p.additional_services)) { addSvcPricing = p; build(); } })
+        .catch(() => {});
+    }
   }
 
   function updateAddServiceCalculation() {
@@ -1571,6 +1859,7 @@
     if (!select) return;
 
     const opt = select.selectedOptions[0];
+    if (!opt) return;
     const unitPrice = Number(opt.dataset.price) || 0;
     const total = unitPrice * qty;
 
@@ -1580,65 +1869,45 @@
     }
   }
 
-  function handleAddServiceSubmit(e) {
+  // The bill line is saved on the server, which sets the price (price list
+  // or stock) and takes medicine off the shelf. The line used to live only
+  // in this page's copy of the bill and vanished on the next 4-second sync.
+  async function handleAddServiceSubmit(e) {
     e.preventDefault();
     const billId = document.getElementById('addsvc-bill-id').value;
     const select = document.getElementById('addsvc-item-select');
     const qty = Number(document.getElementById('addsvc-qty-input').value) || 1;
     const notes = document.getElementById('addsvc-notes-input').value.trim();
 
-    if (!billId || !select) return;
+    if (!billId || !select || !select.value) return;
 
     const bill = accountingData.patients_billing.find(b => b.id === billId);
     if (!bill) return;
 
     const opt = select.selectedOptions[0];
-    const itemCode = select.value;
-    const unitPrice = Number(opt.dataset.price) || 0;
-    const itemType = opt.dataset.type || 'pharmacy';
     const rawName = opt.textContent.split('—')[0].trim();
-    const lineTotal = unitPrice * qty;
-
-    // Deduct stock if from pharmacy
-    if (itemType === 'pharmacy') {
-      const stockItem = accountingData.pharmacy_stock.find(m => m.id === itemCode);
-      if (stockItem) {
-        if (stockItem.stock < qty) {
-          showToast(`Omborda yetarli qoldiq yo'q! Mavjud: ${stockItem.stock} ${stockItem.unit}`, 'danger');
-          return;
-        }
-        stockItem.stock -= qty;
-        if (stockItem.stock <= 15) {
-          stockItem.status = 'low';
-        }
+    const submitBtn = e.submitter || null;
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/accounting/invoice-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice_id: bill.id, service_code: select.value, quantity: qty, notes: notes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Xizmat qo'shilmadi (${res.status})`, 'danger');
+        return;
       }
+      closeAllModals();
+      await syncWithLedgerAndBackend(false);
+      renderAll();
+      showToast(`💊 <strong>${esc(data.service_name || rawName)}</strong> (${qty}x) ${esc(bill.patient_name)} hisobiga qo'shildi.`);
+    } catch (err) {
+      showToast("Server bilan aloqa yo'q — xizmat qo'shilmadi.", 'danger');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
-
-    if (!bill.extra_services) {
-      bill.extra_services = [];
-    }
-
-    bill.extra_services.push({
-      id: `EX-${Date.now()}`,
-      item_id: itemCode,
-      name: rawName,
-      type: itemType,
-      unit_price: unitPrice,
-      qty: qty,
-      total: lineTotal,
-      notes: notes,
-      added_at: new Date().toISOString()
-    });
-
-    // Update bill total due & remaining debt
-    bill.total_due += lineTotal;
-    bill.debt_remaining = Math.max(0, bill.total_due - bill.total_paid);
-    bill.status = bill.debt_remaining === 0 ? 'paid' : (bill.total_paid > 0 ? 'partial' : 'unpaid');
-
-    saveData();
-    closeAllModals();
-    renderAll();
-    showToast(`💊 <strong>${rawName}</strong> (${qty}x) ${bill.patient_name} hisobiga qo'shildi va ombordan chiqarildi!`);
   }
 
   // ==========================================================================
@@ -1680,6 +1949,12 @@
       showToast("Iltimos, to'g'ri inkassatsiya summasini kiriting!", 'warning');
       return;
     }
+    // The field came pre-filled with a name nobody at the clinic has, so
+    // every hand-over was signed by him unless somebody retyped it.
+    if (!collector) {
+      showToast("Inkassator / mas'ul xodim ismini kiriting.", 'warning');
+      return;
+    }
 
     // Check available cash
     let cashBalance = 0;
@@ -1700,24 +1975,22 @@
       id: `TXN-2026-${Date.now().toString().slice(-6)}`,
       type: "expense",
       category: "incasso",
-      title: `Bankka naqd pul inkassatsiyasi (${bank})`,
+      // The server keeps only the title (as the journal description), so
+      // the required collector name went nowhere; it is part of the title.
+      title: `Bankka naqd pul inkassatsiyasi (${bank}) — topshirdi: ${collector}${notes ? '. ' + notes : ''}`,
       amount: amount,
       payment_method: "cash",
       patient_name: null,
       bill_id: null,
       date: getTodayISO(),
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-      cashier: collector || "Xusnitdinov Azamat",
+      cashier: collector,
       notes: `${bank} bank hisob raqamiga topshirildi. ${notes}`
     };
 
-    try {
-      await fetch('/api/accounting/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTxn)
-      });
-    } catch (e) {}
+    const savedId = await postTransaction(newTxn);
+    if (!savedId) return;
+    newTxn.id = savedId;
 
     accountingData.transactions.unshift(newTxn);
     saveData();
@@ -1737,13 +2010,15 @@
     document.getElementById('newbill-patient-name').value = '';
     document.getElementById('newbill-patient-phone').value = '+998 ';
     document.getElementById('newbill-package-select').value = 'statsionar_shared';
-    document.getElementById('newbill-days-input').value = 10;
+    // Left empty: the length of a stay is the desk's to type. A prefilled
+    // 10 days billed ten days to anyone who did not change it.
+    document.getElementById('newbill-days-input').value = '';
     document.getElementById('newbill-advance-input').value = '';
 
     const docSelect = document.getElementById('newbill-doctor-select');
     if (docSelect) {
-      if (accountingData.doctors_payroll && accountingData.doctors_payroll.length > 0) {
-        docSelect.innerHTML = accountingData.doctors_payroll.map(d => `<option value="${d.name}">${d.name} (${d.role})</option>`).join('');
+      if (accountingData.doctors_list && accountingData.doctors_list.length > 0) {
+        docSelect.innerHTML = accountingData.doctors_list.map(d => `<option value="${esc(d.name)}">${esc(d.name)} (${esc(d.role)})</option>`).join('');
       } else {
         docSelect.innerHTML = `<option value="">— Shifokor biriktirilmagan —</option>`;
       }
@@ -1756,7 +2031,7 @@
 
   function updateNewBillCalculation() {
     const pkgKey = document.getElementById('newbill-package-select').value;
-    const days = Number(document.getElementById('newbill-days-input').value) || 10;
+    const days = Number(document.getElementById('newbill-days-input').value) || 0;
     const pkg = OFFICIAL_RATES[pkgKey] || OFFICIAL_RATES.statsionar_shared;
 
     const total = pkg.rate * days;
@@ -1771,7 +2046,7 @@
     const name = document.getElementById('newbill-patient-name').value.trim();
     const phone = document.getElementById('newbill-patient-phone').value.trim();
     const pkgKey = document.getElementById('newbill-package-select').value;
-    const days = Number(document.getElementById('newbill-days-input').value) || 10;
+    const days = Number(document.getElementById('newbill-days-input').value);
     const bedId = document.getElementById('newbill-bed-select').value;
     const doctor = document.getElementById('newbill-doctor-select').value;
     const advancePaid = Number(document.getElementById('newbill-advance-input').value) || 0;
@@ -1781,11 +2056,17 @@
       showToast("Iltimos, bemor ismini kiriting!", 'warning');
       return;
     }
+    // A blank length used to become 10 days.
+    if (!Number.isInteger(days) || days < 1) {
+      showToast("Necha kun yotishini kiriting.", 'warning');
+      return;
+    }
 
     const pkg = OFFICIAL_RATES[pkgKey] || OFFICIAL_RATES.statsionar_shared;
     const totalDue = pkg.rate * days;
     const debt = Math.max(0, totalDue - advancePaid);
 
+    let resJsonInvoiceId = null;
     try {
       const res = await fetch('/api/admissions', {
         method: 'POST',
@@ -1808,12 +2089,23 @@
         showToast(resJson.error || "Qabul saqlanmadi.", 'error');
         return;
       }
-      if (resJson.invoice_id && advancePaid > 0) {
-        await fetch('/api/payments', {
+      resJsonInvoiceId = resJson.invoice_id || null;
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — qabul saqlanmadi.", 'error');
+      return;
+    }
+
+    // The stay is saved by now; the advance is a second request. Its answer
+    // was ignored, so a refused advance still read as paid. Say so instead,
+    // and let the stay stand.
+    if (resJsonInvoiceId && advancePaid > 0) {
+      let advanceError = null;
+      try {
+        const payRes = await fetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            invoice_id: resJson.invoice_id,
+            invoice_id: resJsonInvoiceId,
             amount: advancePaid,
             payment_method: method,
             account_destination: method === 'cash' ? 'kassa' : 'terminal_bank',
@@ -1821,10 +2113,16 @@
             payment_date: getTodayISO()
           })
         });
+        if (!payRes.ok) {
+          const err = await payRes.json().catch(() => ({}));
+          advanceError = err.error || `Xatolik (${payRes.status})`;
+        }
+      } catch (e) {
+        advanceError = "Server bilan aloqa yo'q";
       }
-    } catch (e) {
-      showToast("Server bilan aloqa yo'q — qabul saqlanmadi.", 'error');
-      return;
+      if (advanceError) {
+        showToast(`Diqqat: hisob ochildi, lekin avans to'lovi saqlanmadi — ${esc(advanceError)}. To'lovni qayta kiriting.`, 'warning');
+      }
     }
 
     await syncWithLedgerAndBackend();
@@ -1876,17 +2174,14 @@
       bill_id: null,
       date: date,
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-      cashier: "Dilnoza Rahimova",
+      // Nobody at the clinic has this name; the journal shows who signed in.
+      cashier: '',
       notes: notes
     };
 
-    try {
-      await fetch('/api/accounting/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTxn)
-      });
-    } catch (e) {}
+    const savedId = await postTransaction(newTxn);
+    if (!savedId) return;
+    newTxn.id = savedId;
 
     accountingData.transactions.unshift(newTxn);
     saveData();
@@ -1895,17 +2190,157 @@
     showToast(type === 'income' ? `✅ Yangi tushum (${formatUZS(amount)}) qo'shildi!` : `💸 Yangi xarajat (${formatUZS(amount)}) qayd etildi!`, type === 'income' ? 'success' : 'info');
   }
 
+  // Saves one cash-journal entry and returns the server's id, or null after
+  // showing why it was refused. The three callers ignored the answer, so a
+  // refused entry was shown as saved until the next sync quietly dropped it.
+  async function postTransaction(txn) {
+    try {
+      const res = await fetch('/api/accounting/transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(txn)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Operatsiya saqlanmadi (${res.status})`, 'danger');
+        return null;
+      }
+      return data.id || txn.id;
+    } catch (e) {
+      showToast("Server bilan aloqa yo'q — operatsiya saqlanmadi.", 'danger');
+      return null;
+    }
+  }
+
+  // ==========================================================================
+  // ALL INVOICES OF ONE PATIENT (read-only)
+  // ==========================================================================
+
+  const INVOICE_STATUS_LABELS = {
+    unpaid: "To'lanmagan", partial: 'Qisman', paid: "To'langan",
+    refund_due: 'Qaytarish kerak', refunded: 'Qaytarilgan'
+  };
+  const ITEM_TYPE_LABELS = {
+    bed_stay: 'Yotoq kunlari', consultation: 'Konsultatsiya', medication: 'Dori',
+    lab_test: 'Tahlil', procedure: 'Muolaja', other: 'Boshqa'
+  };
+
+  // The bills table shows one invoice per row, so a patient's earlier unpaid
+  // visit or stay was easy to miss when taking money for the current one.
+  // Everything here comes from the server and is escaped; nothing is edited.
+  async function openPatientInvoices(patientId) {
+    const modal = document.getElementById('patient-invoices-modal');
+    const content = document.getElementById('patient-invoices-content');
+    if (!modal || !content || !patientId) return;
+    content.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Yuklanmoqda...</div>`;
+    modal.classList.add('active');
+
+    let data;
+    try {
+      const res = await fetch('/api/accounting/patient-invoices?patient_id=' + encodeURIComponent(patientId));
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        content.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--rose);">${esc(data.error || `Hisoblar yuklanmadi (${res.status}).`)}</div>`;
+        return;
+      }
+    } catch (e) {
+      content.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--rose);">Server bilan aloqa yo'q.</div>`;
+      return;
+    }
+
+    const p = data.patient || {};
+    const invoices = Array.isArray(data.invoices) ? data.invoices : [];
+    const t = data.totals || {};
+    const money = (v) => formatUZS(Number(v) || 0);
+    const cell = 'padding: 4px 8px; border-bottom: 1px solid var(--border-color);';
+
+    const invoiceBlock = (inv) => {
+      const where = inv.kind === 'visit'
+        ? `${esc(VISIT_LABELS[inv.program_type] || inv.program_type || 'Tashrif')} • ${esc(inv.start_date ? String(inv.start_date).slice(0, 10) : '—')}`
+        : `${esc(inv.program_type || 'Statsionar')} • ${inv.room_number ? esc(inv.room_number) + '-xona ' : ''}${esc(inv.bed_code || '—')} • ${esc(inv.start_date ? String(inv.start_date).slice(0, 10) : '—')} — ${esc(inv.end_date ? String(inv.end_date).slice(0, 10) : '—')}${inv.total_days ? ' (' + esc(inv.total_days) + ' kun)' : ''}`;
+      const items = (inv.items || []).map(it => `
+            <tr>
+              <td style="${cell}">${esc(it.service_name)}<br><small style="color: var(--text-muted);">${esc(ITEM_TYPE_LABELS[it.item_type] || it.item_type || '')}</small></td>
+              <td style="${cell} text-align: center;">${esc(Number(it.quantity))}</td>
+              <td style="${cell} text-align: right;">${money(it.unit_price)}</td>
+              <td style="${cell} text-align: right; font-weight: 700;">${money(it.total_amount)}</td>
+            </tr>`).join('') || `<tr><td colspan="4" style="${cell} color: var(--text-muted);">Qatorlar yo'q</td></tr>`;
+      const pays = (inv.payments || []).map(pm => `
+            <tr>
+              <td style="${cell}">${esc(pm.payment_date ? String(pm.payment_date).slice(0, 10) : '—')}</td>
+              <td style="${cell}">${esc(pm.payment_method || '')}${pm.notes ? ' — ' + esc(pm.notes) : ''}</td>
+              <td style="${cell} text-align: right; font-weight: 700; color: ${Number(pm.amount) < 0 ? '#fbbf24' : 'var(--emerald)'};">${money(pm.amount)}</td>
+            </tr>`).join('') || `<tr><td colspan="3" style="${cell} color: var(--text-muted);">To'lovlar yo'q</td></tr>`;
+      return `
+        <div style="border: 1px solid var(--border-color); border-radius: 10px; padding: 0.9rem; margin-bottom: 0.9rem;">
+          <div style="display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.4rem;">
+            <strong style="font-family: var(--font-mono);">${esc(inv.invoice_id)}</strong>
+            <span>${esc(INVOICE_STATUS_LABELS[inv.payment_status] || inv.payment_status || '')}</span>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${where} • Shifokor: ${esc(inv.doctor_name || '—')}</div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+              <thead><tr><th style="${cell} text-align: left;">Xizmat</th><th style="${cell}">Miqdor</th><th style="${cell} text-align: right;">Narx</th><th style="${cell} text-align: right;">Jami</th></tr></thead>
+              <tbody>${items}</tbody>
+            </table>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.4rem; margin: 0.6rem 0; font-size: 0.82rem;">
+            <div>Hisoblangan: <strong>${money(inv.total_billed)}</strong></div>
+            <div>Chegirma: <strong>${money(inv.discount_amount)}</strong></div>
+            <div>To'lanishi kerak: <strong>${money(inv.net_amount)}</strong></div>
+            <div>To'langan: <strong style="color: var(--emerald);">${money(inv.total_paid)}</strong></div>
+            <div>Qoldiq: <strong style="color: ${Number(inv.balance_due) > 0 ? 'var(--rose)' : 'inherit'};">${money(inv.balance_due)}</strong></div>
+          </div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+              <thead><tr><th style="${cell} text-align: left;">To'lov sanasi</th><th style="${cell} text-align: left;">Usul</th><th style="${cell} text-align: right;">Summa</th></tr></thead>
+              <tbody>${pays}</tbody>
+            </table>
+          </div>
+        </div>`;
+    };
+
+    content.innerHTML = `
+      <div style="margin-bottom: 0.9rem;">
+        <div style="font-size: 1.05rem; font-weight: 800;">${esc(p.full_name || 'Bemor')}</div>
+        <div style="font-size: 0.82rem; color: var(--text-muted);">${esc(p.patient_code || p.id || '')}${p.phone ? ' • ' + esc(p.phone) : ''}</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; font-size: 0.85rem;">
+        <div>Hisoblar soni: <strong>${invoices.length}</strong></div>
+        <div>Jami to'lanishi kerak: <strong>${money(t.net_amount)}</strong></div>
+        <div>Jami to'langan: <strong style="color: var(--emerald);">${money(t.total_paid)}</strong></div>
+        <div>Jami qoldiq: <strong style="color: ${Number(t.balance_due) > 0 ? 'var(--rose)' : 'inherit'};">${money(t.balance_due)}</strong></div>
+      </div>
+      ${invoices.length ? invoices.map(invoiceBlock).join('') : `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">Bu bemorda hisob yo'q.</div>`}
+    `;
+  }
+
   // ==========================================================================
   // DOCTOR SALARY PAYOUT
   // ==========================================================================
 
   async function payoutDoctorSalary(docId) {
-    const doc = accountingData.doctors_payroll.find(d => d.id === docId);
+    const doc = (accountingData.payroll_lines || []).find(d => d.id === docId);
     if (!doc) return;
+    if (payrollPaid(doc.id)) {
+      showToast(`${esc(doc.name)} uchun ${esc(currentPayrollMonth())} oyi maoshi allaqachon to'langan.`, 'warning');
+      return;
+    }
+    // The employee is handed the net figure. Income tax and pension are
+    // withheld from it and go to the state, not to the employee; paying the
+    // state is its own expense entry, so recording the gross here would count
+    // the withheld part twice once that is entered. The HR payslip calls the
+    // same figure "Sof to'lanadigan".
+    const amount = Math.round(Number(doc.net) || 0);
+    if (!(amount > 0)) {
+      showToast("To'lanadigan summa 0 so'm. Avval Kadrlar bo'limida xodimning maoshini kiriting.", 'warning');
+      return;
+    }
+    const month = (accountingData.payroll_info && accountingData.payroll_info.month) || currentPayrollMonth();
 
     const confirmed = await fmhConfirm({
       title: "Maosh To'lovini Tasdiqlash",
-      message: `<strong>${doc.name}</strong> uchun jami <strong>${formatUZS(doc.total_payable)}</strong> maosh va gonorar to'lansinmi?`,
+      message: `<strong>${esc(doc.name)}</strong> uchun ${esc(month)} oyi maoshi: qo'lga <strong>${formatUZS(amount)}</strong> (hisoblangan ${formatUZS(doc.gross)}, ushlab qolinadi ${formatUZS(doc.deductions)}). To'lansinmi?`,
       confirmText: "To'lash",
       cancelText: "Bekor Qilish",
       type: 'primary'
@@ -1913,37 +2348,34 @@
     if (!confirmed) {
       return;
     }
+    // A second click while the first request is on its way.
+    if (payrollPaid(doc.id)) return;
 
-    doc.status = 'paid';
-
-    // Record expense transaction
     const newTxn = {
-      id: `TXN-2026-${Date.now().toString().slice(-6)}`,
       type: "expense",
       category: "salary",
-      title: `Shifokor oyligi va gonorari (${doc.name})`,
-      amount: doc.total_payable,
+      // The journal keeps only this text, so the breakdown goes in it.
+      title: `Oylik maosh ${month} — ${doc.name} (hisoblangan ${formatUZS(doc.gross)}, ushlab qolindi ${formatUZS(doc.deductions)})`,
+      amount: amount,
+      related_staff_id: doc.id,
+      payroll_month: month,
       payment_method: "bank",
       patient_name: null,
       bill_id: null,
       date: getTodayISO(),
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
-      cashier: "Xusnitdinov Azamat",
-      notes: `${doc.name} maoshi (${formatUZS(doc.base_salary)}) + ${doc.patients_count_month} ta bemor uchun gonorari (${formatUZS(doc.commission_earned)})`
+      cashier: '',
+      notes: `${doc.name}: asosiy ${formatUZS(doc.base_salary)} + navbatchilik ${formatUZS(doc.duty_pay)} = ${formatUZS(doc.gross)}; ushlab qolindi ${formatUZS(doc.deductions)}; qo'lga ${formatUZS(amount)}`
     };
 
-    try {
-      await fetch('/api/accounting/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTxn)
-      });
-    } catch (e) {}
+    const savedId = await postTransaction(newTxn);
+    if (!savedId) return;
+    newTxn.id = savedId;
 
     accountingData.transactions.unshift(newTxn);
     saveData();
     renderAll();
-    showToast(`✅ ${doc.name} ga ${formatUZS(doc.total_payable)} oylik maosh to'landi va xarajatlarga yozildi!`);
+    showToast(`✅ ${esc(doc.name)} ga ${formatUZS(amount)} oylik maosh to'landi va xarajatlarga yozildi!`);
   }
 
   // ==========================================================================
@@ -1951,6 +2383,14 @@
   // ==========================================================================
 
   let medPurchaseRowCount = 0;
+  let medPurRequestId = '';
+
+  function newRequestId() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    } catch (e) { /* fall through */ }
+    return 'medpur-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
 
   function openMedPurchaseModal(prefillMedId = null) {
     const modal = document.getElementById('medication-purchase-modal');
@@ -1970,6 +2410,9 @@
     const tbody = document.getElementById('medpur-items-tbody');
     if (tbody) tbody.innerHTML = '';
     medPurchaseRowCount = 0;
+    // One id per open form: a double click or a retry after a lost answer
+    // returns the first purchase instead of booking a second expense.
+    medPurRequestId = newRequestId();
 
     let prefill = null;
     if (prefillMedId && accountingData && Array.isArray(accountingData.pharmacy_stock)) {
@@ -2000,16 +2443,28 @@
         <datalist id="${datalistId}">
           ${catalog.map(m => `<option value="${esc(m.name)}" data-id="${m.id}" data-category="${esc(m.group || m.category || '')}" data-form="${esc(m.unit || m.form || '')}" data-price="${m.unit_price || 0}"></option>`).join('')}
         </datalist>
-        <input type="hidden" class="medpur-item-id" value="${initialData ? initialData.id : ''}">
+        <input type="hidden" class="medpur-item-id" value="${initialData ? esc(initialData.id) : ''}">
+        <details class="medpur-extra" style="margin-top: 6px;">
+          <summary style="cursor: pointer; font-size: 0.74rem; color: var(--text-muted);">Qadoq / partiya / muddat (ixtiyoriy)</summary>
+          <div class="medpur-item-help" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;"></div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+            <input type="number" class="form-input medpur-item-upp" min="0" step="any" placeholder="Qadoqdagi dona (masalan 10)" title="Bir qadoqda nechta dona (tabletka, ml...). Bo'sh qoldirilsa: miqdor — dona, narx — 1 dona narxi." style="flex: 1 1 110px; font-size: 0.8rem;">
+            <input type="text" class="form-input medpur-item-batch" maxlength="64" placeholder="Partiya №" style="flex: 1 1 90px; font-size: 0.8rem;">
+            <input type="date" class="form-input medpur-item-expiry" title="Yaroqlilik muddati" style="flex: 1 1 130px; font-size: 0.8rem;">
+          </div>
+          <div class="medpur-item-note" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;"></div>
+        </details>
       </td>
       <td style="padding: 6px 8px;">
         <input type="text" class="form-input medpur-item-cat" placeholder="Guruhi" style="font-size: 0.82rem;" value="${initialData ? esc(initialData.group || initialData.category || '') : ''}">
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
+        <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni (dona)" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
+        <div class="medpur-item-qty-unit" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">dona</div>
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="Narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="${initialData ? (initialData.unit_price || 0) : ''}">
+        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="1 dona narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="">
+        <div class="medpur-item-price-unit" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">1 dona narxi</div>
       </td>
       <td style="padding: 6px 8px;" class="mono-val medpur-item-total" style="font-weight: 700; color: var(--rose);">
         0 so'm
@@ -2036,13 +2491,15 @@
       if (match) {
         idInput.value = match.id;
         if (!catInput.value) catInput.value = match.group || match.category || '';
-        if (!priceInput.value || Number(priceInput.value) === 0) priceInput.value = match.unit_price || '';
+        // The price field is what the clinic PAID. The catalogue's unit_price is
+        // what the patient is billed, so it is never offered here as a cost.
       }
       updateMedPurchaseTotals();
     });
 
     qtyInput.addEventListener('input', updateMedPurchaseTotals);
     priceInput.addEventListener('input', updateMedPurchaseTotals);
+    tr.querySelector('.medpur-item-upp').addEventListener('input', updateMedPurchaseTotals);
 
     removeBtn.addEventListener('click', () => {
       if (tbody.querySelectorAll('tr').length > 1) {
@@ -2066,6 +2523,31 @@
       grandTotal += total;
       const totalCell = tr.querySelector('.medpur-item-total');
       if (totalCell) totalCell.textContent = formatUZS(total);
+      // With a package size, quantity counts packages and the price is per package.
+      // The two ways of reading the same two numbers are spelled out on the row, so the
+      // clerk can never mistake "10 packs at 50 000" for "10 tablets at 50 000".
+      const upp = parseFloat(tr.querySelector('.medpur-item-upp')?.value) || 0;
+      const byPack = upp > 0;
+      const note = tr.querySelector('.medpur-item-note');
+      if (note) {
+        note.textContent = byPack
+          ? `Miqdor = qadoq soni, narx = 1 qadoq narxi. Omborga: ${fmtQty(qty)} × ${fmtQty(upp)} = ${fmtQty(qty * upp)} dona (1 dona ≈ ${formatUZS(price / upp)}).`
+          : '';
+      }
+      const help = tr.querySelector('.medpur-item-help');
+      if (help) {
+        help.textContent = byPack
+          ? "Qadoqdagi dona kiritilgan: miqdor — qadoq soni, narx — 1 qadoq narxi."
+          : "Bo'sh qoldirilsa: miqdor — dona (asosiy birlik), narx — 1 dona narxi. Qadoq bilan sotib olingan bo'lsa, «Qadoqdagi dona»ni kiriting.";
+      }
+      const qtyEl = tr.querySelector('.medpur-item-qty');
+      if (qtyEl) qtyEl.placeholder = byPack ? 'Qadoq soni' : 'Soni (dona)';
+      const priceEl = tr.querySelector('.medpur-item-price');
+      if (priceEl) priceEl.placeholder = byPack ? '1 qadoq narxi' : '1 dona narxi';
+      const qtyUnit = tr.querySelector('.medpur-item-qty-unit');
+      if (qtyUnit) qtyUnit.textContent = byPack ? 'qadoq' : 'dona';
+      const priceUnit = tr.querySelector('.medpur-item-price-unit');
+      if (priceUnit) priceUnit.textContent = byPack ? '1 qadoq narxi' : '1 dona narxi';
     });
 
     const grandDisp = document.getElementById('medpur-grand-total-disp');
@@ -2083,6 +2565,7 @@
 
     const rows = document.querySelectorAll('#medpur-items-tbody tr');
     const items = [];
+    let rowError = null;
 
     rows.forEach(tr => {
       const name = tr.querySelector('.medpur-item-name')?.value.trim();
@@ -2092,16 +2575,37 @@
       const price = parseFloat(tr.querySelector('.medpur-item-price')?.value) || 0;
 
       if (name && qty > 0 && price >= 0) {
-        items.push({
+        const item = {
           medication_id: medId,
           medication_name: name,
           category: cat,
           form: 'dona',
           quantity: qty,
           unit_price: price
-        });
+        };
+        // Optional receipt details, sent only when typed (the server keeps
+        // them on the lot; nothing is guessed when they are empty).
+        const uppRaw = (tr.querySelector('.medpur-item-upp')?.value || '').trim();
+        if (uppRaw !== '') {
+          const upp = Number(uppRaw);
+          if (!isFinite(upp) || upp <= 0) {
+            rowError = `"${name}": qadoqdagi birlik soni 0 dan katta bo'lishi kerak.`;
+          } else {
+            item.units_per_package = upp;
+          }
+        }
+        const batchNo = (tr.querySelector('.medpur-item-batch')?.value || '').trim();
+        if (batchNo) item.batch_no = batchNo;
+        const expiry = (tr.querySelector('.medpur-item-expiry')?.value || '').trim();
+        if (expiry) item.expiry_date = expiry;
+        items.push(item);
       }
     });
+
+    if (rowError) {
+      showToast(rowError, 'warning');
+      return;
+    }
 
     if (items.length === 0) {
       showToast("Iltimos, kamida bitta dori vositasi va uning narxini kiriting!", 'warning');
@@ -2114,7 +2618,8 @@
       supplier_name: supplier,
       invoice_number: invoice,
       notes: notes,
-      items: items
+      items: items,
+      client_request_id: medPurRequestId || undefined
     };
 
     try {
@@ -2145,12 +2650,28 @@
   }
 
   async function deleteMedPurchase(purchaseId) {
-    const p = (accountingData.medication_purchases || []).find(x => x.id === purchaseId);
+    const list = accountingData.medication_purchases || [];
+    const p = list.find(x => x.id === purchaseId);
     const medName = p ? p.medication_name : 'Ushbu dori xaridi';
+
+    // The server withdraws the WHOLE receipt this line was bought with (every line and the cash
+    // expense), not just the drug named in the row. The rows of one receipt share its receipt id,
+    // or at least its cash-desk transaction, so the dialog can say how many lines go.
+    let siblings = p ? [p] : [];
+    if (p) {
+      const same = p.receipt_id
+        ? list.filter(x => x.receipt_id === p.receipt_id)
+        : (p.accounting_transaction_id ? list.filter(x => x.accounting_transaction_id === p.accounting_transaction_id) : [p]);
+      if (same.length) siblings = same;
+    }
+    const lineCount = siblings.length || 1;
+    const namesList = siblings.length > 1
+      ? `<br><small>${siblings.map(x => esc(x.medication_name)).join(', ')}</small>`
+      : '';
 
     const confirmed = await fmhConfirm({
       title: "Dori Xaridini Bekor Qilish",
-      message: `<strong>${esc(medName)}</strong> bo'yicha xarid yozuvi o'chirilsinmi? Kassa chiqimi bekor qilinadi va ombor qoldig'i kamaytiriladi.`,
+      message: `<strong>${esc(medName)}</strong> xaridi bekor qilinsinmi?<br>Butun xarid (${lineCount} ta qator) va uning kassa yozuvi bekor qilinadi, ombor qoldig'i kamaytiriladi.${namesList}<br>Xaridning bir qismi allaqachon ishlatilgan bo'lsa, bekor qilib bo'lmaydi.`,
       confirmText: "O'chirish",
       cancelText: "Bekor qilish",
       type: 'danger'
@@ -2162,9 +2683,17 @@
         method: 'DELETE'
       });
       if (res.ok) {
+        const out = await res.json().catch(() => ({}));
+        // Drop every removed line from the list at once (a failed refresh must not leave
+        // ghost rows), then reload the real list from the server.
+        const removed = Array.isArray(out.removed_purchase_ids) && out.removed_purchase_ids.length
+          ? out.removed_purchase_ids : [purchaseId];
+        accountingData.medication_purchases = (accountingData.medication_purchases || []).filter(x => removed.indexOf(x.id) < 0);
         await syncWithLedgerAndBackend(false);
         renderAll();
-        showToast("✅ Dori xaridi muvaffaqiyatli bekor qilindi", 'info');
+        showToast(removed.length > 1
+          ? `✅ Dori xaridi bekor qilindi: ${removed.length} ta qator olib tashlandi`
+          : "✅ Dori xaridi muvaffaqiyatli bekor qilindi", 'info');
       } else {
         const err = await res.json().catch(() => ({}));
         showToast(err.error || "O'chirishda xatolik yuz berdi", 'warning');
@@ -2296,25 +2825,27 @@
       return;
     }
 
-    const rows = accountingData.doctors_payroll.map((d, index) => ({
+    // Same figures as the server payroll the cards show; no commission.
+    const rows = (accountingData.payroll_lines || []).map((d, index) => ({
       "№": index + 1,
-      "Shifokor ID": d.id,
-      "Shifokor F.I.Sh.": d.name,
-      "Lavozimi": d.role,
-      "Bemorlar Soni (Oy)": d.patients_count_month,
-      "Klinikaga Keltirgan Tushum (so'm)": d.total_revenue_generated,
+      "Xodim ID": d.id,
+      "Xodim F.I.Sh.": d.name,
+      "Lavozimi": ROLE_LABELS[d.role] || d.role,
       "Asosiy Oylik Maosh (so'm)": d.base_salary,
-      "Gonorar Ulushi (%)": `${d.commission_rate}%`,
-      "Hisoblangan Gonorar (so'm)": d.commission_earned,
-      "Jami To'lanadigan Maosh (so'm)": d.total_payable,
-      "To'lov Holati": d.status === 'paid' ? "To'langan" : "Hisoblangan"
+      "Navbatchilik smenalari": d.duty_shifts,
+      "Navbatchilik puli (so'm)": d.duty_pay,
+      "Hisoblangan (brutto, so'm)": d.gross,
+      "Daromad solig'i (so'm)": d.income_tax,
+      "Pensiya (so'm)": d.pension,
+      "Qo'lga beriladi (sof, so'm)": d.net,
+      "To'lov Holati": payrollPaid(d.id) ? "To'langan" : "Hisoblangan"
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Shifokorlar Oyligi");
+    XLSX.utils.book_append_sheet(wb, ws, "Xodimlar Oyligi");
 
-    const fileName = `FMH_Shifokorlar_Oylik_Hisoboti_${getFormattedDate()}.xlsx`;
+    const fileName = `FMH_Xodimlar_Oylik_Hisoboti_${getFormattedDate()}.xlsx`;
     XLSX.writeFile(wb, fileName);
     showToast(`📗 <strong>${fileName}</strong> muvaffaqiyatli yuklab olindi!`);
   }
@@ -2330,10 +2861,10 @@
       "№": index + 1,
       "Dori Nomi": item.name,
       "Farmakologik Guruhi": item.group,
-      "Ombordagi Qoldiq": `${item.stock} ${item.unit}`,
-      "Birligi Narxi (so'm)": item.unit_price,
-      "Jami Qiymati (so'm)": item.stock * item.unit_price,
-      "Holat": item.stock <= 15 ? "Kam qolgan" : "Yetarli"
+      "Ombordagi Qoldiq": `${fmtQty(item.stock)} ${item.unit}`,
+      "Bemorga Narxi (so'm)": item.unit_price,
+      "Jami (bemor narxida, so'm)": item.stock * item.unit_price,
+      "Holat": item.status === 'low' ? "Kam qolgan" : "Yetarli"
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -2388,25 +2919,25 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txnRows), "Kassa Kirim-Chiqim");
 
     // Sheet 3: Doctors
-    const docRows = accountingData.doctors_payroll.map((d, index) => ({
+    const docRows = (accountingData.payroll_lines || []).map((d, index) => ({
       "№": index + 1,
-      "Shifokor": d.name,
-      "Lavozimi": d.role,
-      "Bemorlar Soni": d.patients_count_month,
-      "Tushum": d.total_revenue_generated,
+      "Xodim": d.name,
+      "Lavozimi": ROLE_LABELS[d.role] || d.role,
       "Asosiy Maosh": d.base_salary,
-      "Gonorar": d.commission_earned,
-      "Jami To'lov": d.total_payable,
-      "Holat": d.status
+      "Navbatchilik": d.duty_pay,
+      "Brutto": d.gross,
+      "Ushlab qolindi": d.deductions,
+      "Qo'lga (sof)": d.net,
+      "Holat": payrollPaid(d.id) ? "To'langan" : "Hisoblangan"
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(docRows), "Shifokorlar Oyligi");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(docRows), "Xodimlar Oyligi");
 
     // Sheet 4: Pharmacy
     const pharmRows = accountingData.pharmacy_stock.map((p, index) => ({
       "№": index + 1,
       "Dori Nomi": p.name,
       "Guruh": p.group,
-      "Qoldiq": `${p.stock} ${p.unit}`,
+      "Qoldiq": `${fmtQty(p.stock)} ${p.unit}`,
       "Narx": p.unit_price,
       "Jami Qiymat": p.stock * p.unit_price
     }));
@@ -2501,7 +3032,7 @@
         </div>
 
         <div style="text-align: center; border-top: 1px dashed #64748b; padding-top: 1rem; font-size: 0.75rem; color: #64748b;">
-          Kassir: Dilnoza Rahimova ______________<br>
+          Kassir: ______________<br>
           Bosh buxgalter tasdiqladi: ______________
         </div>
       </div>
@@ -2525,9 +3056,13 @@
 
     if (tabId === 'analytics') {
       setTimeout(renderAnalytics, 50);
+    } else if (tabId === 'doctors') {
+      // HR may have saved roster days or salaries since the page opened.
+      loadPayroll().then(renderDoctorsPayroll);
     } else if (tabId === 'pharmacy') {
       renderMedicationPurchases();
       renderPharmacyInventory();
+      loadMedicineUsage();
     }
   }
 
@@ -2639,6 +3174,8 @@
 
     const newBillPkgSelect = document.getElementById('newbill-package-select');
     if (newBillPkgSelect) newBillPkgSelect.addEventListener('change', updateNewBillCalculation);
+    applyListedPackageLabels();
+    if (window.FMH_Pricing) window.FMH_Pricing.ready.then(applyListedPackageLabels);
 
     const newBillDaysInput = document.getElementById('newbill-days-input');
     if (newBillDaysInput) newBillDaysInput.addEventListener('input', updateNewBillCalculation);
@@ -3001,8 +3538,10 @@
     deleteMedPurchase,
     filterMedPurchases,
     filterPharmacyStock,
+    loadMedicineUsage,
     exportMedPurchasesToExcel,
     payoutDoctorSalary,
+    openPatientInvoices,
     exportToCSV: exportAllToExcel,
     exportAllToExcel,
     exportPatientsToExcel,

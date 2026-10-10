@@ -170,6 +170,10 @@
               <div class="patient-code">${esc(p.patient_code)}</div>
             </div>
             ${allergy}
+            <button type="button" class="btn-plan-view no-print" data-pid="${esc(p.patient_id)}"
+                    data-name="${esc(p.patient_name)}" title="Shifokorning davolash rejasi (faqat o'qish)">
+              <i class="fas fa-clipboard-list"></i> Davolash rejasi
+            </button>
             <div class="patient-progress">${doneCount} / ${p.doses.length} berildi</div>
           </header>
           <div class="dose-list">
@@ -391,6 +395,11 @@
 
     // Dose buttons are delegated: the list is re-rendered on every change.
     document.getElementById('round-container').addEventListener('click', e => {
+      const plan = e.target.closest('.btn-plan-view');
+      if (plan) {
+        if (window.FMH_PlanView) window.FMH_PlanView.show(plan.dataset.pid, plan.dataset.name);
+        return;
+      }
       const save = e.target.closest('.btn-vitals-save');
       if (save) {
         saveVitals(save.dataset.adm, save);

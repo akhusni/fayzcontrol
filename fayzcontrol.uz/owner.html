@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#060d1d">
+  <title>Pul oqimi | Fayz Medical House</title>
+  <meta name="description" content="Klinika egasi uchun: qancha pul tushdi, qayerdan, qancha sarflandi va nimaga.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
+  <link rel="stylesheet" href="css/owner.css?v=1.2">
+
+  <script src="js/theme_engine.js"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
+</head>
+<body class="owner-portal">
+
+  <header class="portal-master-header">
+    <div class="portal-nav-wrapper">
+      <a href="owner.html" class="portal-brand" title="Fayz Medical House">
+        <div class="portal-brand-logo"><i class="fas fa-hospital-alt"></i></div>
+        <div class="portal-brand-text">
+          <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
+          <div class="portal-brand-subtitle">PUL OQIMI</div>
+        </div>
+      </a>
+
+      <div class="portal-center-nav-zone">
+        <nav class="portal-master-nav">
+          <a href="owner.html" class="portal-nav-pill pill-super active" title="Pul oqimi">
+            <i class="fas fa-coins"></i> <span>Pul oqimi</span>
+          </a>
+          <a href="accounting.html" class="portal-nav-pill pill-accounting" title="Buxgalteriya">
+            <i class="fas fa-calculator"></i> <span>Buxgalteriya</span>
+          </a>
+          <a href="superpage.html" class="portal-nav-pill pill-super" title="Super-Portal">
+            <i class="fas fa-crown"></i> <span>Super-Portal</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="portal-actions-cluster">
+        <button type="button" class="btn-unified-theme-toggle" title="Kunduzgi / tungi rejim" aria-label="Kunduzgi yoki tungi rejimni almashtirish">
+          <i class="fas fa-adjust"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="own-main">
+
+    <div class="own-periods" role="group" aria-label="Davr">
+      <button type="button" class="own-period" data-period="today">Bugun</button>
+      <button type="button" class="own-period" data-period="week">7 kun</button>
+      <button type="button" class="own-period" data-period="month">Shu oy</button>
+      <button type="button" class="own-period" data-period="last_month">O'tgan oy</button>
+      <button type="button" class="own-period" data-period="year">Yil</button>
+      <button type="button" class="own-period" data-period="custom">Boshqa</button>
+    </div>
+    <div class="own-custom" id="own-custom" hidden>
+      <label>Dan <input type="date" id="own-start"></label>
+      <label>Gacha <input type="date" id="own-end"></label>
+      <button type="button" class="own-apply" id="own-apply">Ko'rsatish</button>
+    </div>
+
+    <section class="own-statement" aria-live="polite">
+      <p class="own-when" id="own-when">Yuklanmoqda…</p>
+      <dl class="own-lines">
+        <div class="own-line own-line-in">
+          <dt>Tushdi</dt>
+          <dd id="own-income">—</dd>
+        </div>
+        <div class="own-line own-line-out">
+          <dt>Sarflandi</dt>
+          <dd id="own-expense">—</dd>
+        </div>
+        <div class="own-line own-line-net">
+          <dt id="own-net-label">Qoldi</dt>
+          <dd id="own-net">—</dd>
+        </div>
+      </dl>
+      <p class="own-compare" id="own-compare"></p>
+    </section>
+
+    <section class="own-block own-river-block">
+      <h2 class="own-h2" id="own-river-title">Har 100 so'm tushumdan</h2>
+      <div class="own-river" id="own-river" role="img" aria-label="Tushum qanday taqsimlangani"></div>
+      <ul class="own-river-key" id="own-river-key"></ul>
+    </section>
+
+    <section class="own-block">
+      <h2 class="own-h2">Pul qayerdan keldi</h2>
+      <p class="own-hint">Bosing — har bir to'lovni ko'rasiz</p>
+      <ul class="own-groups" id="own-income-groups"></ul>
+    </section>
+
+    <section class="own-block">
+      <h2 class="own-h2">Pul nimaga ketdi</h2>
+      <p class="own-hint">Bosing — har bir xarajatni ko'rasiz</p>
+      <ul class="own-groups" id="own-expense-groups"></ul>
+      <p class="own-transfer" id="own-transfer" hidden></p>
+    </section>
+
+    <section class="own-block">
+      <h2 class="own-h2">Kunma-kun</h2>
+      <div class="own-chart" id="own-chart"></div>
+      <p class="own-chart-key"><span class="key-in"></span> tushum <span class="key-out"></span> xarajat</p>
+    </section>
+
+    <section class="own-block">
+      <h2 class="own-h2">Qaysi yo'l bilan</h2>
+      <table class="own-table" id="own-methods">
+        <thead><tr><th scope="col">To'lov turi</th><th scope="col">Tushdi</th><th scope="col">Chiqdi</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="own-block">
+      <h2 class="own-h2">Bemorlar qarzi</h2>
+      <p class="own-debt-total" id="own-debt-total">—</p>
+      <ul class="own-list" id="own-debts"></ul>
+    </section>
+
+    <section class="own-block">
+      <h2 class="own-h2">Bemorlarga berilgan dorilar</h2>
+      <p class="own-hint" id="own-med-summary"></p>
+      <ul class="own-list" id="own-meds"></ul>
+    </section>
+
+  </main>
+
+  <script src="js/owner.js?v=1.3"></script>
+</body>
+</html>

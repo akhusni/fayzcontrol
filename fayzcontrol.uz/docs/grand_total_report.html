@@ -238,7 +238,7 @@
     <div class="report-content">
       <h1>Grand Total Database Architecture &amp; Production Audit Report (v8.0)</h1>
 <blockquote><strong>Hospital System:</strong> Fayz Medical House Hospital Information System (HIS) &amp; Clinical EMR  </blockquote>
-<blockquote><strong>Production Instance:</strong> <code>31.184.242.14:3306</code> (FastPanel / Linux Ubuntu)  </blockquote>
+<blockquote><strong>Production Instance:</strong> <code><SERVER_IP>:3306</code> (FastPanel / Linux Ubuntu)  </blockquote>
 <blockquote><strong>Database:</strong> <code>fayzhouse</code> on MySQL 8.0.45 Enterprise (InnoDB / <code>utf8mb4_unicode_ci</code>)  </blockquote>
 <blockquote><strong>Architecture:</strong> 100% Pure MySQL 8.0 Enterprise Relational Architecture (Single Engine)  </blockquote>
 <blockquote><strong>System Status:</strong> 100% Production Certified &amp; Battle-Tested  </blockquote>
@@ -396,7 +396,7 @@ erDiagram
 </tbody></table>
 <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 2rem 0;">
 <h2>9. Verification &amp; Live Status</h2>
-<p>The live database on <code>31.184.242.14:3306</code> (<code>fayzhouse</code>) has been verified and confirmed healthy:</p>
+<p>The live database on <code><SERVER_IP>:3306</code> (<code>fayzhouse</code>) has been verified and confirmed healthy:</p>
 <li><strong>Total Base Tables:</strong> 21 tables created and verified.</li>
 <li><strong>CAD Map View:</strong> Returns exact 14 rows (<code>COUNT(*) == 14</code>) with <code>next_reserved_date</code> and turnover collision guard.</li>
 <li><strong>Active Triggers:</strong> 8 Single-Responsibility triggers active (including <code>BEFORE INSERT</code> and <code>BEFORE UPDATE</code> on invoices with <code>&#x27;refunded&#x27;</code> handling).</li>

@@ -24,6 +24,9 @@
   // Helper formatting utilities
   const formatMoney = (val) => Number(val || 0).toLocaleString('uz-UZ') + " so'm";
   const getAge = (year) => year ? (new Date().getFullYear() - year) : '-';
+  // An unrecorded gender showed as "Ayol" (female); nothing clinical is
+  // guessed, so a blank stays a dash.
+  const genderText = (g) => g === 'male' ? 'Erkak' : (g === 'female' ? 'Ayol' : '—');
 
   const programLabels = {
     'detox': 'Intensiv Detoksikatsiya (Zapoydan chiqarish)',
@@ -296,7 +299,7 @@
           <td><strong style="font-family: var(--font-mono); color: var(--primary);">${p.patient_code}</strong></td>
           <td>
             <div style="font-weight: 700; color: var(--text-primary);">${p.full_name}</div>
-            <div style="font-size: 0.74rem; color: var(--text-muted);">${getAge(p.birth_year)} yosh, ${p.gender === 'male' ? 'Erkak' : 'Ayol'}</div>
+            <div style="font-size: 0.74rem; color: var(--text-muted);">${getAge(p.birth_year)} yosh, ${genderText(p.gender)}</div>
           </td>
           <td><a href="tel:${p.phone}" style="color: var(--primary); text-decoration: none; font-family: var(--font-mono); font-weight: 700;">${p.phone || '-'}</a></td>
           <td><span style="font-size: 0.8rem;">${stayLocation}</span></td>
@@ -352,12 +355,13 @@
     document.getElementById('dossier-modal-name').textContent = patient.full_name;
     document.getElementById('dossier-modal-code').textContent = patient.patient_code;
     document.getElementById('dossier-modal-phone').textContent = patient.phone || '-';
-    document.getElementById('dossier-modal-age').textContent = `${getAge(patient.birth_year)} yosh (${patient.gender === 'male' ? 'Erkak' : 'Ayol'})`;
+    document.getElementById('dossier-modal-age').textContent = `${getAge(patient.birth_year)} yosh (${genderText(patient.gender)})`;
 
     // Render Tab Panes
     renderDossierBioPane(patient);
     renderDossierMedicalPane(patient);
     renderDossierFinancePane(patient);
+    state.selectedEpicrisis = null;
     renderDossierEpicrisisPane(patient);
 
     // Switch to active tab
@@ -446,6 +450,69 @@
     `;
   }
 
+  // "Berilgan dori va materiallar": what the warehouse actually handed to this
+  // patient, rendered only from the server's `dispensings` list. The key is
+  // absent for logins that may not see medication detail (front desk, cash
+  // desk) and when the card could not be loaded, and then nothing is shown --
+  // an absent list is never presented as "nothing was given".
+  function dispensingsHtml(p) {
+    if (!Array.isArray(p.dispensings)) return '';
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    // 12 -> "12", 2.5 -> "2.5" (quantities can be fractions).
+    const qty = (v) => {
+      const n = Number(v);
+      return (v === null || v === undefined || v === '' || !isFinite(n)) ? '—' : String(Math.round(n * 1000) / 1000);
+    };
+    const when = (v) => {
+      const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+      return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : esc(v || '—');
+    };
+    const rows = p.dispensings.length ? p.dispensings.map(d => {
+      const reversed = d.status === 'reversed';
+      const cut = reversed ? ' style="text-decoration: line-through; color: var(--text-muted);"' : '';
+      const dose = [d.dosage, d.route, d.frequency, d.instructions].filter(Boolean).map(esc).join(' • ');
+      const lots = Array.isArray(d.batch_numbers) && d.batch_numbers.length ? d.batch_numbers.map(esc).join(', ') : '—';
+      const status = reversed
+        ? `<span class="badge-status status-discharged">Qaytarilgan</span>
+           <div style="font-size: 0.72rem; color: var(--rose); margin-top: 2px;">${when(d.reversed_at)}${d.reversed_by ? ' · ' + esc(d.reversed_by) : ''}${d.reverse_reason ? '<br>Sabab: ' + esc(d.reverse_reason) : ''}</div>`
+        : `<span class="badge-status status-active">Berilgan</span>`;
+      return `
+        <tr>
+          <td style="white-space: nowrap;"><span${cut}>${when(d.dispensed_at)}</span></td>
+          <td><strong${cut}>${esc(d.item_name || '—')}</strong></td>
+          <td><strong${cut}>${qty(d.quantity)}${d.unit ? ' ' + esc(d.unit) : ''}</strong></td>
+          <td><span${cut}>${dose || '—'}</span></td>
+          <td>${esc(d.prescribed_by || '—')}</td>
+          <td>${esc(d.dispensed_by || '—')}</td>
+          <td>${lots}</td>
+          <td>${status}</td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Hali dori berilmagan.</td></tr>`;
+
+    return `
+      <h4 style="font-family: var(--font-heading); font-size: 1.05rem; margin: 1.5rem 0 0.75rem;">
+        <i class="fas fa-box-open"></i> Berilgan dori va materiallar
+      </h4>
+      <div class="crm-table-wrapper">
+        <table class="crm-table">
+          <thead>
+            <tr>
+              <th>Sana va vaqt</th>
+              <th>Dori / material</th>
+              <th>Berilgan miqdor</th>
+              <th>Doza / ko'rsatma</th>
+              <th>Tayinlagan</th>
+              <th>Bergan</th>
+              <th>Partiya</th>
+              <th>Holati</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
   // Render Medical History Tab
   function renderDossierMedicalPane(p) {
     const pane = document.getElementById('pane-medical');
@@ -494,11 +561,11 @@
               </div>
               <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 6px;">
                 <span><i class="fas fa-calendar-alt"></i> ${adm.start_date} dan ${adm.actual_end_date || adm.planned_end_date} gacha</span> • 
-                <span><i class="fas fa-bed"></i> Karavot: ${adm.bed_code || '1A'} (${adm.room_number || '11'}-xona)</span> • 
-                <span><i class="fas fa-user-md"></i> Shifokor: ${adm.doctor_name || 'Dr. Rasulov'}</span>
+                <span><i class="fas fa-bed"></i> Karavot: ${adm.bed_code || '—'}${adm.room_number ? ' (' + adm.room_number + '-xona)' : ''}</span> • 
+                <span><i class="fas fa-user-md"></i> Shifokor: ${adm.doctor_name || 'Biriktirilmagan'}</span>
               </div>
               <div style="font-size: 0.84rem; color: var(--text-muted); font-style: italic;">
-                "${adm.discharge_summary || adm.admission_notes || 'Intensiv infuzion detoksikatsiya va psixoterapevtik reabilitatsiya kursi olib borilmoqda.'}"
+                ${(adm.discharge_summary || adm.admission_notes) ? '"' + (adm.discharge_summary || adm.admission_notes) + '"' : 'Izoh qayd etilmagan'}
               </div>
             </div>
           </div>
@@ -507,7 +574,7 @@
     }
     timelineHtml += `</div>`;
 
-    pane.innerHTML = vitalsHtml + timelineHtml;
+    pane.innerHTML = vitalsHtml + timelineHtml + dispensingsHtml(p);
   }
 
   // Render Financial Ledger Tab
@@ -572,14 +639,7 @@
                 <td>${pm.notes || '-'}</td>
               </tr>
             `).join('') : `
-              <tr>
-                <td style="font-family: var(--font-mono); font-weight: 700;">CHK-2026-01</td>
-                <td>2026-08-11</td>
-                <td><span class="badge-status status-active">NAQD</span></td>
-                <td style="font-family: var(--font-mono); font-weight: 800; color: var(--emerald);">${formatMoney(totalPaid)}</td>
-                <td>Kassa Qabulxona</td>
-                <td>Davolanish kursi to'lovi</td>
-              </tr>
+              <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">To'lovlar qayd etilmagan</td></tr>
             `}
           </tbody>
         </table>
@@ -587,79 +647,64 @@
     `;
   }
 
-  // Render Official Medical Epicrisis / Discharge Summary Document
-  function renderDossierEpicrisisPane(p) {
+  // Render the patient's real discharge summary (epikriz).
+  //
+  // This tab used to show a complete-looking document for every patient: a
+  // fixed F10.2/F19.2 diagnosis, a fixed drug course, "BP 120/80, pulse 72",
+  // and the signature of a named doctor, none of which anyone recorded.
+  // It now shows the epikriz the doctor saved on the doctor page, or says
+  // there is none.
+  async function renderDossierEpicrisisPane(p) {
     const pane = document.getElementById('pane-epicrisis');
     if (!pane) return;
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const empty = (msg) => `<div style="text-align:center; padding:2rem; color:var(--text-muted);"><i class="fas fa-file-medical" style="font-size:1.6rem; display:block; margin-bottom:8px;"></i>${msg}</div>`;
 
-    const isStay = p.active_admission;
-    const doctorName = (isStay && isStay.doctor_name) ? isStay.doctor_name : 'Dr. Shoxrux Rasulov (Bosh Shifokor)';
-    const programName = isStay ? (programLabels[isStay.program_type] || isStay.program_type) : 'Kompleks Narkologik & Psixiatrik Reabilitatsiya Kursi';
-    const startDate = isStay ? isStay.start_date : '2026-08-11';
-    const endDate = isStay ? (isStay.actual_end_date || isStay.planned_end_date) : '2026-08-16';
+    pane.innerHTML = empty("Epikriz yuklanmoqda...");
+    let epi = null;
+    try {
+      const res = await fetch(`/api/doctor/epicrisis/${encodeURIComponent(p.id)}`);
+      // Another patient may have been opened while this was loading; its
+      // pane must not be overwritten by this one's answer or error.
+      if (state.selectedPatient !== p) return;
+      if (res.status === 403) {
+        pane.innerHTML = empty("Epikrizni ko'rish uchun shifokor ruxsati kerak.");
+        return;
+      }
+      if (res.ok) epi = await res.json();
+    } catch (e) {
+      if (state.selectedPatient !== p) return;
+      pane.innerHTML = empty("Server bilan aloqa yo'q. Epikriz yuklanmadi.");
+      return;
+    }
+    if (state.selectedPatient !== p) return;
+    if (!epi) {
+      pane.innerHTML = empty("Bu bemor uchun chiqarish epikrizi hali yozilmagan. Uni shifokor «Shifokor Posti → Epikriz» bo'limida yozadi.");
+      return;
+    }
+    state.selectedEpicrisis = epi;
+    const NR = '<em style="color:var(--text-muted);">Qayd etilmagan</em>';
+    const outcomes = { recovered: "Sog'aydi", improved: 'Yaxshilandi', unchanged: "O'zgarishsiz", transferred: "Boshqa muassasaga o'tkazildi", against_medical_advice: 'Shifokor tavsiyasiga qarshi ketdi' };
+    const block = (title, val) => `<div class="epicrisis-section-title">${title}</div><p style="margin-bottom:0.75rem; white-space:pre-line;">${val ? esc(val) : NR}</p>`;
 
     pane.innerHTML = `
       <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;" class="no-print">
-        <button class="btn-crm btn-crm-primary" onclick="window.print()">
+        <button class="btn-crm btn-crm-primary" onclick="window.FMH_CRM.printEpicrisis()">
           <i class="fas fa-print"></i> Rasmiy Epikrizni Chop Etish (Print / PDF)
         </button>
       </div>
-
       <div class="epicrisis-document">
-        <div class="epicrisis-header">
-          <div class="epicrisis-title">O'zbekiston Respublikasi Sog'liqni Saqlash Vazirligi</div>
-          <div class="epicrisis-subtitle">"FAYZ MEDICAL HOUSE" XUSUSIY NARKOLOGIYA VA PSIXIATRIYA MARKAZI</div>
-          <div style="font-size: 0.85rem; color: #475569; margin-top: 3px;">Toshkent sh., Yunusobod t., Nurmakon ko'chasi, 2A • Tel: +998 71 209 99 10</div>
-          <div style="margin-top: 10px; font-weight: 800; font-size: 1.15rem; text-decoration: underline;">
-            KASALLIK TARIXIDAN KO'CHIRMA (TIBBIY EPIKRIZ) № ${p.patient_code}
-          </div>
-        </div>
-
         <div class="epicrisis-grid">
-          <div><strong>Bemor F.I.Sh / Taxallusi:</strong> ${p.full_name}</div>
-          <div><strong>Klinik Anonim Kod:</strong> ${p.patient_code}</div>
-          <div><strong>Tug'ilgan yili / Yoshi:</strong> ${p.birth_year} yil (${getAge(p.birth_year)} yosh)</div>
-          <div><strong>Jinsi:</strong> ${p.gender === 'male' ? 'Erkak' : 'Ayol'}</div>
-          <div><strong>Yotqizilgan sana:</strong> ${startDate}</div>
-          <div><strong>Chiqarilgan sana:</strong> ${endDate}</div>
-          <div><strong>Davolash bo'limi:</strong> Statsionar (14-karavotli bo'lim)</div>
-          <div><strong>Mas'ul Shifokor:</strong> ${doctorName}</div>
+          <div><strong>Bemor:</strong> ${esc(p.full_name)}</div>
+          <div><strong>Klinik kod:</strong> ${esc(p.patient_code)}</div>
+          <div><strong>Epikriz sanasi:</strong> ${esc(String(epi.epicrisis_date || '').slice(0, 10)) || NR}</div>
+          <div><strong>Mas'ul shifokor:</strong> ${epi.doctor_name ? esc(epi.doctor_name) : NR}</div>
         </div>
-
-        <div class="epicrisis-section-title">1. Asosiy Klinik Tashxis (MKB-10 / ICD-10)</div>
-        <p style="margin-bottom: 0.75rem; text-align: justify;">
-          <strong>F10.2 / F19.2:</strong> Surunkali spirtli ichimliklar yoki psixoaktiv moddalarga qaramlik sindromi. O'tkir abstinent sindromi (Somato-vegetativ va affektiv buzilishlar bilan).
-        </p>
-
-        <div class="epicrisis-section-title">2. Anamnez va Allergik Holat</div>
-        <p style="margin-bottom: 0.75rem; text-align: justify;">
-          Dori allergiyalari: <strong>${p.medical_allergies || "Aniqlanmagan"}</strong>. Surunkali kasalliklari: <strong>${p.chronic_conditions || "Mavjud emas"}</strong>. Bemor klinikaga o'z ixtiyori bilan murojaat qilgan va maxfiy statsionar davolanish kursiga qabul qilingan.
-        </p>
-
-        <div class="epicrisis-section-title">3. O'tkazilgan Kompleks Davolash Dasturi</div>
-        <p style="margin-bottom: 0.75rem; text-align: justify;">
-          Intensiv infuzion-detoksikatsiya terapiyasi (Reosorbilakt, Glyukoza 5%, Fiziologik eritma, Poliglyukin), gepato- va neyroprotektorlar (Ademetionin, Piratsetam, Sitikolin), sedativ va anksiolitik terapiya, vitaminoterapiya (B1, B6, C), shaxsiy kognitiv-xulq-atvor psixoterapiyasi (KPT) seanslari.
-        </p>
-
-        <div class="epicrisis-section-title">4. Chiqarilishdagi Holati va Tavsiyalar</div>
-        <p style="margin-bottom: 0.75rem; text-align: justify;">
-          Bemorning somatik va ruhiy holati to'liq barqarorlashdi. Abstinent sindromi to'liq bartaraf etildi. Uyqu va ishtaha me'yorida. Yurak-qon tomir ko'rsatkichlari me'yorda (Qon bosimi: 120/80 mm.sim.ust, Puls: 72 ur/min).
-        </p>
-        <p style="margin-bottom: 0.75rem; text-align: justify;">
-          <strong>Tavsiyalar:</strong> 1 oy davomida ambulator psixoterapevt nazorati, sog'lom turmush tarzi, spirtli ichimliklar va toksik moddalardan qat'iy saqlanish, oilaviy psixologik qo'llab-quvvatlash.
-        </p>
-
-        <div class="epicrisis-footer">
-          <div>
-            <div style="font-size: 0.88rem; font-weight: 700;">Mas'ul Shifokor: ____________________ / ${doctorName}</div>
-            <div style="font-size: 0.88rem; font-weight: 700; margin-top: 8px;">Bosh Shifokor: ____________________ / Dr. Sh. Rasulov</div>
-            <div style="font-size: 0.76rem; color: #64748b; margin-top: 8px;">Hujjat berilgan sana: ${new Date().toISOString().split('T')[0]}</div>
-          </div>
-          <div class="stamp-box">
-            <i class="fas fa-shield-alt" style="font-size: 1.5rem; margin-bottom: 4px; display: block;"></i>
-            FAYZ MEDICAL HOUSE<br>MAXFIYLIK MUHRI
-          </div>
-        </div>
+        ${block('1. Yakuniy tashxis (ICD-10)', [epi.diagnosis_final, epi.icd10_code ? '(' + epi.icd10_code + ')' : ''].filter(Boolean).join(' '))}
+        ${block("2. O'tkazilgan davolash", epi.treatment_summary)}
+        ${block('3. Chiqish natijasi', outcomes[epi.discharge_status] || epi.discharge_status)}
+        ${block('4. Uyda davolanish (dorilar)', epi.home_prescriptions)}
+        ${block('5. Psixoterapevtik tavsiyalar', epi.psycho_recommendations)}
       </div>
     `;
   }
@@ -721,10 +766,19 @@
       return;
     }
 
+    // Only remove the patient from screen once the server has. The answer
+    // used to be ignored, so a refused delete (e.g. no permission) still
+    // said "fully deleted" while the record stayed in the database.
     try {
-      await fetch(`/api/patients/${encodeURIComponent(patientId)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Bemorni o'chirib bo'lmadi.", 'danger');
+        return;
+      }
     } catch (e) {
-      console.warn('DELETE patient API warning:', e);
+      showToast("Server bilan aloqa yo'q. Bemor o'chirilmadi.", 'danger');
+      return;
     }
 
     state.patients = state.patients.filter(pt => pt.id !== patientId && pt.patient_code !== patientId);
@@ -759,7 +813,7 @@
       full_name: name,
       phone: document.getElementById('new-patient-phone').value.trim() || '',
       emergency_contact: document.getElementById('new-patient-emergency').value.trim() || '',
-      gender: document.getElementById('new-patient-gender').value,
+      gender: document.getElementById('new-patient-gender').value || null,
       birth_year: parseInt(document.getElementById('new-patient-birthyear').value, 10) || null,
       referral_source: document.getElementById('new-patient-referral').value,
       is_anonymous: 1,
@@ -800,21 +854,15 @@
   }
 
   // Quick Payment Modal
+  // This asked for a sum in a browser prompt and only changed the numbers on
+  // screen: nothing reached the server, so a payment "accepted" here was
+  // never on the patient's bill and vanished on the next refresh. Payments
+  // are taken in Accounting (/api/payments, against the stay's invoice), so
+  // the button now says where instead of pretending.
   function openPaymentModal(patientId) {
     const patient = state.patients.find(p => p.id === patientId);
     if (!patient) return;
-    const amount = prompt(`${patient.full_name} (${patient.patient_code}) uchun to'lov summasini kiriting (so'mda):`, patient.balance_due || 1000000);
-    if (amount && Number(amount) > 0) {
-      const num = Number(amount);
-      patient.total_paid = (patient.total_paid || 0) + num;
-      patient.balance_due = Math.max(0, (patient.balance_due || 0) - num);
-      showToast(`${formatMoney(num)} to'lov muvaffaqiyatli qabul qilindi!`, 'success');
-      applyFilters();
-      renderStats();
-      if (state.selectedPatient && state.selectedPatient.id === patientId) {
-        renderDossierFinancePane(patient);
-      }
-    }
+    showToast("To'lov bu yerda saqlanmaydi. To'lovni Buxgalteriya → bemor hisobi orqali qabul qiling.", 'warning');
   }
 
   // Export to Multi-Sheet Excel
@@ -832,7 +880,7 @@
       'Bemor F.I.Sh': p.full_name,
       'Telefon': p.phone || '-',
       'Yaqin Qarindoshi': p.emergency_contact || '-',
-      'Jinsi': p.gender === 'male' ? 'Erkak' : 'Ayol',
+      'Jinsi': genderText(p.gender),
       'Tug\'ilgan Yili': p.birth_year || '-',
       'Jalb Qilish Manbasi': referralLabels[p.referral_source] || p.referral_source,
       'Allergiyalar': p.medical_allergies || '',
@@ -971,7 +1019,12 @@
       // It printed the chronic-conditions field (or F10.2) as the diagnosis,
       // a course of treatment that was never recorded, and the signature
       // of a named doctor. Blanks now print as 'Qayd etilmagan'.
-      window.FMH_Print.dischargeEpicrisis(p, {}, {});
+      const epi = state.selectedEpicrisis || null;
+      if (!epi) {
+        showToast("Bu bemor uchun saqlangan epikriz yo'q.", 'warning');
+        return;
+      }
+      window.FMH_Print.dischargeEpicrisis(p, epi, { full_name: epi.doctor_name || '' });
     } else {
       window.print();
     }

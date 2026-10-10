@@ -17,11 +17,11 @@
 
   <!-- Stylesheets -->
   <link rel="stylesheet" href="css/crm.css?v=3.1">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.3"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
 </head>
 <body class="crm-portal">
 
@@ -364,13 +364,14 @@
           <div class="crm-form-group">
             <label class="crm-form-label">Jinsi</label>
             <select id="new-patient-gender" class="crm-form-control">
+              <option value="">— tanlang —</option>
               <option value="male">Erkak</option>
               <option value="female">Ayol</option>
             </select>
           </div>
           <div class="crm-form-group">
             <label class="crm-form-label">Tug'ilgan Yili</label>
-            <input type="number" id="new-patient-birthyear" class="crm-form-control" value="1990">
+            <input type="number" id="new-patient-birthyear" class="crm-form-control" placeholder="Masalan: 1985" min="1900" max="2026">
           </div>
           <div class="crm-form-group">
             <label class="crm-form-label">Jalb Qilish Manbasi</label>
@@ -412,8 +413,8 @@
 
   <!-- Scripts -->
   <script src="js/xlsx.full.min.js"></script>
-    <script src="js/unified_print_engine.js?v=5.3"></script>
-<script src="js/crm.js?v=6.4"></script>
+    <script src="js/unified_print_engine.js?v=5.4"></script>
+<script src="js/crm.js?v=6.8"></script>
   <div id="print-area"></div>
 </body>
 </html>

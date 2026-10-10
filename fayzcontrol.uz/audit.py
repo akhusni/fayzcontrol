@@ -25,6 +25,7 @@ swallowed and reported to the console.
 
 import os
 import json
+import re
 import datetime as _dt
 
 # Clinical actions the original schema allowed.
@@ -38,7 +39,11 @@ AUTH_ACTIONS = {
     'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'ACCESS_DENIED', 'PASSWORD_CHANGED',
 }
 
-ALL_ACTIONS = CLINICAL_ACTIONS | AUTH_ACTIONS
+# Warehouse document steps that are not "a new row": posting a draft receipt,
+# cancelling a draft, reversing a posted document. They were all logged as CREATE.
+WAREHOUSE_ACTIONS = {'POST_RECEIPT', 'CANCEL', 'REVERSE'}
+
+ALL_ACTIONS = CLINICAL_ACTIONS | AUTH_ACTIONS | WAREHOUSE_ACTIONS
 
 _schema_checked = False
 
@@ -71,7 +76,7 @@ def ensure_schema(conn):
                 target = (r['CONSTRAINT_NAME'] if hasattr(r, 'keys') else r[0], clause)
                 break
 
-        if target and all(a in target[1] for a in AUTH_ACTIONS):
+        if target and all(a in target[1] for a in (AUTH_ACTIONS | WAREHOUSE_ACTIONS)):
             _schema_checked = True
             return
 
@@ -176,6 +181,117 @@ def _staff_id_for(user):
     return sid or None
 
 
+REDACTED = '[yashirilgan]'
+
+
+def _is_secret_key(key):
+    k = str(key).lower()
+    return 'password' in k or k in ('token', 'secret', 'api_key')
+
+
+def redact(data):
+    """
+    A copy of `data` with every secret string replaced by REDACTED.
+
+    Only string values are masked, so a flag such as must_change_password
+    (a boolean) still tells the reader what happened.
+    """
+    if isinstance(data, dict):
+        out = {}
+        for k, v in data.items():
+            if _is_secret_key(k) and isinstance(v, str):
+                out[k] = REDACTED
+            else:
+                out[k] = redact(v)
+        return out
+    if isinstance(data, list):
+        return [redact(v) for v in data]
+    return data
+
+
+def scrub_secrets(conn):
+    """
+    Mask passwords already written into the trail, before redact() existed.
+
+    Idempotent: rows are re-read and only those still holding a clear-text
+    secret are rewritten. Returns how many rows changed. Only the secret
+    values change; who, what and when stay exactly as recorded.
+    """
+    cur = conn.cursor()
+    changed = 0
+    # Only a password key whose string value is not already the marker. The
+    # plain LIKE matched every row ever masked too (2,600+ locally), so each
+    # start re-read and re-parsed all of them. ICU regex (MySQL 8) has the
+    # lookahead; if it is refused, fall back to the broad LIKE.
+    pending = r'"[^"]*password[^"]*": *"(?!' + re.escape(REDACTED) + '")'
+    for column in ('new_data_json', 'old_data_json'):
+        # The LIKE narrows a full-table read to the few rows that mention a
+        # password key at all; the JSON is then checked properly in Python.
+        try:
+            cur.execute(f"SELECT id, {column} AS doc FROM audit_logs "
+                        f"WHERE CAST({column} AS CHAR) LIKE '%%password%%' "
+                        f"AND CAST({column} AS CHAR) REGEXP ?", (pending,))
+        except Exception as e:
+            print(f"[i] audit scrub: regex filter unavailable ({e}); reading every candidate row.")
+            conn.rollback()
+            cur = conn.cursor()
+            cur.execute(f"SELECT id, {column} AS doc FROM audit_logs "
+                        f"WHERE CAST({column} AS CHAR) LIKE '%password%'")
+        rows = cur.fetchall() or []
+        for r in rows:
+            raw = r['doc'] if hasattr(r, 'keys') else r[1]
+            try:
+                doc = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+            except Exception:
+                continue
+            clean = redact(doc)
+            if clean != doc:
+                cur.execute(f"UPDATE audit_logs SET {column} = ? WHERE id = ?",
+                            (json.dumps(clean, ensure_ascii=False, default=str),
+                             r['id'] if hasattr(r, 'keys') else r[0]))
+                changed += 1
+        conn.commit()
+    return changed
+
+
+# What a failed sign-in for a login that does not exist is filed under. The
+# typed text is often a password entered in the wrong box.
+UNKNOWN_LOGIN = "[noma'lum login]"
+
+
+def scrub_unknown_logins(conn, known_usernames):
+    """
+    Mask LOGIN_FAILED rows whose login is not an account, written before
+    the login handler masked them. Returns how many rows changed.
+
+    known_usernames comes from users.json. An empty set means the file could
+    not be read (iCloud once renamed it), not that nobody exists, so nothing
+    is touched then. Idempotent: masked rows no longer match.
+    """
+    known = {str(u).strip().lower() for u in (known_usernames or []) if u}
+    if not known:
+        return 0
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT entity_id FROM audit_logs "
+                "WHERE entity_name = 'auth' AND action_type = 'LOGIN_FAILED' "
+                "AND entity_id <> ? AND entity_id <> '-'", (UNKNOWN_LOGIN,))
+    stray = []
+    for r in cur.fetchall() or []:
+        v = r['entity_id'] if hasattr(r, 'keys') else r[0]
+        if str(v or '').strip().lower() not in known:
+            stray.append(v)
+    changed = 0
+    for i in range(0, len(stray), 200):
+        part = stray[i:i + 200]
+        marks = ', '.join('?' for _ in part)
+        cur.execute(f"UPDATE audit_logs SET entity_id = ? WHERE entity_name = 'auth' "
+                    f"AND action_type = 'LOGIN_FAILED' AND entity_id IN ({marks})",
+                    (UNKNOWN_LOGIN,) + tuple(part))
+        changed += cur.rowcount or 0
+    conn.commit()
+    return changed
+
+
 def record(conn, entity_name, entity_id, action_type,
            user=None, old_data=None, new_data=None, ip_address=None, note=None):
     """
@@ -189,6 +305,12 @@ def record(conn, entity_name, entity_id, action_type,
         print(f"[!] Refusing to audit unknown action_type {action_type!r}")
         return
     try:
+        # The generic write hook passes the whole request body, and the user
+        # console's body carried the password an administrator typed: 2,414
+        # rows of the local trail held one in clear text. Secrets are masked
+        # here, at the one place every row goes through.
+        new_data = redact(new_data)
+        old_data = redact(old_data)
         payload_new = dict(new_data) if isinstance(new_data, dict) else ({} if new_data is None else {'value': new_data})
         # The acting identity always travels with the row, even when the
         # foreign key has to be NULL.
@@ -239,7 +361,16 @@ _ENTITY_BY_PREFIX = [
     ('/api/settings/pricing', 'pricing_config'),
     ('/api/crm/patients', 'patients'),
     ('/api/crm/payments', 'payments'),
+    ('/api/warehouse/items', 'inventory_items'),
+    ('/api/warehouse/suppliers', 'inventory_suppliers'),
+    ('/api/warehouse/receipts', 'inventory_receipts'),
+    ('/api/warehouse/dispense', 'inventory_dispensings'),
+    ('/api/warehouse/dispensings', 'inventory_dispensings'),
+    ('/api/warehouse/adjustments', 'inventory_transactions'),
+    ('/api/warehouse/transactions', 'inventory_transactions'),
     ('/api/accounting/medication-purchases', 'medication_purchases'),
+    ('/api/accounting/medicine-links', 'medication_aliases'),
+    ('/api/accounting/invoice-items', 'invoice_items'),
     ('/api/accounting/transaction', 'accounting_transactions'),
     ('/api/admissions', 'admissions'),
     ('/api/payments', 'payments'),
@@ -247,6 +378,7 @@ _ENTITY_BY_PREFIX = [
     ('/api/beds', 'beds'),
     ('/api/staff', 'staff'),
     ('/api/hr/staff', 'staff'),
+    ('/api/hr/attendance', 'staff_attendance'),
     ('/api/users', 'users'),
 ]
 
@@ -264,15 +396,48 @@ def action_for(method, path):
     Translate an HTTP verb into one of the schema's action types, preferring a
     clinically meaningful label where the path says what happened.
     """
+    if path.startswith('/api/warehouse/') and method == 'POST':
+        tail = path.rstrip('/').rsplit('/', 1)[-1]
+        if tail == 'post':
+            return 'POST_RECEIPT'
+        if tail == 'cancel':
+            return 'CANCEL'
+        if tail == 'reverse':
+            return 'REVERSE'
     if '/discharge' in path:
         return 'CHECK_OUT'
     if '/transfer' in path:
         return 'TRANSFER'
+    if path.endswith('/reactivate'):
+        return 'UPDATE'
+    # An administrator issuing a new one-time password. Without this it was
+    # labelled CREATE, as if a new account had been made.
+    if path.endswith('/reset-password'):
+        return 'PASSWORD_CHANGED'
     if path.startswith('/api/admissions') and method == 'POST':
         return 'CHECK_IN'
     if path.rstrip('/').endswith('/payments') or '/payments' in path:
         return 'PAYMENT_RECEIVED' if method == 'POST' else 'UPDATE'
     return {'POST': 'CREATE', 'PUT': 'UPDATE', 'DELETE': 'DELETE'}.get(method, 'UPDATE')
+
+
+def note_for(path, response_body):
+    """
+    A short note for the trail when the response says something the request
+    does not: a reversed receipt deleted its accounting expense (named by id),
+    an item edit changed the rules that decide how it is counted.
+    """
+    if not isinstance(response_body, dict):
+        return None
+    if path.startswith('/api/warehouse/receipts/') and path.rstrip('/').endswith('/reverse'):
+        exp = response_body.get('deleted_expense_id')
+        if exp:
+            return f"Receipt reversed: accounting_transactions {exp} deleted"
+        return "Receipt reversed (no accounting expense to delete)"
+    changed = response_body.get('changed_fields')
+    if path.startswith('/api/warehouse/items/') and isinstance(changed, dict) and changed:
+        return "Item rules changed: " + json.dumps(changed, ensure_ascii=False, default=str)
+    return None
 
 
 def entity_id_from(path, body, response_body):
@@ -287,3 +452,168 @@ def entity_id_from(path, body, response_body):
                     return str(source[key])
     tail = path.rstrip('/').rsplit('/', 1)[-1]
     return tail or path
+
+
+# ---------------------------------------------------------------------------
+# Reading the trail (GET /api/audit)
+#
+# The trail was written for a year with no way to read it short of a MySQL
+# prompt, so "who changed this bill" could not be answered by the clinic.
+# ---------------------------------------------------------------------------
+
+MAX_PAGE = 200
+_ENTITY_CHARS = set('abcdefghijklmnopqrstuvwxyz0123456789_')
+
+
+def _like_escape(text):
+    return text.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
+def _summary(new_doc, old_doc):
+    """A one-line description of a row for the table, secrets masked."""
+    parts = []
+    doc = redact(new_doc) if isinstance(new_doc, dict) else {}
+    if doc.get('_note'):
+        parts.append(str(doc['_note']))
+    for k, v in doc.items():
+        if str(k).startswith('_'):
+            continue
+        if isinstance(v, (dict, list)):
+            v = json.dumps(v, ensure_ascii=False, default=str)
+        v = str(v)
+        if len(v) > 40:
+            v = v[:39] + '…'
+        parts.append(f'{k}: {v}')
+    text = '; '.join(parts)
+    if old_doc:
+        text = (text + ' ' if text else '') + "(eski qiymat saqlangan)"
+    return text[:240]
+
+
+def parse_search(query):
+    """
+    Read GET /api/audit filters from a parsed query string.
+    Returns (filters, None) or (None, (message, field)).
+    """
+    def one(name):
+        v = query.get(name, [''])[0]
+        return (v or '').strip()
+
+    f = {}
+    for name, label in (('from', "Boshlanish sanasi"), ('to', "Tugash sanasi")):
+        raw = one(name)
+        if raw:
+            try:
+                f[name] = _dt.date.fromisoformat(raw[:10])
+            except ValueError:
+                return None, (f"{label} noto'g'ri. Format: YYYY-MM-DD.", name)
+    if f.get('from') and f.get('to') and f['to'] < f['from']:
+        return None, ("Tugash sanasi boshlanish sanasidan oldin bo'lishi mumkin emas.", 'to')
+
+    user = one('user').lower()
+    if len(user) > 64:
+        return None, ("Foydalanuvchi logini juda uzun.", 'user')
+    if user:
+        f['user'] = user
+
+    entity = one('entity').lower()
+    if entity:
+        if len(entity) > 64 or not set(entity) <= _ENTITY_CHARS:
+            return None, ("Bo'lim (jadval) nomi noto'g'ri.", 'entity')
+        f['entity'] = entity
+
+    action = one('action').upper()
+    if action:
+        if action not in ALL_ACTIONS:
+            return None, ("Amal turi noto'g'ri.", 'action')
+        f['action'] = action
+
+    q = one('q')
+    if len(q) > 100:
+        return None, ("Qidiruv matni 100 belgidan oshmasin.", 'q')
+    if q:
+        f['q'] = q
+
+    for name, default, low, high in (('limit', 50, 1, MAX_PAGE), ('offset', 0, 0, 10_000_000)):
+        raw = one(name)
+        if not raw:
+            f[name] = default
+            continue
+        try:
+            n = int(raw)
+        except ValueError:
+            return None, (f"'{name}' butun son bo'lishi kerak.", name)
+        if n < low or n > high:
+            return None, (f"'{name}' {low}..{high} oralig'ida bo'lishi kerak.", name)
+        f[name] = n
+    f['facets'] = one('facets') in ('1', 'true', 'yes')
+    return f, None
+
+
+def search(conn, f):
+    """Run a filtered, paged read of the trail. `f` comes from parse_search."""
+    ensure_index(conn)
+    where, params = [], []
+    if f.get('from'):
+        where.append("`timestamp` >= ?")
+        params.append(f['from'].isoformat() + ' 00:00:00')
+    if f.get('to'):
+        where.append("`timestamp` < ?")
+        params.append((f['to'] + _dt.timedelta(days=1)).isoformat() + ' 00:00:00')
+    if f.get('user'):
+        where.append("JSON_UNQUOTE(JSON_EXTRACT(new_data_json, '$._actor')) = ?")
+        params.append(f['user'])
+    if f.get('entity'):
+        where.append("entity_name = ?")
+        params.append(f['entity'])
+    if f.get('action'):
+        where.append("action_type = ?")
+        params.append(f['action'])
+    if f.get('q'):
+        pat = '%' + _like_escape(f['q']) + '%'
+        where.append("(entity_id LIKE ? OR ip_address LIKE ? "
+                     "OR CAST(new_data_json AS CHAR) LIKE ?)")
+        params.extend([pat, pat, pat])
+    clause = (' WHERE ' + ' AND '.join(where)) if where else ''
+
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS n FROM audit_logs" + clause, tuple(params))
+    row = cur.fetchone()
+    total = int(row['n'] if hasattr(row, 'keys') else row[0])
+
+    cur.execute("SELECT id, `timestamp`, entity_name, entity_id, action_type, "
+                "new_data_json, old_data_json, performed_by_staff_id, ip_address "
+                "FROM audit_logs" + clause + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                tuple(params) + (f['limit'], f['offset']))
+    out = []
+    for r in cur.fetchall() or []:
+        def load(raw):
+            if raw in (None, ''):
+                return None
+            try:
+                return json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+            except Exception:
+                return None
+        new_doc = load(r['new_data_json'])
+        old_doc = load(r['old_data_json'])
+        nd = new_doc if isinstance(new_doc, dict) else {}
+        ts = r['timestamp']
+        out.append({
+            'id': r['id'],
+            'timestamp': ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts),
+            'actor': nd.get('_actor') or '',
+            'actor_role': nd.get('_actor_role') or '',
+            'action': r['action_type'],
+            'entity': r['entity_name'],
+            'entity_id': r['entity_id'],
+            'staff_id': r['performed_by_staff_id'],
+            'ip': r['ip_address'] or '',
+            'summary': _summary(new_doc, old_doc),
+        })
+    result = {'rows': out, 'total': total, 'limit': f['limit'], 'offset': f['offset']}
+    if f.get('facets'):
+        cur.execute("SELECT DISTINCT entity_name FROM audit_logs ORDER BY entity_name")
+        result['entities'] = [(x['entity_name'] if hasattr(x, 'keys') else x[0])
+                              for x in cur.fetchall() or []]
+        result['actions'] = sorted(ALL_ACTIONS)
+    return result

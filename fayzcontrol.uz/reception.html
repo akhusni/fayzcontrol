@@ -13,11 +13,12 @@
     <link rel="stylesheet" href="css/unified_print.css?v=5.0">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <link rel="stylesheet" href="css/reception.css?v=11.0">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.3"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
+  <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="reception-portal">
 
@@ -373,7 +374,7 @@
                     <div class="form-group">
                       <label class="form-label">Konsultatsiya Narxi (so'm) <span class="req">*</span></label>
                       <input type="number" id="intake-consultation-fee" class="form-input" value="250000" min="0" step="10000">
-                      <div class="form-hint">Standart shifokor konsultatsiyasi: 250 000 so'm</div>
+                      <div class="form-hint" id="intake-consultation-fee-hint">Standart shifokor konsultatsiyasi: 250 000 so'm</div>
                     </div>
                     <div class="form-group">
                       <label class="form-label">Konsultatsiya Vaqti</label>
@@ -391,9 +392,15 @@
                   <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
                   <div class="modal-section-title"><i class="fas fa-stethoscope"></i> Ambulator Muolaja Kursi</div>
                   <p style="font-size:0.82rem;color:var(--text-secondary);">Klinikaga qatnab o'tkaziladigan kunlik kapelnitsa va inyeksiya muolajalari.</p>
-                  <div class="form-group" style="margin-top:0.8rem;">
-                    <label class="form-label">Kunlik To'lov (so'm)</label>
-                    <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                  <div class="form-grid-2" style="margin-top:0.8rem;">
+                    <div class="form-group">
+                      <label class="form-label">Kunlik To'lov (so'm)</label>
+                      <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Kurs Davomiyligi (kun) <span class="req">*</span></label>
+                      <input type="number" id="intake-outpatient-days" class="form-input" min="1" max="365" placeholder="Necha kun">
+                    </div>
                   </div>
                 </div>
 
@@ -740,7 +747,7 @@
               <select id="apt-service-type" class="form-select">
                 <option value="outpatient">Ambulator Konsultatsiya</option>
                 <option value="inpatient">Statsionarga kirish baholash</option>
-                <option value="home_visit">Uyga chaqiruv maslahat</option>
+                <!-- Home visits are not offered for now (PO, 2026-10-08). -->
               </select>
             </div>
             <div class="form-group">
@@ -764,6 +771,43 @@
         <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-apt-booking')">Bekor</button>
         <button class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.submitAppointment()">
           <i class="fas fa-calendar-check"></i> Yozishni Tasdiqlash
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       MODAL: ACCEPT A WEBSITE ENQUIRY (doctor + time are required)
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-request-accept">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fas fa-user-check" style="color:var(--primary-light);"></i> So'rovni Qabul Qilish</div>
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-request-accept')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:0.85rem;font-weight:700;margin-bottom:1rem;" id="req-accept-patient">—</div>
+        <form id="req-accept-form" onsubmit="event.preventDefault(); window.FMH_Reception.confirmAcceptRequest();">
+          <div style="display:flex;flex-direction:column;gap:0.9rem;">
+            <div class="form-group">
+              <label class="form-label" for="req-accept-doctor">Shifokor *</label>
+              <select id="req-accept-doctor" class="form-select" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="req-accept-date">Qabul sanasi *</label>
+              <input type="date" id="req-accept-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="req-accept-time">Qabul vaqti *</label>
+              <input type="time" id="req-accept-time" class="form-input" required>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.closeModal('modal-request-accept')">Bekor</button>
+        <button class="btn-portal btn-primary-portal" id="req-accept-submit" onclick="window.FMH_Reception.confirmAcceptRequest()">
+          <i class="fas fa-calendar-check"></i> Qabul qilish va yozish
         </button>
       </div>
     </div>
@@ -881,7 +925,7 @@
 
   <!-- Scripts -->
   <script src="js/xlsx.full.min.js"></script>
-    <script src="js/unified_print_engine.js?v=5.3"></script>
-<script src="js/reception.js?v=16.5"></script>
+    <script src="js/unified_print_engine.js?v=5.4"></script>
+<script src="js/reception.js?v=17.2"></script>
 </body>
 </html>

@@ -65,6 +65,9 @@
     pharmacology: [],
     anamnesisMap: {},
     prescriptionsMap: {},
+    // What the warehouse actually handed to each patient: {patientId: {status, rows}}.
+    // Filled only from the server answer and never written to localStorage.
+    dispensings: {},
     dailyNotesMap: {},
     currentFilter: 'all',
     searchQuery: '',
@@ -431,12 +434,15 @@
       const bedStr = p.active_admission ? `${p.active_admission.room_number}-xona ${p.active_admission.bed_code}` : (isConsultation ? `<span style="color:#0284c7; font-weight:700;"><i class="fas fa-stethoscope"></i> Konsultatsiya</span>` : 'Ambulator');
       const hasAllergy = p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '';
 
-      const bp = p.latest_vitals ? `${p.latest_vitals.vital_bp_systolic}/${p.latest_vitals.vital_bp_diastolic}` : '120/80';
-      const pulse = p.latest_vitals ? p.latest_vitals.vital_pulse : '72';
-      const spo2 = p.latest_vitals ? `${p.latest_vitals.vital_spo2}%` : '99%';
+      // Nothing clinical is invented: a patient with no recorded vitals used
+      // to show 120/80, 72 bpm, 99% here, which reads as a real measurement.
+      const lv = p.latest_vitals || null;
+      const bp = (lv && lv.vital_bp_systolic != null && lv.vital_bp_diastolic != null) ? `${lv.vital_bp_systolic}/${lv.vital_bp_diastolic}` : '—';
+      const pulse = (lv && lv.vital_pulse != null) ? lv.vital_pulse : '—';
+      const spo2 = (lv && lv.vital_spo2 != null) ? `${lv.vital_spo2}%` : '—';
 
       const notes = state.dailyNotesMap[p.id] || [];
-      const condition = notes.length > 0 ? notes[0].condition : 'satisfactory';
+      const condition = notes.length > 0 ? notes[0].condition : '';
       let statusClass = '';
       if (condition === 'moderate') statusClass = 'status-moderate';
       else if (condition === 'severe' || condition === 'critical') statusClass = 'status-critical';
@@ -464,7 +470,7 @@
           </div>
           <div class="doc-pt-details">
             <span><i class="fas fa-id-badge"></i> ${p.patient_code}</span> • 
-            <span>${p.birth_year ? (2026 - p.birth_year) + ' yosh' : 'N/A'}</span>
+            <span>${p.birth_year ? (new Date().getFullYear() - p.birth_year) + ' yosh' : 'N/A'}</span>
           </div>
           ${diagHtml}
           <div class="doc-pt-vitals">
@@ -484,6 +490,7 @@
 
   async function selectPatient(patient) {
     state.selectedPatient = patient;
+    state.dispensings[patient.id] = { status: 'loading', rows: [] };
     renderPatientList();
     renderWorkstation();
 
@@ -503,16 +510,26 @@
           state.prescriptionsMap[patient.id] = bundle.prescriptions;
         }
         if (Array.isArray(bundle.daily_notes)) {
-          state.dailyNotesMap[patient.id] = bundle.daily_notes;
+          state.dailyNotesMap[patient.id] = bundle.daily_notes.map(normalizeNote);
         }
         if (bundle.discharge_epicrisis) {
           if (!state.epicrisisMap) state.epicrisisMap = {};
           state.epicrisisMap[patient.id] = bundle.discharge_epicrisis;
         }
+        // Dispensing history comes from the server only; an answer without
+        // the list is shown as "could not load", never as "nothing given".
+        state.dispensings[patient.id] = Array.isArray(bundle.dispensings)
+          ? { status: 'ok', rows: bundle.dispensings }
+          : { status: 'error', rows: [] };
         renderWorkstation();
+      } else {
+        state.dispensings[patient.id] = { status: 'error', rows: [] };
+        renderDispensingHistory();
       }
     } catch (e) {
       console.warn("Could not fetch clinical bundle from MySQL API", e);
+      state.dispensings[patient.id] = { status: 'error', rows: [] };
+      renderDispensingHistory();
     }
   }
 
@@ -746,6 +763,7 @@
 
     renderAnamnesisTab();
     renderPrescriptionsTab();
+    renderDispensingHistory();
     renderDailyNotesTab();
     renderEpicrisisTab();
   }
@@ -943,7 +961,7 @@
     if (rxList.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+          <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
             ${filter !== 'all' ? 'Ushbu toifadagi dorilar mavjud emas.' : 'Hozircha ushbu bemorga dori-darmonlar tayinlanmagan. Yuqoridagi formadan yangi dori yoki tayyor protokol qo\'shing.'}
           </td>
         </tr>
@@ -962,6 +980,7 @@
           <td><span class="status-pill status-completed">${rx.route}</span></td>
           <td>${rx.frequency}<div style="font-size: 0.74rem; color: var(--text-muted);">${rx.timing || ''}</div></td>
           <td><strong>${rx.duration_days} kun</strong></td>
+          <td>${rxQtyCell(rx)}</td>
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td>
             <div style="display: flex; gap: 4px;">
@@ -985,6 +1004,317 @@
       btn.classList.toggle('active', btn.getAttribute('data-rx-filter') === status);
     });
     renderPrescriptionsTab();
+  }
+
+  // --- WAREHOUSE LINK & DISPENSING HISTORY ---------------------------------
+  // The doctor may tie an order to a warehouse item and a total quantity. That
+  // is information for the prescriber and the person handing the drug out:
+  // saving an order never removes anything from the shelf (stock leaves only
+  // when it is handed out, see inventory.py), and a shortage is a warning,
+  // never a block. Nothing here is guessed: no item or quantity means none.
+  // linkedName is the drug name (normalised) the link was made for. The link is only valid for that
+  // exact name: if the typed name changes afterwards (Paracetamol -> Ibuprofen) the old item id must
+  // never ride along with the new name, or the nurse and the dispenser would draw the wrong item.
+  const wh = { item: null, linkedName: '', results: [], seq: 0, timer: null, autoName: '', ready: false };
+
+  function whNameKey(s) {
+    return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+  function whTypedName() {
+    return whNameKey(document.getElementById('rx-drug-name')?.value || '');
+  }
+  // Drops the link when the name in the form no longer matches the name it was made for.
+  function whDropStaleLink() {
+    if (wh.item && whTypedName() !== wh.linkedName) {
+      clearWarehouseItem();
+      return true;
+    }
+    return false;
+  }
+
+  // 12 -> "12", 2.5 -> "2.5": quantities can be fractions (ml, half tablets).
+  function fmtQty(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return String(Math.round(n * 1000) / 1000);
+  }
+
+  // "2026-10-10T14:23:11" -> "10.10.2026 14:23"; anything else is shown as sent.
+  function fmtDateTime(v) {
+    if (!v) return '—';
+    const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : escapeHtml(v);
+  }
+
+  // The server decides low / out (it knows about expired lots); this only maps
+  // its stock_status to a colour. 'out' also covers nothing usable on hand.
+  function whStockClass(item) {
+    const a = Number(item.available_quantity);
+    if (item.stock_status === 'out' || !(a > 0)) return 'out';
+    if (item.stock_status === 'low') return 'low';
+    return 'ok';
+  }
+
+  function whCurrentQuery() {
+    const own = (document.getElementById('rx-wh-search')?.value || '').trim();
+    return own || (document.getElementById('rx-drug-name')?.value || '').trim();
+  }
+
+  function whQuery() {
+    clearTimeout(wh.timer);
+    const text = whCurrentQuery();
+    if (text.length < 2) {
+      wh.seq++;
+      wh.results = [];
+      renderWhResults();
+      return;
+    }
+    wh.timer = setTimeout(() => runWhSearch(text), 300);
+  }
+
+  async function runWhSearch(text) {
+    const mySeq = ++wh.seq;
+    let results = null; // null = the warehouse could not be read
+    try {
+      const res = await fetch(`/api/warehouse/availability?q=${encodeURIComponent(text)}&limit=8`);
+      if (res.ok) {
+        const data = await res.json();
+        results = Array.isArray(data.items) ? data.items : [];
+      }
+    } catch (e) { /* offline: handled as unavailable below */ }
+    if (mySeq !== wh.seq) return; // a newer search has started
+    wh.results = results;
+    // After a pick from the drug list: link the item automatically only when
+    // exactly one warehouse item has that very name.
+    // A late answer must not link an item to a name the doctor has already changed.
+    if (results && wh.autoName && !wh.item && whTypedName() === wh.autoName) {
+      const exact = results.filter(i => whNameKey(i.name) === wh.autoName);
+      if (exact.length === 1) selectWarehouseItem(exact[0]);
+    }
+    wh.autoName = '';
+    renderWhResults();
+  }
+
+  function renderWhResults() {
+    const box = document.getElementById('rx-wh-results');
+    if (!box) return;
+    if (wh.results === null) {
+      box.innerHTML = `<div class="rx-wh-hint">Ombor ma'lumoti hozir mavjud emas. Retsept ombor bilan bog'lanmasdan saqlanadi.</div>`;
+      return;
+    }
+    if (!wh.results.length) {
+      box.innerHTML = whCurrentQuery().length >= 2 ? `<div class="rx-wh-hint">Omborda mos dori topilmadi.</div>` : '';
+      return;
+    }
+    box.innerHTML = `<div class="rx-wh-hint" style="width: 100%; margin: 0;"><i class="fas fa-check-circle" style="color: var(--emerald);"></i> Omborda bor — bog'lash uchun tanlang:</div>` +
+      wh.results.map(it => {
+        const cls = whStockClass(it);
+        const unit = it.base_unit ? ' ' + it.base_unit : '';
+        const label = [it.name, it.strength, it.form].filter(Boolean).join(' · ');
+        const badge = cls === 'out' ? 'Tugagan' : `${fmtQty(it.available_quantity)}${unit}`;
+        const sel = wh.item && wh.item.id === it.id ? ' is-selected' : '';
+        return `<button type="button" class="rx-wh-chip${sel}" data-wh-id="${escapeHtml(it.id)}">
+          <i class="fas fa-warehouse"></i> ${escapeHtml(label)}
+          <span class="rx-wh-badge ${cls}">${escapeHtml(badge)}</span>
+        </button>`;
+      }).join('');
+  }
+
+  function updateWhStatus() {
+    const el = document.getElementById('rx-wh-status');
+    if (!el) return;
+    const item = wh.item;
+    if (!item) {
+      el.innerHTML = `Ombor dorisi tanlanmagan.<span class="rx-wh-note">Retsept ombordan hech narsa olmaydi: dori faqat berilganda chiqariladi.</span>`;
+      return;
+    }
+    const unit = escapeHtml(item.base_unit || '');
+    const avail = Number(item.available_quantity) || 0;
+    const qtyRaw = (document.getElementById('rx-qty')?.value || '').trim();
+    const qty = qtyRaw === '' ? null : Number(qtyRaw);
+    const notes = [];
+    let line;
+    if (whStockClass(item) === 'out') {
+      line = `<span class="out">Ombordan tugagan</span>`;
+      notes.push("Ogohlantirish xolos: retseptni baribir saqlash mumkin.");
+    } else if (qty !== null && isFinite(qty) && qty > avail) {
+      line = `<span class="out">Yetarli emas: ${fmtQty(avail)} mavjud, ${fmtQty(qty)} kerak</span>`;
+      notes.push("Ogohlantirish xolos: retseptni baribir saqlash mumkin.");
+    } else if (whStockClass(item) === 'low') {
+      line = `<span class="low">Omborda: ${fmtQty(avail)} ${unit} (kam qolgan)</span>`;
+    } else {
+      line = `<span class="ok">Omborda: ${fmtQty(avail)} ${unit}</span>`;
+    }
+    if (qty !== null && isFinite(qty) && !item.allow_fraction && qty !== Math.floor(qty)) {
+      notes.push("Bu dori faqat butun sonda beriladi.");
+    }
+    el.innerHTML = `<strong>${escapeHtml(item.name)}</strong>
+      <button type="button" class="rx-wh-clear" data-wh-clear="1" title="Tanlovni bekor qilish"><i class="fas fa-times"></i></button><br>
+      ${line}${notes.map(n => `<span class="rx-wh-note">${escapeHtml(n)}</span>`).join('')}`;
+  }
+
+  function selectWarehouseItem(item) {
+    wh.item = item;
+    wh.autoName = '';
+    const unitEl = document.getElementById('rx-qty-unit');
+    if (unitEl) unitEl.value = item.base_unit || '';
+    // The typed name is kept (it is what the nurse sheet shows); only an empty
+    // name is filled from the warehouse item.
+    const nameEl = document.getElementById('rx-drug-name');
+    if (nameEl && !nameEl.value.trim()) nameEl.value = item.name || '';
+    wh.linkedName = whNameKey(nameEl ? nameEl.value : item.name);
+    renderWhResults();
+    updateWhStatus();
+  }
+
+  function clearWarehouseItem() {
+    wh.item = null;
+    wh.linkedName = '';
+    const unitEl = document.getElementById('rx-qty-unit');
+    if (unitEl) unitEl.value = '';
+    renderWhResults();
+    updateWhStatus();
+  }
+
+  function resetWarehousePanel() {
+    clearTimeout(wh.timer);
+    wh.seq++;
+    wh.item = null;
+    wh.linkedName = '';
+    wh.results = [];
+    wh.autoName = '';
+    ['rx-wh-search', 'rx-qty', 'rx-qty-unit'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    renderWhResults();
+    updateWhStatus();
+  }
+
+  // The drug list (pharmacology) pick keeps working as before; on top of it the
+  // warehouse is searched by that name. An item the doctor already chose by
+  // hand is not replaced, and a late answer never overrides a manual choice.
+  function whOnDrugPicked(med) {
+    if (!med || wh.item) return;
+    const name = String(med.name || med.paper_name || '').trim();
+    if (name.length < 2) return;
+    const own = document.getElementById('rx-wh-search');
+    if (own) own.value = '';
+    wh.autoName = whNameKey(name);
+    clearTimeout(wh.timer);
+    runWhSearch(name);
+  }
+
+  function whOnNameTyped(value) {
+    if (!value || !value.trim()) {
+      clearTimeout(wh.timer);
+      wh.seq++;
+      wh.results = [];
+      if (wh.item) clearWarehouseItem(); else renderWhResults();
+      return;
+    }
+    // Any edit of the name that makes it differ from the linked item's name unlinks it (and clears the
+    // quantity unit and the availability line); the search below then offers matching items again.
+    whDropStaleLink();
+    if (!(document.getElementById('rx-wh-search')?.value || '').trim()) whQuery();
+  }
+
+  function setupWarehousePanel() {
+    if (wh.ready) return;
+    const search = document.getElementById('rx-wh-search');
+    const qty = document.getElementById('rx-qty');
+    const results = document.getElementById('rx-wh-results');
+    const status = document.getElementById('rx-wh-status');
+    if (!search || !qty || !results || !status) return;
+    wh.ready = true;
+    search.addEventListener('input', whQuery);
+    qty.addEventListener('input', updateWhStatus);
+    // Item ids come from the server: they are read from data-attributes here,
+    // never pasted into an inline handler.
+    results.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rx-wh-chip');
+      if (!btn || !Array.isArray(wh.results)) return;
+      const id = btn.getAttribute('data-wh-id');
+      if (wh.item && wh.item.id === id) { clearWarehouseItem(); return; }
+      const item = wh.results.find(i => i.id === id);
+      if (item) selectWarehouseItem(item);
+    });
+    status.addEventListener('click', (e) => {
+      if (e.target.closest('[data-wh-clear]')) clearWarehouseItem();
+    });
+    updateWhStatus();
+  }
+
+  // Prescribed / given / left for one order, plus what the shelf holds now.
+  function rxQtyCell(rx) {
+    const hasQty = rx.quantity_prescribed !== null && rx.quantity_prescribed !== undefined && rx.quantity_prescribed !== '';
+    const unit = rx.quantity_unit || rx.available_unit || '';
+    const u = unit ? ' ' + escapeHtml(unit) : '';
+    const lines = [];
+    if (hasQty) {
+      lines.push(`Buyurilgan: <strong>${fmtQty(rx.quantity_prescribed)}${u}</strong>`);
+    } else {
+      lines.push(`<span class="rx-qty-muted">Miqdor ko'rsatilmagan</span>`);
+    }
+    if (rx.quantity_dispensed !== null && rx.quantity_dispensed !== undefined && (hasQty || Number(rx.quantity_dispensed) > 0)) {
+      lines.push(`Berilgan: <strong>${fmtQty(rx.quantity_dispensed)}${u}</strong>`);
+    }
+    if (hasQty && rx.remaining_quantity !== null && rx.remaining_quantity !== undefined) {
+      lines.push(`Qolgan: <strong>${fmtQty(rx.remaining_quantity)}${u}</strong>`);
+    }
+    if ((rx.status || 'active') === 'active' && rx.available_quantity !== null && rx.available_quantity !== undefined) {
+      const avail = Number(rx.available_quantity) || 0;
+      const need = (rx.remaining_quantity !== null && rx.remaining_quantity !== undefined)
+        ? Number(rx.remaining_quantity)
+        : (hasQty ? Number(rx.quantity_prescribed) : null);
+      if (avail <= 0) {
+        lines.push(`<span class="rx-wh-badge out">Ombordan tugagan</span>`);
+      } else if (need !== null && need > avail) {
+        lines.push(`<span class="rx-wh-badge out">Omborda yetarli emas: ${fmtQty(avail)}${u}</span>`);
+      } else {
+        lines.push(`<span class="rx-wh-badge ok">Omborda: ${fmtQty(avail)}${u}</span>`);
+      }
+    }
+    return `<div class="rx-qty-cell">${lines.join('<br>')}</div>`;
+  }
+
+  // "Berilgan dori va materiallar": the server's dispensing rows for the open
+  // patient, exactly as sent (actual quantity, unit, lot). Reversed rows stay
+  // visible, struck through, with the reason.
+  function renderDispensingHistory() {
+    const tbody = document.getElementById('dsp-table-body');
+    const p = state.selectedPatient;
+    if (!tbody || !p) return;
+    const rec = state.dispensings[p.id];
+    const message = (text) => {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">${text}</td></tr>`;
+    };
+    if (!rec || rec.status === 'loading') { message('Yuklanmoqda...'); return; }
+    if (rec.status === 'error') { message("Berilgan dorilar ro'yxatini yuklab bo'lmadi."); return; }
+    if (!rec.rows.length) { message('Hali dori berilmagan.'); return; }
+
+    tbody.innerHTML = rec.rows.map(d => {
+      const reversed = d.status === 'reversed';
+      const strike = reversed ? ' dsp-strike' : '';
+      const dose = [d.dosage, d.route, d.frequency, d.instructions].filter(Boolean).map(escapeHtml).join(' • ');
+      const lots = Array.isArray(d.batch_numbers) && d.batch_numbers.length ? d.batch_numbers.map(escapeHtml).join(', ') : '—';
+      const status = reversed
+        ? `<span class="status-pill status-cancelled">Qaytarilgan</span>
+           <span class="dsp-note">${fmtDateTime(d.reversed_at)}${d.reversed_by ? ' · ' + escapeHtml(d.reversed_by) : ''}${d.reverse_reason ? '<br>Sabab: ' + escapeHtml(d.reverse_reason) : ''}</span>`
+        : `<span class="status-pill status-active">Berilgan</span>`;
+      return `
+        <tr class="${reversed ? 'dsp-reversed' : ''}">
+          <td style="white-space: nowrap;"><span class="${strike.trim()}">${fmtDateTime(d.dispensed_at)}</span></td>
+          <td><strong class="${strike.trim()}">${escapeHtml(d.item_name || '—')}</strong></td>
+          <td><strong class="${strike.trim()}">${fmtQty(d.quantity)}${d.unit ? ' ' + escapeHtml(d.unit) : ''}</strong></td>
+          <td><span class="${strike.trim()}">${dose || '—'}</span></td>
+          <td>${escapeHtml(d.prescribed_by || '—')}</td>
+          <td>${escapeHtml(d.dispensed_by || '—')}</td>
+          <td>${lots}</td>
+          <td>${status}</td>
+        </tr>`;
+    }).join('');
   }
 
   function setRxField(field, value) {
@@ -1021,6 +1351,7 @@
       const clearBtn = input.closest('.fmh-med-search-wrapper')?.querySelector('.fmh-med-clear-btn');
       if (clearBtn) clearBtn.style.display = 'flex';
     }
+    whDropStaleLink(); // the name was just replaced: an earlier warehouse link belongs to the old name
     if (med.form || med.dosage_form) {
       const f = med.form || med.dosage_form;
       const formEl = document.getElementById('rx-form');
@@ -1092,17 +1423,28 @@
       if (el) el.value = med.instructions;
     }
 
+    whOnDrugPicked(med);
     updateDrugDetailsBanner(med);
   }
 
   function quickSelectMed(nameOrNum) {
     const med = findMedication(String(nameOrNum));
     if (med) {
+      clearWarehouseItem(); // a different drug: the earlier warehouse link no longer applies
       applyMedicationToRxForm(med);
       showToast(`⚡ "${med.name}" formaga tezkor yuklandi!`, 'success');
     } else {
       showToast(`Dori topilmadi: "${nameOrNum}"`, 'warning');
     }
+  }
+
+  // The drug safety card used escapeHtml(), which only exists privately
+  // inside med_search_engine.js. The ReferenceError stopped the card (and
+  // its allergy check) from ever rendering. This page needs its own copy.
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function updateDrugDetailsBanner(med) {
@@ -1181,6 +1523,7 @@
   }
 
   function onDrugNameInput(value) {
+    whOnNameTyped(value);
     if (!value || !value.trim()) {
       clearDrugDetailsBanner();
       return;
@@ -1495,6 +1838,8 @@
     if (med.default_timing) document.getElementById('rx-timing').value = med.default_timing;
     if (med.default_duration) document.getElementById('rx-duration').value = med.default_duration;
     if (med.instructions) document.getElementById('rx-instructions').value = med.instructions;
+    clearWarehouseItem(); // a different drug: the earlier warehouse link no longer applies
+    whOnDrugPicked(med);
     closeClinicMedsModal();
     showToast(`✅ "${med.name}" tayinlov formasiga yuklandi!`, 'success');
     if (drugInput) drugInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1594,12 +1939,35 @@
         status: 'active',
         doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
       };
+
+      // Optional warehouse link (form only: protocol and clinic-list orders
+      // carry none). A quantity is kept exactly as typed; an empty field
+      // stays empty and no quantity is invented.
+      const qtyRaw = (document.getElementById('rx-qty')?.value || '').trim();
+      if (qtyRaw !== '') {
+        const qty = Number(qtyRaw);
+        if (!isFinite(qty) || qty <= 0) {
+          showToast("Miqdor 0 dan katta son bo'lishi kerak.", 'warning');
+          return;
+        }
+        rxData.quantity_prescribed = qty;
+      }
+      // Last line of defence: never send a medication_id for a name it was not linked to.
+      if (wh.item && whNameKey(drugName) !== wh.linkedName) {
+        clearWarehouseItem();
+        showToast("Dori nomi o'zgargani uchun ombor mahsuloti bilan bog'lanish olib tashlandi. Kerak bo'lsa, qayta tanlang.", 'warning');
+      }
+      if (wh.item) {
+        rxData.medication_id = wh.item.id;
+        if (rxData.quantity_prescribed !== undefined) rxData.quantity_unit = wh.item.base_unit;
+      }
     }
 
     // The order is shown as given only once the server has stored it. The
     // answer used to be ignored, so an order the server refused (no dose, no
     // route) still appeared on this list with a success message -- and never
     // reached the nurse station, which reads the database.
+    let stockWarning = null;
     try {
       const res = await fetch('/api/doctor/prescriptions', {
         method: 'POST',
@@ -1618,9 +1986,19 @@
         showToast(err.error || "Retsept saqlanmadi. Qayta urinib ko'ring.", 'danger');
         return false;
       }
+      // The order is saved either way; the server only advises when the shelf
+      // holds less than was prescribed.
+      const saved = await res.json().catch(() => ({}));
+      stockWarning = saved && saved.stock_warning ? saved.stock_warning : null;
     } catch (e) {
       showToast("Server bilan aloqa yo'q — retsept saqlanmadi.", 'danger');
       return false;
+    }
+
+    // Nothing has been handed out yet: dispensed is 0 and all of it remains.
+    if (rxData.quantity_prescribed !== undefined) {
+      rxData.quantity_dispensed = 0;
+      rxData.remaining_quantity = rxData.quantity_prescribed;
     }
 
     if (!state.prescriptionsMap[p.id]) state.prescriptionsMap[p.id] = [];
@@ -1638,16 +2016,18 @@
       document.getElementById('rx-dosage').value = '';
       document.getElementById('rx-instructions').value = '';
       clearDrugDetailsBanner();
+      resetWarehousePanel();
     }
 
     showToast(`💊 <strong>${rxData.medication_name}</strong> retsept varaqasiga muvaffaqiyatli qo'shildi!`);
+    if (stockWarning && stockWarning.message) showToast(escapeHtml(stockWarning.message), 'warning');
     renderPrescriptionsTab();
     updateTabBadges();
     updateKPIs();
     return true;
   }
 
-  function applyPresetProtocol(protocolType) {
+  async function applyPresetProtocol(protocolType) {
     const p = state.selectedPatient;
     if (!p) return;
 
@@ -1677,16 +2057,27 @@
       ];
     }
 
-    items.forEach(item => {
-      addPrescription({
+    // Each order is saved one after another and counted. The summary used to
+    // say every drug was prescribed even when the server refused them all
+    // (each refusal already shows its own message from addPrescription).
+    let saved = 0;
+    for (const item of items) {
+      const ok = await addPrescription({
         id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
         status: 'active',
         doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
         ...item
       });
-    });
+      if (ok) saved++;
+    }
 
-    showToast(`⚡ Protokol biriktirildi: <strong>${items.length} ta dori</strong> tayinlandi!`);
+    if (saved === items.length) {
+      showToast(`⚡ Protokol biriktirildi: <strong>${saved} ta dori</strong> tayinlandi!`);
+    } else if (saved > 0) {
+      showToast(`Protokol qisman biriktirildi: ${items.length} tadan <strong>${saved} ta dori</strong> saqlandi.`, 'warning');
+    } else if (items.length) {
+      showToast('Protokol saqlanmadi: birorta dori tayinlanmadi.', 'danger');
+    }
   }
 
   async function toggleRxStatus(patientId, rxId, newStatus) {
@@ -1702,7 +2093,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })
         });
-        if (!res.ok) throw new Error('API failed');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Xatolik: Holatni yangilab bo'lmadi");
+        }
 
         localStorage.setItem(STORAGE_KEYS.PRESCRIPTIONS, JSON.stringify(state.prescriptionsMap));
         renderPrescriptionsTab();
@@ -1710,7 +2104,7 @@
       } catch (err) {
         // revert
         item.status = oldStatus;
-        showToast("Xatolik: Holatni yangilab bo'lmadi", "error");
+        showToast(escapeHtml(err.message || "Xatolik: Holatni yangilab bo'lmadi"), "error");
       }
     }
   }
@@ -1738,8 +2132,11 @@
       type: "danger",
       onConfirm: async () => {
         try {
-          const res = await fetch(`/api/doctor/prescriptions/${rxId}`, { method: 'DELETE' });
-          if (!res.ok) throw new Error('API failed');
+          const res = await fetch(`/api/doctor/prescriptions/${encodeURIComponent(rxId)}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "Xatolik: Retseptni o'chirib bo'lmadi");
+          }
 
           state.prescriptionsMap[patientId] = list.filter(rx => rx.id !== rxId);
           localStorage.setItem(STORAGE_KEYS.PRESCRIPTIONS, JSON.stringify(state.prescriptionsMap));
@@ -1748,13 +2145,41 @@
           showToast("🗑️ Dori retseptdan o'chirildi");
           updateKPIs();
         } catch (err) {
-          showToast("Xatolik: Retseptni o'chirib bo'lmadi", "error");
+          showToast(escapeHtml(err.message || "Xatolik: Retseptni o'chirib bo'lmadi"), "error");
         }
       }
     });
   }
 
   // --- TAB 3: DAILY PROGRESS NOTES (DNEVNIK OBXODA) ---
+
+  // The server stores notes as doctor_daily_notes columns (note_date,
+  // patient_condition, vital_*, dynamics_notes, treatment_adjustments). This
+  // page was written against a different shape, so every note loaded from the
+  // server rendered as "undefined" with empty vitals. Convert once on load;
+  // notes already in page shape pass through unchanged.
+  function normalizeNote(n) {
+    if (!n || n.dynamics_notes === undefined) return n;
+    const sys = n.vital_bp_systolic, dia = n.vital_bp_diastolic;
+    return {
+      id: n.id,
+      date: n.note_date ? String(n.note_date).slice(0, 10) : '',
+      condition: n.patient_condition || '',
+      bp: (sys != null && dia != null) ? `${sys}/${dia}` : null,
+      pulse: n.vital_pulse != null ? n.vital_pulse : null,
+      temp: n.vital_temp != null ? n.vital_temp : null,
+      spo2: n.vital_spo2 != null ? n.vital_spo2 : null,
+      dynamics: n.dynamics_notes || '',
+      treatment: n.treatment_adjustments || '',
+      doctor_name: n.doctor_name || ''
+    };
+  }
+
+  function localDateStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function renderDailyNotesTab() {
     const p = state.selectedPatient;
     if (!p) return;
@@ -1772,26 +2197,29 @@
       return;
     }
 
-    container.innerHTML = notes.map(n => {
-      const condBadge = n.condition === 'satisfactory' ? '<span class="status-pill status-active">Qoniqarli</span>' : (n.condition === 'severe' ? '<span class="status-pill status-cancelled">Og\'ir</span>' : '<span class="status-pill status-completed">O\'rta og\'ir</span>');
+    // Notes now come from the server, typed on this page, the ward round or
+    // by another doctor. Put into innerHTML as they were, a note containing
+    // markup ran as script in every doctor's session that opened the tab.
+    container.innerHTML = notes.map(normalizeNote).map(n => {
+      const condBadge = n.condition === 'satisfactory' ? '<span class="status-pill status-active">Qoniqarli</span>' : (n.condition === 'critical' ? '<span class="status-pill status-cancelled">Kritik</span>' : (n.condition === 'severe' ? '<span class="status-pill status-cancelled">Og\'ir</span>' : (n.condition === 'moderate' ? '<span class="status-pill status-completed">O\'rta og\'ir</span>' : '')));
       return `
         <div class="diary-entry-card">
           <div class="diary-top-row">
-            <div class="diary-date"><i class="fas fa-calendar-check"></i> ${n.date} • ${n.doctor_name || '—'}</div>
+            <div class="diary-date"><i class="fas fa-calendar-check"></i> ${escapeHtml(n.date)} • ${escapeHtml(n.doctor_name || '—')}</div>
             ${condBadge}
           </div>
           <div class="diary-vitals-box">
-            <span><strong>Qon bosimi:</strong> ${n.bp || '—'} mm Hg</span>
-            <span><strong>Puls:</strong> ${n.pulse || '—'} ur/min</span>
-            <span><strong>Harorat:</strong> ${n.temp || '—'} °C</span>
-            <span><strong>SpO2:</strong> ${n.spo2 ? n.spo2 + '%' : '—'}</span>
+            <span><strong>Qon bosimi:</strong> ${escapeHtml(n.bp || '—')} mm Hg</span>
+            <span><strong>Puls:</strong> ${escapeHtml(n.pulse || '—')} ur/min</span>
+            <span><strong>Harorat:</strong> ${escapeHtml(n.temp || '—')} °C</span>
+            <span><strong>SpO2:</strong> ${n.spo2 ? escapeHtml(n.spo2) + '%' : '—'}</span>
           </div>
           <div style="font-size: 0.88rem; color: var(--text-primary); margin-bottom: 6px; line-height: 1.5;">
-            <strong>Dinamika va holat:</strong> ${n.dynamics}
+            <strong>Dinamika va holat:</strong> ${escapeHtml(n.dynamics)}
           </div>
           ${n.treatment ? `
             <div style="font-size: 0.82rem; color: var(--doctor-cyan-light); background: rgba(6, 182, 212, 0.08); padding: 6px 10px; border-radius: 6px;">
-              <strong>Korreksiya:</strong> ${n.treatment}
+              <strong>Korreksiya:</strong> ${escapeHtml(n.treatment)}
             </div>
           ` : ''}
         </div>
@@ -1809,17 +2237,52 @@
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Local date: toISOString() is UTC, so before 05:00 in Tashkent the note
+    // landed on yesterday.
+    const todayStr = localDateStr();
+    const bpRaw = document.getElementById('note-bp').value.trim();
+    let bpSys = '', bpDia = '';
+    if (bpRaw) {
+      const m = bpRaw.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+      if (!m) {
+        showToast("Qon bosimini 120/80 ko'rinishida yozing", 'warning');
+        return;
+      }
+      bpSys = m[1]; bpDia = m[2];
+    }
+    const pulseRaw = document.getElementById('note-pulse').value.trim();
+    const tempRaw = document.getElementById('note-temp').value.trim();
+    const spo2Raw = document.getElementById('note-spo2').value.trim();
+    const treatment = document.getElementById('note-treatment').value.trim();
+    const condition = document.getElementById('note-condition').value;
+
+    // Field names match POST /api/doctor/notes (the same ones ward.js sends).
+    // The old names (condition, bp, dynamics, treatment_changes) were not
+    // read by the server, so every note was refused with "Dinamika shart".
+    // Only vitals the doctor typed are sent: an absent field leaves the
+    // nurse's or ward round's reading for the day untouched.
+    const payload = {
+      patient_id: p.id,
+      admission_id: (p.active_admission && p.active_admission.admission_id) || null,
+      note_date: todayStr,
+      patient_condition: condition,
+      dynamics_notes: dynamics,
+      treatment_adjustments: treatment
+    };
+    if (bpSys) { payload.vital_bp_systolic = bpSys; payload.vital_bp_diastolic = bpDia; }
+    if (pulseRaw) payload.vital_pulse = pulseRaw;
+    if (tempRaw) payload.vital_temp = tempRaw;
+    if (spo2Raw) payload.vital_spo2 = spo2Raw;
+
     const newNote = {
-      id: Date.now(),
       date: todayStr,
-      condition: document.getElementById('note-condition').value,
-      bp: document.getElementById('note-bp').value.trim() || null,
-      pulse: parseInt(document.getElementById('note-pulse').value) || null,
-      temp: parseFloat(document.getElementById('note-temp').value) || null,
-      spo2: parseInt(document.getElementById('note-spo2').value) || null,
+      condition: condition,
+      bp: bpSys ? `${bpSys}/${bpDia}` : null,
+      pulse: pulseRaw ? Number(pulseRaw) : null,
+      temp: tempRaw ? Number(tempRaw) : null,
+      spo2: spo2Raw ? Number(spo2Raw) : null,
       dynamics: dynamics,
-      treatment: document.getElementById('note-treatment').value,
+      treatment: treatment,
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || ''
     };
 
@@ -1827,21 +2290,16 @@
       const res = await fetch('/api/doctor/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patient_id: p.id,
-          doctor_id: state.authenticatedDoctor?.staff_id,
-          condition: newNote.condition,
-          bp: newNote.bp,
-          pulse: newNote.pulse,
-          temp: newNote.temp,
-          spo2: newNote.spo2,
-          dynamics: newNote.dynamics,
-          treatment_changes: newNote.treatment
-        })
+        body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('API failed');
-      
-      if (!state.dailyNotesMap[p.id]) state.dailyNotesMap[p.id] = [];
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xatolik: Qaydni saqlab bo'lmadi", "error");
+        return;
+      }
+
+      // One note per stay per day: saving again today replaces today's note.
+      state.dailyNotesMap[p.id] = (state.dailyNotesMap[p.id] || []).filter(n => normalizeNote(n).date !== todayStr);
       state.dailyNotesMap[p.id].unshift(newNote);
       localStorage.setItem(STORAGE_KEYS.DAILY_NOTES, JSON.stringify(state.dailyNotesMap));
 
@@ -1854,25 +2312,12 @@
       updateTabBadges();
       updateVitalsDashboard();
     } catch (err) {
-      showToast("Xatolik: Qaydni saqlab bo'lmadi", "error");
+      showToast("Server bilan aloqa yo'q. Qayd saqlanmadi.", "error");
     }
   }
 
-  function setNormalVitals() {
-    const bpEl = document.getElementById('note-bp');
-    const pulseEl = document.getElementById('note-pulse');
-    const tempEl = document.getElementById('note-temp');
-    const spo2El = document.getElementById('note-spo2');
-    const condEl = document.getElementById('note-condition');
-
-    if (bpEl) bpEl.value = '120/80';
-    if (pulseEl) pulseEl.value = 74;
-    if (tempEl) tempEl.value = 36.6;
-    if (spo2El) spo2El.value = 99;
-    if (condEl) condEl.value = 'satisfactory';
-
-    showToast("⚡ Me'yoriy klinik ko'rsatkichlar o'rnatildi (120/80, 74, 36.6°C, 99%)", "info");
-  }
+  // The one-click "normal values" button (120/80, 74, 36.6, 99%) was removed:
+  // it let a round be recorded with vitals nobody measured.
 
   function appendDynamicsPhrase(phrase) {
     const el = document.getElementById('note-dynamics');
@@ -1900,14 +2345,39 @@
     // and was saved as the final diagnosis on the discharge paper.
     const diag = anam.diagnosis_primary || '';
     state.epicrisisDiag = diag;
-    const rxSummary = rxList.map(r => `• ${r.medication_name} — ${r.dosage} (${r.route}, ${r.frequency})`).join('\n');
 
     document.getElementById('epicrisis-diag').textContent = diag || '—';
     const outcomeSel = document.getElementById('epicrisis-outcome');
     const savedEpi = (state.epicrisisMap && state.epicrisisMap[p.id]) || {};
-    if (outcomeSel) outcomeSel.value = savedEpi.discharge_status || '';
     document.getElementById('epicrisis-patient').textContent = `${p.full_name} (${p.patient_code})`;
-    document.getElementById('epicrisis-home-rx').value = rxSummary || '';
+    // Show what was saved for THIS patient. The home-medicines box used to be
+    // overwritten with the inpatient list on every render, and the advice box
+    // was never touched, so the previous patient's advice stayed on screen
+    // and could be saved onto the next patient's discharge paper.
+    //
+    // The saved summary counts only when it belongs to the current stay: the
+    // server sends the latest one from any stay, so a readmitted patient
+    // opened with last stay's home medicines, advice and outcome filled in.
+    //
+    // The boxes are filled only when the patient or the saved record changes.
+    // This runs on every workstation re-render (each anamnesis save), which
+    // wiped advice the doctor had typed but not yet saved.
+    //
+    // The home-medicines box starts empty when nothing is saved; it used to
+    // be pre-filled with every prescription, including stopped ones, which
+    // also left "Auto epikriz" nothing to fill.
+    const curAdm = p.active_admission ? p.active_admission.admission_id : null;
+    const sameStay = Object.keys(savedEpi).length > 0 &&
+      (!curAdm || savedEpi.admission_id === curAdm);
+    const marker = state.epicrisisRendered || {};
+    const savedRef = (state.epicrisisMap && state.epicrisisMap[p.id]) || null;
+    if (marker.id !== p.id || marker.saved !== savedRef) {
+      if (outcomeSel) outcomeSel.value = sameStay ? (savedEpi.discharge_status || '') : '';
+      document.getElementById('epicrisis-home-rx').value = sameStay ? (savedEpi.home_prescriptions || '') : '';
+      const psychoEl = document.getElementById('epicrisis-psycho');
+      if (psychoEl) psychoEl.value = sameStay ? (savedEpi.psycho_recommendations || '') : '';
+      state.epicrisisRendered = { id: p.id, saved: savedRef };
+    }
   }
 
   async function saveEpicrisis() {
@@ -1919,7 +2389,7 @@
       admission_id: p.active_admission ? p.active_admission.admission_id : null,
       doctor_id: (state.authenticatedDoctor && state.authenticatedDoctor.staff_id) || state.activeDoctorId,
       doctor_name: (state.authenticatedDoctor && state.authenticatedDoctor.name) || '',
-      epicrisis_date: new Date().toISOString().split('T')[0],
+      epicrisis_date: localDateStr(),
       diagnosis_final: state.epicrisisDiag || '',
       icd10_code: document.getElementById('anam-icd10')?.value || null,
       // Was always "the course was completed successfully" with outcome
@@ -1962,6 +2432,11 @@
     showToast(`📋 <strong>${p.full_name}</strong> chiqarish epikrizi MySQL bazasiga saqlandi!`);
   }
 
+  // "Auto-generate" used to paste a fixed list (Meksidol, Neyromultivit,
+  // Gepabene, Magne B6) and fixed advice for every patient, i.e. home
+  // medicines nobody prescribed. It now only copies this patient's own
+  // active prescriptions into an empty home-medicines box; the doctor edits
+  // from there. The advice box is left to the doctor.
   function autoGenerateEpicrisis() {
     const p = state.selectedPatient;
     if (!p) {
@@ -1969,30 +2444,24 @@
       return;
     }
 
-    const anam = state.anamnesisMap[p.id] || {};
-    const rxList = state.prescriptionsMap[p.id] || [];
-    
-    // Length of stay calculation
-    let stayDays = 7;
-    if (p.active_admission && p.active_admission.admission_date) {
-      const adDate = new Date(p.active_admission.admission_date);
-      const today = new Date();
-      const diffDays = Math.max(1, Math.floor((today - adDate) / (1000 * 60 * 60 * 24)) + 1);
-      stayDays = diffDays;
+    // Only orders still running: 'completed' (a finished IV course) and
+    // 'held' were listed as home medicines too.
+    const rxList = (state.prescriptionsMap[p.id] || []).filter(r => (r.status || 'active') === 'active');
+    if (rxList.length === 0) {
+      showToast("Bemorda faol tayinlov yo'q. Uyga dori tavsiyalarini qo'lda yozing.", "warning");
+      return;
     }
 
-    const medNames = rxList.slice(0, 5).map(r => r.medication_name).join(', ');
-
-    const homeRxText = `1. Meksidol 125 mg tabletkasi — 1 tabletkadan kuniga 2 mahal (ertalab va tushlikda ovqatdan so'ng), 1 oy davomida.\n2. Neyromultivit (yoki B-kompleks) — 1 tabletkadan kuniga 1 mahal, 20 kun.\n3. Gepabene (yoki Essensiale Forte) — 1 kapsuladan kuniga 3 mahal, 1 oy.\n4. Magne B6 — 1 tabletkadan kechqurun, 15 kun.`;
-
-    const psychoText = `1. Spirtli ichimliklar va har qanday psixoaktiv moddalarni qat'iyan inkor qilish (mutlaq hushyorlik rejimi).\n2. Yashash joyi bo'yicha narkolog va psixoterapevt ambulator kuzatuvida bo'lish.\n3. Psixologik reabilitatsiya va oilaviy psixoterapiya mashg'ulotlariga haftada 1 marta qatnashish.\n4. Mehnat va dam olish gigiyenasiga rioya qilish, jismoniy zo'riqish va og'ir stresslardan saqlanish.\n5. Somatik yoki ruhiy holatda salbiy o'zgarishlar sezilsa, zudlik bilan klinikaga qayta murojaat qilish.`;
-
     const homeRxInput = document.getElementById('epicrisis-home-rx');
-    const psychoInput = document.getElementById('epicrisis-psycho');
-    if (homeRxInput) homeRxInput.value = homeRxText;
-    if (psychoInput) psychoInput.value = psychoText;
+    if (homeRxInput && homeRxInput.value.trim()) {
+      showToast("Uyga dorilar maydoni to'ldirilgan. Avval uni tozalang.", "warning");
+      return;
+    }
+    if (homeRxInput) {
+      homeRxInput.value = rxList.map((r, i) => `${i + 1}. ${r.medication_name} — ${r.dosage || ''} (${r.route || ''}, ${r.frequency || ''})`).join('\n');
+    }
 
-    showToast("⚡ Avtomatik epikriz va tavsiyalar shakllantirildi!", "success");
+    showToast("Bemorning faol tayinlovlari uyga dorilar maydoniga ko'chirildi. Tekshirib, tahrirlang.", "info");
   }
 
   function appendHomeRx(text) {
@@ -2044,7 +2513,10 @@
       } else if (docType === 'epicrisis') {
         window.FMH_Print.dischargeEpicrisis(p, epicrisis, activeDoc);
       } else {
-        window.FMH_Print.dischargeEpicrisis(p, epicrisis, activeDoc);
+        // The print engine has no history or dossier layout, and this branch
+        // printed the discharge summary instead. Those two documents come
+        // from the server PDF, which builds them from the saved record.
+        downloadPDF(docType);
       }
     } else {
       openOfficialDocModal(docType);
@@ -2052,19 +2524,19 @@
     }
   }
 
-  async function downloadPDF() {
+  async function downloadPDF(forcedType) {
     const p = state.selectedPatient;
     if (!p) {
       showToast('Iltimos, avval bemorni tanlang!', 'warning');
       return;
     }
-    const docType = document.getElementById('doc-type-select')?.value || 'prescriptions';
+    const docType = (typeof forcedType === 'string' && forcedType) || document.getElementById('doc-type-select')?.value || 'prescriptions';
     const filename = `FMH_${docType.toUpperCase()}_${p.patient_code || p.id}.pdf`;
 
     showToast('⏳ <strong>MySQL ma\'lumotlar bazasidan PDF yaratilmoqda...</strong>', 'info');
 
     try {
-      const pdfUrl = `/api/doctor/download-pdf/${p.id}?doc_type=${docType}`;
+      const pdfUrl = `/api/doctor/download-pdf/${encodeURIComponent(p.id)}?doc_type=${encodeURIComponent(docType)}`;
       const res = await fetch(pdfUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -2186,10 +2658,10 @@
         <tbody>
           ${dailyNotes.length > 0 ? dailyNotes.map(n => `
             <tr>
-              <td><strong>${n.date}</strong></td>
-              <td>Bosim: ${n.bp || '—'}<br>Puls: ${n.pulse || '—'}<br>Temp: ${n.temp || '—'}°C</td>
-              <td>${n.dynamics}</td>
-              <td>${n.treatment || '—'}</td>
+              <td><strong>${escapeHtml(n.date)}</strong></td>
+              <td>Bosim: ${escapeHtml(n.bp || '—')}<br>Puls: ${escapeHtml(n.pulse || '—')}<br>Temp: ${escapeHtml(n.temp || '—')}°C</td>
+              <td>${escapeHtml(n.dynamics)}</td>
+              <td>${escapeHtml(n.treatment || '—')}</td>
             </tr>
           `).join('') : '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Kundalik ko\'rik qaydlari mavjud emas.</td></tr>'}
         </tbody>
@@ -2328,6 +2800,7 @@
         input: rxInput,
         getMedications: () => state.pharmacology,
         onSelect: (med) => {
+          clearWarehouseItem(); // a different drug picked from the list: drop the earlier warehouse link
           applyMedicationToRxForm(med);
         },
         onInput: (val) => {
@@ -2399,6 +2872,7 @@
     }
 
     setupDrugAutocomplete();
+    setupWarehousePanel();
   }
 
   async function deleteCurrentPatient() {
@@ -2419,10 +2893,19 @@
       return;
     }
 
+    // Only remove the patient from screen once the server has. The answer
+    // used to be ignored, so a refused delete (e.g. no permission) still
+    // said "fully deleted" while the record stayed in the database.
     try {
-      await fetch('/api/patients/' + encodeURIComponent(p.id), { method: 'DELETE' });
+      const res = await fetch('/api/patients/' + encodeURIComponent(p.id), { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Bemorni o'chirib bo'lmadi.", 'danger');
+        return;
+      }
     } catch (e) {
-      console.warn('DELETE patient error:', e);
+      showToast("Server bilan aloqa yo'q. Bemor o'chirilmadi.", 'danger');
+      return;
     }
 
     state.patients = state.patients.filter(pt => pt.id !== p.id);
@@ -2594,7 +3077,7 @@
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_DOCTOR);
     [STORAGE_KEYS.ANAMNESIS, STORAGE_KEYS.PRESCRIPTIONS, STORAGE_KEYS.DAILY_NOTES]
       .forEach(k => localStorage.removeItem(k));
-    state.anamnesisMap = {}; state.prescriptionsMap = {}; state.dailyNotesMap = {};
+    state.anamnesisMap = {}; state.prescriptionsMap = {}; state.dailyNotesMap = {}; state.dispensings = {};
     state.authenticatedDoctor = null;
     state.activeDoctorId = '';
     showDoctorAuthModal();
@@ -3021,7 +3504,12 @@
         program_type: `${roomType} Statsionar davolash kursi`,
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date(Date.now() + stayDays * 86400000).toISOString().split('T')[0],
-        daily_price: roomType === 'VIP' ? 1100000 : 720000
+        // The rate comes from the one price list (js/fmh_pricing.js), not
+        // a typed-in 1 100 000 / 720 000. A 0 (list not loaded) is left to
+        // the server, which then bills the listed shared rate.
+        daily_price: (window.FMH_Pricing
+          ? window.FMH_Pricing.rate(roomType === 'VIP' ? 'statsionar_full_room' : 'statsionar_shared')
+          : 0) || null
       } : null,
       anamnesis: {
         complaints: complaints,
@@ -3163,7 +3651,6 @@
     deletePrescription,
     deleteCurrentPatient,
     addDailyNote,
-    setNormalVitals,
     appendDynamicsPhrase,
     setTreatmentPhrase,
     autoGenerateEpicrisis,

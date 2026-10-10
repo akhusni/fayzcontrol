@@ -478,7 +478,8 @@ def admit_patient(conn, patient_id, bed_id, attending_doctor_id, program_type,
         return False, str(e)
 
 
-def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer_reason=None, performed_by_staff_id=None):
+def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer_reason=None, performed_by_staff_id=None,
+                         new_daily_price=None):
     """
     Atomic bed transfer and segmented billing (Dialect-agnostic):
     1. Validates destination bed against concurrent overlapping admissions.
@@ -487,31 +488,73 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
     4. Opens new segment from transfer_date to planned_end_date.
     5. Sets previous bed to 'cleaning' status for clinical sanitation.
     6. Records entry in bed_transfers and updates admission.
+
+    Returns (False, message) for every refusal the staff should read; the
+    message is ready-to-show Uzbek. Any other failure is rolled back and
+    re-raised, so the route's generic 500 handler logs the traceback instead
+    of handing a raw database error (table names, SQL) to the browser.
     """
     try:
         cur = conn.cursor()
-        t_date = datetime.strptime(str(transfer_date), '%Y-%m-%d').date()
+        try:
+            t_date = datetime.strptime(str(transfer_date), '%Y-%m-%d').date()
+        except ValueError:
+            return False, "Ko'chirish sanasi noto'g'ri (YYYY-MM-DD ko'rinishida bo'lishi kerak)."
 
         # 1. Fetch admission & old bed info
-        cur.execute("SELECT patient_id, bed_id, start_date, planned_end_date, actual_end_date, program_type FROM admissions WHERE id = ?", (admission_id,))
+        cur.execute("SELECT patient_id, bed_id, start_date, planned_end_date, actual_end_date, program_type, status, daily_price FROM admissions WHERE id = ?", (admission_id,))
         adm = cur.fetchone()
         if not adm:
-            return False, f"Admission {admission_id} not found."
+            return False, f"Yotqizish ({admission_id}) topilmadi."
         adm_program = _row_get(adm, 'program_type', 5)
-        
+
+        # Only a patient who is in the bed now can be moved. A discharged or
+        # cancelled stay used to be "transferred" anyway: its closed invoice
+        # gained a fresh bed-stay line, so a patient who had already left was
+        # billed again, and the bed they never used was put into cleaning.
+        adm_status = _row_get(adm, 'status', 6)
+        if adm_status != 'active':
+            return False, ("Faqat faol yotqizilgan bemorni boshqa karavotga ko'chirish mumkin "
+                           f"(holati: {adm_status}).")
+
+        # The stay keeps the price agreed at admission (whole-room tariff,
+        # discount or any custom rate). Previously the remainder of the stay
+        # was re-priced at the destination bed's default_daily_rate, so a
+        # 1 100 000 whole-room or a discounted stay was silently re-billed at
+        # 720 000 after a move. Decided with the PO (2026-10-08): the agreed
+        # price stays unless staff type a new one on the transfer form
+        # (new_daily_price), which then applies from the move date.
+        agreed_rate = _row_get(adm, 'daily_price', 7)
+        if new_daily_price is not None:
+            agreed_rate = new_daily_price
+
+        old_start = datetime.strptime(str(_row_get(adm, 'start_date', 2)), '%Y-%m-%d').date()
+
         old_bed_id = adm['bed_id'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[1]
         raw_end = adm['actual_end_date'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[4]
         if not raw_end:
             raw_end = adm['planned_end_date'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[3]
         d_end = datetime.strptime(str(raw_end), '%Y-%m-%d').date()
 
-        # 2. Fetch new bed tariff & status
+        # A move dated before arrival or on/after the leaving day has no
+        # nights left to bill: the segment maths below would clamp it to one
+        # extra night and add it to the invoice. A same-day stay still holds
+        # one night (as in find_booking_conflict), so it may move that day.
+        if t_date < old_start or t_date >= max(d_end, old_start + timedelta(days=1)):
+            return False, (f"Ko'chirish sanasi yotqizish muddati ichida bo'lishi kerak "
+                           f"({old_start.isoformat()} — {d_end.isoformat()}, oxirgi kun kirmaydi).")
+
+        if str(new_bed_id) == str(old_bed_id):
+            return False, "Bemor allaqachon shu karavotda."
+
+        # 2. Fetch new bed code & status (its default rate is no longer used,
+        # see agreed_rate above)
         cur.execute("SELECT bed_code, default_daily_rate, status FROM beds WHERE id = ?", (new_bed_id,))
         new_bed = cur.fetchone()
         if not new_bed:
-            return False, f"Target bed {new_bed_id} not found."
+            return False, f"Ko'chiriladigan karavot ({new_bed_id}) topilmadi."
         new_code = new_bed['bed_code'] if isinstance(new_bed, dict) or hasattr(new_bed, 'keys') else new_bed[0]
-        new_rate = new_bed['default_daily_rate'] if isinstance(new_bed, dict) or hasattr(new_bed, 'keys') else new_bed[1]
+        new_rate = agreed_rate
         new_status = new_bed['status'] if isinstance(new_bed, dict) or hasattr(new_bed, 'keys') else new_bed[2]
 
         if new_status in ('cleaning', 'maintenance', 'out_of_service'):
@@ -601,9 +644,9 @@ def transfer_patient_bed(conn, admission_id, new_bed_id, transfer_date, transfer
 
         conn.commit()
         return True, {"old_bed_days": elapsed_days, "new_bed_days": remaining_days, "new_rate": new_rate}
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        return False, str(e)
+        raise
 
 
 _patient_columns_checked = False
@@ -740,6 +783,287 @@ def ensure_ward_round_schema(conn):
         print(f"[!] Could not add the ward-round unique key: {e}")
 
 
+APPOINTMENT_SERVICE_TYPES = ('outpatient', 'inpatient_consult', 'psychotherapy',
+                             'home_visit', 'diagnostics', 'consultation')
+_appointment_types_checked = False
+
+
+def ensure_appointment_service_types(conn):
+    """
+    Let appointments.service_type accept 'consultation'.
+
+    The schema file allows it, but databases created from an older schema
+    still carry a CHECK without it, so every consultation booked at the desk
+    failed with a 500 (MySQL 3819). Idempotent: the CHECK is only rewritten
+    when a value is missing.
+    """
+    global _appointment_types_checked
+    if _appointment_types_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+            FROM information_schema.CHECK_CONSTRAINTS cc
+            JOIN information_schema.TABLE_CONSTRAINTS tc
+              ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+             AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+            WHERE tc.TABLE_NAME = 'appointments' AND tc.TABLE_SCHEMA = DATABASE()
+        """)
+        target = None
+        for r in cur.fetchall() or []:
+            clause = str(r['CHECK_CLAUSE'])
+            if 'service_type' in clause:
+                target = (r['CONSTRAINT_NAME'], clause)
+                break
+        if target is None or all(t in target[1] for t in APPOINTMENT_SERVICE_TYPES):
+            _appointment_types_checked = True
+            return
+        allowed = ', '.join("'%s'" % t for t in APPOINTMENT_SERVICE_TYPES)
+        cur.execute("ALTER TABLE appointments DROP CHECK %s" % target[0])
+        cur.execute("ALTER TABLE appointments ADD CONSTRAINT %s CHECK (service_type IN (%s))"
+                    % (target[0], allowed))
+        conn.commit()
+        _appointment_types_checked = True
+        print("[✓] appointments.service_type now accepts 'consultation'.")
+    except Exception as e:
+        print(f"[!] Could not widen appointments.service_type: {e}")
+
+
+STAFF_ROLES = (
+    'admin', 'chief_doctor', 'doctor', 'nurse', 'receptionist', 'accountant',
+    'pharmacist', 'ward_manager', 'hr_manager', 'kitchen_staff', 'sanitar',
+)
+_staff_roles_checked = False
+
+
+def ensure_staff_roles(conn):
+    """
+    Let staff.role accept 'sanitar'.
+
+    Sanitarkas work paid 24-hour duty shifts, but the role list had no place
+    for them: they existed only as names in the duty roster file, so payroll
+    could not pay them and an HR save filed one as 'admin'. Idempotent: the
+    CHECK is only rewritten when a role is missing from it.
+    """
+    global _staff_roles_checked
+    if _staff_roles_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+            FROM information_schema.CHECK_CONSTRAINTS cc
+            JOIN information_schema.TABLE_CONSTRAINTS tc
+              ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+             AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+            WHERE tc.TABLE_NAME = 'staff' AND tc.TABLE_SCHEMA = DATABASE()
+        """)
+        target = None
+        for r in cur.fetchall() or []:
+            clause = str(r['CHECK_CLAUSE'])
+            if '`role`' in clause or 'role in' in clause.lower():
+                target = (r['CONSTRAINT_NAME'], clause)
+                break
+        # MySQL reports the values as _latin1\'admin\', so match bare names.
+        if target is None or all(t in target[1] for t in STAFF_ROLES):
+            _staff_roles_checked = True
+            return
+        allowed = ', '.join("'%s'" % t for t in STAFF_ROLES)
+        cur.execute("ALTER TABLE staff DROP CHECK %s" % target[0])
+        cur.execute("ALTER TABLE staff ADD CONSTRAINT %s CHECK (role IN (%s))"
+                    % (target[0], allowed))
+        conn.commit()
+        _staff_roles_checked = True
+        print("[✓] staff.role now accepts 'sanitar'.")
+    except Exception as e:
+        print(f"[!] Could not widen staff.role: {e}")
+
+
+# Columns the HR form has always collected but the staff table had no place
+# for. They lived only in the browser (and in the vendor's demo hr_db.json,
+# which describes different people under the same ids), so a reload or a
+# second computer lost them. All nullable: a value nobody entered stays empty.
+STAFF_HR_COLUMNS = (
+    ('hire_date', 'DATE NULL'),
+    ('experience_years', 'SMALLINT NULL'),
+    ('category', 'VARCHAR(64) NULL'),
+    ('role_title_uz', 'VARCHAR(255) NULL'),
+    ('department', 'VARCHAR(32) NULL'),
+    ('assigned_floor', 'VARCHAR(8) NULL'),
+    ('telegram', 'VARCHAR(64) NULL'),
+    ('detox_procedure_fee', 'DECIMAL(14,2) NULL'),
+    ('bls_cpr_certified', 'TINYINT(1) NULL'),
+)
+# The attendance form asks how late someone was; the table had no column.
+ATTENDANCE_EXTRA_COLUMNS = (
+    ('late_minutes', 'SMALLINT NULL'),
+)
+_staff_hr_columns_checked = False
+
+
+def ensure_staff_hr_columns(conn):
+    """
+    Add the HR-only staff columns and staff_attendance.late_minutes to a
+    database made before they existed. Idempotent: only missing columns are
+    added, so it is cheap to run on every start.
+    """
+    global _staff_hr_columns_checked
+    if _staff_hr_columns_checked:
+        return
+    try:
+        cur = conn.cursor()
+        for table, columns in (('staff', STAFF_HR_COLUMNS),
+                               ('staff_attendance', ATTENDANCE_EXTRA_COLUMNS)):
+            cur.execute("""
+                SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+            """, (table,))
+            have = set()
+            for r in cur.fetchall() or []:
+                have.add(r['COLUMN_NAME'] if hasattr(r, 'keys') else r[0])
+            for name, ddl in columns:
+                if name not in have:
+                    cur.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, name, ddl))
+                    print(f"[✓] {table}.{name} added.")
+        conn.commit()
+        _staff_hr_columns_checked = True
+    except Exception as e:
+        print(f"[!] Could not add the HR staff columns: {e}")
+
+
+# The ledger the accounting page, the Telegram report and the owner page read.
+# Stays and desk visits (a consultation or an outpatient course) both appear;
+# a visit has no bed, no daily price and no length, so those stay NULL rather
+# than being filled with a guess.
+FINANCIAL_LEDGER_VIEW_SQL = """
+CREATE OR REPLACE VIEW v_financial_ledger AS
+SELECT
+    inv.id AS invoice_id,
+    a.id AS admission_id,
+    inv.appointment_id,
+    COALESCE(a.patient_id, ap.patient_id) AS patient_id,
+    p.patient_code,
+    COALESCE(p.full_name, ap.patient_name) AS patient_name,
+    COALESCE(p.phone, ap.patient_phone) AS patient_phone,
+    p.referral_source,
+    b.id AS bed_id,
+    b.bed_code,
+    r.room_number,
+    r.floor_number,
+    s.full_name AS doctor_name,
+    COALESCE(a.program_type, ap.service_type) AS program_type,
+    a.daily_price,
+    COALESCE(a.start_date, ap.appointment_date) AS start_date,
+    COALESCE(a.actual_end_date, a.planned_end_date) AS end_date,
+    a.total_days,
+    inv.total_billed,
+    inv.discount_amount,
+    inv.net_amount,
+    inv.total_paid,
+    inv.balance_due,
+    inv.payment_status,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('cash', 'cash_register')), 0.00) AS paid_cash,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method = 'terminal'), 0.00) AS paid_terminal,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('card_transfer', 'payme_click')), 0.00) AS paid_card_online,
+    inv.created_at
+FROM invoices inv
+LEFT JOIN admissions a ON inv.admission_id = a.id
+LEFT JOIN appointments ap ON inv.appointment_id = ap.id
+LEFT JOIN patients p ON p.id = COALESCE(a.patient_id, ap.patient_id)
+LEFT JOIN beds b ON a.bed_id = b.id
+LEFT JOIN rooms r ON b.room_id = r.id
+LEFT JOIN staff s ON s.id = COALESCE(a.attending_doctor_id, ap.doctor_id)
+ORDER BY inv.created_at DESC
+"""
+
+_invoice_visit_link_checked = False
+
+
+def ensure_invoice_visit_link(conn):
+    """
+    Let an invoice belong to a desk visit (an appointment) instead of a stay.
+
+    invoices.admission_id was NOT NULL and an admission needs a bed, so the
+    consultation fee and the outpatient course the desk prints on the slip
+    could not be billed at all without inventing a stay on a bed the patient
+    never used. They were simply never billed. This makes admission_id
+    nullable, adds appointment_id (unique, so one visit can never be billed
+    twice) and rebuilds the ledger view so visit invoices show up next to
+    stays. Idempotent: each step runs only when it is missing.
+    """
+    global _invoice_visit_link_checked
+    if _invoice_visit_link_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoices'
+        """)
+        cols = {}
+        for r in cur.fetchall() or []:
+            cols[r['COLUMN_NAME'] if hasattr(r, 'keys') else r[0]] = \
+                r['IS_NULLABLE'] if hasattr(r, 'keys') else r[1]
+        if cols.get('admission_id') == 'NO':
+            cur.execute("ALTER TABLE invoices MODIFY admission_id VARCHAR(64) NULL")
+            print("[✓] invoices.admission_id may now be empty (visit invoices).")
+        if 'appointment_id' not in cols:
+            cur.execute("ALTER TABLE invoices ADD COLUMN appointment_id VARCHAR(64) NULL AFTER admission_id, "
+                        "ADD UNIQUE KEY uq_invoices_appointment (appointment_id), "
+                        "ADD CONSTRAINT fk_invoices_appointment FOREIGN KEY (appointment_id) "
+                        "REFERENCES appointments(id) ON UPDATE CASCADE ON DELETE RESTRICT")
+            print("[✓] invoices.appointment_id added.")
+        cur.execute("""
+            SELECT VIEW_DEFINITION FROM information_schema.VIEWS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'v_financial_ledger'
+        """)
+        row = cur.fetchone()
+        definition = str((row['VIEW_DEFINITION'] if hasattr(row, 'keys') else row[0]) if row else '')
+        if 'appointment_id' not in definition:
+            cur.execute(FINANCIAL_LEDGER_VIEW_SQL)
+            print("[✓] v_financial_ledger now lists visit invoices.")
+        conn.commit()
+        _invoice_visit_link_checked = True
+    except Exception as e:
+        print(f"[!] Could not link invoices to visits: {e}")
+
+
+_transaction_payroll_month_checked = False
+
+
+def ensure_transaction_payroll_month(conn):
+    """
+    Add accounting_transactions.payroll_month (CHAR(7) 'YYYY-MM', NULL for
+    anything that is not a salary payout).
+
+    A salary payout recorded only the day it was entered, so September's pay
+    handed out on 3 October looked like October's: the page then offered
+    September again, and October's real payout was refused as a repeat.
+    The month being paid is now its own column, so "already paid" can be
+    checked on the server against the month, not the recording date.
+    Idempotent: the column and index are added only when missing.
+    """
+    global _transaction_payroll_month_checked
+    if _transaction_payroll_month_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounting_transactions'
+              AND COLUMN_NAME = 'payroll_month'
+        """)
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE accounting_transactions ADD COLUMN payroll_month CHAR(7) NULL, "
+                        "ADD KEY idx_accounting_payroll (related_staff_id, payroll_month)")
+            print("[✓] accounting_transactions.payroll_month added.")
+        conn.commit()
+        _transaction_payroll_month_checked = True
+    except Exception as e:
+        print(f"[!] Could not add accounting_transactions.payroll_month: {e}")
+
+
 _medication_purchases_checked = False
 
 
@@ -780,10 +1104,59 @@ def ensure_medication_purchases(conn):
                 INDEX idx_med_purchase_date (purchase_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+        # Which warehouse receipt (inventory_receipts) booked this purchase.
+        # Rows made before the warehouse existed have none.
+        cur.execute("""SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medication_purchases'
+                         AND COLUMN_NAME = 'receipt_id'""")
+        _n = cur.fetchone()
+        if not (_n['n'] if hasattr(_n, 'keys') else _n[0]):
+            cur.execute("ALTER TABLE medication_purchases ADD COLUMN receipt_id VARCHAR(64) NULL")
+            cur.execute("CREATE INDEX idx_med_purchase_receipt ON medication_purchases (receipt_id)")
         conn.commit()
         _medication_purchases_checked = True
     except Exception as e:
         print(f"[!] Could not create medication_purchases table: {e}")
+
+
+_user_sessions_checked = False
+
+
+def ensure_user_sessions(conn):
+    """
+    Create user_sessions, where sign-ins are kept so a restart keeps them.
+
+    Sessions used to live only in the server's memory, so every deploy or
+    restart signed the whole clinic out mid-shift and unsaved forms were lost
+    at the next click. auth.py now records each session here and restores it
+    after a restart. Only a SHA-256 hash of the cookie token is stored: a copy
+    of this table (a backup, a dump handed to a vendor) must not be usable to
+    sign in as anyone. Times are UTC. The user record itself is not copied
+    here; it is re-read from data/users.json on restore, so a blocked or
+    deleted account or a changed role takes effect.
+    """
+    global _user_sessions_checked
+    if _user_sessions_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token_hash CHAR(64) NOT NULL PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                user_id VARCHAR(64),
+                created_at DATETIME NOT NULL,
+                last_seen DATETIME NOT NULL,
+                ip_address VARCHAR(64),
+                user_agent VARCHAR(255),
+                INDEX idx_user_sessions_username (username),
+                INDEX idx_user_sessions_last_seen (last_seen)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        _user_sessions_checked = True
+    except Exception as e:
+        print(f"[!] Could not create user_sessions table: {e}")
 
 
 def list_room_availability(conn, start_date, end_date):

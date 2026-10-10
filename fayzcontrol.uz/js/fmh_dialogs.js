@@ -136,6 +136,9 @@
   const TOAST_DURATION = { success: 3200, info: 3600, warning: 6500, danger: 9000 };
 
   window.FMH_Toast = function (message, type = 'success', options = {}) {
+    // Pages pass 'error' for refusals, a type this function did not know, so
+    // every server refusal was drawn as a green, short-lived success toast.
+    if (type === 'error') type = 'danger';
     let container = document.getElementById('fmh-toast-container');
     if (!container) {
       container = document.createElement('div');
@@ -269,6 +272,72 @@
   if (window.__fmhNavScoped) return;
   window.__fmhNavScoped = true;
 
+  // ONE menu for every page. Each page carried its own hand-written pill
+  // row: 3 to 11 pills, in different orders, with the doctor page called
+  // "Shifokor Posti", "Shifokor" or "EMR" and "Statsionar" opening the bed
+  // board on most pages but the ward round on the duty roster. The list is
+  // grouped by department; what a role sees is filtered by the server's
+  // session.pages, so there is still only one copy of the page rules.
+  const FMH_MENU = [
+    { group: 'qabul',      key: '/reception.html',           label: 'Qabulxona',      icon: 'fa-concierge-bell', pill: 'pill-reception',  title: 'Bemorlar qabuli, xonalar, yozuvlar' },
+    { group: 'qabul',      key: '/crm.html',                 label: 'CRM',            icon: 'fa-address-book',   pill: 'pill-crm',        title: 'Bemorlar reestri va dossyesi' },
+    { group: 'klinika',    key: '/doctor.html',              label: 'Shifokor Posti', icon: 'fa-user-md',        pill: 'pill-doctor',     title: 'Shifokor posti (EMR)' },
+    { group: 'klinika',    key: '/consultation.html',        label: 'Konsultatsiya',  icon: 'fa-user-doctor',    pill: 'pill-doctor',     title: 'Narkologik / psixiatrik konsultatsiya' },
+    { group: 'klinika',    key: '/ward.html',                label: "Ko'rik",         icon: 'fa-stethoscope',    pill: 'pill-doctor',     title: "Statsionar kundalik ko'rigi" },
+    { group: 'klinika',    key: '/nurse.html',               label: 'Hamshira Posti', icon: 'fa-syringe',        pill: 'pill-nurse',      title: 'Dori berish va vital ko\'rsatkichlar' },
+    { group: 'statsionar', key: '/building_management.html', label: 'Statsionar',     icon: 'fa-bed',            pill: 'pill-building',   title: 'Karavotlar xaritasi' },
+    { group: 'statsionar', key: '/duty_schedule.html',       label: 'Navbatchilik',   icon: 'fa-calendar-check', pill: 'pill-hr',         title: 'Navbatchilik jadvali' },
+    { group: 'moliya',     key: '/accounting.html',          label: 'Buxgalteriya',   icon: 'fa-coins',          pill: 'pill-accounting', title: 'Kassa, hisoblar, ombor' },
+    { group: 'moliya',     key: '/warehouse.html',           label: 'Ombor',          icon: 'fa-boxes-stacked',  pill: 'pill-accounting', title: 'Dori va materiallar ombori' },
+    { group: 'moliya',     key: '/owner.html',               label: 'Pul oqimi',      icon: 'fa-chart-line',     pill: 'pill-accounting', title: 'Rahbar uchun pul oqimi' },
+    { group: 'kadrlar',    key: '/hr.html',                  label: 'HR & Kadrlar',   icon: 'fa-users-cog',      pill: 'pill-hr',         title: 'Xodimlar, davomat, oylik' },
+    { group: 'boshqaruv',  key: '/superpage.html',           label: 'Super-Portal',   icon: 'fa-crown',          pill: 'pill-super',      title: 'Boshqaruv markazi' },
+  ];
+
+  // Hide the static pills until the shared menu replaces them, so staff do
+  // not see the old row flash and then change. Released on render, on
+  // failure, or after a short wait whatever happens.
+  document.documentElement.classList.add('fmh-nav-pending');
+  function releaseNav() { document.documentElement.classList.remove('fmh-nav-pending'); }
+  setTimeout(releaseNav, 1500);
+
+  function renderMenu(session) {
+    const nav = document.querySelector('.portal-master-nav');
+    const pages = session.pages;
+    if (!nav || !Array.isArray(pages) || !pages.length) return;
+    const allowed = new Set(pages);
+    const here = location.pathname;
+    const items = FMH_MENU.filter(m => allowed.has(m.key));
+    if (!items.length) return;
+    const built = [];
+    let lastGroup = null;
+    items.forEach(m => {
+      if (lastGroup && m.group !== lastGroup) {
+        const sep = document.createElement('span');
+        sep.className = 'fmh-nav-sep';
+        sep.setAttribute('aria-hidden', 'true');
+        built.push(sep);
+      }
+      lastGroup = m.group;
+      const a = document.createElement('a');
+      a.href = m.key.slice(1);
+      a.className = 'portal-nav-pill ' + m.pill + (m.key === here ? ' active' : '');
+      a.title = m.title;
+      if (m.key === here) a.setAttribute('aria-current', 'page');
+      const icon = document.createElement('i');
+      icon.className = 'fas ' + m.icon;
+      const span = document.createElement('span');
+      span.textContent = m.label;
+      a.appendChild(icon);
+      a.appendChild(document.createTextNode(' '));
+      a.appendChild(span);
+      built.push(a);
+    });
+    nav.replaceChildren(...built);
+    nav.setAttribute('aria-label', "Bo'limlar");
+    nav.classList.toggle('fmh-menu-many', items.length > 7);
+  }
+
   // Links the header may contain, and the page each points at.
   function hrefPath(a) {
     const raw = a.getAttribute('href') || '';
@@ -280,6 +349,8 @@
     const allowed = new Set(session.pages || []);
     if (!allowed.size) return;
 
+    renderMenu(session);
+
     // Trim the portal navigation and any action links pointing at a page the
     // role cannot open.
     document.querySelectorAll(
@@ -290,8 +361,18 @@
       if (!allowed.has(p)) a.remove();
     });
 
+    // The logo linked to the Super-Portal on every page, so the pass below
+    // deleted it for the roles that may not open it and they had no way home.
+    // It now leads to the signed-in role's own home.
+    if (session.home) {
+      document.querySelectorAll('a.portal-brand').forEach(a => {
+        a.setAttribute('href', session.home);
+      });
+    }
+
     // The Super-Portal's module cards lead to the same pages.
     document.querySelectorAll('a[href$=".html"]').forEach(a => {
+      if (a.classList.contains('portal-brand')) return;
       const p = hrefPath(a);
       if (!p) return;
       if (p === '/login.html' || p === '/change-password.html') return;
@@ -331,6 +412,18 @@
       chip.appendChild(avatar);
       chip.appendChild(label);
 
+      // Staff could change their password only when forced at first sign-in;
+      // nothing linked to the page.
+      if (location.pathname !== '/change-password.html') {
+        const pw = document.createElement('a');
+        pw.href = '/change-password.html';
+        pw.setAttribute('aria-label', "Parolni o'zgartirish");
+        pw.title = "Parolni o'zgartirish";
+        pw.innerHTML = '<i class="fas fa-key"></i>';
+        pw.style.cssText = 'color:inherit;padding:0 2px;font-size:0.8rem;text-decoration:none;';
+        chip.appendChild(pw);
+      }
+
       const out = document.createElement('button');
       out.type = 'button';
       out.setAttribute('aria-label', 'Tizimdan chiqish');
@@ -358,15 +451,16 @@
     fetch('/api/auth/session')
       .then(r => r.json())
       .then(s => {
-        if (!s || !s.authenticated) return;    // the 401 wrapper handles this
+        if (!s || !s.authenticated) { releaseNav(); return; }   // the 401 wrapper handles this
         if (s.must_change_password &&
             location.pathname !== '/change-password.html') {
           location.replace('/change-password.html');
           return;
         }
         applyScope(s);
+        releaseNav();
       })
-      .catch(() => {});
+      .catch(releaseNav);
   }
 
   if (document.readyState === 'loading') {

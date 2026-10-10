@@ -11,12 +11,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/building_management.css?v=3.1">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/building_management.css?v=3.2">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.3"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
+  <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="building-portal">
 
@@ -291,14 +292,19 @@
 
         <div class="modal-body">
           <div class="form-grid">
+            <!-- Read-only: admission details are entered and changed at Reception. -->
+            <div class="form-group-full" style="font-size: 0.76rem; color: var(--text-muted);">
+              <i class="fas fa-info-circle" style="color: var(--cad-cyan); margin-right: 4px;"></i>Ma'lumotlar Qabulxonada o'zgartiriladi. Bu yerda faqat karavotni almashtirish mumkin.
+            </div>
+
             <div class="form-group-full">
-              <label class="form-label" for="booking-patient-name">Bemor F.I.Sh. (To'liq Ismi) *</label>
-              <input type="text" id="booking-patient-name" class="form-input" placeholder="Masalan: Karimov Jamshid Anvarovich" required>
+              <label class="form-label" for="booking-patient-name">Bemor F.I.Sh.</label>
+              <input type="text" id="booking-patient-name" class="form-input" readonly>
             </div>
 
             <div>
-              <label class="form-label" for="booking-patient-phone">Telefon Raqami *</label>
-              <input type="tel" id="booking-patient-phone" class="form-input" placeholder="+998 90 123-45-67" required>
+              <label class="form-label" for="booking-patient-phone">Telefon Raqami</label>
+              <input type="text" id="booking-patient-phone" class="form-input" readonly>
             </div>
 
             <div>
@@ -306,57 +312,73 @@
               <input type="text" id="booking-patient-code" class="form-input" readonly>
             </div>
 
-            <div class="form-group-full">
-              <label class="form-label" for="booking-bed-select">Qavat, Palata va Karavotni Tanlang (14 ta O'rin) *</label>
-              <select id="booking-bed-select" class="form-select" required></select>
-            </div>
-
-            <!-- Quick Duration Presets (10 days standard) -->
-            <div class="form-group-full" style="background: var(--bg-panel-hover); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--cad-border); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span style="font-size: 0.75rem; color: var(--text-muted); margin-right: 4px;"><i class="fas fa-history" style="color: var(--cad-cyan); margin-right: 4px;"></i>Kurs Davomiyligi:</span>
-              <button type="button" class="filter-pill duration-preset-btn active" data-days="10" onclick="window.FMH_Building.applyDurationPreset(10)" style="border-color: var(--cad-cyan); color: var(--cad-cyan); font-weight: 700;">★ 10 kun (Standart Kurs)</button>
-              <button type="button" class="filter-pill duration-preset-btn" data-days="3" onclick="window.FMH_Building.applyDurationPreset(3)">3 kun</button>
-              <button type="button" class="filter-pill duration-preset-btn" data-days="5" onclick="window.FMH_Building.applyDurationPreset(5)">5 kun</button>
-              <button type="button" class="filter-pill duration-preset-btn" data-days="7" onclick="window.FMH_Building.applyDurationPreset(7)">7 kun</button>
-              <button type="button" class="filter-pill duration-preset-btn" data-days="14" onclick="window.FMH_Building.applyDurationPreset(14)">14 kun</button>
-              <button type="button" class="filter-pill duration-preset-btn" data-days="21" onclick="window.FMH_Building.applyDurationPreset(21)">21 kun</button>
-            </div>
-
-            <div class="form-group-full">
-              <label class="form-label" for="booking-program-select">Xona / Karavot Band Qilish Turi & Narxi *</label>
-              <select id="booking-program-select" class="form-select">
-                <option value="Statsionar (1 karavot / 720 ming)" selected>🏥 Statsionar (1 karavot) — 720 000 so'm / kun</option>
-                <option value="Statsionar Butun Xona (1 kishi / Solo 1.1 mln)">🔒 Statsionar Butun Xona (1 kishi / Solo) — 1 100 000 so'm / kun (2-karavot qulflanadi)</option>
-                <option value="Kunlik Statsionar (Kunduzgi o'rin 630 ming)">☀️ Kunlik Statsionar (Faqat kunduzgi o'rin) — 630 000 so'm / kun</option>
-              </select>
+            <div>
+              <label class="form-label" for="booking-bed-current">Joriy Karavot</label>
+              <input type="text" id="booking-bed-current" class="form-input" readonly>
             </div>
 
             <div>
-              <label class="form-label" for="booking-doctor-select">Mas'ul Shifokor *</label>
-              <select id="booking-doctor-select" class="form-select">
-                <option value="">— Shifokor biriktirilmagan —</option>
-              </select>
+              <label class="form-label" for="booking-rate-view">Kunlik Narx (kelishilgan)</label>
+              <input type="text" id="booking-rate-view" class="form-input" readonly>
             </div>
 
             <div>
-              <label class="form-label" for="booking-start-date">Yotqizish Sanasi (Check-In) *</label>
-              <input type="date" id="booking-start-date" class="form-input" required>
+              <label class="form-label" for="booking-program-view">Dastur</label>
+              <input type="text" id="booking-program-view" class="form-input" readonly>
             </div>
 
             <div>
-              <label class="form-label" for="booking-end-date">Chiqarish Sanasi (Check-Out) *</label>
-              <input type="date" id="booking-end-date" class="form-input" required>
+              <label class="form-label" for="booking-doctor-view">Mas'ul Shifokor</label>
+              <input type="text" id="booking-doctor-view" class="form-input" readonly>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-start-date">Yotqizish Sanasi (Check-In)</label>
+              <input type="date" id="booking-start-date" class="form-input" readonly>
+            </div>
+
+            <div>
+              <label class="form-label" for="booking-end-date">Chiqarish Sanasi (Check-Out)</label>
+              <input type="date" id="booking-end-date" class="form-input" readonly>
             </div>
 
             <div class="form-group-full">
               <label class="form-label" for="booking-notes">Qo'shimcha Tibbiy Izohlar</label>
-              <textarea id="booking-notes" class="form-textarea" rows="2" placeholder="Maxsus parhez, alkogolli intoksikatsiyadan keyingi tiklanish..."></textarea>
+              <textarea id="booking-notes" class="form-textarea" rows="2" readonly></textarea>
+            </div>
+
+            <!-- Bed transfer: POST /api/admissions/<id>/transfer -->
+            <div class="form-group-full" style="background: var(--bg-panel-hover); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--cad-border);">
+              <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 8px;"><i class="fas fa-exchange-alt" style="color: var(--cad-cyan); margin-right: 6px;"></i>Karavotni almashtirish</div>
+              <div class="form-grid">
+                <div>
+                  <label class="form-label" for="transfer-bed-select">Yangi karavot (faqat bo'sh)</label>
+                  <select id="transfer-bed-select" class="form-select"></select>
+                </div>
+                <div>
+                  <label class="form-label" for="transfer-date-input">Ko'chirish sanasi</label>
+                  <input type="date" id="transfer-date-input" class="form-input">
+                </div>
+                <div>
+                  <label class="form-label" for="transfer-price-input">Yangi kunlik narx (ixtiyoriy)</label>
+                  <input type="number" id="transfer-price-input" class="form-input" min="0" step="1000" placeholder="Bo'sh — kelishilgan narx qoladi">
+                </div>
+                <div class="form-group-full">
+                  <label class="form-label" for="transfer-reason-input">Sabab (ixtiyoriy)</label>
+                  <input type="text" id="transfer-reason-input" class="form-input" maxlength="500" placeholder="Masalan: bemor iltimosi, xonada ta'mir...">
+                </div>
+                <div class="form-group-full" style="display: flex; justify-content: flex-end;">
+                  <button type="button" class="btn-portal btn-primary-portal" id="btn-transfer-action">
+                    <i class="fas fa-exchange-alt"></i> Karavotni almashtirish
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn-portal btn-outline-portal" id="modal-cancel-btn">Bekor Qilish</button>
+          <button type="button" class="btn-portal btn-outline-portal" id="modal-cancel-btn">Yopish</button>
           
           <button type="button" class="btn-portal" id="btn-delete-booking-action" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); display: none;" onclick="window.FMH_Building.deleteCurrentBooking()">
             <i class="fas fa-trash-alt"></i> Bronni O'chirish
@@ -365,10 +387,6 @@
           <button type="button" class="btn-portal" id="btn-discharge-action" style="background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); display: none;" onclick="window.FMH_Building.dischargeCurrentPatient()">
             <i class="fas fa-sign-out-alt"></i> Bemor Chiqarish
           </button>
-
-          <button type="submit" class="btn-portal btn-primary-portal" id="booking-submit-btn">
-            <i class="fas fa-save"></i> <span id="booking-submit-btn-text">Saqlash & O'ringa Biriktirish</span>
-          </button>
         </div>
       </form>
     </div>
@@ -376,6 +394,6 @@
 
   <script src="js/xlsx.full.min.js"></script>
   <script src="js/pharmacology_db.js"></script>
-  <script src="js/building_management.js?v=6.2"></script>
+  <script src="js/building_management.js?v=6.7"></script>
 </body>
 </html>

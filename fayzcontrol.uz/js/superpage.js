@@ -84,23 +84,13 @@
   };
 
   // Dynamic Pricing Configuration
-  let pricingConfig = {
-    packages: {
-      statsionar_shared: { daily_rate: 720000, name_uz: "Statsionar (1 karavot / 2 kishilik xona)" },
-      statsionar_full_room: { daily_rate: 1100000, name_uz: "Statsionar Butun Xona (VIP Solo)" },
-      kunlik_statsionar: { daily_rate: 630000, name_uz: "Kunlik Statsionar (Kunduzgi o'rin)" },
-      ambulator_1: { daily_rate: 310000, name_uz: "Ambulator (1 mahal)" },
-      ambulator_2: { daily_rate: 500000, name_uz: "Ambulator (2 mahal)" }
-    },
-    additional_services: [
-      { id: "SRV-PLZ-01", name: "Plazmaferez membranali", category: "Muolaja", price: 650000 },
-      { id: "SRV-OZN-01", name: "Ozonoterapiya tomchilab", category: "Muolaja", price: 180000 },
-      { id: "SRV-BLK-01", name: "Paravertebral blokada", category: "Muolaja", price: 250000 },
-      { id: "SRV-EKG-01", name: "12-kanalli EKG xulosasi", category: "Diagnostika", price: 80000 },
-      { id: "SRV-UZI-01", name: "Qorin bo'shlig'i UZI", category: "Diagnostika", price: 150000 },
-      { id: "SRV-LAB-01", name: "Kengaytirilgan bioximik qon tahlili", category: "Laboratoriya", price: 220000 }
-    ]
-  };
+  // Filled from the one price list (js/fmh_pricing.js) by loadPricingConfig.
+  // This page used to start from its own hardcoded copy, whose extra
+  // services did not even match the server's (plasmapheresis 650 000 here,
+  // 450 000 in the file), and a save made while the server was unreachable
+  // said "saved locally" although nothing was saved anywhere.
+  let pricingConfig = window.FMH_Pricing ? window.FMH_Pricing.get()
+                                         : { packages: {}, additional_services: [] };
 
   let clinicRoomsData = null;
   let pharmacologyData = null;
@@ -148,37 +138,41 @@
   // DYNAMIC PRICING ENGINE & RBAC HELPERS
   // =========================================================================
   async function loadPricingConfig() {
-    try {
-      const res = await fetch('/api/settings/pricing');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.packages) {
-          pricingConfig = data;
-        }
-      }
-    } catch (e) {
-      console.warn("Pricing config load warning:", e);
-    }
+    if (!window.FMH_Pricing) return;
+    await window.FMH_Pricing.ready;
+    pricingConfig = window.FMH_Pricing.get();
   }
 
-  function getDailyRateForProgram(program, defaultRate = 720000) {
-    if (!pricingConfig || !pricingConfig.packages) return defaultRate;
-    const pk = pricingConfig.packages;
-    if (!program) return pk.statsionar_shared ? pk.statsionar_shared.daily_rate : defaultRate;
+  function listedRate(id) {
+    const pk = (pricingConfig && pricingConfig.packages) || {};
+    return (pk[id] && Number(pk[id].daily_rate)) || 0;
+  }
+
+  function getDailyRateForProgram(program, defaultRate) {
+    const fallback = Number(defaultRate) || listedRate('statsionar_shared');
+    if (!pricingConfig || !pricingConfig.packages) return fallback;
+    if (!program) return listedRate('statsionar_shared') || fallback;
+    // A stay booked from the desk carries the package id itself
+    // ('statsionar_full_room', 'kunlik_statsionar', 'ambulator_2'); the text
+    // guesses below matched none of them, so those stays were costed at the
+    // shared rate.
+    if (pricingConfig.packages[program] && program !== 'consultation') {
+      return listedRate(program);
+    }
     const p = program.toLowerCase();
     if (p.includes('vip') || p.includes('butun xona') || p.includes('solo') || p.includes('1.1') || p.includes('1100000')) {
-      return pk.statsionar_full_room ? pk.statsionar_full_room.daily_rate : 1100000;
+      return listedRate('statsionar_full_room');
     }
     if (p.includes('kunduzgi') || p.includes('daycare') || p.includes('630')) {
-      return pk.kunlik_statsionar ? pk.kunlik_statsionar.daily_rate : 630000;
+      return listedRate('kunlik_statsionar');
     }
     if (p.includes('ambulator') && (p.includes('2 mahal') || p.includes('500'))) {
-      return pk.ambulator_2 ? pk.ambulator_2.daily_rate : 500000;
+      return listedRate('ambulator_2');
     }
     if (p.includes('ambulator') || p.includes('310')) {
-      return pk.ambulator_1 ? pk.ambulator_1.daily_rate : 310000;
+      return listedRate('ambulator_1');
     }
-    return pk.statsionar_shared ? pk.statsionar_shared.daily_rate : defaultRate;
+    return listedRate('statsionar_shared') || fallback;
   }
 
   function updateHeaderUserWidget() {
@@ -385,11 +379,12 @@
                 patient_phone: adm.patient_phone || '+998 90 000 00 00',
                 doctor: adm.doctor_name || 'Shifokor biriktirilmagan',
                 program: adm.program_type || 'Statsionar davolanish',
-                daily_rate: adm.daily_price || 720000,
+                daily_rate: adm.daily_price || listedRate('statsionar_shared'),
                 start_date: adm.start_date,
                 end_date: adm.planned_end_date,
                 status: 'active',
-                is_full_room: adm.daily_price >= 1100000
+                is_full_room: adm.program_type === 'statsionar_full_room' ||
+                  (listedRate('statsionar_full_room') > 0 && adm.daily_price >= listedRate('statsionar_full_room'))
               };
               if (existingIdx >= 0) {
                 bookings[existingIdx] = { ...bookings[existingIdx], ...admBooking };
@@ -657,7 +652,7 @@
       }
 
       return `
-        <div class="charming-bed-card card-status-${bed.status}" onclick="window.FMH_Super.openBookingModal('${p ? p.id : ''}', '${bed.bed_id}')">
+        <div class="charming-bed-card card-status-${bed.status}" onclick="window.FMH_Super.openBookingModal(${jsArg(p ? p.id : '')}, ${jsArg(bed.bed_id)})">
           <div class="bed-card-header">
             <div class="bed-badge-id"><i class="fas fa-bed" style="color: var(--primary);"></i> ${bed.simple_name}</div>
             <span class="pill-status pill-${bed.status}">${statusLabel}</span>
@@ -727,7 +722,7 @@
           <td>${t.patient}</td>
           <td><strong style="color: ${isKirim ? 'var(--success)' : 'var(--danger)'}; font-family: var(--font-mono); font-size: 0.95rem;">${isKirim ? '+' : '-'}${formatUZS(t.amount)}</strong></td>
           <td><span style="font-size: 0.78rem; background: var(--bg-hover); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border-color);">${t.method}</span></td>
-          <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.printInvoice('${t.id}')"><i class="fas fa-print"></i> Kvitansiya</button></td>
+          <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.printInvoice(${jsArg(t.id)})"><i class="fas fa-print"></i> Kvitansiya</button></td>
         </tr>
       `;
     }).join('');
@@ -741,9 +736,9 @@
       const end = new Date(b.end_date);
       const days = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)));
       
-      let dailyRate = 720000;
-      if (b.program && (b.program.includes("1.1 mln") || b.program.includes("Butun Xona"))) dailyRate = 1100000;
-      else if (b.program && b.program.includes("630 ming")) dailyRate = 630000;
+      let dailyRate = listedRate('statsionar_shared');
+      if (b.program && (b.program.includes("1.1 mln") || b.program.includes("Butun Xona"))) dailyRate = listedRate('statsionar_full_room');
+      else if (b.program && b.program.includes("630 ming")) dailyRate = listedRate('kunlik_statsionar');
 
       const totalBill = days * dailyRate;
       const matchingTx = transactions.filter(t => t.type === 'kirim' && t.patient.toLowerCase().includes(b.patient_name.toLowerCase()));
@@ -762,7 +757,7 @@
           <td><strong style="color: var(--success); font-family: var(--font-mono);">${formatUZS(totalPaid)}</strong></td>
           <td><strong style="color: ${remainingDebt > 0 ? 'var(--danger)' : 'var(--success)'}; font-family: var(--font-mono);">${remainingDebt > 0 ? formatUZS(remainingDebt) : '0 so\'m (To\'liq)'}</strong></td>
           <td>
-            <button class="btn-super btn-super-success" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openPaymentModal('${b.patient_name} (${b.bed_id})', ${remainingDebt > 0 ? remainingDebt : 720000})">
+            <button class="btn-super btn-super-success" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openPaymentModal(${jsArg(b.patient_name + ' (' + b.bed_id + ')')},${remainingDebt > 0 ? remainingDebt : listedRate('statsionar_shared')})">
               <i class="fas fa-coins"></i> To'lov
             </button>
           </td>
@@ -831,7 +826,7 @@
           </div>
           <div style="border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
             <span style="font-family: var(--font-mono); font-weight: 700; color: var(--success); font-size: 0.88rem;">${formatUZS(d.price || 45000)}</span>
-            <button class="btn-super btn-super-primary" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.prescribeDrug('${d.name}')">+ Retsept</button>
+            <button class="btn-super btn-super-primary" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.prescribeDrug(${jsArg(d.name)})">+ Retsept</button>
           </div>
         </div>
       `;
@@ -892,7 +887,7 @@
         <td>${b.doctor}</td>
         <td>${b.start_date} ➔ ${b.end_date}</td>
         <td>
-          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal('${b.id}')"><i class="fas fa-edit"></i> Ko'rish</button>
+          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal(${jsArg(b.id)})"><i class="fas fa-edit"></i> Ko'rish</button>
         </td>
       </tr>
     `).join('');
@@ -944,7 +939,7 @@
         <td>${v.temp}°C</td>
         <td><span style="color: var(--success); font-weight: 700;">${v.spo2}</span></td>
         <td><span class="pill-status pill-available">${v.status}</span></td>
-        <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openVitalsModal('${v.bed}')"><i class="fas fa-plus"></i> O'lchash</button></td>
+        <td><button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openVitalsModal(${jsArg(v.bed)})"><i class="fas fa-plus"></i> O'lchash</button></td>
       </tr>
     `).join('');
   }
@@ -967,9 +962,9 @@
           <td>Mol go'shti bulyoni, suli yormasi, kompot, qora non suxarisi</td>
           <td>
             <div style="display: flex; gap: 4px;">
-              <button class="super-preset-pill ${deliv.b ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal('${b.bed_id}', 'b')">Nonushta ${deliv.b ? '✓' : ''}</button>
-              <button class="super-preset-pill ${deliv.l ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal('${b.bed_id}', 'l')">Tushlik ${deliv.l ? '✓' : ''}</button>
-              <button class="super-preset-pill ${deliv.d ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal('${b.bed_id}', 'd')">Kechki ${deliv.d ? '✓' : ''}</button>
+              <button class="super-preset-pill ${deliv.b ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal(${jsArg(b.bed_id)}, 'b')">Nonushta ${deliv.b ? '✓' : ''}</button>
+              <button class="super-preset-pill ${deliv.l ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal(${jsArg(b.bed_id)}, 'l')">Tushlik ${deliv.l ? '✓' : ''}</button>
+              <button class="super-preset-pill ${deliv.d ? 'active' : ''}" onclick="window.FMH_Super.toggleMeal(${jsArg(b.bed_id)}, 'd')">Kechki ${deliv.d ? '✓' : ''}</button>
             </div>
           </td>
           <td><span class="pill-status pill-available"><i class="fas fa-check"></i> Yetkazildi</span></td>
@@ -1022,7 +1017,7 @@
         </div>
         <div style="display: flex; gap: 6px; margin-top: 8px;">
           <a href="tel:${phone}" class="btn-super btn-super-outline" style="flex: 1; padding: 4px; font-size: 0.75rem; text-decoration: none;"><i class="fas fa-phone"></i> Qo'ng'iroq</a>
-          <button class="btn-super btn-super-primary" style="padding: 4px 10px; font-size: 0.75rem;" onclick="window.FMH_Super.showToast('✅ Navbatchilik tasdiqlandi: ${name}')">Navbatchilik</button>
+          <button class="btn-super btn-super-primary" style="padding: 4px 10px; font-size: 0.75rem;" onclick="window.FMH_Super.showToast(${jsArg('✅ Navbatchilik tasdiqlandi: ' + name)})">Navbatchilik</button>
         </div>
       </div>
       `;
@@ -1052,7 +1047,7 @@
         <td>${b.doctor}</td>
         <td><span class="pill-status pill-${b.status === 'active' ? 'occupied' : 'available'}">${b.status === 'active' ? 'Faol Davolanmoqda' : 'Yakunlangan'}</span></td>
         <td>
-          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal('${b.id}')"><i class="fas fa-folder-open"></i> Tarix</button>
+          <button class="btn-super btn-super-outline" style="padding: 3px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.openBookingModal(${jsArg(b.id)})"><i class="fas fa-folder-open"></i> Tarix</button>
         </td>
       </tr>
     `).join('');
@@ -1440,22 +1435,50 @@
     if (btn) btn.classList.add('active');
     const targetContent = document.getElementById(`admin-tab-${tabName}`);
     if (targetContent) targetContent.classList.add('active');
+    // The audit trail is large; it is read only when its tab is opened.
+    if (tabName === 'audit') renderAuditTab();
   }
 
   // --- 1. PRICING & TARIFFS ---
-  function renderAdminPricingTab() {
-    const pk = pricingConfig.packages || {};
-    const inShared = document.getElementById('price-standard-shared');
-    const inVip = document.getElementById('price-vip-solo');
-    const inDaycare = document.getElementById('price-daycare');
-    const inAmb1 = document.getElementById('price-ambulator-1');
-    const inAmb2 = document.getElementById('price-ambulator-2');
+  // Editor inputs -> package ids of the one price list.
+  const PRICE_INPUTS = {
+    'price-standard-shared': 'statsionar_shared',
+    'price-vip-solo': 'statsionar_full_room',
+    'price-daycare': 'kunlik_statsionar',
+    'price-ambulator-1': 'ambulator_1',
+    'price-ambulator-2': 'ambulator_2',
+    'price-consultation': 'consultation'
+  };
+  // Editor inputs -> pay for one duty shift (payroll counts these).
+  const DUTY_TARIFF_INPUTS = {
+    'price-duty-doctor-night': 'doctor_night',
+    'price-duty-nurse-24h': 'nurse_24h',
+    'price-duty-sanitar-24h': 'sanitar_24h'
+  };
 
-    if (inShared) inShared.value = pk.statsionar_shared ? pk.statsionar_shared.daily_rate : 720000;
-    if (inVip) inVip.value = pk.statsionar_full_room ? pk.statsionar_full_room.daily_rate : 1100000;
-    if (inDaycare) inDaycare.value = pk.kunlik_statsionar ? pk.kunlik_statsionar.daily_rate : 630000;
-    if (inAmb1) inAmb1.value = pk.ambulator_1 ? pk.ambulator_1.daily_rate : 310000;
-    if (inAmb2) inAmb2.value = pk.ambulator_2 ? pk.ambulator_2.daily_rate : 500000;
+  function spacedAmount(n) {
+    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function renderAdminPricingTab() {
+    // The inputs show the listed prices; there is no second set of numbers
+    // to fall back on any more.
+    Object.keys(PRICE_INPUTS).forEach(inputId => {
+      const el = document.getElementById(inputId);
+      if (el) el.value = listedRate(PRICE_INPUTS[inputId]);
+    });
+    Object.keys(DUTY_TARIFF_INPUTS).forEach(inputId => {
+      const el = document.getElementById(inputId);
+      if (el && window.FMH_Pricing) el.value = window.FMH_Pricing.dutyTariff(DUTY_TARIFF_INPUTS[inputId]);
+    });
+    // The hints under the inputs were typed in ("Hozirgi standart: 720 000")
+    // and went stale after the first edit; they now show the listed price.
+    document.querySelectorAll('[data-price-hint]').forEach(el => {
+      const rate = listedRate(el.getAttribute('data-price-hint'));
+      el.textContent = el.textContent
+        .replace(/^(Hozirgi standart: )[\d ]+/, `$1${spacedAmount(rate)}`)
+        .replace(/(10 kunlik kurs: )[\d ]+/, `$1${spacedAmount(rate * 10)}`);
+    });
 
     renderAdminServicesTable();
   }
@@ -1474,7 +1497,7 @@
         <td><span class="pill-status pill-purple">${s.category || 'Muolaja'}</span></td>
         <td><strong style="color: var(--success);">${formatUZS(s.price)}</strong></td>
         <td>
-          <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteService('${s.id}')" title="O'chirish">
+          <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteService(${jsArg(s.id)})" title="O'chirish">
             <i class="fas fa-trash"></i>
           </button>
         </td>
@@ -1482,25 +1505,54 @@
     `).join('');
   }
 
+  // Returns true only when the server has stored the list. The old version
+  // filled an empty or 0 price with a hardcoded default, ignored the
+  // server's reason for a refusal, and on a network error said the prices
+  // were "saved locally" although nothing was saved anywhere.
   async function savePricingSettings(e) {
     if (e) e.preventDefault();
-    const shared = Number(document.getElementById('price-standard-shared').value) || 720000;
-    const vip = Number(document.getElementById('price-vip-solo').value) || 1100000;
-    const daycare = Number(document.getElementById('price-daycare').value) || 630000;
-    const amb1 = Number(document.getElementById('price-ambulator-1').value) || 310000;
-    const amb2 = Number(document.getElementById('price-ambulator-2').value) || 500000;
+    if (window.FMH_Pricing && window.FMH_Pricing.isFallback()) {
+      showToast("Narxlar serverdan yuklanmagan. Sahifani yangilang, so'ng qayta saqlang.", 'danger');
+      return false;
+    }
 
+    const packages = {};
+    for (const inputId of Object.keys(PRICE_INPUTS)) {
+      const el = document.getElementById(inputId);
+      if (!el) continue;
+      const raw = String(el.value || '').trim();
+      const value = Number(raw);
+      if (raw === '' || !Number.isFinite(value) || value < 0) {
+        showToast("Narx to'g'ri kiritilmagan.", 'warning');
+        el.focus();
+        return false;
+      }
+      const pkgId = PRICE_INPUTS[inputId];
+      packages[pkgId] = { daily_rate: value };
+      const name = pricingConfig.packages && pricingConfig.packages[pkgId] && pricingConfig.packages[pkgId].name_uz;
+      if (name) packages[pkgId].name_uz = name;
+    }
+
+    const dutyTariffs = {};
+    for (const inputId of Object.keys(DUTY_TARIFF_INPUTS)) {
+      const el = document.getElementById(inputId);
+      if (!el) continue;
+      const raw = String(el.value || '').trim();
+      const value = Number(raw);
+      if (raw === '' || !Number.isFinite(value) || value < 0) {
+        showToast("Navbatchilik narxi to'g'ri kiritilmagan.", 'warning');
+        el.focus();
+        return false;
+      }
+      dutyTariffs[DUTY_TARIFF_INPUTS[inputId]] = value;
+    }
+
+    // updated_by is taken from the session on the server.
     const payload = {
-      packages: {
-        statsionar_shared: { daily_rate: shared, name_uz: "Statsionar (1 karavot / 2 kishilik xona)" },
-        statsionar_full_room: { daily_rate: vip, name_uz: "Statsionar Butun Xona (VIP Solo)" },
-        kunlik_statsionar: { daily_rate: daycare, name_uz: "Kunlik Statsionar (Kunduzgi o'rin)" },
-        ambulator_1: { daily_rate: amb1, name_uz: "Ambulator (1 mahal)" },
-        ambulator_2: { daily_rate: amb2, name_uz: "Ambulator (2 mahal)" }
-      },
-      additional_services: pricingConfig.additional_services || [],
-      updated_by: currentUser ? currentUser.username : 'superadmin'
+      packages,
+      additional_services: pricingConfig.additional_services || []
     };
+    if (Object.keys(dutyTariffs).length) payload.duty_tariffs = dutyTariffs;
 
     try {
       const res = await fetch('/api/settings/pricing', {
@@ -1508,29 +1560,50 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        pricingConfig.packages = payload.packages;
-        showToast("✅ Yangi narxlar va tariflar tizimga saqlandi!", "success");
-        renderActiveDepartment();
-      } else {
-        showToast("Narxlarni saqlashda xatolik yuz berdi", "danger");
+      let body = null;
+      try { body = await res.json(); } catch (_) { body = null; }
+      if (!res.ok) {
+        showToast((body && body.error) || "Narxlarni saqlashda xatolik yuz berdi", "danger");
+        await loadPricingConfig();
+        renderAdminPricingTab();
+        return false;
       }
-    } catch (err) {
-      pricingConfig.packages = payload.packages;
-      showToast("Narxlar mahalliy xotirada saqlandi", "info");
+      if (window.FMH_Pricing) {
+        await window.FMH_Pricing.reload();
+        await loadPricingConfig();
+      } else if (body && body.pricing) {
+        pricingConfig = body.pricing;
+      }
+      showToast("✅ Yangi narxlar va tariflar tizimga saqlandi!", "success");
       renderActiveDepartment();
+      return true;
+    } catch (err) {
+      showToast("Server bilan bog'lanishda xatolik: narxlar saqlanmadi.", "danger");
+      await loadPricingConfig();
+      renderAdminPricingTab();
+      return false;
     }
   }
 
   async function promptAddService() {
+    if (window.FMH_Pricing && window.FMH_Pricing.isFallback()) {
+      showToast("Narxlar serverdan yuklanmagan. Sahifani yangilang.", 'danger');
+      return;
+    }
     const name = prompt("Yangi qo'shimcha xizmat yoki muolaja nomi:");
     if (!name || !name.trim()) return;
     const category = prompt("Kategoriya (Muolaja, Diagnostika, Laboratoriya):", "Muolaja") || "Muolaja";
-    const priceStr = prompt("Xizmat narxi (so'mda):", "150000");
-    const price = Number((priceStr || '').replace(/[^0-9]/g, '')) || 100000;
+    const priceStr = prompt("Xizmat narxi (so'mda):", "");
+    const digits = (priceStr || '').replace(/[^0-9]/g, '');
+    // An empty price used to become 100 000; a price nobody typed is not saved.
+    if (!digits) {
+      showToast("Xizmat narxi kiritilmadi.", 'warning');
+      return;
+    }
+    const price = Number(digits);
 
     const newService = {
-      id: `SRV-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: `SRV-${Date.now().toString(36).toUpperCase()}`,
       name: name.trim(),
       category: category.trim(),
       price: price
@@ -1539,9 +1612,9 @@
     if (!pricingConfig.additional_services) pricingConfig.additional_services = [];
     pricingConfig.additional_services.push(newService);
 
-    await savePricingSettings();
+    const saved = await savePricingSettings();
     renderAdminServicesTable();
-    showToast(`✅ "${name}" xizmati narxlar katalogiga qo'shildi!`);
+    if (saved) showToast(`✅ "${name}" xizmati narxlar katalogiga qo'shildi!`);
   }
 
   async function deleteService(serviceId) {
@@ -1554,9 +1627,9 @@
     });
     if (!okService) return;
     pricingConfig.additional_services = (pricingConfig.additional_services || []).filter(s => s.id !== serviceId);
-    await savePricingSettings();
+    const saved = await savePricingSettings();
     renderAdminServicesTable();
-    showToast("🗑️ Xizmat narxlar ro'yxatidan o'chirildi");
+    if (saved) showToast("🗑️ Xizmat narxlar ro'yxatidan o'chirildi");
   }
 
   // --- 2. ROOMS & BEDS INFRASTRUCTURE ---
@@ -1581,8 +1654,8 @@
         fl.rooms.forEach(r => {
           const bedsList = (r.beds || []).map(b => `
             <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; margin: 2px; border: 1px solid var(--border-color); font-size: 0.76rem;">
-              🛏️ <strong>${b.bed_number || b.bed_id}</strong> (${formatUZS(b.daily_rate || 720000)})
-              <button type="button" title="Karavotni ajratish (Detach)" onclick="window.FMH_Super.detachBed('${b.bed_id}')" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 0 2px;">&times;</button>
+              🛏️ <strong>${b.bed_number || b.bed_id}</strong> (${formatUZS(b.daily_rate || listedRate('statsionar_shared'))})
+              <button type="button" title="Karavotni ajratish (Detach)" onclick="window.FMH_Super.detachBed(${jsArg(b.bed_id)})" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 0 2px;">&times;</button>
             </span>
           `).join('');
 
@@ -1592,7 +1665,7 @@
               <td><strong>${r.room_number || r.name_uz}</strong> <span style="font-size: 0.72rem; color: var(--text-muted);">(${r.type})</span></td>
               <td>${bedsList || '<em style="color: var(--text-muted); font-size: 0.75rem;">Karavotlar yo\'q</em>'}</td>
               <td>
-                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteRoom('${r.id}')" title="Xonani o'chirish">
+                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteRoom(${jsArg(r.id)})" title="Xonani o'chirish">
                   <i class="fas fa-trash"></i>
                 </button>
               </td>
@@ -1630,7 +1703,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Xona qo'shishda xatolik yuz berdi", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xona qo'shishda xatolik yuz berdi", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1641,7 +1715,7 @@
     if (e) e.preventDefault();
     const roomId = document.getElementById('attach-bed-room-select').value;
     const bedCode = document.getElementById('attach-bed-code').value.trim();
-    const dailyRate = Number(document.getElementById('attach-bed-rate').value) || 720000;
+    const dailyRate = Number(document.getElementById('attach-bed-rate').value) || listedRate('statsionar_shared');
 
     if (!roomId || !bedCode) return;
 
@@ -1659,12 +1733,13 @@
       if (res.ok) {
         showToast(`🛏️ <strong>${bedCode}</strong> karavot muvaffaqiyatli biriktirildi!`);
         document.getElementById('admin-attach-bed-form').reset();
-        document.getElementById('attach-bed-rate').value = pricingConfig.packages?.statsionar_shared?.daily_rate || 720000;
+        document.getElementById('attach-bed-rate').value = listedRate('statsionar_shared');
         await loadMasterDatabases();
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Karavot biriktirishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Karavot biriktirishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1691,7 +1766,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Karavotni ajratishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Karavotni ajratishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1718,7 +1794,8 @@
         renderAdminRoomsTab();
         renderActiveDepartment();
       } else {
-        showToast("Xonani o'chirishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xonani o'chirishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1745,16 +1822,18 @@
           const name = s.full_name || s.name;
           const role = s.role;
           const spec = s.specialty || '—';
-          const sal = s.salary ? formatUZS(s.salary) : '—';
+          // The list carries salary_base (to HR, accounting and the owner);
+          // 'salary' never existed, so this column always showed a dash.
+          const sal = s.salary_base != null && s.salary_base !== '' ? formatUZS(s.salary_base) : '—';
 
           return `
             <tr>
-              <td><strong>${name}</strong><br><small style="color: var(--text-muted);">${s.phone || ''}</small></td>
-              <td><span class="pill-status pill-available">${role}</span></td>
-              <td>${spec}</td>
+              <td><strong>${esc(name)}</strong><br><small style="color: var(--text-muted);">${esc(s.phone || '')}</small></td>
+              <td><span class="pill-status pill-available">${esc(role)}</span></td>
+              <td>${esc(spec)}</td>
               <td><strong style="color: var(--warning);">${sal}</strong></td>
               <td>
-                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.fireStaff('${staffId}', '${name.replace(/'/g, "\\'")}')" title="Ishdan bo'shatish">
+                <button type="button" class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.fireStaff(${jsArg(staffId)}, ${jsArg(name || '')})" title="Ishdan bo'shatish">
                   <i class="fas fa-user-minus"></i> Bo'shatish
                 </button>
               </td>
@@ -1774,7 +1853,10 @@
     const role = document.getElementById('hire-staff-role').value;
     const specialty = document.getElementById('hire-staff-specialty').value.trim();
     const phone = document.getElementById('hire-staff-phone').value.trim();
-    const salary = Number(document.getElementById('hire-staff-salary').value) || 10000000;
+    // POST /api/staff reads base_salary; 'salary' was ignored and the blank
+    // field showed 10 000 000. Blank stays blank (the server stores 0) and
+    // a bad amount comes back as a refusal.
+    const salary = document.getElementById('hire-staff-salary').value.trim();
     const shift = document.getElementById('hire-staff-shift').value;
 
     if (!name || !specialty || !phone) return;
@@ -1788,19 +1870,20 @@
           role: role,
           specialty: specialty,
           phone: phone,
-          salary: salary,
-          shift: shift,
+          base_salary: salary,
+          shift_type: shift,
           status: 'active'
         })
       });
 
       if (res.ok) {
-        showToast(`🎉 <strong>${name}</strong> muvaffaqiyatli ishga qabul qilindi (Rasmiylashtirildi)!`);
+        showToast(`🎉 <strong>${esc(name)}</strong> muvaffaqiyatli ishga qabul qilindi (Rasmiylashtirildi)!`);
         document.getElementById('admin-hire-staff-form').reset();
         await initSampleStaffRoster();
         renderAdminStaffTab();
       } else {
-        showToast("Xodimni qabul qilishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xodimni qabul qilishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1810,7 +1893,7 @@
   async function fireStaff(staffId, staffName) {
     const okFire = await fmhConfirm({
       title: "Xodimni Bo'shatish",
-      message: `Haqiqatan ham <strong>${staffName}</strong>ni ishdan bo'shatmoqchimisiz?`,
+      message: `Haqiqatan ham <strong>${esc(staffName)}</strong>ni ishdan bo'shatmoqchimisiz?`,
       confirmText: "Bo'shatish",
       cancelText: "Bekor Qilish",
       type: 'danger'
@@ -1818,15 +1901,16 @@
     if (!okFire) return;
 
     try {
-      const res = await fetch(`/api/staff/${staffId}`, {
+      const res = await fetch(`/api/staff/${encodeURIComponent(staffId)}`, {
         method: 'DELETE'
       });
       if (res.ok) {
-        showToast(`👋 <strong>${staffName}</strong> xodimlar safidan bo'shatildi!`, 'danger');
+        showToast(`👋 <strong>${esc(staffName)}</strong> xodimlar safidan bo'shatildi!`, 'danger');
         await initSampleStaffRoster();
         renderAdminStaffTab();
       } else {
-        showToast("Xodimni bo'shatishda xatolik", "danger");
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Xodimni bo'shatishda xatolik", "danger");
       }
     } catch (err) {
       showToast("Server bilan bog'lanishda xatolik", "danger");
@@ -1834,84 +1918,344 @@
   }
 
   // --- 4. USER ACCOUNTS & RBAC ---
+  //
+  // The console offered 6 of the 13 roles from a hand-typed list, could only
+  // create and delete, and put names straight into innerHTML. Roles now come
+  // from GET /api/users/roles (permissions.ROLES), accounts can be edited,
+  // blocked and given a one-time password, and every value is escaped.
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // A value passed to an inline onclick="f(...)" must be a JS string literal,
+  // not just HTML-escaped text: the browser decodes &#39; back to ' before the
+  // handler runs, so a staff or room id containing a quote used to end the
+  // string and run the rest as script with the viewer's (superadmin) rights.
+  // JSON.stringify makes a safe literal; esc() keeps it inside the attribute.
+  function jsArg(v) {
+    return esc(JSON.stringify(String(v)));
+  }
+
+  let adminRoles = [];
+  let adminUsers = [];
+  let adminStaffOptions = [];
+
+  async function readError(res, fallback) {
+    const err = await res.json().catch(() => ({}));
+    return err.error || fallback;
+  }
+
+  function roleLabel(key) {
+    const r = adminRoles.find(x => x.key === key);
+    return r ? r.label : key;
+  }
+
+  async function loadAdminRoles() {
+    try {
+      const res = await fetch('/api/users/roles');
+      if (!res.ok) return;
+      adminRoles = await res.json();
+      const opts = adminRoles.map(r =>
+        `<option value="${esc(r.key)}">${esc(r.label)} (${esc(r.key)})</option>`).join('');
+      const reg = document.getElementById('reg-role');
+      if (reg) {
+        const keep = reg.value;
+        reg.innerHTML = `<option value="">— Rolni tanlang —</option>` + opts;
+        if (keep && adminRoles.some(r => r.key === keep)) reg.value = keep;
+      }
+      const edit = document.getElementById('user-edit-role');
+      if (edit) edit.innerHTML = opts;
+    } catch (e) {
+      console.error('Error loading roles:', e);
+    }
+  }
+
+  // /api/staff lists active staff only. Rebuilding the picker used to drop
+  // the option for a user linked to an employee who has since been
+  // deactivated, so the picker fell back to "Bog'lanmagan" and the next
+  // save unlinked the account. The current link is always kept as an
+  // option. The load is a shared promise so the edit form waits for it
+  // instead of being rebuilt underneath (the load was not awaited).
+  let adminStaffLoad = null;
+  function keepStaffOption(el, value) {
+    if (!el || !value) return;
+    if (!Array.from(el.options).some(o => o.value === value)) {
+      el.insertAdjacentHTML('beforeend', `<option value="${esc(value)}">${esc(value)} (faol emas)</option>`);
+    }
+    el.value = value;
+  }
+
+  function loadAdminStaffOptions() {
+    adminStaffLoad = (async () => {
+      try {
+        const res = await fetch('/api/staff');
+        if (!res.ok) return;
+        adminStaffOptions = await res.json();
+        const opts = `<option value="">— Bog'lanmagan —</option>` + adminStaffOptions.map(s =>
+          `<option value="${esc(s.id)}">${esc(s.full_name || s.name || s.id)} — ${esc(s.role || '')} (${esc(s.id)})</option>`).join('');
+        ['reg-staff', 'user-edit-staff'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { const keep = el.value; el.innerHTML = opts; el.value = keep; keepStaffOption(el, keep); }
+        });
+      } catch (e) {
+        console.error('Error loading staff for user links:', e);
+      }
+    })();
+    return adminStaffLoad;
+  }
+
+  let usersTableWired = false;
+  function wireUsersTable(tbody) {
+    if (usersTableWired) return;
+    usersTableWired = true;
+    // One delegated listener: ids travel in data attributes, never inside an
+    // inline onclick string where a quote in an id would break out.
+    tbody.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-user-action]');
+      if (!btn) return;
+      const uid = btn.getAttribute('data-uid');
+      const action = btn.getAttribute('data-user-action');
+      if (action === 'edit') openUserEdit(uid);
+      else if (action === 'reset') resetUserPassword(uid);
+      else if (action === 'delete') deleteUser(uid);
+    });
+  }
+
   async function renderAdminUsersTab() {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
+    wireUsersTable(tbody);
+    if (!adminRoles.length) loadAdminRoles();
+    loadAdminStaffOptions();
 
     try {
       const res = await fetch('/api/users');
-      if (res.ok) {
-        const users = await res.json();
-        if (users.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Foydalanuvchilar mavjud emas</td></tr>`;
-          return;
-        }
-
-        tbody.innerHTML = users.map(u => {
-          const isSelf = currentUser && (currentUser.username === u.username || currentUser.id === u.id);
-          const isSuper = u.role === 'superadmin' && u.username === 'superadmin';
-
-          return `
-            <tr>
-              <td><strong style="color: var(--primary); font-family: var(--font-mono);">${u.username}</strong></td>
-              <td><strong>${u.full_name}</strong><br><small style="color: var(--text-muted);">${u.phone || ''}</small></td>
-              <td><span class="pill-status ${u.role === 'superadmin' ? 'pill-occupied' : 'pill-available'}">${u.role}</span></td>
-              <td>
-                ${isSuper || isSelf ? '<span style="font-size: 0.72rem; color: var(--text-muted);">Himoyalangan</span>' : `
-                  <button type="button" class="btn-super btn-super-outline" style="padding: 2px 6px; font-size: 0.72rem; color: var(--danger);" onclick="window.FMH_Super.deleteUser('${u.id}')" title="O'chirish">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                `}
-              </td>
-            </tr>
-          `;
-        }).join('');
+      if (!res.ok) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger);">${esc(await readError(res, "Ro'yxatni yuklab bo'lmadi"))}</td></tr>`;
+        return;
       }
+      adminUsers = await res.json();
+      if (adminUsers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Foydalanuvchilar mavjud emas</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = adminUsers.map(u => {
+        const active = u.is_active !== false;
+        const uid = esc(u.id || u.username);
+        const actions = `
+          <div class="user-actions">
+            <button type="button" class="btn-super btn-super-outline" data-user-action="edit" data-uid="${uid}" title="Tahrirlash"><i class="fas fa-pen"></i></button>
+            ${u.protected ? '<span style="font-size: 0.72rem; color: var(--text-muted); align-self: center;">Himoyalangan</span>' : `
+              <button type="button" class="btn-super btn-super-outline" data-user-action="reset" data-uid="${uid}" title="Parolni tiklash"><i class="fas fa-key"></i></button>
+              <button type="button" class="btn-super btn-super-outline" style="color: var(--danger);" data-user-action="delete" data-uid="${uid}" title="O'chirish"><i class="fas fa-trash"></i></button>
+            `}
+          </div>`;
+        return `
+          <tr>
+            <td><strong style="color: var(--primary); font-family: var(--font-mono);">${esc(u.username)}</strong></td>
+            <td><strong>${esc(u.full_name)}</strong><br><small style="color: var(--text-muted);">${esc(u.phone || '')}${u.staff_id ? ' · ' + esc(u.staff_id) : ''}</small></td>
+            <td><span class="pill-status ${u.role === 'superadmin' ? 'pill-occupied' : 'pill-available'}" title="${esc(u.role)}">${esc(roleLabel(u.role))}</span></td>
+            <td>${active ? '<span class="pill-status pill-available">Faol</span>' : '<span class="pill-status pill-occupied">Bloklangan</span>'}${u.must_change_password ? '<br><small style="color: var(--warning);">Parol almashtirilmagan</small>' : ''}</td>
+            <td>${actions}</td>
+          </tr>
+        `;
+      }).join('');
     } catch (e) {
       console.error("Error loading users:", e);
     }
+  }
+
+  function openModalById(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.add('active');
+  }
+
+  // Closes one of the user dialogs only, leaving the admin centre open
+  // underneath (closeAllModals would close that too).
+  function closeUserModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove('active');
+    if (id === 'super-user-password-modal') {
+      // The password is not kept anywhere once the dialog is closed.
+      const v = document.getElementById('user-pw-value');
+      if (v) v.value = '';
+    }
+  }
+
+  function showOneTimePassword(username, password) {
+    document.getElementById('user-pw-username').textContent = username || '';
+    const v = document.getElementById('user-pw-value');
+    v.value = password || '';
+    openModalById('super-user-password-modal');
+    v.focus();
+    v.select();
+  }
+
+  async function copyOneTimePassword() {
+    const v = document.getElementById('user-pw-value');
+    if (!v || !v.value) return;
+    try {
+      await navigator.clipboard.writeText(v.value);
+    } catch (e) {
+      v.select();
+      try { document.execCommand('copy'); } catch (e2) { /* the field stays selected */ }
+    }
+    showToast('Parol nusxalandi');
   }
 
   async function handleCreateUser(e) {
     if (e) e.preventDefault();
     const username = document.getElementById('reg-username').value.trim();
     const fullName = document.getElementById('reg-fullname').value.trim();
-    const password = document.getElementById('reg-password').value.trim();
+    const password = document.getElementById('reg-password').value;
     const role = document.getElementById('reg-role').value;
     const phone = document.getElementById('reg-phone').value.trim();
+    const staffEl = document.getElementById('reg-staff');
+    const staffId = staffEl ? staffEl.value : '';
 
-    if (!username || !fullName || !password) return;
+    if (!username || !fullName || !role) {
+      showToast("Login, F.I.Sh va rolni kiriting", "error");
+      return;
+    }
+
+    const payload = { username: username, full_name: fullName, role: role, phone: phone };
+    // Blank: the server issues a one-time password and shows it once.
+    if (password) payload.password = password;
+    if (staffId) payload.staff_id = staffId;
 
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username,
-          full_name: fullName,
-          password: password,
-          role: role,
-          phone: phone
-        })
+        body: JSON.stringify(payload)
       });
-
-      if (res.ok) {
-        showToast(`👤 <strong>${fullName} (${username})</strong> yangi foydalanuvchi sifatida yaratildi!`);
-        document.getElementById('admin-create-user-form').reset();
-        renderAdminUsersTab();
-      } else {
-        const err = await res.json();
-        showToast(err.error || "Foydalanuvchi yaratishda xatolik", "danger");
+      if (!res.ok) {
+        showToast(await readError(res, "Foydalanuvchi yaratishda xatolik"), "error");
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      showToast(`👤 <strong>${esc(fullName)} (${esc(username)})</strong> yangi foydalanuvchi sifatida yaratildi!`);
+      document.getElementById('admin-create-user-form').reset();
+      if (data.temporary_password) showOneTimePassword(username, data.temporary_password);
+      renderAdminUsersTab();
     } catch (err) {
-      showToast("Server bilan bog'lanishda xatolik", "danger");
+      showToast("Server bilan bog'lanishda xatolik", "error");
+    }
+  }
+
+  async function openUserEdit(uid) {
+    const u = adminUsers.find(x => x.id === uid || x.username === uid);
+    if (!u) return;
+    if (!adminRoles.length) await loadAdminRoles();
+    await (adminStaffLoad || loadAdminStaffOptions());
+    document.getElementById('user-edit-id').value = u.id || u.username;
+    document.getElementById('user-edit-username').textContent = u.username || '';
+    document.getElementById('user-edit-fullname').value = u.full_name || '';
+    document.getElementById('user-edit-phone').value = u.phone || '';
+    const roleSel = document.getElementById('user-edit-role');
+    if (u.role && !adminRoles.some(r => r.key === u.role)) {
+      // A role permissions.py no longer knows: show it so it is not changed silently.
+      roleSel.insertAdjacentHTML('afterbegin', `<option value="${esc(u.role)}">${esc(u.role)}</option>`);
+    }
+    roleSel.value = u.role || '';
+    const staffSel = document.getElementById('user-edit-staff');
+    staffSel.value = '';
+    keepStaffOption(staffSel, u.staff_id || '');
+    document.getElementById('user-edit-active').value = u.is_active === false ? '0' : '1';
+    roleSel.disabled = !!u.protected;
+    document.getElementById('user-edit-active').disabled = !!u.protected;
+    document.getElementById('user-edit-protected-note').style.display = u.protected ? 'block' : 'none';
+    openModalById('super-user-edit-modal');
+  }
+
+  async function handleUserEditSubmit(e) {
+    if (e) e.preventDefault();
+    const uid = document.getElementById('user-edit-id').value;
+    const u = adminUsers.find(x => x.id === uid || x.username === uid);
+    if (!u) return;
+    // Only what changed is sent, so a protected account's role and state are
+    // never part of the request.
+    const payload = {};
+    const fullName = document.getElementById('user-edit-fullname').value.trim();
+    const phone = document.getElementById('user-edit-phone').value.trim();
+    const role = document.getElementById('user-edit-role').value;
+    const staffId = document.getElementById('user-edit-staff').value;
+    const active = document.getElementById('user-edit-active').value === '1';
+    if (fullName !== (u.full_name || '')) payload.full_name = fullName;
+    if (phone !== (u.phone || '')) payload.phone = phone;
+    if (staffId !== (u.staff_id || '')) payload.staff_id = staffId;
+    if (!u.protected) {
+      if (role !== u.role) payload.role = role;
+      if (active !== (u.is_active !== false)) payload.is_active = active;
+    }
+    if (!Object.keys(payload).length) {
+      closeUserModal('super-user-edit-modal');
+      return;
+    }
+    if (payload.is_active === false) {
+      const ok = await fmhConfirm({
+        title: 'Hisobni bloklash',
+        message: `<strong>${esc(u.username)}</strong> tizimga kira olmaydi va hozirgi sessiyasi yopiladi. Davom etasizmi?`,
+        confirmText: 'Bloklash',
+        cancelText: 'Bekor qilish',
+        type: 'danger'
+      });
+      if (!ok) return;
+    }
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(uid)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        showToast(await readError(res, "Saqlab bo'lmadi"), "error");
+        return;
+      }
+      showToast("Foydalanuvchi ma'lumotlari yangilandi");
+      closeUserModal('super-user-edit-modal');
+      renderAdminUsersTab();
+    } catch (err) {
+      showToast("Server bilan bog'lanishda xatolik", "error");
+    }
+  }
+
+  async function resetUserPassword(uid) {
+    const u = adminUsers.find(x => x.id === uid || x.username === uid);
+    const name = u ? u.username : uid;
+    const ok = await fmhConfirm({
+      title: 'Parolni tiklash',
+      message: `<strong>${esc(name)}</strong> uchun yangi bir martalik parol beriladi. Eski parol ishlamay qoladi va ochiq sessiyalar yopiladi.`,
+      confirmText: 'Yangi parol berish',
+      cancelText: 'Bekor qilish',
+      type: 'warning'
+    });
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(uid)}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (!res.ok) {
+        showToast(await readError(res, "Parolni tiklab bo'lmadi"), "error");
+        return;
+      }
+      const data = await res.json();
+      showOneTimePassword(data.username || name, data.temporary_password);
+      renderAdminUsersTab();
+    } catch (err) {
+      showToast("Server bilan bog'lanishda xatolik", "error");
     }
   }
 
   async function deleteUser(userId) {
     const okUser = await fmhConfirm({
       title: "Foydalanuvchini O'chirish",
-      message: "Haqiqatan ham ushbu foydalanuvchini o'chirmoqchimisiz?",
+      message: "Haqiqatan ham ushbu foydalanuvchini o'chirmoqchimisiz? (Vaqtincha to'xtatish uchun \"Bloklangan\" holatidan foydalaning.)",
       confirmText: "O'chirish",
       cancelText: "Bekor Qilish",
       type: 'danger'
@@ -1926,11 +2270,114 @@
         showToast("🗑️ Foydalanuvchi tizimdan o'chirildi!", "info");
         renderAdminUsersTab();
       } else {
-        showToast("Foydalanuvchini o'chirishda xatolik", "danger");
+        showToast(await readError(res, "Foydalanuvchini o'chirishda xatolik"), "error");
       }
     } catch (err) {
-      showToast("Server bilan bog'lanishda xatolik", "danger");
+      showToast("Server bilan bog'lanishda xatolik", "error");
     }
+  }
+
+  // --- 5. AUDIT LOG VIEWER (read-only, GET /api/audit) ---
+  const AUDIT_ACTION_LABELS = {
+    CREATE: 'Yaratildi',
+    UPDATE: "O'zgartirildi",
+    DELETE: "O'chirildi",
+    CHECK_IN: 'Joylashtirildi',
+    CHECK_OUT: 'Chiqarildi',
+    TRANSFER: "Ko'chirildi",
+    PAYMENT_RECEIVED: "To'lov",
+    LOGIN: 'Kirdi',
+    LOGIN_FAILED: 'Kirish xatosi',
+    LOGOUT: 'Chiqdi',
+    ACCESS_DENIED: 'Rad etildi',
+    PASSWORD_CHANGED: "Parol o'zgardi"
+  };
+  const auditState = { offset: 0, total: 0, facetsLoaded: false, busy: false };
+
+  function auditFilters() {
+    const val = id => (document.getElementById(id) || {}).value || '';
+    return {
+      from: val('audit-from'),
+      to: val('audit-to'),
+      user: val('audit-user').trim(),
+      entity: val('audit-entity'),
+      action: val('audit-action'),
+      q: val('audit-q').trim(),
+      limit: val('audit-limit') || '50'
+    };
+  }
+
+  async function renderAuditTab() {
+    const tbody = document.getElementById('admin-audit-table-body');
+    if (!tbody || auditState.busy) return;
+    auditState.busy = true;
+    const f = auditFilters();
+    const params = new URLSearchParams();
+    Object.keys(f).forEach(k => { if (f[k]) params.set(k, f[k]); });
+    params.set('offset', String(auditState.offset));
+    if (!auditState.facetsLoaded) params.set('facets', '1');
+    try {
+      const res = await fetch('/api/audit?' + params.toString());
+      if (!res.ok) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger);">${esc(await readError(res, "Jurnalni yuklab bo'lmadi"))}</td></tr>`;
+        return;
+      }
+      const data = await res.json();
+      if (data.entities) {
+        const ent = document.getElementById('audit-entity');
+        ent.innerHTML = '<option value="">Barchasi</option>' +
+          data.entities.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+        ent.value = f.entity;
+        const act = document.getElementById('audit-action');
+        act.innerHTML = '<option value="">Barchasi</option>' +
+          (data.actions || []).map(x => `<option value="${esc(x)}">${esc(AUDIT_ACTION_LABELS[x] || x)}</option>`).join('');
+        act.value = f.action;
+        auditState.facetsLoaded = true;
+      }
+      auditState.total = data.total || 0;
+      const rows = data.rows || [];
+      tbody.innerHTML = rows.length ? rows.map(r => `
+        <tr>
+          <td class="audit-time">${esc(r.timestamp)}</td>
+          <td><strong>${esc(r.actor || '—')}</strong><br><small style="color: var(--text-muted);">${esc(r.actor_role || '')}${r.ip ? ' · ' + esc(r.ip) : ''}</small></td>
+          <td title="${esc(r.action)}">${esc(AUDIT_ACTION_LABELS[r.action] || r.action)}</td>
+          <td>${esc(r.entity)}</td>
+          <td style="font-family: var(--font-mono); font-size: 0.76rem;">${esc(r.entity_id)}</td>
+          <td class="audit-summary">${esc(r.summary || '')}</td>
+        </tr>`).join('')
+        : `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Hech narsa topilmadi</td></tr>`;
+      const limit = Number(data.limit) || 50;
+      const first = rows.length ? auditState.offset + 1 : 0;
+      const last = auditState.offset + rows.length;
+      document.getElementById('audit-page-info').textContent =
+        `${first}–${last} / ${auditState.total}`;
+      document.getElementById('audit-prev').disabled = auditState.offset <= 0;
+      document.getElementById('audit-next').disabled = auditState.offset + limit >= auditState.total;
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger);">Server bilan bog'lanishda xatolik</td></tr>`;
+    } finally {
+      auditState.busy = false;
+    }
+  }
+
+  function searchAudit(e) {
+    if (e) e.preventDefault();
+    auditState.offset = 0;
+    renderAuditTab();
+  }
+
+  function pageAudit(dir) {
+    const limit = Number(auditFilters().limit) || 50;
+    const next = auditState.offset + dir * limit;
+    if (next < 0 || (dir > 0 && next >= auditState.total)) return;
+    auditState.offset = next;
+    renderAuditTab();
+  }
+
+  function resetAuditFilters() {
+    const form = document.getElementById('admin-audit-filter-form');
+    if (form) form.reset();
+    searchAudit();
   }
 
   window.FMH_Super = {
@@ -1973,7 +2420,13 @@
     handleHireStaff,
     fireStaff,
     handleCreateUser,
-    deleteUser
+    deleteUser,
+    closeUserModal,
+    copyOneTimePassword,
+    handleUserEditSubmit,
+    searchAudit,
+    pageAudit,
+    resetAuditFilters
   };
 
   document.addEventListener('DOMContentLoaded', init);

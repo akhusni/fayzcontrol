@@ -16,12 +16,13 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/doctor.css?v=4.0">
-  <link rel="stylesheet" href="css/unified_header.css?v=6.0">
+  <link rel="stylesheet" href="css/doctor.css?v=4.1">
+  <link rel="stylesheet" href="css/unified_header.css?v=6.2">
 
   <!-- Centralized Enterprise Theme & Shift Engine -->
   <script src="js/theme_engine.js"></script>
-  <script src="js/fmh_dialogs.js?v=1.3"></script>
+  <script src="js/fmh_dialogs.js?v=1.5"></script>
+  <script src="js/fmh_pricing.js?v=1.1"></script>
 </head>
 <body class="doctor-portal">
 
@@ -111,7 +112,7 @@
         <div class="doctor-identity-avatar" id="active-doctor-avatar">👨‍⚕️</div>
         <div class="doctor-identity-info">
           <div class="doctor-identity-name">
-            <span id="active-doctor-display-name">Dr. Umarov Xusan Payziboyevich</span>
+            <span id="active-doctor-display-name">—</span>
             <span class="doc-auth-badge"><i class="fas fa-user-shield"></i> Shaxsiy Kabinet</span>
           </div>
           <div class="doctor-identity-title" id="active-doctor-display-title">Bosh Shifokor / Narkolog-Psixiatr</div>
@@ -579,6 +580,27 @@
                   </div>
                 </div>
               </div>
+              <!-- Warehouse link (optional): stock item, total prescribed quantity and live availability.
+                   Prescribing never takes anything off the shelf; stock leaves only when it is handed out. -->
+              <div class="rx-form-row rx-stock-row" style="grid-template-columns: 2fr 1fr 1fr 2fr;">
+                <div class="clinical-form-group">
+                  <label class="clinical-label"><i class="fas fa-warehouse" style="color: var(--doctor-cyan-light);"></i> Ombordagi dori (ixtiyoriy)</label>
+                  <input type="text" id="rx-wh-search" class="clinical-input" placeholder="Ombordan qidirish: nom yoki MNN..." autocomplete="off">
+                  <div id="rx-wh-results" class="rx-wh-results"></div>
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Miqdor (jami)</label>
+                  <input type="number" id="rx-qty" class="clinical-input" min="0" step="any" placeholder="masalan: 30">
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Birlik</label>
+                  <input type="text" id="rx-qty-unit" class="clinical-input" readonly tabindex="-1" placeholder="—">
+                </div>
+                <div class="clinical-form-group">
+                  <label class="clinical-label">Ombor holati</label>
+                  <div id="rx-wh-status" class="rx-wh-status" aria-live="polite">Ombor dorisi tanlanmagan.</div>
+                </div>
+              </div>
               <!-- Selected Medication Clinical & Safety Card -->
               <div id="rx-active-drug-card" style="display: none; margin-top: 10px; padding: 10px 14px; border-radius: 10px; background: rgba(13, 148, 136, 0.08); border: 1px solid rgba(13, 148, 136, 0.25);"></div>
             </div>
@@ -617,12 +639,41 @@
                       <th>Yuborish Yo'li</th>
                       <th>Davriylik & Vaqti</th>
                       <th>Muddat</th>
+                      <th>Ombor miqdori</th>
                       <th>Holati</th>
                       <th>Amallar</th>
                     </tr>
                   </thead>
                   <tbody id="rx-table-body">
                     <!-- Populated via js/doctor.js -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- What the warehouse actually handed to this patient (rendered only from the server answer) -->
+            <div class="clinical-section-card" id="dispensing-history-card" style="padding: 0; overflow: hidden; margin-top: 1rem;">
+              <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
+                <div class="clinical-section-title" style="margin: 0;">
+                  <i class="fas fa-box-open" style="color: var(--doctor-cyan-light);"></i> Berilgan dori va materiallar
+                </div>
+              </div>
+              <div class="rx-table-wrapper">
+                <table class="rx-table">
+                  <thead>
+                    <tr>
+                      <th>Sana va vaqt</th>
+                      <th>Dori / material</th>
+                      <th>Berilgan miqdor</th>
+                      <th>Doza / ko'rsatma</th>
+                      <th>Tayinlagan</th>
+                      <th>Bergan</th>
+                      <th>Partiya</th>
+                      <th>Holati</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dsp-table-body">
+                    <!-- Populated via js/doctor.js from GET /api/doctor/clinical/<id> -->
                   </tbody>
                 </table>
               </div>
@@ -655,12 +706,6 @@
               <div class="rx-box-header">
                 <span><i class="fas fa-plus icon-cyan"></i> Bugungi Shifokor Ko'rigi Natijasini Kiritish (Dnevnik)</span>
                 <span class="rx-live-label" style="font-family: var(--font-mono); color: var(--doctor-cyan-light);" id="diary-today-date">Bugun: —</span>
-              </div>
-
-              <div style="margin-bottom: 10px;">
-                <button type="button" class="btn-quick-vitals" onclick="window.FMH_Doctor.setNormalVitals()">
-                  <i class="fas fa-magic icon-cyan"></i> <span>⚡ Standart Me'yoriy Ko'rsatkichlar (120/80, 74 ur/daq, 36.6°C, 99% SpO2)</span>
-                </button>
               </div>
 
               <div class="clinical-form-grid" style="margin-bottom: 0.75rem;">
@@ -873,7 +918,7 @@
           <div>
             <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800;">Yangi Konsultatsiya & Kasallik Varaqasi Ochish</h3>
             <div class="case-modal-doc-lock">
-              <i class="fas fa-user-md"></i> Qabul qiluvchi shifokor: <strong id="case-modal-doctor-name">Dr. Umarov Xusan Payziboyevich</strong> (Identifikatsiyalangan)
+              <i class="fas fa-user-md"></i> Qabul qiluvchi shifokor: <strong id="case-modal-doctor-name">—</strong> (Identifikatsiyalangan)
             </div>
           </div>
         </div>
@@ -1188,7 +1233,7 @@
           <button class="btn-doc-primary" onclick="window.FMH_Doctor.downloadPDF()">
             <i class="fas fa-download"></i> PDF Yuklash
           </button>
-          <button class="btn-doc-primary" style="background: #22c55e;" onclick="window.FMH_Doctor.printOfficialDocument()">
+          <button class="btn-doc-primary" style="background: #22c55e;" onclick="window.FMH_Doctor.printOfficialDocument(document.getElementById('doc-type-select').value)">
             <i class="fas fa-print"></i> Chop Etish
           </button>
           <button class="btn-doc-outline" onclick="window.FMH_Doctor.closeOfficialDocModal()">
@@ -1208,9 +1253,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- JavaScript Engines -->
-    <script src="js/unified_print_engine.js?v=5.3"></script>
+    <script src="js/unified_print_engine.js?v=5.4"></script>
     <script src="js/med_search_engine.js?v=4.0"></script>
-<script src="js/doctor.js?v=12.5"></script>
+<script src="js/doctor.js?v=13.1"></script>
   <div id="print-area"></div>
 </body>
 </html>

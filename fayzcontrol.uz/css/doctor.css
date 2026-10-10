@@ -2258,3 +2258,64 @@ body.night-mode .clinical-section-card {
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
 }
+
+/* ==========================================================================
+   Warehouse link in the prescription form and the dispensing history
+   (prescribing is advice about stock; it never takes anything off the shelf)
+   ========================================================================== */
+.rx-wh-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.rx-wh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+.rx-wh-chip:hover { border-color: var(--doctor-cyan); color: var(--doctor-cyan-light); }
+.rx-wh-chip.is-selected {
+  border-color: var(--doctor-cyan);
+  background: var(--doctor-cyan-bg);
+  color: var(--doctor-cyan-light);
+}
+.rx-wh-hint { font-size: 0.74rem; color: var(--text-muted); margin-top: 6px; }
+.rx-wh-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rx-wh-badge.ok { background: var(--emerald-bg); color: var(--emerald); }
+.rx-wh-badge.low { background: var(--amber-bg); color: var(--amber); }
+.rx-wh-badge.out { background: var(--rose-bg); color: var(--rose); }
+.rx-wh-status { font-size: 0.8rem; line-height: 1.4; color: var(--text-secondary); padding-top: 4px; }
+.rx-wh-status .ok { color: var(--emerald); font-weight: 700; }
+.rx-wh-status .low { color: var(--amber); font-weight: 700; }
+.rx-wh-status .out { color: var(--rose); font-weight: 700; }
+.rx-wh-status .rx-wh-note { display: block; font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.rx-wh-status .rx-wh-clear {
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer; margin-left: 4px;
+}
+[data-theme="day"] .rx-wh-badge.low, [data-theme="day"] .rx-wh-status .low { color: #b45309; }
+[data-theme="day"] .rx-wh-badge.out, [data-theme="day"] .rx-wh-status .out { color: #be123c; }
+[data-theme="day"] .rx-wh-badge.ok, [data-theme="day"] .rx-wh-status .ok { color: #047857; }
+.rx-qty-cell { font-size: 0.78rem; line-height: 1.5; white-space: nowrap; }
+.rx-qty-cell .rx-qty-muted { color: var(--text-muted); }
+.dsp-reversed td { color: var(--text-muted); }
+.dsp-reversed .dsp-strike { text-decoration: line-through; }
+.dsp-note { display: block; font-size: 0.72rem; color: var(--rose); margin-top: 2px; }

@@ -28,49 +28,49 @@ Toshkent shahridagi **"Fayz Medical House"** xususiy klinikasi uchun to'liq inte
 ## 📁 Fayllar Strukturasi
 
 ```
-crm-suite/
-├── superpage.html          # 10 Bo'limli Yagona Boshqaruv Super-Portali (Default /)
-├── doctor.html             # Shifokor Posti, EMR, Kasallik Tarixi & Retseptlar
-├── crm.html                # Bemorlar CRM & Kasallik Tarixi Portali
-├── building_management.html # 1-Bino 14-karavotli statsionar boshqaruv pulti
-├── accounting.html         # Buxgalteriya, kassa, to'lovlar va moliya
-├── hr.html                 # Inson resurslari, davomat, smenalar va maosh
-├── reception.html          # Qabulxona, navbatlar va qo'ng'iroqlar
-├── medical_blank.html      # A4 Tibbiy Epikriz va blank chop etish
-├── server.py               # MySQL REST API & Web Server (kirish sahifasiga yo'naltiradi)
-├── pdf_generator.py        # ReportLab A4 rasmiy tibbiy epikriz generatori
-├── install.py              # Baza va modullarni o'rnatish tekshiruvi
-├── start_clinic.bat        # Windows bir-bosishda ishga tushirish skripti
-├── run_clinic_server.ps1   # PowerShell orqali ishga tushirish skripti
-├── DEPLOYMENT_AND_DOMAINS.md # Domen va serverga o'rnatish qo'llanmasi
-├── robots.txt              # Maxfiylik nazorati (barcha qidiruv botlarini bloklaydi)
-├── css/
-│   ├── crm.css
-│   ├── doctor.css
-│   ├── superpage.css
-│   ├── building_management.css
-│   ├── accounting.css
-│   ├── hr.css
-│   ├── reception.css
-│   ├── unified_header.css  # Yagona navigatsiya tizimi
-│   └── unified_print.css   # Chop etish tizimi
-├── js/
-│   ├── crm.js
-│   ├── doctor.js
-│   ├── superpage.js
-│   ├── building_management.js
-│   ├── accounting.js
-│   ├── hr.js
-│   ├── reception.js
-│   └── xlsx.full.min.js
-└── data/
-    ├── schema.mysql.sql    # MySQL sxemasi (asosiy)
-    ├── seed_data.sql       # Boshlang'ich klinik ma'lumotlar
-    ├── hr_db.json
-    ├── accounting_db.json
-    ├── reception_db.json
-    ├── clinic_rooms.json
-    └── pharmacology_db.json
+fayzcontrol.uz/
+├── server.py               # HTTP server va butun API (kirish, ruxsatlar, statik fayllar)
+├── db.py                   # MySQL ulanish, qabul/ko'chirish/chiqarish mantig'i, migratsiyalar
+├── auth.py                 # Parol xeshi, sessiyalar, kirish cheklovi
+├── permissions.py          # Rollar va API/sahifa ruxsatlari
+├── audit.py                # Audit jurnali (kim nimani o'zgartirdi)
+├── consultation.py         # Konsultatsiya anketasi va davolash rejalari
+├── nursery.py              # Hamshira dori aylanmasi, ko'rsatkichlar, statsionar ko'rigi
+├── payroll.py              # Maosh hisobi (navbatchilik jadvali asosida)
+├── owner_report.py         # Klinika egasi uchun pul hisoboti
+├── pdf_generator.py        # ReportLab A4 PDF hujjatlar
+├── telegram_service.py     # Telegram guruh xabarlari (token bo'lmasa o'chiq)
+├── install.py              # Baza va modullarni tekshirish (faqat o'qiydi)
+├── login.html, change-password.html
+├── superpage.html          # Super-Portal (boshqaruv markazi)
+├── reception.html          # Qabulxona: qabul, xonalar, saytdan so'rovlar, navbat, qo'ng'iroqlar
+├── crm.html                # Bemorlar kartotekasi
+├── consultation.html       # Shifokor konsultatsiyasi va davolash rejasi
+├── doctor.html             # Shifokor posti (EMR, retseptlar, kundalik ko'rik)
+├── ward.html               # Statsionar kunlik ko'rigi
+├── nurse.html              # Hamshiralar posti
+├── building_management.html # Karavotlar paneli
+├── accounting.html         # Buxgalteriya va kassa
+├── owner.html              # Klinika egasi hisoboti
+├── hr.html                 # Kadrlar, davomat, maosh
+├── duty_schedule.html      # Navbatchilik jadvali
+├── medical_blank.html      # A4 tibbiy blanklar
+├── index.html              # superpage.html ga yo'naltiradi
+├── css/                    # Har sahifa uchun <sahifa>.css + unified_header.css, unified_print.css
+├── js/                     # Har sahifa uchun <sahifa>.js + umumiy fayllar:
+│                           #   fmh_dialogs.js (xabarlar, menyu), fmh_pricing.js (narxlar),
+│                           #   fmh_plan_view.js (davolash rejasi ko'rinishi), theme_engine.js,
+│                           #   unified_print_engine.js, xlsx.full.min.js
+├── data/
+│   ├── schema.mysql.sql    # MySQL sxemasi (yagona to'g'ri sxema)
+│   ├── seed_data.sql       # Boshlang'ich ma'lumotlar
+│   ├── users.json          # Foydalanuvchilar (server yozadi)
+│   ├── clinic_rooms.json, pricing_config.json, duty_schedule.json  # server yozadi
+│   └── pharmacology_db.json, fayz_house_meds.json                  # dori katalogi
+├── scripts/                # backup.sh, restore-test.sh, prune-audit.py, cron fayli
+├── tests/test_clinic.py    # Avtomatik testlar (server ishlab turganda)
+├── README.md, CHANGES.md, DEPLOYMENT_AND_DOMAINS.md
+└── robots.txt
 ```
 
 ---
