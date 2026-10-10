@@ -209,16 +209,23 @@ class MySQLConnectionWrapper:
 def get_mysql_connection(config):
     if not HAS_PYMYSQL:
         raise ImportError("pymysql is not installed.")
-    conn = pymysql.connect(
-        host=config.get('host', '127.0.0.1'),
-        port=int(config.get('port', 3306)),
-        user=config.get('user', 'root'),
-        password=config.get('password', ''),
-        database=config.get('database', 'fayzcontrol_db'),
-        charset='utf8mb4',
-        connect_timeout=5,
-        autocommit=False
-    )
+    kwargs = {
+        'user': config.get('user', 'root'),
+        'password': config.get('password', ''),
+        'database': config.get('database', 'fayzcontrol_db'),
+        'charset': 'utf8mb4',
+        'connect_timeout': 5,
+        'autocommit': False
+    }
+    sock = config.get('unix_socket')
+    if sock and os.path.exists(sock):
+        kwargs['unix_socket'] = sock
+    elif os.path.exists('/var/lib/mysql/mysql.sock'):
+        kwargs['unix_socket'] = '/var/lib/mysql/mysql.sock'
+    else:
+        kwargs['host'] = config.get('host', '127.0.0.1')
+        kwargs['port'] = int(config.get('port', 3306))
+    conn = pymysql.connect(**kwargs)
     return MySQLConnectionWrapper(conn)
 
 _ACTIVE_ENGINE = 'mysql'

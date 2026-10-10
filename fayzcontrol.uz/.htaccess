@@ -1,29 +1,13 @@
-# Fayz Control (fayzcontrol.uz) — Apache hardening
-#
-# READ THIS BEFORE CHANGING IT.
-#
-# This application is NOT designed to be served by Apache. Every portal page
-# is gated server-side by server.py: it checks the session cookie and sends an
-# anonymous visitor to login.html. If Apache serves the .html files straight
-# off disk, that check never runs and the entire EMR — doctor, reception,
-# accounting, HR, patient records — is handed to anyone who knows a filename.
-#
-# This file used to do exactly that. It set `DirectoryIndex superpage.html`
-# and routed /api/* to api.php, which has been removed; see
-# DEPLOYMENT_AND_DOMAINS.md for the reverse-proxy setup that replaces it.
-#
-# What is left here is damage limitation, for the case where this directory
-# ends up inside an Apache docroot anyway: it stops the source, the database
-# credentials and the clinical data files from being downloadable.
+# Fayz Control (fayzcontrol.uz) — Web Server Config
+
+DirectoryIndex gateway.php index.php
 
 # --- Never serve source, credentials, data or documentation ----------------
-<FilesMatch "\.(py|pyc|sql|json|md|txt|log|bat|ps1|example)$">
+<FilesMatch "\.(py|pyc|sql|json|md|txt|log|bat|ps1|example|cron|sh)$">
   Require all denied
 </FilesMatch>
 
-# db_config.json holds the database password in plaintext. It is gitignored,
-# but it is present on a deployed machine, and it sits in this directory.
-<FilesMatch "^(db_config.*|server_log.*|\.htaccess|\.gitignore|\.vercelignore)$">
+<FilesMatch "^(db_config.*|server_log.*|\.gitignore|\.vercelignore)$">
   Require all denied
 </FilesMatch>
 
@@ -31,19 +15,31 @@
   RedirectMatch 403 ^/(data|tests|assets/private)/
 </IfModule>
 
-# robots.txt is meant to be readable; the rule above denies .txt, so allow it
-# back explicitly.
 <Files "robots.txt">
   Require all granted
 </Files>
 
-# --- Keep clinical pages out of search engines -----------------------------
+# --- Security Headers -----------------------------------------------------
 <IfModule mod_headers.c>
   Header always set X-Robots-Tag "noindex, nofollow, noarchive"
-  # No Access-Control-Allow-Origin here. It used to be "*", on every response,
-  # which invited any site on the internet to call this API. The portals are
-  # served from the same origin and need no CORS at all.
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "same-origin"
+</IfModule>
+
+# --- Routing to gateway.php ------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve static files and php directly if they exist
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteCond %{REQUEST_URI} \.(css|js|jpg|jpeg|png|gif|svg|webp|ico|woff|woff2|ttf|eot|pdf|map|php)$ [NC]
+  RewriteRule ^ - [L]
+
+  # Allow robots.txt directly
+  RewriteRule ^robots\.txt$ robots.txt [L]
+
+  # Route everything else (API, HTML portals, root) to gateway.php
+  RewriteRule ^(.*)$ gateway.php [QSA,L]
 </IfModule>
