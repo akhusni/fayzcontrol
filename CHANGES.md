@@ -390,6 +390,40 @@ Sinovlar o'zgardi: `test_a_medicine_added_to_a_bill_comes_off_the_shelf` endi o'
 
 22 ta yangi test qo'shildi (`WarehouseMigration`), jami 370 ta test o'tadi.
 
+### 2026-10-10: Ombor — tekshiruv tuzatishlari (server)
+
+Beshta mustaqil tekshiruv va to'liq sinov natijasida topilgan kamchiliklar tuzatildi (server tomoni; sahifa o'zgarishlari alohida). Har biri uchun sinov bor.
+
+| Joy | Xato | Tuzatildi |
+|---|---|---|
+| Ruxsat (H1) | `/api/warehouse/%72eceipts` kabi kodlangan yo'l orqali farmatsevt buxgalteriya huquqini talab qiluvchi yo'llarga (kirim, minimal qoldiq) kira olardi | Ruxsat va yo'nalish endi bitta tozalangan yo'lni ishlatadi (bir marta dekodlanadi; `%2f`, `\`, NUL, `..` rad etiladi). Kirim va minimal qoldiq uchun buxgalteriya huquqi ishlovchi ichida ham tekshiriladi |
+| Kirimni qaytarish (M1) | O'rtacha tannarx noto'g'ri qayta hisoblanardi | Qaytarishda miqdor **joriy o'rtacha** narxda chiqadi, o'rtacha o'zgarmaydi (qiymat = qoldiq × o'rtacha). "Oxirgi xarid narxi" va yetkazib beruvchi qolgan oxirgi tasdiqlangan kirimdan tiklanadi (yo'q bo'lsa bo'sh) |
+| Dori berishni qaytarish (M2) | Birliklar joriy o'rtacha narxda qaytardi, asl qiymat bekor bo'lmasdi | Birliklar berilgandagi **asl narxda** qaytadi; o'rtacha shu narxdagi kirim kabi qayta hisoblanadi: qiymat aniq nolga tushadi. Narx ko'rsatilmagan qaytarish/ko'paytirish o'rtachani o'zgartirmaydi |
+| Partiya (M3) | Qaytarilgan kirimning partiyasiga qoldiq qo'shish, ishlatilgan partiyani "to'ldirib" kirimni qaytarib yuborish mumkin edi | Qaytarilgan/bekor kirim partiyasiga qo'shib bo'lmaydi; "ishlatilgan" holat endi daftardagi qaytarilmagan chiqimlardan aniqlanadi |
+| Ogohlantirishlar (M4, M6, M9) | Ochiq ogohlantirish eski son va xabarni saqlardi; yangilash qulfsiz va har safar ishlardi; ro'yxat 300 ta bilan cheklangan edi | Ochiq ogohlantirish yangilanib turadi; yangilash serverning yozuv qulfi ostida, 30 soniyada bir martadan ko'p emas (omborga yozuv bo'lsa darhol). `GET /alerts`: `limit` (100, eng ko'pi 500), `offset`, `item_id`, `type`, `total` |
+| Baza tayyorligi (M5) | So'rov ichida migratsiya qayta ishga tushib, ochiq tranzaksiyani (hisob qatorini) tasdiqlab yuborishi mumkin edi | So'rovlarda migratsiya ishlamaydi; jadval tayyor bo'lmasa 503 "Ombor jadvallari tayyor emas…". Migratsiya faqat server ishga tushganda |
+| Retsept (M7) | Miqdor birligi mijoz matni bo'lib, chegara tabletka bilan quti aralashishiga olib kelardi; nofaol mahsulot haqida ogohlantirish yo'q edi | Bog'langan retseptda birlik doim mahsulotning asosiy birligi; nofaol mahsulotda `stock_warning.inactive` |
+| Hisobotlar (M8) | Kirim/berish 500 ta, tuzatishlar 1000 ta qator bilan cheklangan, jami shu qatorlardan hisoblanardi | Tur bo'yicha filtr va jami butun davr bo'yicha SQL da; `limit` (1000, eng ko'pi 5000) / `offset`, javobda `total_rows` va `truncated`; CSV 50 000 qatorgacha, kesilsa `X-Truncated: 1` |
+| Eski xarid yo'li (M10) | Qutisi 10 tadan mahsulotda miqdor ×10 bo'lib qoldiqqa tushardi; bir yangi dori ikki qatorda xato berardi | Miqdor — dona, narx — bir dona narxi (qutini formada ko'rsatilsa, shu qiymat ishlatiladi); ro'yxatdagi miqdor omborga tushganiga teng; bir xil yangi dori qatorlari bitta mahsulotga; nofaol mahsulot nomi bilan rad etiladi |
+| Hisob qatori (M11) | Bemor narxi 0 bo'lgan dori bepul hisoblanardi | "Bu dori uchun bemorga narx belgilanmagan. Avval narxni kiriting." (400) |
+| Kirimni qaytarish (M12) | Ombor sahifasidan qaytarilganda buxgalteriya ro'yxatidagi xarid qatorlari qolardi; qaytarilgan kirimning xaridini o'chirish doim 409 berardi | Qaytarish xarid qatorlarini ham olib tashlaydi (javobda `removed_purchase_ids`, qatorlar); eski o'chirish qolgan qatorlarni muvaffaqiyatli olib tashlaydi |
+| Hamshira (M13) | Yaroqlilik muddatli mahsulotning eski dozasini qaytarishda muddat so'ralib, hamshira to'siqqa uchrardi | Hamshira yo'lida muddatsiz qaytarish partiyasi ishlatiladi; ekran yo'li muddatni talab qilaveradi |
+| Eski identifikatorlar (M14) | O'chirilgan bemor/retsept raqami qayta berilsa, yangisi eski berilgan dorilar tarixini "meros qilib" olardi | Tarix retsept **va** bemor bo'yicha bog'lanadi; yangi bemor/retsept raqami dori berish tarixida uchragan raqamlardan qochadi |
+| Narx oshkor bo'lishi (M15) | Qabulxona va bosh shifokor xarid narxi, yetkazib beruvchi, to'lov turi va dori tannarxini ko'ra olardi | Bular faqat buxgalter, egasi va bosh administratorga. Mavjudlik va umumiy ko'rsatkichlarni faqat ombor/dorixona/shifokor/hamshira o'qiydi |
+| Kirim (L1–L4) | `post` har qanday qiymatni qabul qilardi; narxi 0 qator o'tardi; noma'lum to'lov usuli jimgina naqdga aylanardi; qayta yuborilgan qoralama qoralama bo'lib qolardi | `post` faqat true/false; narx 0 bo'lsa `no_charge` kerak (izohga yoziladi); noma'lum to'lov usuli 400; `post:true` bilan qayta yuborilgan qoralama tasdiqlanadi |
+| Mahsulot (L5, L6) | Farmatsevt narx/tannarx maydonlarini yuborsa jimgina e'tiborsiz qoldirilardi; mahsulot turini o'zgartirib retsept qoidasini aylanib o'tish mumkin edi | Narx, tannarx va minimal qoldiq uchun 403 "Narx va tannarx faqat buxgalteriya uchun" (o'zgarmagan qiymat e'tiborsiz); tur, muddat, kasr, birlik va qadoq o'zgartirish buxgalteriyaga; birlik/qadoq/kasr harakatdan keyin muzlaydi; o'zgarish audit yozuviga |
+| Audit (L7) | Kirimni tasdiqlash/bekor qilish/qaytarish "CREATE" deb yozilardi | Alohida amallar: `POST_RECEIPT`, `CANCEL`, `REVERSE`; qaytarish izohida o'chirilgan xarajat raqami |
+| Xato kiritish (L8) | `²` kabi belgilar, noto'g'ri turdagi `batch_id`/`supplier_id`/`item_id` 500 xato berardi | Faqat ASCII raqamlar; noto'g'ri turlar maydon nomi bilan 400 |
+| Buxgalteriya (L9) | Kirim xarajati ro'yxatda doim 12:00 va "Kassir" ko'rinardi; daftar qatorida xarajat raqami yo'q edi | Haqiqiy vaqt va yozgan xodim ko'rinadi; xarajat tasdiqlangan kun sanasi bilan yoziladi (hujjat sanasi tavsifda); daftardagi `receipt` qatorlarida `accounting_transaction_id` |
+| Kam qoldiq ko'rinishi (L10) | `v_pharmacy_low_stock` muddati o'tgan qoldiqni ham hisoblardi | Faqat berish mumkin bo'lgan (yaroqli) qoldiq bo'yicha; `available_quantity` ustuni qo'shildi |
+| CSV, harakatlar, bemor qidirish, Telegram (L11–L13) | `-3` kabi sonlar `'-3` bo'lib chiqardi; harakatda qaytarilgani ko'rinmasdi; Telegram ombor qiymati bemor narxi bilan hisoblanardi | Sonlar qo'shtirnoqsiz (formulalar baribir himoyalangan); `is_reversed`/`reversal_id`; `GET /api/warehouse/patients?q=`; Telegram qiymati o'rtacha tannarx bo'yicha (noma'lum — "—") |
+
+Ko'rinadigan o'zgarishlar: narxi 0 bo'lgan dori hisobga qo'shilmaydi; eski xarid shaklida miqdor endi dona; xarajat kirim tasdiqlangan kun bilan yoziladi; qabulxona xarid narxlarini ko'rmaydi; kirimni qaytarish o'rtacha tannarxni o'zgartirmaydi; farmatsevt narx maydonlarini yuborsa 403 oladi.
+
+Qoldirildi (hujjatda "Ma'lum cheklovlar"): bir nechta server jarayonida o'qish tasvirining (snapshot) nozikliklari; o'rtacha tannarx 4 xonagacha yaxlitlanishidan bir necha tiyinlik farq; buxgalter ham dori bera olishi (loyiha shunday).
+
+41 ta yangi test qo'shildi, jami 411 ta test o'tadi.
+
 ### 2026-10-10: Ombor (W2) — ombor sahifasi
 
 Yangi sahifa: `warehouse.html` (+ `css/warehouse.css`, `js/warehouse.js`), menyuda **Ombor** (Moliya guruhida, Buxgalteriyadan keyin). Sahifa faqat `/api/warehouse/*` bilan ishlaydi: ruxsat, qoldiq qoidalari va narxlarni server hal qiladi, sahifa faqat o'zi ko'rsata olmaydigan tugmalarni yashiradi. Faqat yangi fayllar va menyudagi bitta qator (`js/fmh_dialogs.js`) o'zgardi.
@@ -430,6 +464,26 @@ Mavjud sahifalar ombor bilan ulandi. Faqat ko'rinish qismi (HTML, JS, CSS) o'zga
 Tekshirildi: `node --check` (doctor, crm, accounting); yangi funksiyalar soxta DOM bilan sinaldi (kasr qoldiq, qaytarilgan qator chizilishi, HTML'ning ekranlanishi, "yetarli emas / tugagan / kam" holatlari). **Tekshirilmagan (brauzerda kirib bo'lmadi):** formaning ko'rinishi (qator kengligi, kunduzgi va tungi mavzu), "Omborda bor" yorliqlarini bosish, xarid formasidagi ochiladigan qator, ombor sahifasiga o'tish tugmasi. Shifokor va buxgalter rolida ko'zdan kechirish kerak.
 
 Keyinga: yangi bemor konsultatsiyasi oynasidagi retseptlar (modal) hali ombor mahsuloti va miqdorini tanlamaydi; saqlangan retseptning ombor mahsuloti yoki miqdorini keyin o'zgartirish (`PUT /api/doctor/prescriptions/<id>`) hali formada yo'q.
+
+### 2026-10-10: Ombor — tekshiruv tuzatishlari (sahifalar)
+
+Kod tekshiruvida topilgan kamchiliklar tuzatildi. Faqat sahifa kodi o'zgardi (`warehouse.js/html/css`, `doctor.js/html`, `accounting.js/html`); serverga tegilmadi. Server maydoni hali kelmagan bo'lsa, sahifa avvalgidek ishlayveradi.
+
+| # | Fayl | Muammo | Tuzatish |
+|---|---|---|---|
+| 1 | `doctor.js` | Retseptda dori nomi o'zgartirilganda ombor bog'lanishi qolib ketardi: nomi Ibuprofen, lekin `medication_id` Paracetamolniki bo'lib saqlanishi mumkin edi | Bog'lanish qaysi nom uchun qilingan bo'lsa, o'sha nom eslab qolinadi. Nom boshqacha bo'lgan zahoti bog'lanish, birlik va "Omborda" qatori tozalanadi; saqlashda ham tekshiriladi va nomga mos kelmaydigan `medication_id` yuborilmaydi (sariq ogohlantirish chiqadi) |
+| 2 | `accounting.js` | "Xaridni o'chirish" oynasi bitta dorini yozardi, server esa butun hujjatni (hamma qator va kassa yozuvi) bekor qiladi | Oynada: "Butun xarid (N ta qator) va uning kassa yozuvi bekor qilinadi" va qatorlar nomi. Muvaffaqiyatdan so'ng serverning `removed_purchase_ids` ro'yxati bo'yicha qatorlar olib tashlanib, ro'yxat serverdan qayta yuklanadi |
+| 3 | `warehouse.js` | Hisobot javobi kechiksa, qatorlar boshqa hisobot nomi ostiga tushardi; eksport joriy sozlamalar bilan olinardi | So'rov nomi va sanalari yuborishdan oldin eslab qolinadi; hisobot, sana yoki mahsulot o'zgarsa, eski javob tashlab yuboriladi. CSV/Excel ekrandagi natijaning o'z sozlamalari bilan yuklanadi. `truncated` bo'lsa sariq xabar: "Natija to'liq emas…", `total_rows` ko'rsatiladi |
+| 4 | `warehouse.js` | "Harakatlar" B mahsulot oynasidan ochilsa, filtrda A mahsulot nomi qolib ketardi | Mahsulot (va bemor) tanlovi har safar filtrdagi qiymatga tenglashtiriladi |
+| 5 | `warehouse.js` | Bemor ro'yxati butun `/api/patients` jadvalidan olinardi (og'ir, egasi roliga 403, eskirgan) | Endi `/api/warehouse/patients?q=` bo'yicha serverda qidiriladi: kamida 2 belgi, 250 ms kutish, eski so'rov bekor qilinadi, sessiya keshi yo'q. 403/xatoda aniq xabar ("Bemorlarni qidirish uchun ruxsat yo'q") |
+| 6 | `warehouse.js` | "Qaytarilgan" belgisi faqat ko'rinib turgan sahifadan aniqlanardi | Serverning `is_reversed` / `reversal_id` maydoni ishlatiladi (bo'lmasa eski usul): qaytarilgan qatorda "Qaytarish" tugmasi chiqmaydi |
+| 7 | `warehouse.js` | Narxlar bir marta `/summary` muvaffaqiyatli bo'lsagina ko'rinardi | Ruxsat (buxgalter yozish, egasi, superadmin) yoki narx maydoni kelgan har qanday javob bo'yicha qayta baholanadi; saralash va hisobotlar ro'yxati qayta quriladi |
+| 8 | `warehouse.js` | CSV vergul bilan ajratilgan; o'zbek/rus Excel'ida bitta ustun bo'lib ochiladi | Yangi tugma **CSV (Excel, ;)**: brauzerning o'zida `;` bilan, UTF-8 BOM va o'nli vergul bilan tuziladi (serverga bog'liq emas) |
+| 9 | `warehouse.js` | Narxi 0 qator: aniq belgi yo'q edi; ogohlantirishlar ro'yxati cheklangan | Har qatorda **Bepul namuna (no_charge)** katakchasi: narx 0 bo'lsa shart, narx > 0 bo'lsa mumkin emas; `post` haqiqiy boolean; server xatosi kerakli qatorga qo'yiladi. Ogohlantirishlar 50 tadan, **Yana yuklash** tugmasi va `total`; tur filtri serverdan so'raladi |
+| 10 | `accounting.js/html` | Qadoq/dona ma'nosi tushunarsiz edi | "Bo'sh qoldirilsa: miqdor — dona, narx — 1 dona narxi" va "Qadoqdagi dona kiritilsa: miqdor — qadoq soni, narx — 1 qadoq narxi" yozuvlari; maydon sarlavhasi va placeholder'lar ham shunga qarab o'zgaradi. `units_per_package` faqat to'ldirilganda yuboriladi |
+| 11 | uchala fayl | Server maydoni bo'lmasa `undefined` chiqishi mumkin joylar | Hammasi himoyalangan: `total_rows`, `truncated`, `is_reversed`, `reversal_id`, `total`, `removed_purchase_ids` bo'lmasa eski xatti-harakat saqlanadi |
+
+Tekshirildi: `node --check` (warehouse, doctor, accounting); soxta DOM bilan: bemor qidiruvi (manzil, 403, so'rovni bekor qilish), kechikkan hisobot javobi tashlanishi, `;` CSV (qo'shtirnoq, o'nli vergul, formula himoyasi), narx ko'rinishi, qaytarilgan qator, ogohlantirishlar sahifalash, `no_charge` tekshiruvlari. **Tekshirilmagan (brauzerda kirib bo'lmadi):** ko'rinish, `doctor.js` bog'lanishni tozalash oqimi (qo'lda), haqiqiy server bilan javoblar. **Server tomondan kerak:** `GET /api/accounting/data` ichidagi `medication_purchases` qatorlariga `receipt_id` (hozir qatorlar soni `accounting_transaction_id` bo'yicha taxmin qilinadi); bemor qidiruvida faol yotoq raqami (`active_admission_id`) bo'lsa, "retseptsiz material" oynasida yotoq avtomatik tanlanadi.
 
 ## 2. Interfeys va foydalanish qulayligi
 

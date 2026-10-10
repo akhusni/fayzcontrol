@@ -1012,7 +1012,25 @@
   // saving an order never removes anything from the shelf (stock leaves only
   // when it is handed out, see inventory.py), and a shortage is a warning,
   // never a block. Nothing here is guessed: no item or quantity means none.
-  const wh = { item: null, results: [], seq: 0, timer: null, autoName: '', ready: false };
+  // linkedName is the drug name (normalised) the link was made for. The link is only valid for that
+  // exact name: if the typed name changes afterwards (Paracetamol -> Ibuprofen) the old item id must
+  // never ride along with the new name, or the nurse and the dispenser would draw the wrong item.
+  const wh = { item: null, linkedName: '', results: [], seq: 0, timer: null, autoName: '', ready: false };
+
+  function whNameKey(s) {
+    return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+  function whTypedName() {
+    return whNameKey(document.getElementById('rx-drug-name')?.value || '');
+  }
+  // Drops the link when the name in the form no longer matches the name it was made for.
+  function whDropStaleLink() {
+    if (wh.item && whTypedName() !== wh.linkedName) {
+      clearWarehouseItem();
+      return true;
+    }
+    return false;
+  }
 
   // 12 -> "12", 2.5 -> "2.5": quantities can be fractions (ml, half tablets).
   function fmtQty(v) {
@@ -1069,8 +1087,9 @@
     wh.results = results;
     // After a pick from the drug list: link the item automatically only when
     // exactly one warehouse item has that very name.
-    if (results && wh.autoName && !wh.item) {
-      const exact = results.filter(i => String(i.name || '').trim().toLowerCase() === wh.autoName);
+    // A late answer must not link an item to a name the doctor has already changed.
+    if (results && wh.autoName && !wh.item && whTypedName() === wh.autoName) {
+      const exact = results.filter(i => whNameKey(i.name) === wh.autoName);
       if (exact.length === 1) selectWarehouseItem(exact[0]);
     }
     wh.autoName = '';
@@ -1144,12 +1163,14 @@
     // name is filled from the warehouse item.
     const nameEl = document.getElementById('rx-drug-name');
     if (nameEl && !nameEl.value.trim()) nameEl.value = item.name || '';
+    wh.linkedName = whNameKey(nameEl ? nameEl.value : item.name);
     renderWhResults();
     updateWhStatus();
   }
 
   function clearWarehouseItem() {
     wh.item = null;
+    wh.linkedName = '';
     const unitEl = document.getElementById('rx-qty-unit');
     if (unitEl) unitEl.value = '';
     renderWhResults();
@@ -1160,6 +1181,7 @@
     clearTimeout(wh.timer);
     wh.seq++;
     wh.item = null;
+    wh.linkedName = '';
     wh.results = [];
     wh.autoName = '';
     ['rx-wh-search', 'rx-qty', 'rx-qty-unit'].forEach(id => {
@@ -1179,7 +1201,7 @@
     if (name.length < 2) return;
     const own = document.getElementById('rx-wh-search');
     if (own) own.value = '';
-    wh.autoName = name.toLowerCase();
+    wh.autoName = whNameKey(name);
     clearTimeout(wh.timer);
     runWhSearch(name);
   }
@@ -1192,6 +1214,9 @@
       if (wh.item) clearWarehouseItem(); else renderWhResults();
       return;
     }
+    // Any edit of the name that makes it differ from the linked item's name unlinks it (and clears the
+    // quantity unit and the availability line); the search below then offers matching items again.
+    whDropStaleLink();
     if (!(document.getElementById('rx-wh-search')?.value || '').trim()) whQuery();
   }
 
@@ -1326,6 +1351,7 @@
       const clearBtn = input.closest('.fmh-med-search-wrapper')?.querySelector('.fmh-med-clear-btn');
       if (clearBtn) clearBtn.style.display = 'flex';
     }
+    whDropStaleLink(); // the name was just replaced: an earlier warehouse link belongs to the old name
     if (med.form || med.dosage_form) {
       const f = med.form || med.dosage_form;
       const formEl = document.getElementById('rx-form');
@@ -1925,9 +1951,16 @@
           return;
         }
         rxData.quantity_prescribed = qty;
-        if (wh.item) rxData.quantity_unit = wh.item.base_unit;
       }
-      if (wh.item) rxData.medication_id = wh.item.id;
+      // Last line of defence: never send a medication_id for a name it was not linked to.
+      if (wh.item && whNameKey(drugName) !== wh.linkedName) {
+        clearWarehouseItem();
+        showToast("Dori nomi o'zgargani uchun ombor mahsuloti bilan bog'lanish olib tashlandi. Kerak bo'lsa, qayta tanlang.", 'warning');
+      }
+      if (wh.item) {
+        rxData.medication_id = wh.item.id;
+        if (rxData.quantity_prescribed !== undefined) rxData.quantity_unit = wh.item.base_unit;
+      }
     }
 
     // The order is shown as given only once the server has stored it. The

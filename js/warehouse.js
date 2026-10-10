@@ -204,8 +204,9 @@
   // ---------------------------------------------------------------------------
   // Server calls
   // ---------------------------------------------------------------------------
-  async function api(method, path, body) {
+  async function api(method, path, body, signal) {
     const opts = { method: method, credentials: 'same-origin', headers: {} };
+    if (signal) opts.signal = signal;
     if (body !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
@@ -214,6 +215,8 @@
     try {
       res = await fetch(API + path, opts);
     } catch (e) {
+      // An aborted search is not a network failure: the caller already moved on.
+      if (e && e.name === 'AbortError') return { ok: false, status: 0, aborted: true, data: { error: '' } };
       return { ok: false, status: 0, data: { error: "Server bilan aloqa yo'q. Internetni tekshirib, qayta urinib ko'ring." } };
     }
     let data = null;
@@ -233,15 +236,15 @@
     session: null,
     perms: [],
     whRead: false, whWrite: false, accWrite: false,
-    costs: false,            // does the server show us cost fields? (decided by the first response)
+    costs: false,            // may this person see costs? = permission OR any response that carried cost keys (see noteCosts)
+    costsPerm: false,        // from the session: accounting write, owner or superuser
+    costsSeen: false,        // some response carried cost fields
     settings: { default_min_stock: 10, expiry_warning_days: 30, units: [], item_types: [] },
     suppliers: null,
     categories: [],
     tab: 'dashboard',
     loaded: {},              // tab -> true once loaded
     stale: {},               // tab -> true when data changed elsewhere
-    patientsPromise: null,
-    patients: []
   };
 
   function can(module, action) {
@@ -256,6 +259,28 @@
       if (scope === 'write' && action === 'read') return true;
     }
     return false;
+  }
+
+  // Cost visibility: the session says who MAY see costs (accounting write, owner, superuser) and any
+  // response that carries cost keys proves it too. Both are re-evaluated on every response, so one
+  // failed /summary call can no longer hide cost columns and reports for the rest of the session.
+  const COST_KEYS = ['avg_unit_cost', 'last_unit_cost', 'last_package_price', 'stock_value', 'total_value', 'unit_cost', 'value_delta'];
+  function hasCostKeys(o) {
+    return !!o && typeof o === 'object' && COST_KEYS.some((k) => o[k] !== undefined);
+  }
+  /** Look at a response object or a list of rows; rebuild cost-dependent controls when the answer changes. */
+  function noteCosts(data) {
+    const rows = Array.isArray(data) ? data : [data];
+    if (!S.costsSeen && rows.some(hasCostKeys)) S.costsSeen = true;
+    refreshCosts();
+  }
+  function refreshCosts() {
+    const next = !!(S.costsPerm || S.costsSeen);
+    if (next === S.costs) return;
+    S.costs = next;
+    paintSortOptions();
+    paintReportOptions();
+    if (INV.shell && INV.items.length) renderInventory();
   }
 
   function invalidate() {
@@ -280,22 +305,31 @@
       '<option value="' + esc(s.id) + '"' + (String(selected) === String(s.id) ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
   }
 
-  // The patient list comes from the CRM endpoint (there is no search endpoint);
-  // it is loaded once, on first use, and filtered here.
-  function loadPatients() {
-    if (!S.patientsPromise) {
-      S.patientsPromise = fetch('/api/patients', { credentials: 'same-origin' })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http ' + r.status))))
-        .then((list) => {
-          S.patients = Array.isArray(list) ? list.map((p) => ({
-            id: p.id, code: p.patient_code, name: p.full_name, phone: p.phone,
-            admission_id: p.active_admission ? p.active_admission.admission_id : null
-          })) : [];
-          return S.patients;
-        })
-        .catch((e) => { S.patientsPromise = null; throw e; });
-    }
-    return S.patientsPromise;
+  // Patient search goes to /api/warehouse/patients?q= (warehouse readers only, no billing data).
+  // Nothing is cached for the session: a patient added a minute ago must be findable, and the
+  // old approach of loading the whole CRM table was heavy and answered 403 for the owner role.
+  // Each picker gets its own source (makePatientSource) so one box's abort never cancels another's request.
+  function normalizePatient(p) {
+    const adm = p.active_admission ? p.active_admission.admission_id : (p.admission_id || p.active_admission_id || null);
+    return { id: p.id, code: p.patient_code || p.code || '', name: p.full_name || p.name || '', phone: p.phone || '', admission_id: adm };
+  }
+  function makePatientSource() {
+    let ctrl = null;
+    return async function (q) {
+      if (ctrl) { try { ctrl.abort(); } catch (e) { /* ignore */ } }
+      const mine = new AbortController();
+      ctrl = mine;
+      const r = await api('GET', '/patients' + qs({ q: q, limit: 20 }), undefined, mine.signal);
+      if (r.aborted) return null;              // the combo ignores replies of superseded searches anyway
+      if (ctrl === mine) ctrl = null;
+      if (!r.ok) {
+        let msg = r.data.error;
+        if (r.status === 403) msg = "Bemorlarni qidirish uchun sizda ruxsat yo'q.";
+        else if (r.status === 404) msg = 'Bemor qidiruvi serverda topilmadi. Sahifani yangilab ko\'ring.';
+        return { error: msg || "Bemorlarni qidirib bo'lmadi." };
+      }
+      return (r.data.patients || []).map((p) => patientOption(normalizePatient(p)));
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -474,6 +508,8 @@
       try { res = await o.source(q); } catch (e) { res = null; }
       if (mine !== seq) return;
       if (res === null) { options = []; renderList('<li class="wh-combo-msg" role="presentation">Qidirishda xatolik. Qayta urinib ko\'ring.</li>'); return; }
+      // A source may answer {error: 'text'} to say exactly why nothing can be shown (e.g. no permission).
+      if (!Array.isArray(res)) { options = []; renderList('<li class="wh-combo-msg" role="presentation">' + esc(res.error || 'Qidirishda xatolik.') + '</li>'); return; }
       options = res;
       active = options.length ? 0 : -1;
       if (!options.length) { renderList('<li class="wh-combo-msg" role="presentation">Hech narsa topilmadi.</li>'); return; }
@@ -544,15 +580,6 @@
   }
   function patientOption(p) {
     return { id: p.id, label: p.name || p.id, sub: [p.code, p.phone].filter(Boolean).join(' · '), raw: p };
-  }
-  async function patientSource(q) {
-    let list;
-    try { list = await loadPatients(); } catch (e) { return null; }
-    const needle = q.toLowerCase();
-    return list.filter((p) =>
-      String(p.name || '').toLowerCase().indexOf(needle) >= 0 ||
-      String(p.code || '').toLowerCase().indexOf(needle) >= 0 ||
-      String(p.phone || '').toLowerCase().indexOf(needle) >= 0).slice(0, 15).map(patientOption);
   }
 
   // ---------------------------------------------------------------------------
@@ -668,7 +695,39 @@
   // ===========================================================================
   // DASHBOARD
   // ===========================================================================
-  const DASH = { alerts: [], alertsError: '', alertFilter: 'all', summary: null };
+  const ALERT_PAGE = 50;
+  const DASH = { alerts: [], alertsTotal: null, alertsError: '', alertFilter: 'all', alertSeq: 0, alertsBusy: false, summary: null };
+
+  /** Alerts are paged from the server (limit/offset/type). `total` is the full count for the current filter. */
+  function alertsUrl(offset) {
+    return '/alerts' + qs({ status: 'active', limit: ALERT_PAGE, offset: offset, type: DASH.alertFilter === 'all' ? '' : DASH.alertFilter });
+  }
+  function applyAlerts(r, append) {
+    if (!r.ok) {
+      if (!append) { DASH.alerts = []; DASH.alertsTotal = null; }
+      DASH.alertsError = r.data.error;
+      return;
+    }
+    DASH.alertsError = '';
+    const rows = r.data.alerts || [];
+    if (append) {
+      // Rows can shift between two requests (an alert resolves): keep each alert once.
+      const seen = {};
+      DASH.alerts.forEach((a) => { if (a.id !== undefined) seen[a.id] = true; });
+      DASH.alerts = DASH.alerts.concat(rows.filter((a) => a.id === undefined || !seen[a.id]));
+    } else DASH.alerts = rows;
+    DASH.alertsTotal = (r.data.total !== undefined && r.data.total !== null) ? Number(r.data.total) : null;
+  }
+  async function reloadAlerts(append) {
+    const mine = ++DASH.alertSeq;
+    DASH.alertsBusy = true;
+    renderAlerts();
+    const r = await api('GET', alertsUrl(append ? DASH.alerts.length : 0));
+    if (mine !== DASH.alertSeq) return;
+    DASH.alertsBusy = false;
+    applyAlerts(r, append);
+    renderAlerts();
+  }
 
   async function loadDashboard() {
     const panel = $('#panel-dashboard');
@@ -676,7 +735,7 @@
       panel.innerHTML = '<div class="wh-kpi-grid" aria-busy="true">' +
         new Array(6).join('<span class="wh-skel wh-skel-kpi"></span>') + '</div>' + '<div class="wh-card">' + loadingHtml(5) + '</div>';
     }
-    const results = await Promise.all([api('GET', '/summary'), api('GET', '/alerts' + qs({ status: 'active' }))]);
+    const results = await Promise.all([api('GET', '/summary'), api('GET', alertsUrl(0))]);
     const sum = results[0], al = results[1];
     S.stale.dashboard = false;
     if (!sum.ok) {
@@ -686,13 +745,14 @@
     }
     S.loaded.dashboard = true;
     DASH.summary = sum.data;
-    S.costs = sum.data.total_value !== undefined;
+    noteCosts(sum.data);
     if (sum.data.settings) {
       S.settings.default_min_stock = sum.data.settings.default_min_stock;
       S.settings.expiry_warning_days = sum.data.settings.expiry_warning_days;
     }
-    DASH.alerts = al.ok ? (al.data.alerts || []) : [];
-    DASH.alertsError = al.ok ? '' : al.data.error;
+    DASH.alertSeq++;
+    DASH.alertsBusy = false;
+    applyAlerts(al, false);
     renderDashboard();
   }
 
@@ -722,7 +782,7 @@
         ? '<ul class="wh-unit-lines">' + units.map((u) => '<li><b>' + fmtQty(u.qty) + '</b><span>' + esc(u.unit) + '</span></li>').join('') + '</ul>'
         : '<div class="wh-kpi-value is-zero">0</div>') +
       '<div class="wh-kpi-sub">Har bir birlik alohida sanaladi</div></div>';
-    if (S.costs) {
+    if (S.costs && sum.total_value !== undefined) {
       kpis += kpiHtml({ cls: 'k-money', label: 'Ombor qiymati', money: true, valueHtml: fmtMoney(sum.total_value),
         sub: 'Yaroqli: ' + fmtMoney(sum.available_value) + '<br>Muddati o\'tgan: ' + fmtMoney(sum.expired_value) });
     }
@@ -771,19 +831,28 @@
     const host = $('#dash-alerts');
     if (!host) return;
     const all = DASH.alerts;
+    const f = DASH.alertFilter;
+    // Counts per type are known only for what is loaded; show them once everything is loaded,
+    // otherwise only the server's total for the current filter.
+    const complete = DASH.alertsTotal === null || all.length >= DASH.alertsTotal;
     const counts = { all: all.length, out_of_stock: 0, low_stock: 0, expired: 0, expiring_soon: 0 };
     all.forEach((a) => { if (counts[a.alert_type] !== undefined) counts[a.alert_type]++; });
-    const f = DASH.alertFilter;
     const shown = all.filter((a) => f === 'all' || a.alert_type === f);
+    const chipCount = (key) => {
+      if (key === f && DASH.alertsTotal !== null) return DASH.alertsTotal;
+      return (complete && f === 'all') || key === f ? counts[key] : null;
+    };
     const chips = [['all', 'Hammasi'], ['out_of_stock', 'Tugagan'], ['low_stock', 'Kam qoldiq'], ['expired', "Muddati o'tgan"], ['expiring_soon', 'Muddati yaqin']]
-      .map((c) => '<button type="button" class="wh-chip" data-action="alert-filter" data-filter="' + c[0] + '" aria-pressed="' + (f === c[0]) + '">' +
-        esc(c[1]) + ' <span>' + counts[c[0]] + '</span></button>').join('');
+      .map((c) => {
+        const n = chipCount(c[0]);
+        return '<button type="button" class="wh-chip" data-action="alert-filter" data-filter="' + c[0] + '" aria-pressed="' + (f === c[0]) + '">' +
+          esc(c[1]) + (n === null ? '' : ' <span>' + n + '</span>') + '</button>';
+      }).join('');
     let body;
-    if (DASH.alertsError) body = errorHtml(DASH.alertsError, 'dash-retry');
-    else if (!shown.length) body = emptyHtml('fa-circle-check', 'Ogohlantirish yo\'q', all.length ? 'Bu turdagi ogohlantirish yo\'q.' : 'Hamma mahsulot normada: kam qoldiq ham, muddati yaqin partiya ham yo\'q.');
+    if (DASH.alertsError) body = errorHtml(DASH.alertsError, 'alerts-retry');
+    else if (!shown.length) body = emptyHtml('fa-circle-check', 'Ogohlantirish yo\'q', f !== 'all' ? 'Bu turdagi ogohlantirish yo\'q.' : 'Hamma mahsulot normada: kam qoldiq ham, muddati yaqin partiya ham yo\'q.');
     else {
-      const LIMIT = 80;
-      body = '<ul class="wh-list wh-scroll">' + shown.slice(0, LIMIT).map((a) => {
+      body = '<ul class="wh-list wh-scroll">' + shown.map((a) => {
         const unit = a.base_unit || '';
         let info;
         if (a.alert_type === 'low_stock' || a.alert_type === 'out_of_stock') {
@@ -796,14 +865,20 @@
           '<span class="wh-row-main"><strong>' + esc(a.item_name) + '</strong><small>' + badge(a.alert_type, ALERT_LABEL[a.alert_type] || a.alert_type) +
           (a.batch_no ? ' &nbsp;Partiya: ' + esc(a.batch_no) : '') + '</small></span>' +
           '<span class="wh-row-side">' + info + '</span></button></li>';
-      }).join('') + '</ul>' + (shown.length > LIMIT ? '<div class="wh-pager"><span>Yana ' + (shown.length - LIMIT) + ' ta ogohlantirish bor. To\'liq ro\'yxat: Mahsulotlar bo\'limi.</span></div>' : '');
+      }).join('') + '</ul>';
+      const more = DASH.alertsTotal !== null && all.length < DASH.alertsTotal;
+      body += '<div class="wh-pager"><span>' + (DASH.alertsTotal !== null ? all.length + ' / ' + DASH.alertsTotal + ' ta ogohlantirish yuklandi' : all.length + ' ta ogohlantirish') + '</span>' +
+        (more ? '<button type="button" class="wh-btn wh-btn-sm" data-action="alerts-more"' + (DASH.alertsBusy ? ' disabled aria-busy="true"' : '') + '>Yana yuklash</button>' : '') + '</div>';
     }
     host.innerHTML = '<div class="wh-card-head"><h2 class="wh-card-title"><i class="fas fa-bell" aria-hidden="true"></i> Faol ogohlantirishlar</h2></div>' +
       '<div class="wh-chips" style="padding-bottom:10px">' + chips + '</div>' + body;
   }
 
   ACTIONS['dash-retry'] = () => { S.loaded.dashboard = false; loadDashboard(); };
-  ACTIONS['alert-filter'] = (t) => { DASH.alertFilter = t.dataset.filter; renderAlerts(); };
+  // A filter is a server query (type=): the loaded page of "all" may not contain a single alert of the chosen kind.
+  ACTIONS['alert-filter'] = (t) => { DASH.alertFilter = t.dataset.filter; reloadAlerts(false); };
+  ACTIONS['alerts-more'] = () => { if (!DASH.alertsBusy) reloadAlerts(true); };
+  ACTIONS['alerts-retry'] = () => reloadAlerts(false);
   ACTIONS['goto-tab'] = (t) => switchTab(t.dataset.tab);
   ACTIONS['kpi'] = (t) => {
     const f = t.dataset.filter;
@@ -827,10 +902,20 @@
     ['stock_status', 'Holat'], ['min_stock_level', 'Minimal qoldiq'], ['shortage', 'Yetishmovchilik']
   ];
 
+  function sortList() { return SORTS.concat(S.costs ? [['stock_value', 'Qiymati']] : []); }
+  /** Rebuild the sort box (cost sort appears or disappears) without touching the other filters. */
+  function paintSortOptions() {
+    const sel = $('#inv-sort');
+    if (!sel) return;
+    const cur = INV.sort;
+    sel.innerHTML = sortList().map((x) => '<option value="' + x[0] + '">' + esc(x[1]) + '</option>').join('');
+    sel.value = cur;
+  }
+
   function ensureInvShell() {
     if (INV.shell) return;
     const panel = $('#panel-inventory');
-    const sorts = SORTS.concat(S.costs ? [['stock_value', 'Qiymati']] : []);
+    const sorts = sortList();
     panel.innerHTML =
       '<div class="wh-card">' +
         '<div class="wh-toolbar">' +
@@ -907,7 +992,7 @@
     S.loaded.inventory = true;
     INV.items = r.data.items || [];
     INV.total = r.data.total || 0;
-    if (INV.items.length) S.costs = S.costs || INV.items[0].avg_unit_cost !== undefined;
+    noteCosts(INV.items);
     rememberCategories(INV.items);
     // A page past the end (rows were removed meanwhile) goes back to the last page.
     if (!INV.items.length && INV.total > 0 && INV.offset > 0) {
@@ -1037,7 +1122,7 @@
     layer.item = it;
     const unit = it.base_unit;
     const costs = it.avg_unit_cost !== undefined;
-    if (costs) S.costs = true;
+    noteCosts(it);
     layer.setTitle(it.name + (it.strength ? ' ' + it.strength : ''),
       [typeLabel(it.item_type), it.category, it.sku].filter(Boolean).join(' · '));
 
@@ -1118,7 +1203,7 @@
     const it = ITEMS[t.dataset.id];
     if (!it) return;
     while (layers.length) layers[layers.length - 1].close();
-    LED.item_id = it.id; LED.itemLabel = it.name; LED.offset = 0; LED.type = '';
+    LED.item_id = it.id; LED.itemLabel = it.name + (it.strength ? ' ' + it.strength : ''); LED.offset = 0; LED.type = '';
     S.stale.ledger = true;
     switchTab('ledger');
   };
@@ -1581,7 +1666,7 @@
   // --- Receipt editor --------------------------------------------------------------
   let lineSeq = 0;
   function newLine() {
-    return { key: ++lineSeq, mode: 'existing', item: null, ni: null, packages: '', price: '', batch: '', expiry: '' };
+    return { key: ++lineSeq, mode: 'existing', item: null, ni: null, packages: '', price: '', noCharge: false, batch: '', expiry: '' };
   }
   function newReceiptState() {
     return { requestId: newRequestId(), supplierId: '', newSupplier: false, supplierName: '', invoice: '', date: todayISO(), method: 'cash', notes: '', lines: [newLine()], submitting: false };
@@ -1665,7 +1750,7 @@
     $$('.wh-line', $('#rc-lines') || document.createElement('div')).forEach((card) => {
       const L = RC.form.lines.find((x) => x.key === Number(card.dataset.key));
       if (!L) return;
-      $$('[data-f]', card).forEach((e) => { L[e.dataset.f] = e.value; });
+      $$('[data-f]', card).forEach((e) => { L[e.dataset.f] = e.type === 'checkbox' ? e.checked : e.value; });
       const ni = $('.wh-newitem', card);
       if (L.mode === 'new' && ni) L.ni = rawItemValues(ni);
     });
@@ -1727,6 +1812,9 @@
         field('Partiya raqami', '<input class="wh-input" data-f="batch" maxlength="64" autocomplete="off" value="' + esc(L.batch) + '">') +
         field('Yaroqlilik muddati <span data-exp-req></span>', '<input class="wh-input" type="date" data-f="expiry" value="' + esc(L.expiry) + '" min="' + todayISO() + '">') +
       '</div>' +
+      '<label class="wh-check" style="margin-top:10px"><input type="checkbox" data-f="noCharge"' + (L.noCharge ? ' checked' : '') + '>' +
+        '<span>Bepul namuna (no_charge)</span></label>' +
+      '<div class="wh-hint" data-nc-hint></div>' +
       '<div class="wh-line-calc" data-calc></div><div class="wh-line-error" data-lerr role="alert" hidden></div></div>';
   }
 
@@ -1759,6 +1847,14 @@
     if (hint && L.item) {
       hint.textContent = L.item.package_unit ? '1 ' + L.item.package_unit + ' = ' + NF_QTY.format(Number(L.item.units_per_package)) + ' ' + L.item.base_unit : 'Qadoqsiz: son ' + L.item.base_unit + ' hisobida.';
     } else if (hint) hint.textContent = '';
+    // Price 0 is only accepted for a free sample, and a free sample must really have price 0:
+    // the checkbox makes that an explicit decision instead of a typing slip.
+    const ncHint = $('[data-nc-hint]', card);
+    if (ncHint) {
+      const pz = parseDec(L.price, 2);
+      ncHint.textContent = pz === ZERO && !L.noCharge ? 'Narx 0: bepul namuna bo\'lsa, yuqoridagi katakchani belgilang. Aks holda narxni kiriting.'
+        : (L.noCharge ? 'Bepul namuna: narx 0 bo\'lishi kerak.' : 'Narx 0 bo\'lsa, bepul namuna ekanini belgilash shart.');
+    }
     const c = calcLine(L, card);
     const calc = $('[data-calc]', card);
     if (!c.valid) {
@@ -1790,7 +1886,7 @@
     if (!card) return;
     const L = RC.form.lines.find((x) => x.key === Number(card.dataset.key));
     if (!L) return;
-    if (e.target.dataset && e.target.dataset.f) L[e.target.dataset.f] = e.target.value;
+    if (e.target.dataset && e.target.dataset.f) L[e.target.dataset.f] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     card.classList.remove('has-error');
     const er = $('[data-lerr]', card);
     if (er) er.hidden = true;
@@ -1847,7 +1943,7 @@
         er.hidden = false;
         target = card;
         if (field) {
-          const map = { packages: 'packages', package_price: 'price', batch_no: 'batch', expiry_date: 'expiry' };
+          const map = { packages: 'packages', package_price: 'price', batch_no: 'batch', expiry_date: 'expiry', no_charge: 'noCharge' };
           let inp = null;
           if (map[field]) inp = $('[data-f="' + map[field] + '"]', card);
           else if (field === 'item_id') inp = $('[data-combo] input', card);
@@ -1890,13 +1986,17 @@
       }
       const c = calcLine(L, card);
       if (parseDec(L.packages, 3) === null || parseDec(L.packages, 3) <= ZERO) return { error: where + "qadoq soni noldan katta raqam bo'lishi kerak (ko'pi bilan 3 ta kasr).", lineKey: L.key, field: 'packages' };
-      if (parseDec(L.price, 2) === null) return { error: where + "qadoq narxi 0 yoki undan katta raqam bo'lishi kerak (ko'pi bilan 2 ta kasr).", lineKey: L.key, field: 'package_price' };
+      const priceDec = parseDec(L.price, 2);
+      if (priceDec === null) return { error: where + "qadoq narxi 0 yoki undan katta raqam bo'lishi kerak (ko'pi bilan 2 ta kasr).", lineKey: L.key, field: 'package_price' };
+      if (priceDec === ZERO && !L.noCharge) return { error: where + "qadoq narxi 0. Bu bepul namuna bo'lsa, «Bepul namuna» katakchasini belgilang, aks holda narxni kiriting.", lineKey: L.key, field: 'no_charge' };
+      if (priceDec !== ZERO && L.noCharge) return { error: where + "bepul namuna uchun narx 0 bo'lishi kerak: narxni 0 qiling yoki katakchani olib tashlang.", lineKey: L.key, field: 'no_charge' };
       if (!c.valid) return { error: where + 'miqdorni hisoblab bo\'lmadi: qadoqdagi miqdorni tekshiring.', lineKey: L.key, field: 'packages' };
       if (!c.u.allowFraction && !c.whole) return { error: where + (c.u.name || 'mahsulot') + ' butun sonlarda hisoblanadi: ' + fmtScaled(c.qty3, 3, 0) + ' chiqdi.', lineKey: L.key, field: 'packages' };
       if (c.u.trackExpiry && !L.expiry) return { error: where + 'yaroqlilik muddati kiritilishi shart.', lineKey: L.key, field: 'expiry_date' };
       if (L.expiry && L.expiry < todayISO()) return { error: where + 'muddati o\'tgan mahsulotni qabul qilib bo\'lmaydi.', lineKey: L.key, field: 'expiry_date' };
       out.packages = canonicalNumber(L.packages);
       out.package_price = canonicalNumber(L.price);
+      if (L.noCharge) out.no_charge = true;
       if (L.batch.trim()) out.batch_no = L.batch.trim();
       if (L.expiry) out.expiry_date = L.expiry;
       lines.push(out);
@@ -1932,9 +2032,12 @@
       if (!r.ok) {
         let msg = r.data.error || 'Saqlab bo\'lmadi.';
         if (r.status === 0) msg += ' Hujjat yuborilgan bo\'lishi mumkin: qayta yuborsangiz takrorlanmaydi (xavfsiz).';
-        const m = /^(\d+)-qator/.exec(msg);
-        const L = m ? F.lines[Number(m[1]) - 1] : null;
-        showReceiptError(msg, L ? L.key : null, r.data.field);
+        // The server names the line in the message ("3-qator: …") and, in newer builds, in the field itself ("lines[2].package_price").
+        let fld = r.data.field, L = null;
+        const fm = /^lines?(?:\[(\d+)\]|\.(\d+))\.?(.*)$/.exec(String(fld || ''));
+        if (fm) { L = F.lines[Number(fm[1] !== undefined ? fm[1] : fm[2])] || null; fld = fm[3] || ''; }
+        if (!L) { const m = /^(\d+)-qator/.exec(msg); L = m ? F.lines[Number(m[1]) - 1] : null; }
+        showReceiptError(msg, L ? L.key : null, fld);
         return;
       }
       let rec = r.data;
@@ -1978,7 +2081,7 @@
       '<div class="wh-card" id="ds-hist" style="margin-top:16px"></div>';
     DS.shell = true;
     DS.combo = makeCombo($('#ds-pick [data-combo]'), {
-      placeholder: 'Bemor ismi, kodi yoki telefoni…', ariaLabel: 'Bemorni qidirish', source: patientSource, minChars: 2, openOnFocus: false,
+      placeholder: 'Bemor ismi, kodi yoki telefoni…', ariaLabel: 'Bemorni qidirish', source: makePatientSource(), minChars: 2, openOnFocus: false,
       onChange: (opt) => { if (opt) selectPatient(opt.raw); }
     });
     renderHistShell();
@@ -2295,7 +2398,7 @@
       onChange: (opt) => { if (LED.syncing) return; LED.item_id = opt ? opt.id : ''; LED.itemLabel = opt ? opt.label : ''; reload(); }
     });
     LED.patCombo = makeCombo($('#led-patient'), {
-      placeholder: 'Bemor ismi yoki kodi…', ariaLabel: 'Bemor bo\'yicha', source: patientSource, minChars: 2, openOnFocus: false,
+      placeholder: 'Bemor ismi yoki kodi…', ariaLabel: 'Bemor bo\'yicha', source: makePatientSource(), minChars: 2, openOnFocus: false,
       onChange: (opt) => { if (LED.syncing) return; LED.patient_id = opt ? opt.id : ''; LED.patientLabel = opt ? opt.label : ''; reload(); }
     });
     [['led-type', 'type'], ['led-from', 'from'], ['led-to', 'to']].forEach((p) =>
@@ -2305,10 +2408,18 @@
   function syncLedControls() {
     LED.syncing = true;
     try {
-      if (LED.item_id && !LED.itemCombo.value) LED.itemCombo.set({ id: LED.item_id, label: LED.itemLabel || LED.item_id, sub: '' });
-      if (!LED.item_id && LED.itemCombo.value) LED.itemCombo.clear();
-      if (LED.patient_id && !LED.patCombo.value) LED.patCombo.set({ id: LED.patient_id, label: LED.patientLabel || LED.patient_id, sub: '' });
-      if (!LED.patient_id && LED.patCombo.value) LED.patCombo.clear();
+      // Always show the item/patient the filter really holds: opening "Harakatlar" from item B's drawer
+      // while item A was picked must not leave A's label above B's rows.
+      const cur = LED.itemCombo.value;
+      if (LED.item_id && (!cur || String(cur.id) !== String(LED.item_id) || (LED.itemLabel && cur.label !== LED.itemLabel))) {
+        LED.itemCombo.set({ id: LED.item_id, label: LED.itemLabel || LED.item_id, sub: '' });
+      }
+      if (!LED.item_id && cur) LED.itemCombo.clear();
+      const curP = LED.patCombo.value;
+      if (LED.patient_id && (!curP || String(curP.id) !== String(LED.patient_id) || (LED.patientLabel && curP.label !== LED.patientLabel))) {
+        LED.patCombo.set({ id: LED.patient_id, label: LED.patientLabel || LED.patient_id, sub: '' });
+      }
+      if (!LED.patient_id && curP) LED.patCombo.clear();
     } finally { LED.syncing = false; }
     $('#led-type').value = LED.type; $('#led-from').value = LED.from; $('#led-to').value = LED.to;
   }
@@ -2326,6 +2437,7 @@
     S.loaded.ledger = true;
     LED.rows = r.data.transactions || [];
     LED.total = r.data.total || 0;
+    noteCosts(LED.rows);
     if (!LED.rows.length && LED.total > 0 && LED.offset > 0) { LED.offset = 0; loadLedger(); return; }
     renderLedger();
   }
@@ -2340,19 +2452,22 @@
       return;
     }
     const costs = LED.rows[0].unit_cost !== undefined;
+    // The server's is_reversed flag is authoritative: the reversal row may sit on another page or outside the filter.
+    // Older servers send no flag, so the visible page is still scanned as a fallback.
     const reversed = {};
     LED.rows.forEach((t) => { if (t.reversal_of) reversed[t.reversal_of] = t.id; });
+    const isReversed = (t) => t.is_reversed === true || t.is_reversed === 1 || !!reversed[t.id];
     body.innerHTML = '<div class="wh-table-wrap"><table class="wh-table wh-stack wh-compact"><thead><tr><th>Vaqt</th><th>Tur</th><th>Mahsulot</th><th>Partiya</th><th class="wh-right">O\'zgarish</th><th class="wh-right">Qoldiq (oldin → keyin)</th>' +
       (costs ? '<th class="wh-right">Tannarx</th><th class="wh-right">Qiymat</th>' : '') + '<th>Sabab / bog\'liq</th><th>Xodim</th><th></th></tr></thead><tbody>' +
       LED.rows.map((t) => {
         const delta = Number(t.qty_delta);
         const links = [];
         if (t.reversal_of) links.push('↩ #' + esc(t.reversal_of) + ' qaytarildi');
-        if (reversed[t.id]) links.push(badge('reversed', 'Qaytarilgan'));
+        if (isReversed(t)) links.push(badge('reversed', 'Qaytarilgan') + (t.reversal_id ? ' <span class="wh-mono">#' + esc(t.reversal_id) + '</span>' : ''));
         if (t.receipt_id) links.push('<button type="button" class="wh-btn wh-btn-sm wh-btn-ghost" style="min-height:22px;padding:0 4px" data-action="open-receipt" data-id="' + esc(t.receipt_id) + '">' + esc(t.receipt_id) + '</button>');
         if (t.dispensing_id) links.push('<span class="wh-mono">' + esc(t.dispensing_id) + '</span>');
         if (t.patient_id) links.push('Bemor ' + esc(t.patient_id));
-        const canRev = S.whWrite && REVERSIBLE_TXN.indexOf(t.txn_type) >= 0 && !reversed[t.id] && !t.reversal_of;
+        const canRev = S.whWrite && REVERSIBLE_TXN.indexOf(t.txn_type) >= 0 && !isReversed(t) && !t.reversal_of;
         return '<tr><td data-label="Vaqt" class="wh-nowrap">' + fmtDateTime(t.created_at) + '<span class="wh-cell-sub wh-mono">#' + esc(t.id) + '</span></td>' +
           '<td data-label="Tur">' + badge(t.txn_type === 'reversal' ? 'reversal' : (delta >= 0 ? 'ok' : 'low'), TXN_LABEL[t.txn_type] || t.txn_type) + '</td>' +
           '<td data-label="Mahsulot"><button type="button" class="wh-btn wh-btn-ghost wh-btn-sm" style="padding:0;min-height:0;text-align:left;white-space:normal;font-weight:700" data-action="open-item" data-id="' + esc(t.item_id) + '">' + esc(t.item_name) + '</button></td>' +
@@ -2450,7 +2565,7 @@
     });
     if (item) combo.set(itemOption(Object.assign({ item_type: preItem.item_type, available_quantity: preItem.available_quantity }, preItem)));
     makeCombo($('[data-pcombo]', layer.body), {
-      placeholder: 'Bemor ismi yoki kodi…', ariaLabel: 'Bemor', source: patientSource, minChars: 2, openOnFocus: false,
+      placeholder: 'Bemor ismi yoki kodi…', ariaLabel: 'Bemor', source: makePatientSource(), minChars: 2, openOnFocus: false,
       onChange: (opt) => { patient = opt ? opt.id : null; }
     });
     paintUnit(); paintBatches();
@@ -2503,22 +2618,45 @@
   // ===========================================================================
   // REPORTS (Hisobotlar)
   // ===========================================================================
-  const RP = { name: 'stock', from: '', to: '', item: null, rep: null, shell: false, itemCombo: null, seq: 0 };
+  // RP.rep is always the reply of ONE request: its report name (repName), the parameters that were
+  // sent (repParams) and the rows. The export buttons use those captured values, never the current
+  // controls, so a file always matches the table on screen even if the person changed a date meanwhile.
+  const RP = { name: 'stock', from: '', to: '', item: null, rep: null, repName: '', repParams: null, shell: false, itemCombo: null, seq: 0 };
   const TOTAL_LABEL = {
     total_value: 'Jami qiymat', expired_value: "Muddati o'tgan qiymat", available_value: 'Yaroqli qiymat',
     total_amount: 'Jami summa (tasdiqlangan)', ok: 'Hisoblar mosligi', items_checked: 'Tekshirilgan mahsulotlar'
   };
+  const EXPORT_LIMIT = 5000;   // the server's maximum rows per report request
 
   function reportDef() { return REPORTS.find((r) => r.id === RP.name) || REPORTS[0]; }
+  function reportDefById(id) { return REPORTS.find((r) => r.id === id) || REPORTS[0]; }
+  function reportList() { return REPORTS.filter((r) => !r.cost || S.costs); }
+  function reportOptionsHtml(list) { return list.map((r) => '<option value="' + r.id + '">' + esc(r.label) + '</option>').join(''); }
+
+  /** Cost reports appear when cost visibility is (re)decided; the chosen report stays selected when still allowed. */
+  function paintReportOptions() {
+    const sel = $('#rp-name');
+    if (!sel) return;
+    const list = reportList();
+    if (!list.some((r) => r.id === RP.name)) { RP.name = list[0].id; RP.seq++; RP.rep = null; }
+    sel.innerHTML = reportOptionsHtml(list);
+    sel.value = RP.name;
+    paintReportControls();
+  }
+
+  /** Any change of report, dates or product makes a reply still in flight obsolete. */
+  function reportInputsChanged() {
+    RP.seq++;
+    renderReport();
+  }
 
   function ensureReportShell() {
     if (RP.shell) return;
-    const list = REPORTS.filter((r) => !r.cost || S.costs);
+    const list = reportList();
     if (!list.some((r) => r.id === RP.name)) RP.name = list[0].id;
     $('#panel-reports').innerHTML =
       '<div class="wh-card"><div class="wh-toolbar">' +
-        '<label class="wh-field wh-grow"><span class="wh-label">Hisobot</span><select class="wh-select" id="rp-name">' +
-          list.map((r) => '<option value="' + r.id + '">' + esc(r.label) + '</option>').join('') + '</select></label>' +
+        '<label class="wh-field wh-grow"><span class="wh-label">Hisobot</span><select class="wh-select" id="rp-name">' + reportOptionsHtml(list) + '</select></label>' +
         '<label class="wh-field js-rp-dates"><span class="wh-label">Sanadan</span><input class="wh-input" type="date" id="rp-from"></label>' +
         '<label class="wh-field js-rp-dates"><span class="wh-label">Sanagacha</span><input class="wh-input" type="date" id="rp-to"></label>' +
         '<div class="wh-field wh-grow js-rp-item"><span class="wh-label">Mahsulot <span class="wh-req">*</span></span><div id="rp-item"></div></div>' +
@@ -2527,12 +2665,12 @@
     RP.shell = true;
     RP.itemCombo = makeCombo($('#rp-item'), {
       placeholder: 'Mahsulot nomi…', ariaLabel: 'Mahsulot', source: itemSource({ active: '' }),
-      onChange: (opt) => { RP.item = opt; }
+      onChange: (opt) => { RP.item = opt; reportInputsChanged(); }
     });
     $('#rp-name').value = RP.name;
-    $('#rp-name').addEventListener('change', (e) => { RP.name = e.target.value; RP.rep = null; paintReportControls(); renderReport(); });
-    $('#rp-from').addEventListener('change', (e) => { RP.from = e.target.value; });
-    $('#rp-to').addEventListener('change', (e) => { RP.to = e.target.value; });
+    $('#rp-name').addEventListener('change', (e) => { RP.name = e.target.value; RP.rep = null; paintReportControls(); reportInputsChanged(); });
+    $('#rp-from').addEventListener('change', (e) => { RP.from = e.target.value; reportInputsChanged(); });
+    $('#rp-to').addEventListener('change', (e) => { RP.to = e.target.value; reportInputsChanged(); });
     paintReportControls();
     renderReport();
   }
@@ -2543,9 +2681,12 @@
     $$('.js-rp-item').forEach((n) => { n.hidden = !d.item; });
   }
 
-  function reportParams(extra) {
-    const d = reportDef();
+  function reportParams(extra, def) {
+    const d = def || reportDef();
     return Object.assign({ from: d.dates ? RP.from : '', to: d.dates ? RP.to : '', item_id: d.item && RP.item ? RP.item.id : '' }, extra || {});
+  }
+  function sameParams(a, b) {
+    return JSON.stringify([a.from || '', a.to || '', a.item_id || '']) === JSON.stringify([b.from || '', b.to || '', b.item_id || '']);
   }
 
   async function loadReports() {
@@ -2556,18 +2697,24 @@
   }
 
   async function runReport() {
-    const d = reportDef();
+    // Everything the request depends on is captured BEFORE the await: a reply that arrives after the
+    // person switched report, dates or product is dropped (seq) and can never be filed under the wrong name.
+    const name = RP.name;
+    const d = reportDefById(name);
     const body = $('#rp-body');
     if (d.item && !RP.item) { body.innerHTML = emptyHtml('fa-box-open', 'Mahsulotni tanlang', 'Bu hisobot bitta mahsulot bo\'yicha tuziladi.'); return; }
     if (RP.from && RP.to && RP.to < RP.from) { toast("Tugash sanasi boshlanish sanasidan oldin bo'lishi mumkin emas.", 'warning'); return; }
+    const params = reportParams(null, d);
     const mine = ++RP.seq;
     body.innerHTML = loadingHtml(6);
     $('#rp-actions').hidden = true;
-    const r = await api('GET', '/reports/' + encodeURIComponent(RP.name) + qs(reportParams()));
+    const r = await api('GET', '/reports/' + encodeURIComponent(name) + qs(params));
     if (mine !== RP.seq) return;
     if (!r.ok) { RP.rep = null; body.innerHTML = errorHtml(r.data.error, 'rp-run'); return; }
     RP.rep = r.data;
-    RP.repName = RP.name;
+    RP.repName = name;
+    RP.repParams = params;
+    noteCosts(r.data.rows || []);
     renderReport();
   }
 
@@ -2601,10 +2748,20 @@
       return;
     }
     const cols = rep.columns || [], rows = rep.rows || [], totals = rep.totals || {};
+    // total_rows / truncated come from the server; an older server sends neither and the page behaves as before.
+    const total = (rep.total_rows !== undefined && rep.total_rows !== null) ? Number(rep.total_rows) : null;
+    const truncated = rep.truncated === true || (total !== null && total > rows.length);
+    const outdated = RP.repParams && !sameParams(RP.repParams, reportParams(null, reportDefById(RP.repName)));
     acts.hidden = false;
-    acts.innerHTML = '<span class="wh-hint" style="align-self:center">' + rows.length + ' qator</span>' +
-      '<button type="button" class="wh-btn wh-btn-sm" data-action="rp-csv"><i class="fas fa-file-csv" aria-hidden="true"></i> CSV (Excel uchun)</button>' +
-      '<button type="button" class="wh-btn wh-btn-sm" data-action="rp-xlsx"><i class="fas fa-file-excel" aria-hidden="true"></i> Excel (.xlsx)</button>';
+    acts.innerHTML = '<span class="wh-hint" style="align-self:center">' + (total !== null && total !== rows.length ? rows.length + ' / ' + total : rows.length) + ' qator</span>' +
+      '<button type="button" class="wh-btn wh-btn-sm" data-action="rp-csv"><i class="fas fa-file-csv" aria-hidden="true"></i> CSV (,)</button>' +
+      '<button type="button" class="wh-btn wh-btn-sm" data-action="rp-csv-semi" title="Excel (o\'zbek, rus tillaridagi sozlamalar) ustunlarni to\'g\'ri ochadi"><i class="fas fa-file-csv" aria-hidden="true"></i> CSV (Excel, ;)</button>' +
+      '<button type="button" class="wh-btn wh-btn-sm" data-action="rp-xlsx"><i class="fas fa-file-excel" aria-hidden="true"></i> Excel (.xlsx)</button>' +
+      (outdated ? '<span class="wh-hint" style="align-self:center">Sozlamalar o\'zgargan: yangi natija uchun «Ko\'rsatish» ni bosing. Fayllar jadvaldagi natija bo\'yicha yuklanadi.</span>' : '');
+    const warn = truncated
+      ? '<div class="wh-card-body" style="padding-bottom:0"><div class="wh-note is-warn" role="status">Natija to\'liq emas: faqat birinchi ' + rows.length + ' qator ko\'rsatilmoqda' +
+        (total !== null ? ' (jami ' + total + ')' : '') + '. CSV va Excel fayllarda ' + EXPORT_LIMIT + ' qatorgacha yuklanadi.</div></div>'
+      : '';
     const totalKeys = Object.keys(totals);
     const totalHtml = totalKeys.length ? '<div class="wh-card-body" style="padding-bottom:0"><dl class="wh-dl">' + totalKeys.map((k) => {
       let v = totals[k];
@@ -2614,12 +2771,12 @@
       return dlRow(TOTAL_LABEL[k] || k, v);
     }).join('') + '</dl></div>' : '';
     if (!rows.length) {
-      body.innerHTML = totalHtml + (RP.name === 'reconciliation' && totals.ok
+      body.innerHTML = totalHtml + (RP.repName === 'reconciliation' && totals.ok
         ? '<div class="wh-card-body"><div class="wh-note is-ok">Ombor qoldig\'i, partiyalar va harakat daftari barcha mahsulotda mos keladi.</div></div>'
         : emptyHtml('fa-circle-check', 'Ma\'lumot yo\'q', 'Tanlangan hisobot bo\'yicha qator topilmadi.'));
       return;
     }
-    body.innerHTML = totalHtml + '<div class="wh-table-wrap" style="margin-top:12px"><table class="wh-table wh-compact"><thead><tr>' +
+    body.innerHTML = warn + totalHtml + '<div class="wh-table-wrap" style="margin-top:12px"><table class="wh-table wh-compact"><thead><tr>' +
       cols.map((c) => '<th scope="col">' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
       rows.map((r) => '<tr>' + cols.map((c) => {
         const v = r[c.key];
@@ -2640,13 +2797,53 @@
 
   ACTIONS['rp-run'] = () => runReport();
   ACTIONS['rp-csv'] = async (t) => {
+    const rep = RP.rep, name = RP.repName, params = RP.repParams;
+    if (!rep || !params) return;
     await runBusy(t, async () => {
       let res;
-      try { res = await fetch(API + '/reports/' + encodeURIComponent(RP.repName) + qs(reportParams({ format: 'csv' })), { credentials: 'same-origin' }); }
+      try { res = await fetch(API + '/reports/' + encodeURIComponent(name) + qs(Object.assign({}, params, { format: 'csv', limit: EXPORT_LIMIT })), { credentials: 'same-origin' }); }
       catch (e) { toast("Server bilan aloqa yo'q.", 'error'); return; }
       if (!res.ok) { toast('Faylni yuklab bo\'lmadi.', 'error'); return; }
       const blob = await res.blob();
-      downloadBlob(blob, 'ombor-' + RP.repName + '-' + todayISO() + '.csv');
+      downloadBlob(blob, 'ombor-' + name + '-' + todayISO() + '.csv');
+      if (res.headers && res.headers.get('X-Truncated') === '1') toast('CSV faylda faqat birinchi ' + EXPORT_LIMIT + ' qator bor: natija to\'liq emas. Sanalarni toraytiring.', 'warning');
+    });
+  };
+
+  /** The rows of the shown report; when the screen holds only the first page, fetch up to EXPORT_LIMIT with the SAME parameters. */
+  async function exportRows() {
+    const rep = RP.rep, name = RP.repName, params = RP.repParams;
+    if (!rep || !params) return null;
+    const truncated = rep.truncated === true || (rep.total_rows != null && Number(rep.total_rows) > (rep.rows || []).length);
+    if (!truncated) return { cols: rep.columns || [], rows: rep.rows || [], name: name, partial: false };
+    const r = await api('GET', '/reports/' + encodeURIComponent(name) + qs(Object.assign({}, params, { limit: EXPORT_LIMIT })));
+    if (!r.ok) { toast(r.data.error || 'Faylni tayyorlab bo\'lmadi.', 'error'); return null; }
+    return { cols: r.data.columns || [], rows: r.data.rows || [], name: name, partial: r.data.truncated === true };
+  }
+
+  function csvField(v) {
+    let s = String(v == null ? '' : v);
+    // A text cell that starts like a formula (a product name typed as "=1+1") would be run by Excel: a leading apostrophe makes it plain text.
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  /** ";"-delimited UTF-8 file with BOM and decimal commas: Excel in uz/ru locales opens it in separate columns. */
+  function buildSemicolonCsv(cols, rows) {
+    const lines = [cols.map((c) => csvField(c.label)).join(';')];
+    rows.forEach((r) => {
+      lines.push(cols.map((c) => {
+        const v = reportCellText(c, r[c.key]);
+        return typeof v === 'number' ? String(v).replace('.', ',') : csvField(v);
+      }).join(';'));
+    });
+    return '﻿' + lines.join('\r\n') + '\r\n';
+  }
+  ACTIONS['rp-csv-semi'] = async (t) => {
+    await runBusy(t, async () => {
+      const data = await exportRows();
+      if (!data) return;
+      downloadBlob(new Blob([buildSemicolonCsv(data.cols, data.rows)], { type: 'text/csv;charset=utf-8' }), 'ombor-' + data.name + '-' + todayISO() + '-excel.csv');
+      if (data.partial) toast('Faylda faqat birinchi ' + EXPORT_LIMIT + ' qator bor: natija to\'liq emas.', 'warning');
     });
   };
 
@@ -2665,18 +2862,20 @@
     return xlsxPromise;
   }
   ACTIONS['rp-xlsx'] = async (t) => {
-    const rep = RP.rep;
-    if (!rep) return;
+    if (!RP.rep) return;
     await runBusy(t, async () => {
       let X;
       try { X = await loadXlsx(); } catch (e) { toast('Excel kutubxonasini yuklab bo\'lmadi. CSV dan foydalaning.', 'error'); return; }
-      const cols = rep.columns || [];
-      const aoa = [cols.map((c) => c.label)].concat((rep.rows || []).map((r) => cols.map((c) => reportCellText(c, r[c.key]))));
+      const data = await exportRows();
+      if (!data) return;
+      const cols = data.cols;
+      const aoa = [cols.map((c) => c.label)].concat(data.rows.map((r) => cols.map((c) => reportCellText(c, r[c.key]))));
       const ws = X.utils.aoa_to_sheet(aoa);
       const wb = X.utils.book_new();
-      const sheet = (reportDef().label || 'Hisobot').replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31);
+      const sheet = (reportDefById(data.name).label || 'Hisobot').replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31);
       X.utils.book_append_sheet(wb, ws, sheet);
-      X.writeFile(wb, 'ombor-' + RP.repName + '-' + todayISO() + '.xlsx');
+      X.writeFile(wb, 'ombor-' + data.name + '-' + todayISO() + '.xlsx');
+      if (data.partial) toast('Faylda faqat birinchi ' + EXPORT_LIMIT + ' qator bor: natija to\'liq emas.', 'warning');
     });
   };
 
@@ -2759,6 +2958,8 @@
     S.whRead = can('warehouse', 'read');
     S.whWrite = can('warehouse', 'write');
     S.accWrite = S.whRead && can('accounting', 'write');
+    S.costsPerm = S.whRead && (can('accounting', 'write') || can('owner', 'read'));
+    S.costs = S.costsPerm;
     if (!S.whRead) { fatal("Ombor bo'limiga kirish huquqingiz yo'q."); return; }
     $('#tab-dispensing').hidden = !S.whWrite;
     $('#wh-subtitle').textContent = S.whWrite

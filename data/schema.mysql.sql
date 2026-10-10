@@ -1175,19 +1175,27 @@ SELECT
 CREATE TRIGGER trg_inv_txn_no_update BEFORE UPDATE ON inventory_transactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_transactions is append-only';
 CREATE TRIGGER trg_inv_txn_no_delete BEFORE DELETE ON inventory_transactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_transactions is append-only';
 
--- Low stock means strictly BELOW the threshold (it used to be <=).
+-- Low stock means strictly BELOW the threshold (it used to be <=), judged on
+-- what can really be given: on-hand minus the lots past their expiry.
 CREATE OR REPLACE VIEW v_pharmacy_low_stock AS
 SELECT
-    id AS medication_id,
-    name AS medication_name,
-    category,
-    form,
-    stock_quantity,
-    min_stock_level,
-    (min_stock_level - stock_quantity) AS deficit_quantity,
-    unit_price
-FROM medications_catalog
-WHERE stock_quantity < min_stock_level AND is_active = 1
-ORDER BY (stock_quantity - min_stock_level) ASC;
+    mc.id AS medication_id,
+    mc.name AS medication_name,
+    mc.category,
+    mc.form,
+    mc.stock_quantity,
+    (mc.stock_quantity - COALESCE(ex.expired_qty, 0)) AS available_quantity,
+    mc.min_stock_level,
+    (mc.min_stock_level - (mc.stock_quantity - COALESCE(ex.expired_qty, 0))) AS deficit_quantity,
+    mc.unit_price
+FROM medications_catalog mc
+LEFT JOIN (
+    SELECT item_id, SUM(remaining_qty) AS expired_qty
+    FROM inventory_batches
+    WHERE remaining_qty > 0 AND expiry_date IS NOT NULL AND expiry_date < CURDATE()
+    GROUP BY item_id
+) ex ON ex.item_id = mc.id
+WHERE (mc.stock_quantity - COALESCE(ex.expired_qty, 0)) < mc.min_stock_level AND mc.is_active = 1
+ORDER BY ((mc.stock_quantity - COALESCE(ex.expired_qty, 0)) - mc.min_stock_level) ASC;
 
 SET FOREIGN_KEY_CHECKS = 1;

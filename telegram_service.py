@@ -417,9 +417,13 @@ def fetch_comprehensive_financial_data(target_date=None):
     """)
     invoice_items = [dict(r) for r in cur.fetchall()]
 
-    # 5. Medications Catalog (Pharmacy Valuation)
+    # 5. Medications Catalog (Pharmacy Valuation). Valued at what the clinic
+    # paid (weighted-average cost), NOT at the patient price; an item whose cost
+    # is not known yet (opening stock) is shown as "—" and adds nothing to the total.
     cur.execute("""
-        SELECT *, (stock_quantity * unit_price) AS total_value
+        SELECT *,
+               CASE WHEN avg_unit_cost > 0 THEN avg_unit_cost ELSE NULL END AS unit_cost,
+               CASE WHEN avg_unit_cost > 0 THEN stock_quantity * avg_unit_cost ELSE NULL END AS total_value
         FROM medications_catalog
         ORDER BY name ASC
     """)
@@ -917,7 +921,7 @@ def generate_comprehensive_excel(data, output_path):
     t5.fill = PatternFill(start_color=NAVY, fill_type="solid")
     t5.alignment = Alignment(horizontal="center", vertical="center")
 
-    headers_med = ["№", "Dori Nomi", "Kategoriya", "Formasi", "Qoldiq (Soni)", "Min Me'yor", "Birlik Narxi (UZS)", "Zaxira Qiymati (UZS)"]
+    headers_med = ["№", "Dori Nomi", "Kategoriya", "Formasi", "Qoldiq (Soni)", "Min Me'yor", "O'rtacha tannarx (UZS)", "Zaxira Qiymati (UZS)"]
     ws5.row_dimensions[2].height = 24
     for c_i, h in enumerate(headers_med, start=1):
         cell = ws5.cell(row=2, column=c_i, value=h)
@@ -928,11 +932,11 @@ def generate_comprehensive_excel(data, output_path):
 
     r_med = 3
     for idx, med in enumerate(data["pharmacy_stock"], start=1):
-        tot_val = float(med.get("total_value") or 0)
+        tot_val = float(med["total_value"]) if med.get("total_value") is not None else "—"
         vals = [
             idx, med.get("name"), med.get("category"), med.get("form"),
             float(med.get("stock_quantity") or 0), float(med.get("min_stock_level") or 0),
-            float(med.get("unit_price") or 0), tot_val
+            float(med["unit_cost"]) if med.get("unit_cost") is not None else "—", tot_val
         ]
         for c_i, val in enumerate(vals, start=1):
             cell = ws5.cell(row=r_med, column=c_i, value=val)
@@ -1261,7 +1265,7 @@ def generate_comprehensive_pdf(data, output_path):
         Paragraph("Formasi", th_style),
         Paragraph("Qoldiq", th_style),
         Paragraph("Min Me'yor", th_style),
-        Paragraph("Birlik Narxi", th_style),
+        Paragraph("O'rtacha tannarx", th_style),
         Paragraph("Zaxira Qiymati (UZS)", th_style)
     ]
     med_data = [med_heads]
@@ -1275,8 +1279,8 @@ def generate_comprehensive_pdf(data, output_path):
             Paragraph(str(med.get("form") or ""), td_style),
             Paragraph(_fmt_qty(med.get("stock_quantity")), td_style),
             Paragraph(_fmt_qty(med.get("min_stock_level")), td_style),
-            Paragraph(format_currency(med.get("unit_price")), td_right),
-            Paragraph(format_currency(med.get("total_value")), td_right),
+            Paragraph(format_currency(med.get("unit_cost")) if med.get("unit_cost") is not None else "—", td_right),
+            Paragraph(format_currency(med.get("total_value")) if med.get("total_value") is not None else "—", td_right),
         ])
 
     med_table = Table(med_data, colWidths=[18, 120, 85, 75, 42, 50, 65, 85])

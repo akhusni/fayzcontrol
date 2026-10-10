@@ -883,7 +883,19 @@ def payment_destination_for(method):
     return account_source_for(method)
 
 
-def new_record_id(cur, table, prefix):
+def _id_used_elsewhere(cur, candidate, probes):
+    """True when `candidate` already appears in one of the (table, column) history probes."""
+    for table, column in probes:
+        try:
+            cur.execute(f"SELECT 1 FROM {table} WHERE {column} = ? LIMIT 1", (candidate,))
+            if cur.fetchone():
+                return True
+        except Exception:
+            pass       # a history table that is not there cannot hold the id
+    return False
+
+
+def new_record_id(cur, table, prefix, history_probes=()):
     """
     A free id of the form PREFIX-####, probed against `table`.
 
@@ -893,11 +905,16 @@ def new_record_id(cur, table, prefix):
     an appointment or a discharge summary the doctor has to type again. The
     probe is safe without a transaction because writes run one at a time
     under WRITE_LOCK. A saturated space falls back to a millisecond stamp.
+
+    `history_probes` are (table, column) pairs of append-only history that
+    keeps ids of rows which may since have been deleted (the warehouse's
+    dispensings): a freed id is not drawn again while history still names it,
+    or the new row would inherit the old one's history.
     """
     for _ in range(200):
         candidate = f"{prefix}-{int(os.urandom(3).hex(), 16) % 9000 + 1000}"
         cur.execute(f"SELECT 1 FROM {table} WHERE id = ? LIMIT 1", (candidate,))
-        if not cur.fetchone():
+        if not cur.fetchone() and not _id_used_elsewhere(cur, candidate, history_probes):
             return candidate
     return f"{prefix}-{int(datetime.datetime.now().timestamp() * 1000)}"
 
@@ -925,6 +942,10 @@ def validate_client_id(raw, field='id'):
     return value, None
 
 
+_PATIENT_HISTORY_PROBES = (('inventory_dispensings', 'patient_id'), ('inventory_transactions', 'patient_id'))
+_RX_HISTORY_PROBES = (('inventory_dispensings', 'prescription_id'),)
+
+
 def new_patient_ids(cur, id_prefix='PAT-2026'):
     """
     A free (id, patient_code) pair sharing the same digits.
@@ -938,7 +959,9 @@ def new_patient_ids(cur, id_prefix='PAT-2026'):
         pid, code = f"{id_prefix}-{n}", f"FMH-2026-{n}"
         cur.execute("SELECT 1 FROM patients WHERE id = ? OR patient_code = ? LIMIT 1",
                     (pid, code))
-        if not cur.fetchone():
+        # Warehouse history is keyed by the plain patient id and outlives a
+        # deleted patient: never hand that id to a new person.
+        if not cur.fetchone() and not _id_used_elsewhere(cur, pid, _PATIENT_HISTORY_PROBES):
             return pid, code
     ms = int(datetime.datetime.now().timestamp() * 1000)
     return f"{id_prefix}-{ms}", f"FMH-2026-{ms}"
@@ -1050,6 +1073,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     user=user,
                     new_data=body if isinstance(body, dict) else None,
                     ip_address=self.client_ip(),
+                    note=audit.note_for(path, response_body),
                 )
             finally:
                 conn.close()
@@ -1101,26 +1125,40 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         self._set_json_headers(e.status)
         self.wfile.write(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
 
-    def _rx_warehouse_fields(self, cur, body):
+    def _rx_warehouse_fields(self, cur, body, fallback_link=None):
         """
         The optional warehouse part of a prescription: (extra_columns, error).
 
         medication_id (must exist in the catalogue), quantity_prescribed and
-        quantity_unit. Nothing is invented: absent stays absent, and a quantity
-        is kept exactly as the doctor wrote it. Prescribing never touches stock.
+        quantity_unit. Nothing is invented: absent stays absent. Prescribing
+        never touches stock.
+
+        When the order is linked to a stock item the quantity is always in THAT
+        item's base unit: the unit text the client sent is ignored. The
+        dispensing cap compares the prescribed number with base units, so a
+        free-text "quti" next to a tablet item used to let 2 boxes be 2 tablets.
+        `fallback_link` is the link the stored order already has (an edit that
+        sends only a quantity).
         """
         extra = {}
         link = str(body.get('medication_id') or '').strip()
+        base_unit = None
         if link:
-            cur.execute("SELECT 1 FROM medications_catalog WHERE id = ?", (link,))
-            if not cur.fetchone():
+            cur.execute("SELECT base_unit FROM medications_catalog WHERE id = ?", (link,))
+            row = cur.fetchone()
+            if not row:
                 return None, ("Ombordagi dori topilmadi.", 'medication_id')
             extra['medication_id'] = link
+            base_unit = row['base_unit']
+        elif fallback_link:
+            cur.execute("SELECT base_unit FROM medications_catalog WHERE id = ?", (fallback_link,))
+            row = cur.fetchone()
+            base_unit = row['base_unit'] if row else None
         if body.get('quantity_prescribed') not in (None, ''):
             try:
                 extra['quantity_prescribed'] = inventory.parse_qty(
                     body.get('quantity_prescribed'), 'quantity_prescribed', 'Buyurilgan miqdor')
-                extra['quantity_unit'] = inventory.parse_text(
+                extra['quantity_unit'] = base_unit or inventory.parse_text(
                     body.get('quantity_unit'), 'quantity_unit', 'Miqdor birligi', 32)
             except inventory.InventoryError as e_rx:
                 return None, (e_rx.message, e_rx.field)
@@ -1128,11 +1166,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def _rx_stock_warning(self, conn, rx_name, extra):
         """Advice for the prescriber when the shelf holds less than was prescribed (never blocks, never writes)."""
-        if extra.get('quantity_prescribed') is None:
+        if extra.get('quantity_prescribed') is None and not extra.get('medication_id'):
             return None
         try:
             return inventory.stock_warning(conn, extra.get('medication_id'), rx_name,
-                                           extra['quantity_prescribed'])
+                                           extra.get('quantity_prescribed'))
         except Exception:
             traceback.print_exc()
             return None
@@ -1151,6 +1189,22 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             traceback.print_exc()
             return []
+
+    # What the clinic PAID: prices, totals, supplier, payment and the linked
+    # expense. For the cash desk, the owner and the superadmin only.
+    PURCHASE_COST_FIELDS = ('unit_price', 'total_price', 'payment_method', 'supplier_name',
+                            'invoice_number', 'accounting_transaction_id', 'notes')
+
+    def _can_see_costs(self):
+        return permissions.can_see_costs((self.current_session() or {}).get('user'))
+
+    def _strip_purchase_costs(self, rows):
+        if self._can_see_costs():
+            return rows
+        for r in rows:
+            for k in self.PURCHASE_COST_FIELDS:
+                r.pop(k, None)
+        return rows
 
     def _stock_actor(self):
         """Who moves stock, for the ledger: the signed-in account, never a name typed into a request."""
@@ -1571,6 +1625,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             'parse_date_param': parse_date_param,
             'normalize_payment_method': normalize_payment_method,
             'account_source_for': account_source_for,
+            'payment_method_aliases': PAYMENT_METHOD_ALIASES,
+            # The write paths run under this lock; the alert refresh a GET
+            # triggers takes it too.
+            'write_lock': WRITE_LOCK,
         }
         status, payload = warehouse_api.handle(method, path, query, body, user, conn, ctx)
         if isinstance(payload, dict) and '_csv' in payload:
@@ -1579,6 +1637,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-Type', 'text/csv; charset=utf-8')
             self.send_header('Content-Disposition', 'attachment; filename="%s"' % payload['_filename'])
             self.send_header('Content-Length', str(len(data)))
+            if payload.get('_truncated'):
+                self.send_header('X-Truncated', '1')
             self.end_headers()
             self.wfile.write(data)
             return
@@ -2149,12 +2209,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 transactions = []
                 ensure_transaction_payroll_month(conn)
                 cur.execute("""
-                    SELECT id, transaction_type AS type, category, description AS title,
-                           amount, payment_method, account_source, related_invoice_id AS invoice_id,
-                           related_staff_id, payroll_month,
-                           transaction_date AS date, '12:00' AS time, 'Kassir' AS cashier, description AS notes
-                    FROM accounting_transactions
-                    ORDER BY transaction_date DESC, id DESC
+                    SELECT atx.id, atx.transaction_type AS type, atx.category, atx.description AS title,
+                           atx.amount, atx.payment_method, atx.account_source,
+                           atx.related_invoice_id AS invoice_id,
+                           atx.related_staff_id, atx.payroll_month,
+                           atx.transaction_date AS date, DATE_FORMAT(atx.created_at, '%H:%i') AS time,
+                           COALESCE(st.full_name, 'Kassir') AS cashier, atx.description AS notes
+                    FROM accounting_transactions atx
+                    LEFT JOIN staff st ON st.id = atx.recorded_by_staff_id
+                    ORDER BY atx.transaction_date DESC, atx.id DESC
                 """)
                 for r in cur.fetchall():
                     transactions.append(dict(r))
@@ -2177,7 +2240,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     LEFT JOIN staff s ON mp.recorded_by_staff_id = s.id
                     ORDER BY mp.purchase_date DESC, mp.created_at DESC
                 """)
-                medication_purchases = [dict(r) for r in cur.fetchall()]
+                medication_purchases = self._strip_purchase_costs([dict(r) for r in cur.fetchall()])
 
                 acc_data = {
                     "clinic_info": {
@@ -2239,6 +2302,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         self._send_validation_error(err, 'start')
                         return
                 usage = nursery.medicine_usage(conn, start_d.isoformat(), end_d.isoformat())
+                if not self._can_see_costs():
+                    # What a dose cost is the clinic's buying price: not for the desk.
+                    usage.pop('total_cost', None)
+                    for _row in usage.get('linked') or []:
+                        _row.pop('cost', None)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(usage, ensure_ascii=False).encode('utf-8'))
 
@@ -2254,7 +2322,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     LEFT JOIN staff s ON mp.recorded_by_staff_id = s.id
                     ORDER BY mp.purchase_date DESC, mp.created_at DESC
                 """)
-                rows = [dict(r) for r in cur.fetchall()]
+                rows = self._strip_purchase_costs([dict(r) for r in cur.fetchall()])
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
@@ -3391,6 +3459,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     # on the lots, in the same transaction as the bill line.
                     item_name = med['name'] + (f" ({med['form']})" if med.get('form') else '')
                     unit_price = float(med['unit_price'] or 0)
+                    if unit_price <= 0:
+                        # No patient price on file: billing it would silently
+                        # hand the medicine over for nothing.
+                        self._send_validation_error(
+                            "Bu dori uchun bemorga narx belgilanmagan. Avval narxni kiriting.", 'service_code')
+                        return
                     item_type = 'medication'
                 else:
                     pricing = load_pricing()
@@ -3573,11 +3647,18 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         _row = cur.fetchone()
                         target_med_id = _row['id'] if _row else None
                     if not target_med_id:
-                        cur.execute("SELECT id FROM medications_catalog WHERE LOWER(name) = LOWER(?) LIMIT 1",
-                                    (it['medication_name'],))
+                        # An active match first; an inactive one is still found so
+                        # the receipt can refuse it by name instead of making a twin.
+                        cur.execute("SELECT id FROM medications_catalog WHERE LOWER(name) = LOWER(?) "
+                                    "ORDER BY is_active DESC, id LIMIT 1", (it['medication_name'],))
                         _row = cur.fetchone()
                         target_med_id = _row['id'] if _row else None
-                    line = {'packages': str(int(it['quantity'])), 'package_price': str(it['unit_price'])}
+                    # This endpoint's contract: quantity in base units and the price
+                    # per unit. Without a box size of its own the line says "1 per
+                    # package", so the item's own package size (10 per box) is not
+                    # multiplied in on top of a quantity that already counts units.
+                    line = {'packages': str(int(it['quantity'])), 'package_price': str(it['unit_price']),
+                            'units_per_package': 1}
                     for _opt in ('units_per_package', 'batch_no', 'expiry_date'):
                         if it.get(_opt) not in (None, ''):
                             line[_opt] = it[_opt]
@@ -3645,9 +3726,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             it['medication_name'],
                             it['category'],
                             it['form'],
-                            it['quantity'],
-                            it['unit_price'],
-                            it['total_price'],
+                            # What went onto the shelf (base units) and what one
+                            # unit cost, so the list and the stock agree.
+                            ln['quantity_base'],
+                            ln['unit_cost'],
+                            ln['line_total'],
                             payment_method,
                             supplier_name or None,
                             invoice_number or None,
@@ -4509,7 +4592,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if _id_err:
                     self._send_validation_error(_id_err, 'id')
                     return
-                rx_id = rx_id or new_record_id(cur, 'prescriptions', 'RX-2026')
+                rx_id = rx_id or new_record_id(cur, 'prescriptions', 'RX-2026', _RX_HISTORY_PROBES)
 
                 med = (body.get('medication_name') or '').strip()
                 duration_days, _err = validate_prescription_fields(body)
@@ -4948,7 +5031,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 saved_rx = []
                 stock_warnings = []
                 for rx, duration, rx_extra in rx_checked:
-                    rx_id = new_record_id(cur, 'prescriptions', 'RX-2026')
+                    rx_id = new_record_id(cur, 'prescriptions', 'RX-2026', _RX_HISTORY_PROBES)
                     med_name = (rx.get('medication_name') or rx.get('name')).strip()
                     # Optional parts stay empty rather than guessed; the
                     # required ones were checked above.
@@ -5776,10 +5859,19 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if rx_row['status'] not in ('active', 'held'):
                     self._send_validation_error("Faqat faol yoki to'xtatilgan retseptni o'zgartirish mumkin.", 'status')
                     return
-                rx_extra, _rx_err = self._rx_warehouse_fields(cur, body)
+                rx_extra, _rx_err = self._rx_warehouse_fields(cur, body, fallback_link=rx_row['medication_id'])
                 if _rx_err:
                     self._send_validation_error(_rx_err[0], _rx_err[1])
                     return
+                if 'medication_id' in rx_extra and 'quantity_prescribed' not in rx_extra:
+                    # A new link with a quantity already on the order: the number
+                    # now means the new item's base unit.
+                    cur.execute("SELECT quantity_prescribed FROM prescriptions WHERE id = ?", (rx_id,))
+                    _old_q = cur.fetchone()
+                    if _old_q and _old_q['quantity_prescribed'] is not None:
+                        cur.execute("SELECT base_unit FROM medications_catalog WHERE id = ?",
+                                    (rx_extra['medication_id'],))
+                        rx_extra['quantity_unit'] = cur.fetchone()['base_unit']
                 clear_qty = 'quantity_prescribed' in body and body.get('quantity_prescribed') in (None, '')
                 if clear_qty:
                     rx_extra['quantity_prescribed'] = None
@@ -5792,7 +5884,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.commit()
                 reply = {'message': 'Prescription updated', 'id': rx_id}
                 _qty = rx_extra.get('quantity_prescribed')
-                if _qty is not None:
+                if _qty is not None or rx_extra.get('medication_id') or rx_row['medication_id']:
                     _w = self._rx_stock_warning(conn, rx_row['medication_name'],
                                                 dict(rx_extra, medication_id=rx_extra.get('medication_id') or rx_row['medication_id']))
                     if _w:
@@ -6307,11 +6399,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 removed_ids = [pur_id]
                 try:
                     if receipt_id:
-                        inventory.reverse_receipt(
-                            conn, receipt_id, f"Xarid yozuvi o'chirildi ({pur_id})", self._stock_actor())
-                        cur.execute("SELECT id FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
-                        removed_ids = [r['id'] for r in cur.fetchall()]
-                        cur.execute("DELETE FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
+                        cur.execute("SELECT status FROM inventory_receipts WHERE id = ?", (receipt_id,))
+                        _rc = cur.fetchone()
+                        if _rc and _rc['status'] == 'posted':
+                            # reverse_receipt also removes every list row of the receipt.
+                            _res = inventory.reverse_receipt(
+                                conn, receipt_id, f"Xarid yozuvi o'chirildi ({pur_id})", self._stock_actor())
+                            removed_ids = _res.get('removed_purchase_ids') or [pur_id]
+                        else:
+                            # The receipt was already reversed or cancelled (from the
+                            # warehouse page, or before rows were removed with it):
+                            # nothing is left to undo, only the stale rows to drop.
+                            # This used to answer 409 for ever.
+                            cur.execute("SELECT id FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
+                            removed_ids = [r['id'] for r in cur.fetchall()] or [pur_id]
+                            cur.execute("DELETE FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
                     else:
                         # Bought before the warehouse existed: there is no
                         # receipt to reverse. Take back what that purchase

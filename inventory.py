@@ -532,20 +532,30 @@ _ITEM_COLUMNS = [
     ('updated_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
 ]
 
+# Low stock is judged on what can really be given: on-hand minus the lots that
+# are past their expiry (the same rule the status and the alerts use). It used
+# to compare the raw on-hand total, so a shelf of expired boxes looked fine.
 LOW_STOCK_VIEW_DDL = """
 CREATE OR REPLACE VIEW v_pharmacy_low_stock AS
 SELECT
-    id AS medication_id,
-    name AS medication_name,
-    category,
-    form,
-    stock_quantity,
-    min_stock_level,
-    (min_stock_level - stock_quantity) AS deficit_quantity,
-    unit_price
-FROM medications_catalog
-WHERE stock_quantity < min_stock_level AND is_active = 1
-ORDER BY (stock_quantity - min_stock_level) ASC"""
+    mc.id AS medication_id,
+    mc.name AS medication_name,
+    mc.category,
+    mc.form,
+    mc.stock_quantity,
+    (mc.stock_quantity - COALESCE(ex.expired_qty, 0)) AS available_quantity,
+    mc.min_stock_level,
+    (mc.min_stock_level - (mc.stock_quantity - COALESCE(ex.expired_qty, 0))) AS deficit_quantity,
+    mc.unit_price
+FROM medications_catalog mc
+LEFT JOIN (
+    SELECT item_id, SUM(remaining_qty) AS expired_qty
+    FROM inventory_batches
+    WHERE remaining_qty > 0 AND expiry_date IS NOT NULL AND expiry_date < CURDATE()
+    GROUP BY item_id
+) ex ON ex.item_id = mc.id
+WHERE (mc.stock_quantity - COALESCE(ex.expired_qty, 0)) < mc.min_stock_level AND mc.is_active = 1
+ORDER BY ((mc.stock_quantity - COALESCE(ex.expired_qty, 0)) - mc.min_stock_level) ASC"""
 
 _TRIGGERS = [
     ('trg_inv_txn_no_update',
@@ -768,9 +778,17 @@ def ensure_schema(conn):
 
 
 def ensure_ready(conn):
-    """Run the migration once per process (cheap guard for services and tests)."""
+    """
+    Refuse (503) when the warehouse schema was not brought up at startup.
+
+    This used to re-run the migration here. A request path often holds an open
+    transaction (a bill line is inserted before the stock is taken), and the
+    migration's ALTER/CREATE statements commit implicitly, so a half-finished
+    request could be committed by it before an out-of-stock refusal rolled it
+    back. The migration now runs only at startup (server.run_server).
+    """
     if not _schema_ready:
-        ensure_schema(conn)
+        raise InventoryError("Ombor jadvallari tayyor emas. Administratorga murojaat qiling.", None, 503)
 
 
 # ---------------------------------------------------------------------------
@@ -977,7 +995,7 @@ def get_item(conn, item_id, can_cost=False):
         b['is_expired'] = bool(b['expiry_date'] and b['expiry_date'] < today)
     cur.execute("""SELECT * FROM inventory_transactions WHERE item_id = ?
                    ORDER BY id DESC LIMIT 20""", (item_id,))
-    ledger = cur.fetchall()
+    ledger = flag_reversed(cur, cur.fetchall())
     if not can_cost:
         strip_costs(item, COST_ITEM_FIELDS)
         for b in batches:
@@ -993,6 +1011,27 @@ def _strip_txn(t):
     for k in ('unit_cost', 'value_delta', 'accounting_transaction_id'):
         t.pop(k, None)
     return t
+
+
+# Fields only accounting may set or change (see _clean_item_fields).
+COST_ONLY_FIELDS = ('min_stock_level', 'unit_price', 'avg_unit_cost', 'last_unit_cost',
+                    'last_package_price', 'package_price')
+ITEM_RULE_FIELDS = ('item_type', 'track_expiry', 'allow_fraction', 'base_unit', 'units_per_package')
+# Once an item has real movements these can no longer change at all.
+ITEM_FROZEN_AFTER_MOVEMENT = ('base_unit', 'units_per_package', 'allow_fraction')
+
+
+def _same_number(a, b):
+    try:
+        return Decimal(str(a).strip()) == _dec(b)
+    except Exception:
+        return False
+
+
+def _same_value(new, old):
+    if isinstance(new, (Decimal, int, float)) or isinstance(old, (Decimal, int, float)):
+        return _same_number(new, old)
+    return str(new) == str(old)
 
 
 def _clean_item_fields(data, cur, existing=None, can_cost=False, creating=False):
@@ -1053,15 +1092,35 @@ def _clean_item_fields(data, cur, existing=None, can_cost=False, creating=False)
             if not cur.fetchone():
                 raise InventoryError("Yetkazib beruvchi topilmadi.", 'supplier_id')
         out['supplier_id'] = sid
-    # Accounting-only fields.
-    for fld, label in (('min_stock_level', 'Minimal qoldiq'), ('unit_price', 'Bemor narxi')):
-        if has(fld) and data.get(fld) not in (None, ''):
-            if not can_cost:
-                raise Forbidden(f"{label}ni faqat buxgalter o'zgartira oladi.")
-            if fld == 'min_stock_level':
-                out[fld] = parse_qty(data[fld], fld, label, allow_zero=True)
-            else:
-                out[fld] = parse_money(data[fld], fld, label)
+    # Accounting-only fields: threshold, patient price and every cost field.
+    # A caller without that right who sends one is refused (403) rather than
+    # silently ignored with a 200, except when the value is the one already
+    # stored (a page that echoes the whole item back changes nothing).
+    for fld in COST_ONLY_FIELDS:
+        if not has(fld) or data.get(fld) in (None, ''):
+            continue
+        if not can_cost:
+            if existing is not None and _same_number(data[fld], existing.get(fld)):
+                continue
+            raise Forbidden("Narx va tannarx faqat buxgalteriya uchun.")
+        if fld == 'min_stock_level':
+            out[fld] = parse_qty(data[fld], fld, 'Minimal qoldiq', allow_zero=True)
+        elif fld == 'unit_price':
+            out[fld] = parse_money(data[fld], fld, 'Bemor narxi')
+        # avg_unit_cost / last_unit_cost / last_package_price / package_price are
+        # derived from receipts (weighted average, last purchase): accepted from
+        # nobody, so a stray value is dropped, never stored.
+    # What an item IS (its type and how it is counted) decides the prescription
+    # rule and what every past quantity meant. Changing it is accounting's; an
+    # unchanged value sent back is ignored.
+    if existing is not None:
+        for k in ITEM_RULE_FIELDS:
+            if k in out:
+                if _same_value(out[k], existing.get(k)):
+                    del out[k]
+                elif not can_cost:
+                    raise Forbidden("Mahsulot turi, o'lchov birligi va qadoq qoidalarini faqat buxgalteriya "
+                                    "o'zgartira oladi.")
     # Fractions: a tablet is counted whole, a solution may be measured.
     frac = out.get('allow_fraction', (existing or {}).get('allow_fraction', 0))
     upp = out.get('units_per_package', (existing or {}).get('units_per_package', Decimal(1)))
@@ -1112,12 +1171,20 @@ def update_item(conn, item_id, data, actor=None, can_cost=False):
     if not existing:
         raise NotFound("Mahsulot topilmadi.")
     fields = _clean_item_fields(data, cur, existing, can_cost, creating=False)
-    # An item with movements keeps its unit and its fraction rule: changing
-    # them would silently change what every earlier quantity meant.
-    cur.execute("SELECT COUNT(*) AS n FROM inventory_transactions WHERE item_id = ?", (item_id,))
+    # An item with movements keeps its unit, its package size and its fraction
+    # rule: changing them would silently change what every earlier quantity
+    # meant. The opening row alone (stock that existed before the ledger) does
+    # not count as history.
+    cur.execute("SELECT COUNT(*) AS n FROM inventory_transactions "
+                "WHERE item_id = ? AND txn_type <> 'opening'", (item_id,))
     moved = int(cur.fetchone()['n']) > 0
-    if moved and 'base_unit' in fields and fields['base_unit'] != existing['base_unit']:
-        raise InventoryError("Harakatlar bo'lgan mahsulotning o'lchov birligini o'zgartirib bo'lmaydi.", 'base_unit')
+    if moved:
+        for k in ITEM_FROZEN_AFTER_MOVEMENT:
+            if k in fields:
+                raise InventoryError("Harakatlar bo'lgan mahsulotning o'lchov birligi, qadoqdagi miqdori va "
+                                     "kasr qoidasini o'zgartirib bo'lmaydi.", k)
+    # Recorded for the audit trail (the HTTP layer turns it into the note).
+    changed_rules = {k: {'from': existing.get(k), 'to': fields[k]} for k in ITEM_RULE_FIELDS if k in fields}
     if ('allow_fraction' in fields and not fields['allow_fraction']
             and not _is_whole(_dec(existing['stock_quantity']))):
         raise InventoryError("Qoldiq kasr son: avval qoldiqni butun songa keltiring.", 'allow_fraction')
@@ -1136,7 +1203,10 @@ def update_item(conn, item_id, data, actor=None, can_cost=False):
         cur.execute(f"UPDATE medications_catalog SET {sets} WHERE id = ?",
                     list(fields.values()) + [item_id])
     refresh_alerts(conn, item_id)
-    return _get_item_row(cur, item_id)
+    row = _get_item_row(cur, item_id)
+    if changed_rules:
+        row['changed_fields'] = changed_rules
+    return row
 
 
 def set_threshold(conn, item_id, value, actor=None):
@@ -1326,9 +1396,7 @@ def get_receipt(conn, receipt_id, can_cost=False):
     return r
 
 
-def list_receipts(conn, filters=None, can_cost=False):
-    f = filters or {}
-    cur = _cursor(conn)
+def _receipt_filter(f):
     where, params = [], []
     if f.get('from'):
         where.append("r.receipt_date >= ?")
@@ -1342,8 +1410,23 @@ def list_receipts(conn, filters=None, can_cost=False):
     if f.get('status'):
         where.append("r.status = ?")
         params.append(f['status'])
-    clause = ('WHERE ' + ' AND '.join(where)) if where else ''
-    limit = max(1, min(int(f.get('limit') or 100), 500))
+    return (('WHERE ' + ' AND '.join(where)) if where else ''), params
+
+
+def receipts_total(conn, filters):
+    """Whole-range sum of POSTED receipts (independent of paging)."""
+    clause, params = _receipt_filter(filters or {})
+    clause = (clause + ' AND ' if clause else 'WHERE ') + "r.status = 'posted'"
+    cur = _cursor(conn)
+    cur.execute(f"SELECT COALESCE(SUM(r.total_amount), 0) AS v FROM inventory_receipts r {clause}", params)
+    return _m(_dec(cur.fetchone()['v']))
+
+
+def list_receipts(conn, filters=None, can_cost=False):
+    f = filters or {}
+    cur = _cursor(conn)
+    clause, params = _receipt_filter(f)
+    limit = max(1, min(int(f.get('limit') or 100), int(f.get('max_limit') or 500)))
     offset = max(0, int(f.get('offset') or 0))
     cur.execute(f"SELECT COUNT(*) AS n FROM inventory_receipts r {clause}", params)
     total = int(cur.fetchone()['n'])
@@ -1358,15 +1441,30 @@ def list_receipts(conn, filters=None, can_cost=False):
     return rows, total
 
 
-def _prepare_line(cur, raw, line_no, receipt_date, today):
-    """Validate one receipt line and work out base quantity and costs."""
+def _prepare_line(cur, raw, line_no, receipt_date, today, new_cache=None):
+    """
+    Validate one receipt line and work out base quantity and costs.
+
+    `new_cache` maps a lower-cased new-item name to the item the first line
+    created, so a second line for the same new drug reuses it instead of
+    colliding with it (a receipt is one transaction, the item exists by then).
+    """
     if not isinstance(raw, dict):
         raise InventoryError(f"{line_no}-qator noto'g'ri.", 'lines')
     where = f"{line_no}-qator: "
     try:
         item_id = raw.get('item_id')
+        item_id = None if item_id in (None, '') else parse_text(item_id, 'item_id', 'Mahsulot', 64)
         if not item_id and isinstance(raw.get('new_item'), dict):
-            item = create_item_in_receipt(cur, raw['new_item'])
+            ni = raw['new_item']
+            key = re.sub(r'\s+', ' ', str(ni.get('name') or '')).strip().lower()
+            if key and new_cache is not None and key in new_cache:
+                cur.execute("SELECT * FROM medications_catalog WHERE id = ?", (new_cache[key],))
+                item = cur.fetchone()
+            else:
+                item = create_item_in_receipt(cur, ni)
+                if key and new_cache is not None:
+                    new_cache[key] = item['id']
         else:
             if not item_id:
                 raise InventoryError("Mahsulot tanlanmagan.", 'item_id')
@@ -1375,7 +1473,8 @@ def _prepare_line(cur, raw, line_no, receipt_date, today):
             if not item:
                 raise InventoryError("Mahsulot topilmadi.", 'item_id')
         if not int(item['is_active']):
-            raise InventoryError(f"{item['name']} faol emas: qabul qilib bo'lmaydi.", 'item_id')
+            raise InventoryError(f"'{item['name']}' mahsuloti nofaol: avval uni ombor sahifasida faollashtiring, "
+                                 f"keyin qabul qiling.", 'item_id')
         packages = parse_decimal(raw.get('packages'), 'packages', 'Qadoqlar soni', 3, ZERO, MAX_QTY)
         upp = raw.get('units_per_package')
         upp = _dec(item['units_per_package']) if upp in (None, '') else parse_decimal(
@@ -1386,6 +1485,14 @@ def _prepare_line(cur, raw, line_no, receipt_date, today):
         if not int(item['allow_fraction']) and not _is_whole(qty):
             raise InventoryError(f"{item['name']} butun sonlarda hisoblanadi: {qty} dona chiqdi.", 'packages')
         price = parse_money(raw.get('package_price'), 'package_price', 'Qadoq narxi')
+        # A zero price is almost always a missing one. A free sample says so
+        # (no_charge) and the receipt notes record it.
+        no_charge = bool(parse_flag(raw.get('no_charge'), 'no_charge', 'Bepul (no_charge)', 0))
+        if price == 0 and not no_charge:
+            raise InventoryError("Qadoq narxi noldan katta bo'lishi kerak. Bepul namuna bo'lsa, "
+                                 "qatorni \"bepul\" (no_charge) deb belgilang.", 'package_price')
+        if price > 0 and no_charge:
+            raise InventoryError("Bepul qatorda narx 0 bo'lishi kerak.", 'package_price')
         expiry = parse_date(raw.get('expiry_date'), 'expiry_date', 'Yaroqlilik muddati')
         if int(item['track_expiry']) and not expiry:
             raise InventoryError(f"{item['name']} uchun yaroqlilik muddati kiritilishi shart.", 'expiry_date')
@@ -1396,7 +1503,7 @@ def _prepare_line(cur, raw, line_no, receipt_date, today):
             'item': item, 'item_id': item['id'], 'item_name': item['name'],
             'packages': _q(packages), 'units_per_package': _q(upp), 'quantity_base': qty,
             'package_price': price, 'unit_cost': _c(price / upp), 'line_total': _m(packages * price),
-            'batch_no': batch_no, 'expiry_date': expiry,
+            'batch_no': batch_no, 'expiry_date': expiry, 'no_charge': no_charge,
         }
     except InventoryError as e:
         e.message = where + e.message
@@ -1433,7 +1540,9 @@ def _client_id(data, required=False):
 def create_receipt(conn, data, actor=None, post=False, payment_method='cash', account_source_fn=None):
     """
     Create a draft receipt (post=True also posts it, in the same transaction).
-    A repeated client_request_id returns the first receipt untouched.
+    A repeated client_request_id returns the first receipt untouched, except
+    that a repeat asking to post a receipt still in draft posts it (the person
+    meant to post it the first time; the draft is not a result to hand back).
     """
     ensure_ready(conn)
     cur = _cursor(conn)
@@ -1441,6 +1550,11 @@ def create_receipt(conn, data, actor=None, post=False, payment_method='cash', ac
     if client_id:
         dup = _find_by_client_id(cur, 'inventory_receipts', client_id, lock=True)
         if dup:
+            cur.execute("SELECT status FROM inventory_receipts WHERE id = ? FOR UPDATE", (dup['id'],))
+            if post and cur.fetchone()['status'] == 'draft':
+                r = post_receipt(conn, dup['id'], actor, account_source_fn)
+                r['resumed_draft'] = True
+                return r
             r = get_receipt(conn, dup['id'], can_cost=True)
             r['duplicate'] = True
             return r
@@ -1453,10 +1567,18 @@ def create_receipt(conn, data, actor=None, post=False, payment_method='cash', ac
         raise InventoryError("Kamida bitta mahsulot qatori kiritilishi shart.", 'lines')
     if len(lines_in) > 200:
         raise InventoryError("Bitta hujjatda 200 tadan ortiq qator bo'lmaydi.", 'lines')
-    sup_id, sup_name = _find_or_create_supplier(cur, data.get('supplier_id'), data.get('supplier_name'))
+    sup_in = data.get('supplier_id')
+    sup_in = None if sup_in in (None, '') else parse_text(sup_in, 'supplier_id', 'Yetkazib beruvchi', 64)
+    sup_id, sup_name = _find_or_create_supplier(cur, sup_in, data.get('supplier_name'))
     invoice_number = parse_text(data.get('invoice_number'), 'invoice_number', 'Hisob-faktura raqami', 128)
     notes = parse_text(data.get('notes'), 'notes', 'Izoh', 2000)
-    prepared = [_prepare_line(cur, raw, i + 1, receipt_date, today) for i, raw in enumerate(lines_in)]
+    new_cache = {}
+    prepared = [_prepare_line(cur, raw, i + 1, receipt_date, today, new_cache)
+                for i, raw in enumerate(lines_in)]
+    free = [p['item_name'] for p in prepared if p['no_charge']]
+    if free:
+        notes = ((notes + ' | ') if notes else '') + "Bepul namuna: " + ', '.join(free)
+        notes = notes[:2000]
     total = _m(sum((p['line_total'] for p in prepared), ZERO))
     username, staff_id = _actor_ref(cur, actor)
     rid = _gen_id(cur, 'inventory_receipts', 'RCP')
@@ -1510,10 +1632,16 @@ def post_receipt(conn, receipt_id, actor=None, account_source_fn=None):
     for iid in sorted({ln['item_id'] for ln in lines}):
         items[iid] = _lock_item(cur, iid)
         if not int(items[iid]['is_active']):
-            raise InventoryError(f"{items[iid]['name']} faol emas: qabul qilib bo'lmaydi.", 'item_id')
+            raise InventoryError(f"'{items[iid]['name']}' mahsuloti nofaol: qabul qilib bo'lmaydi.", 'item_id')
     balances = {iid: _dec(it['stock_quantity']) for iid, it in items.items()}
     avgs = {iid: _dec(it['avg_unit_cost']) for iid, it in items.items()}
     touched_last = {}
+    # The expense is written first so every ledger row of this receipt can carry
+    # its id (ledger rows are append-only: they cannot be updated afterwards).
+    total = _m(sum((_dec(ln['line_total']) for ln in lines), ZERO))
+    acc_id = None
+    if total > 0:
+        acc_id = _record_expense(cur, rec, lines, total, staff_id, account_source_fn)
     for ln in lines:
         iid = ln['item_id']
         qty, cost = _dec(ln['quantity_base']), _dec(ln['unit_cost'])
@@ -1528,10 +1656,10 @@ def post_receipt(conn, receipt_id, actor=None, account_source_fn=None):
         batch_id = cur.lastrowid
         cur.execute("UPDATE inventory_receipt_lines SET batch_id = ? WHERE id = ?", (batch_id, ln['id']))
         before = balances[iid]
-        new_avg = _c((before * avgs[iid] + qty * cost) / (before + qty))
+        new_avg = _blend_avg(before, avgs[iid], qty, cost)
         _write_ledger(cur, 'receipt', iid, batch_id, qty, before, cost, (username, staff_id),
                       source='receipt', operation_id=receipt_id, receipt_id=receipt_id,
-                      supplier_id=rec['supplier_id'], reason=None)
+                      supplier_id=rec['supplier_id'], reason=None, accounting_transaction_id=acc_id)
         balances[iid] = before + qty
         avgs[iid] = new_avg
         touched_last[iid] = (ln['package_price'], cost)
@@ -1541,10 +1669,6 @@ def post_receipt(conn, receipt_id, actor=None, account_source_fn=None):
             extra['supplier_id'] = rec['supplier_id']
         _set_balance(cur, iid, balances[iid], avgs[iid], **extra)
 
-    total = _m(sum((_dec(ln['line_total']) for ln in lines), ZERO))
-    acc_id = None
-    if total > 0:
-        acc_id = _record_expense(cur, rec, lines, total, staff_id, account_source_fn)
     cur.execute("""UPDATE inventory_receipts SET status = 'posted', posted_at = ?, posted_by = ?,
                    total_amount = ?, accounting_transaction_id = ?, accounting_transaction_ref = ?
                    WHERE id = ?""",
@@ -1556,8 +1680,23 @@ def post_receipt(conn, receipt_id, actor=None, account_source_fn=None):
     return r
 
 
+def _blend_avg(on_hand, avg, qty, cost):
+    """Weighted-average cost after `qty` units at `cost` join `on_hand` units at `avg` (4 dp)."""
+    on_hand, qty = _dec(on_hand), _dec(qty)
+    if on_hand + qty <= 0:
+        return _c(cost)
+    return _c((on_hand * _dec(avg) + qty * _dec(cost)) / (on_hand + qty))
+
+
 def _record_expense(cur, rec, lines, total, staff_id, account_source_fn):
-    """The cash-desk expense for a posted receipt (category medication_purchase)."""
+    """
+    The cash-desk expense for a posted receipt (category medication_purchase).
+
+    Dated the day it is posted (the money leaves the till then; the document's
+    own date is in the description when it differs), recorded by whoever
+    posted it, and created_at carries the real time, which the accounting list
+    shows instead of a fixed 12:00.
+    """
     method = rec['payment_method']
     source = account_source_fn(method) if account_source_fn else 'kassa'
     trx_id = _gen_id(cur, 'accounting_transactions', 'TRX-MED-2026')
@@ -1567,14 +1706,16 @@ def _record_expense(cur, rec, lines, total, staff_id, account_source_fn):
         parts.append(f"Yetkazib beruvchi: {rec['supplier_name']}")
     if rec.get('invoice_number'):
         parts.append(f"Chek №: {rec['invoice_number']}")
+    if rec['receipt_date'] != _today():
+        parts.append(f"Hujjat sanasi: {rec['receipt_date']}")
     desc = '. '.join(parts)
     if len(desc) > 500:
         desc = desc[:497] + '...'
     cur.execute("""INSERT INTO accounting_transactions
                    (id, transaction_type, category, amount, payment_method, account_source,
-                    description, transaction_date, recorded_by_staff_id)
-                   VALUES (?, 'expense', 'medication_purchase', ?, ?, ?, ?, ?, ?)""",
-                (trx_id, total, method, source, desc, rec['receipt_date'], staff_id))
+                    description, transaction_date, recorded_by_staff_id, created_at)
+                   VALUES (?, 'expense', 'medication_purchase', ?, ?, ?, ?, ?, ?, ?)""",
+                (trx_id, total, method, source, desc, _today(), staff_id, _now()))
     return trx_id
 
 
@@ -1593,12 +1734,34 @@ def cancel_receipt(conn, receipt_id, actor=None):
     return get_receipt(conn, receipt_id, can_cost=True)
 
 
+# Ledger types that take units off a lot.
+_OUT_TYPES = ('dispense', 'adjustment_out', 'writeoff', 'supplier_return')
+
+
+def _batch_has_outflow(cur, batch_id):
+    """
+    True when units of this lot went to a patient, a write-off, a supplier or a
+    correction and that movement was never reversed. Decided from the ledger,
+    not from remaining == received: a later "increase" into the lot could make
+    the two equal again while the units were long gone.
+    """
+    cur.execute("""SELECT COUNT(*) AS n FROM inventory_transactions t
+                   WHERE t.batch_id = ? AND t.txn_type IN ('dispense', 'adjustment_out', 'writeoff',
+                                                           'supplier_return')
+                     AND NOT EXISTS (SELECT 1 FROM inventory_transactions r WHERE r.reversal_of = t.id)""",
+                (batch_id,))
+    return int(cur.fetchone()['n']) > 0
+
+
 def reverse_receipt(conn, receipt_id, reason, actor=None):
     """
-    Undo a posted receipt: the received quantity leaves the shelf at its receipt
-    cost, ledger rows are appended (never edited), the average cost is recomputed
-    from what remains, and the accounting expense is voided. Refused when any of
-    its stock was already used or written off.
+    Undo a posted receipt: the received quantity leaves the shelf at the item's
+    CURRENT weighted-average cost (so the average itself does not move and
+    valuation stays quantity x average), ledger rows are appended (never
+    edited), the item's "last purchase" fields and supplier go back to the
+    latest remaining posted receipt (or empty), the accounting expense is
+    voided and the accounting list rows of this receipt are removed. Refused
+    when any of its stock was already used or written off.
     """
     ensure_ready(conn)
     cur = _cursor(conn)
@@ -1620,37 +1783,58 @@ def reverse_receipt(conn, receipt_id, reason, actor=None):
         b = cur.fetchone()
         if not b:
             raise InventoryError("Partiya topilmadi.", None, 409)
-        if _dec(b['remaining_qty']) != _dec(b['received_qty']):
+        if _batch_has_outflow(cur, b['id']) or _dec(b['remaining_qty']) != _dec(b['received_qty']):
             raise InventoryError(
                 f"{ln['item_name']}: bu kirimdagi mahsulotning bir qismi allaqachon ishlatilgan, "
                 f"qaytarib bo'lmaydi. Qoldiq uchun tuzatish (korreksiya) kiriting.", 'status', 409)
         batches[ln['id']] = b
     balances = {iid: _dec(it['stock_quantity']) for iid, it in items.items()}
     avgs = {iid: _dec(it['avg_unit_cost']) for iid, it in items.items()}
+    acc_id = rec['accounting_transaction_id']
     for ln in lines:
         iid, b = ln['item_id'], batches[ln['id']]
-        qty, cost = _dec(ln['quantity_base']), _dec(b['unit_cost'])
+        qty = _dec(ln['quantity_base'])
         cur.execute("SELECT id FROM inventory_transactions WHERE txn_type = 'receipt' AND batch_id = ?",
                     (b['id'],))
         orig = cur.fetchone()
         before = balances[iid]
-        value_before = before * avgs[iid]
         remaining = before - qty
         if remaining < 0:
             raise InventoryError("Ombor qoldig'i hisobi mos kelmayapti: qaytarib bo'lmaydi.", None, 409)
         cur.execute("UPDATE inventory_batches SET remaining_qty = 0 WHERE id = ?", (b['id'],))
-        _write_ledger(cur, 'reversal', iid, b['id'], -qty, before, cost, (username, staff_id),
+        # Out at the average of this moment: the average is untouched, so the
+        # ledger value and the valuation stay one number.
+        _write_ledger(cur, 'reversal', iid, b['id'], -qty, before, avgs[iid], (username, staff_id),
                       source='receipt_reversal', operation_id=receipt_id, receipt_id=receipt_id,
                       supplier_id=rec['supplier_id'], reason=reason,
-                      reversal_of=orig['id'] if orig else None)
+                      reversal_of=orig['id'] if orig else None, accounting_transaction_id=acc_id)
         balances[iid] = remaining
-        if remaining > 0:
-            avgs[iid] = _c(max((value_before - qty * cost) / remaining, ZERO))
-    for iid in items:
-        _set_balance(cur, iid, balances[iid], avgs[iid])
     cur.execute("""UPDATE inventory_receipts SET status = 'reversed', reversed_at = ?, reversed_by = ?,
                    reverse_reason = ? WHERE id = ?""", (_now(), username, reason, receipt_id))
-    acc_id = rec['accounting_transaction_id']
+    for iid, it in items.items():
+        # Latest purchase still standing (this receipt is already 'reversed').
+        cur.execute("""SELECT l.package_price, l.unit_cost FROM inventory_receipt_lines l
+                       JOIN inventory_receipts r ON r.id = l.receipt_id
+                       WHERE l.item_id = ? AND r.status = 'posted'
+                       ORDER BY r.posted_at DESC, l.id DESC LIMIT 1""", (iid,))
+        last = cur.fetchone()
+        extra = {'last_package_price': last['package_price'] if last else None,
+                 'last_unit_cost': last['unit_cost'] if last else None}
+        # The item's supplier is only taken back when this receipt is what set it.
+        if rec['supplier_id'] and it['supplier_id'] == rec['supplier_id']:
+            cur.execute("""SELECT r.supplier_id FROM inventory_receipt_lines l
+                           JOIN inventory_receipts r ON r.id = l.receipt_id
+                           WHERE l.item_id = ? AND r.status = 'posted' AND r.supplier_id IS NOT NULL
+                           ORDER BY r.posted_at DESC, l.id DESC LIMIT 1""", (iid,))
+            prev_sup = cur.fetchone()
+            extra['supplier_id'] = prev_sup['supplier_id'] if prev_sup else None
+        _set_balance(cur, iid, balances[iid], avgs[iid], **extra)
+    # The accounting list keeps one row per bought line; they go with the
+    # receipt, wherever the reversal was started (warehouse page or old DELETE).
+    cur.execute("SELECT id FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
+    removed_purchases = [r['id'] for r in cur.fetchall()]
+    if removed_purchases:
+        cur.execute("DELETE FROM medication_purchases WHERE receipt_id = ?", (receipt_id,))
     if acc_id:
         # The expense is voided (the purchase did not happen), as the old
         # DELETE of a medication purchase did. The receipt keeps the id in
@@ -1660,6 +1844,8 @@ def reverse_receipt(conn, receipt_id, reason, actor=None):
         refresh_alerts(conn, iid)
     r = get_receipt(conn, receipt_id, can_cost=True)
     r['duplicate'] = False
+    r['removed_purchase_ids'] = removed_purchases
+    r['deleted_expense_id'] = acc_id
     return r
 
 
@@ -1674,9 +1860,15 @@ def _resolve_item_for_rx(cur, rx):
     return row['id'] if row else None
 
 
-def _dispensed_so_far(cur, prescription_id):
+def _dispensed_so_far(cur, prescription_id, patient_id):
+    """
+    Completed quantity for one prescription. Matched on the prescription AND
+    its patient: ids of deleted prescriptions can be drawn again, and a new
+    order must not inherit what an old one with the same id was given.
+    """
     cur.execute("""SELECT COALESCE(SUM(quantity), 0) AS q FROM inventory_dispensings
-                   WHERE prescription_id = ? AND status = 'completed'""", (prescription_id,))
+                   WHERE prescription_id = ? AND patient_id = ? AND status = 'completed'""",
+                (prescription_id, patient_id))
     return _dec(cur.fetchone()['q'])
 
 
@@ -1780,7 +1972,7 @@ def dispense(conn, data, actor=None, source='manual'):
     # was already given to the patient: capping it would leave the dose
     # recorded but the stock untouched.
     if rx is not None and rx.get('quantity_prescribed') is not None and source != 'nurse_round':
-        remaining = _dec(rx['quantity_prescribed']) - _dispensed_so_far(cur, rx_id)
+        remaining = _dec(rx['quantity_prescribed']) - _dispensed_so_far(cur, rx_id, pid)
         if qty > remaining:
             raise InventoryError(f"Retseptda qolgan miqdor: {max(remaining, ZERO)} {item['base_unit']}. "
                                  f"Bundan ko'p berib bo'lmaydi.", 'quantity')
@@ -1893,9 +2085,7 @@ def get_dispensing(conn, dispensing_id, can_cost=False):
     return r
 
 
-def list_dispensings(conn, filters=None, can_cost=False):
-    f = filters or {}
-    cur = _cursor(conn)
+def _dispensing_filter(f):
     where, params = [], []
     for key, col in (('patient_id', 'patient_id'), ('item_id', 'item_id'),
                      ('prescription_id', 'prescription_id'), ('status', 'status')):
@@ -1908,8 +2098,23 @@ def list_dispensings(conn, filters=None, can_cost=False):
     if f.get('to'):
         where.append("created_at < ?")
         params.append(f['to'] + _dt.timedelta(days=1))
-    clause = ('WHERE ' + ' AND '.join(where)) if where else ''
-    limit = max(1, min(int(f.get('limit') or 100), 500))
+    return (('WHERE ' + ' AND '.join(where)) if where else ''), params
+
+
+def dispensings_total_cost(conn, filters):
+    """Whole-range cost of COMPLETED dispensings (independent of paging)."""
+    clause, params = _dispensing_filter(filters or {})
+    clause = (clause + ' AND ' if clause else 'WHERE ') + "status = 'completed'"
+    cur = _cursor(conn)
+    cur.execute(f"SELECT COALESCE(SUM(total_cost), 0) AS v FROM inventory_dispensings {clause}", params)
+    return _m(_dec(cur.fetchone()['v']))
+
+
+def list_dispensings(conn, filters=None, can_cost=False):
+    f = filters or {}
+    cur = _cursor(conn)
+    clause, params = _dispensing_filter(f)
+    limit = max(1, min(int(f.get('limit') or 100), int(f.get('max_limit') or 500)))
     offset = max(0, int(f.get('offset') or 0))
     cur.execute(f"SELECT COUNT(*) AS n FROM inventory_dispensings {clause}", params)
     total = int(cur.fetchone()['n'])
@@ -1949,15 +2154,27 @@ def reverse_dispensing(conn, dispensing_id, reason, actor=None):
         qty = _dec(lot['quantity'])
         if _dec(b['remaining_qty']) + qty > _dec(b['received_qty']):
             raise InventoryError("Partiya qoldig'i hisobi mos kelmayapti: qaytarib bo'lmaydi.", None, 409)
+        # The units come back at the cost the dispensing recorded (the ledger
+        # row it wrote), so the reversal's value cancels the original exactly,
+        # and the average is recomputed as if they were received at that cost.
+        # Putting them back at today's average left a value gap whenever the
+        # average had moved in between.
+        cost = avg
+        if lot['txn_id']:
+            cur.execute("SELECT unit_cost FROM inventory_transactions WHERE id = ?", (lot['txn_id'],))
+            orig = cur.fetchone()
+            if orig:
+                cost = _dec(orig['unit_cost'])
         cur.execute("UPDATE inventory_batches SET remaining_qty = ? WHERE id = ?",
                     (_q(_dec(b['remaining_qty']) + qty), b['id']))
-        _write_ledger(cur, 'reversal', d['item_id'], b['id'], qty, balance, avg, (username, staff_id),
+        _write_ledger(cur, 'reversal', d['item_id'], b['id'], qty, balance, cost, (username, staff_id),
                       source='dispensing_reversal', operation_id=dispensing_id,
                       patient_id=d['patient_id'], prescription_id=d['prescription_id'],
                       consultation_id=d['consultation_id'], admission_id=d['admission_id'],
                       dispensing_id=dispensing_id, reason=reason, reversal_of=lot['txn_id'])
+        avg = _blend_avg(balance, avg, qty, cost)
         balance += qty
-    _set_balance(cur, d['item_id'], balance)
+    _set_balance(cur, d['item_id'], balance, avg)
     cur.execute("""UPDATE inventory_dispensings SET status = 'reversed', reversed_at = ?, reversed_by = ?,
                    reverse_reason = ? WHERE id = ?""", (_now(), username, reason, dispensing_id))
     refresh_alerts(conn, d['item_id'])
@@ -2051,7 +2268,7 @@ def stock_warning(conn, medication_id, medication_name, prescribed):
     blocks the prescription and nothing here writes to stock.
     """
     ensure_ready(conn)
-    if prescribed is None:
+    if prescribed is None and not medication_id:
         return None
     import nursery
     cur = _cursor(conn)
@@ -2059,6 +2276,16 @@ def stock_warning(conn, medication_id, medication_name, prescribed):
     if not row:
         return None
     item = _get_item_row(cur, row['id'])
+    if not item['is_active']:
+        # An inactive item can never be handed out, whatever the shelf holds.
+        return {'item_id': item['id'], 'item_name': item['name'], 'inactive': True,
+                'available_quantity': _dec(item['available_quantity']),
+                'prescribed_quantity': None if prescribed is None else _q(_dec(prescribed)),
+                'unit': item['base_unit'],
+                'message': f"{item['name']} omborda faol emas: bu dori berilmaydi. Boshqa dori tanlang "
+                           f"yoki ombor mas'uli bilan kelishing."}
+    if prescribed is None:
+        return None
     available, wanted = _dec(item['available_quantity']), _dec(prescribed)
     if available >= wanted:
         return None
@@ -2082,10 +2309,10 @@ def enrich_prescriptions(conn, rows):
     cur = _cursor(conn)
     ids = [r['id'] for r in rows]
     marks = ','.join(['?'] * len(ids))
-    cur.execute(f"""SELECT prescription_id, SUM(quantity) AS q FROM inventory_dispensings
+    cur.execute(f"""SELECT prescription_id, patient_id, SUM(quantity) AS q FROM inventory_dispensings
                     WHERE status = 'completed' AND prescription_id IN ({marks})
-                    GROUP BY prescription_id""", ids)
-    given = {r['prescription_id']: _dec(r['q']) for r in cur.fetchall()}
+                    GROUP BY prescription_id, patient_id""", ids)
+    given = {(r['prescription_id'], r['patient_id']): _dec(r['q']) for r in cur.fetchall()}
     alias_key, by_name, by_alias = _item_lookup(cur)
     items = {i['id']: i for i in _fetch_items(cur, '', (), _today())}
     for rx in rows:
@@ -2094,7 +2321,7 @@ def enrich_prescriptions(conn, rows):
             key = alias_key(rx.get('medication_name'))
             iid = by_name.get(key) or by_alias.get(key)
         prescribed = rx.get('quantity_prescribed')
-        done = given.get(rx['id'], ZERO)
+        done = given.get((rx['id'], rx.get('patient_id')), ZERO)
         rx['quantity_dispensed'] = _q(done)
         rx['remaining_quantity'] = None if prescribed is None else _q(max(_dec(prescribed) - done, ZERO))
         it = items.get(iid)
@@ -2133,9 +2360,10 @@ def pending_prescriptions(conn, patient_id=None, limit=200):
     items = {i['id']: i for i in _fetch_items(cur, '', (), today)}
     ids = [r['id'] for r in rxs]
     marks = ','.join(['?'] * len(ids))
-    cur.execute(f"""SELECT prescription_id, SUM(quantity) AS q FROM inventory_dispensings
-                    WHERE status = 'completed' AND prescription_id IN ({marks}) GROUP BY prescription_id""", ids)
-    given = {r['prescription_id']: _dec(r['q']) for r in cur.fetchall()}
+    cur.execute(f"""SELECT prescription_id, patient_id, SUM(quantity) AS q FROM inventory_dispensings
+                    WHERE status = 'completed' AND prescription_id IN ({marks})
+                    GROUP BY prescription_id, patient_id""", ids)
+    given = {(r['prescription_id'], r['patient_id']): _dec(r['q']) for r in cur.fetchall()}
     out = []
     for rx in rxs:
         iid = None
@@ -2148,7 +2376,7 @@ def pending_prescriptions(conn, patient_id=None, limit=200):
             continue
         it = items[iid]
         prescribed = rx['quantity_prescribed']
-        done = given.get(rx['id'], ZERO)
+        done = given.get((rx['id'], rx['patient_id']), ZERO)
         remaining = None if prescribed is None else _q(max(_dec(prescribed) - done, ZERO))
         if remaining is not None and remaining <= 0:
             continue
@@ -2177,10 +2405,28 @@ def _ledger_group(cur, operation_id):
     return cur.fetchall()
 
 
-def adjust(conn, data, actor=None):
+def parse_int_id(value, field, label):
+    """A numeric id from JSON or a query string: ASCII digits only. None when absent."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, bool) or isinstance(value, (list, dict, float)):
+        raise InventoryError(f"{label} noto'g'ri.", field)
+    text = str(value).strip()
+    if not re.fullmatch(r'[0-9]{1,18}', text):
+        raise InventoryError(f"{label} noto'g'ri.", field)
+    return int(text)
+
+
+def adjust(conn, data, actor=None, no_expiry_ok=False):
     """
     A stock correction, write-off, supplier return or patient return. The reason
     is mandatory; a repeated client_request_id returns the first result.
+
+    Units that come back at a cost reference (into a named lot) are valued at
+    that lot's cost and the average is recomputed as a weighted receipt; units
+    added with no reference keep the current average. `no_expiry_ok` is for the
+    nurse round only: putting back a dose recorded before the ledger existed
+    must not be blocked because the item tracks expiry and nobody knows the date.
     """
     ensure_ready(conn)
     cur = _cursor(conn)
@@ -2204,8 +2450,9 @@ def adjust(conn, data, actor=None):
             op = cur.fetchone()['operation_id']
             return {'operation_id': op, 'transactions': _ledger_group(cur, op), 'duplicate': True}
     qty = _quantity_for_item(data.get('quantity'), item)
-    batch_id = data.get('batch_id')
-    sup_id = data.get('supplier_id') or None
+    batch_id = parse_int_id(data.get('batch_id'), 'batch_id', 'Partiya raqami')
+    sup_id = data.get('supplier_id')
+    sup_id = None if sup_id in (None, '') else parse_text(sup_id, 'supplier_id', 'Yetkazib beruvchi', 64)
     patient_id = parse_text(data.get('patient_id'), 'patient_id', 'Bemor', 64)
     if sup_id:
         cur.execute("SELECT 1 FROM inventory_suppliers WHERE id = ?", (sup_id,))
@@ -2226,6 +2473,7 @@ def adjust(conn, data, actor=None):
     refs = dict(source='adjustment', operation_id=op_id, reason=reason, supplier_id=sup_id,
                 patient_id=patient_id, notes=parse_text(data.get('notes'), 'notes', 'Izoh', 2000))
     first = True
+    new_avg = avg          # units added with no cost reference keep the average
 
     def ledger(batch, delta, cost):
         nonlocal balance, first
@@ -2244,14 +2492,22 @@ def adjust(conn, data, actor=None):
             b = cur.fetchone()
             if not b:
                 raise InventoryError("Partiya topilmadi.", 'batch_id')
+            if b['receipt_id']:
+                cur.execute("SELECT status FROM inventory_receipts WHERE id = ?", (b['receipt_id'],))
+                rc = cur.fetchone()
+                if rc and rc['status'] in ('reversed', 'cancelled'):
+                    raise InventoryError("Bu partiyaning kirimi qaytarilgan yoki bekor qilingan: unga qoldiq "
+                                         "qo'shib bo'lmaydi. Yangi partiya sifatida kiriting.", 'batch_id')
             if _dec(b['remaining_qty']) + qty > _dec(b['received_qty']):
                 raise InventoryError("Partiyaga qaytarilayotgan miqdor qabul qilingan miqdordan oshib ketadi. "
                                      "Yangi partiya sifatida kiriting (partiyani tanlamang).", 'quantity')
             cur.execute("UPDATE inventory_batches SET remaining_qty = ? WHERE id = ?",
                         (_q(_dec(b['remaining_qty']) + qty), b['id']))
-            ledger(b['id'], qty, _dec(b['unit_cost']))
+            lot_cost = _dec(b['unit_cost'])
+            new_avg = _blend_avg(balance, avg, qty, lot_cost)
+            ledger(b['id'], qty, lot_cost)
         else:
-            if int(item['track_expiry']) and not expiry:
+            if int(item['track_expiry']) and not expiry and not no_expiry_ok:
                 raise InventoryError("Bu mahsulot uchun yaroqlilik muddati kiritilishi shart.", 'expiry_date')
             if expiry and expiry < _today():
                 raise InventoryError("Muddati o'tgan mahsulotni omborga qo'shib bo'lmaydi.", 'expiry_date')
@@ -2261,7 +2517,7 @@ def adjust(conn, data, actor=None):
                            VALUES (?, ?, ?, ?, ?, ?, 'adjustment')""",
                         (item_id, f"{label}-{_today():%Y%m%d}", expiry, qty, qty, avg))
             ledger(cur.lastrowid, qty, avg)
-        _set_balance(cur, item_id, balance)
+        _set_balance(cur, item_id, balance, new_avg)
     else:
         # Decreasing kinds may take expired lots too (that is what a write-off is for).
         if batch_id:
@@ -2325,14 +2581,38 @@ def reverse_transaction(conn, txn_id, reason, actor=None):
         raise InventoryError("Partiya qoldig'i qabul qilingan miqdordan oshib ketadi.", 'status', 409)
     username, staff_id = _actor_ref(cur, actor)
     balance = _dec(item['stock_quantity'])
+    avg = _dec(item['avg_unit_cost'])
+    if delta > 0:
+        # Units that had left come back at the cost the original row recorded
+        # (its value cancels exactly) and the average is recomputed as a
+        # receipt at that cost.
+        cost = _dec(t['unit_cost'])
+        new_avg = _blend_avg(balance, avg, delta, cost)
+    else:
+        # Units that had been added leave at today's average, which stays.
+        cost, new_avg = avg, avg
     cur.execute("UPDATE inventory_batches SET remaining_qty = ? WHERE id = ?", (_q(new_remaining), b['id']))
-    _write_ledger(cur, 'reversal', t['item_id'], b['id'], delta, balance, _dec(t['unit_cost']),
+    _write_ledger(cur, 'reversal', t['item_id'], b['id'], delta, balance, cost,
                   (username, staff_id), source='transaction_reversal', operation_id=t['operation_id'],
                   patient_id=t['patient_id'], supplier_id=t['supplier_id'], reason=reason, reversal_of=txn_id)
-    _set_balance(cur, t['item_id'], balance + delta)
+    _set_balance(cur, t['item_id'], balance + delta, new_avg)
     refresh_alerts(conn, t['item_id'])
     cur.execute("SELECT * FROM inventory_transactions WHERE reversal_of = ?", (txn_id,))
     return cur.fetchone()
+
+
+def flag_reversed(cur, rows):
+    """Add `is_reversed` / `reversal_id` to ledger rows: has a reversal row been written for it?"""
+    ids = [r['id'] for r in rows]
+    by = {}
+    if ids:
+        marks = ','.join(['?'] * len(ids))
+        cur.execute(f"SELECT id, reversal_of FROM inventory_transactions WHERE reversal_of IN ({marks})", ids)
+        by = {r['reversal_of']: r['id'] for r in cur.fetchall()}
+    for r in rows:
+        r['reversal_id'] = by.get(r['id'])
+        r['is_reversed'] = r['id'] in by
+    return rows
 
 
 def list_transactions(conn, filters=None, can_cost=False):
@@ -2345,6 +2625,9 @@ def list_transactions(conn, filters=None, can_cost=False):
     if f.get('type'):
         where.append("t.txn_type = ?")
         params.append(f['type'])
+    if f.get('types'):
+        where.append("t.txn_type IN (%s)" % ','.join(['?'] * len(f['types'])))
+        params += list(f['types'])
     if f.get('patient_id'):
         where.append("t.patient_id = ?")
         params.append(f['patient_id'])
@@ -2355,7 +2638,7 @@ def list_transactions(conn, filters=None, can_cost=False):
         where.append("t.created_at < ?")
         params.append(f['to'] + _dt.timedelta(days=1))
     clause = ('WHERE ' + ' AND '.join(where)) if where else ''
-    limit = max(1, min(int(f.get('limit') or 100), 1000))
+    limit = max(1, min(int(f.get('limit') or 100), int(f.get('max_limit') or 1000)))
     offset = max(0, int(f.get('offset') or 0))
     cur.execute(f"SELECT COUNT(*) AS n FROM inventory_transactions t {clause}", params)
     total = int(cur.fetchone()['n'])
@@ -2364,11 +2647,48 @@ def list_transactions(conn, filters=None, can_cost=False):
                     JOIN medications_catalog mc ON mc.id = t.item_id
                     LEFT JOIN inventory_batches b ON b.id = t.batch_id
                     {clause} ORDER BY t.id DESC LIMIT ? OFFSET ?""", params + [limit, offset])
-    rows = cur.fetchall()
+    rows = flag_reversed(cur, cur.fetchall())
     if not can_cost:
         for r in rows:
             _strip_txn(r)
     return rows, total
+
+
+def transactions_sum(conn, filters):
+    """Whole-range sum of value_delta for the same filters (a report total must not depend on paging)."""
+    f = filters or {}
+    cur = _cursor(conn)
+    where, params = [], []
+    if f.get('types'):
+        where.append("txn_type IN (%s)" % ','.join(['?'] * len(f['types'])))
+        params += list(f['types'])
+    if f.get('from'):
+        where.append("created_at >= ?")
+        params.append(f['from'])
+    if f.get('to'):
+        where.append("created_at < ?")
+        params.append(f['to'] + _dt.timedelta(days=1))
+    clause = ('WHERE ' + ' AND '.join(where)) if where else ''
+    cur.execute(f"SELECT COALESCE(SUM(value_delta), 0) AS v FROM inventory_transactions {clause}", params)
+    return _m(_dec(cur.fetchone()['v']))
+
+
+def search_patients(conn, q, limit=20):
+    """
+    Patient lookup for the warehouse pickers: id, name, code and phone of
+    matching patients and nothing else (no billing, no clinical data). Fewer
+    than two characters match nobody, so the call cannot list the whole clinic.
+    """
+    q = (q or '').strip()
+    if len(q) < 2:
+        return []
+    like = '%' + q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+    cur = _cursor(conn)
+    cur.execute("""SELECT id, full_name, patient_code, phone FROM patients
+                   WHERE full_name LIKE ? OR patient_code LIKE ? OR phone LIKE ? OR id LIKE ?
+                   ORDER BY full_name, id LIMIT ?""",
+                (like, like, like, like, max(1, min(int(limit), 50))))
+    return cur.fetchall()
 
 
 # ---------------------------------------------------------------------------
@@ -2388,14 +2708,17 @@ def refresh_alerts(conn, item_id=None):
     where, params = '', []
     if item_id:
         where, params = 'WHERE mc.id = ?', [item_id]
+        mark_alerts_dirty()          # a stock write happened: the next read does a full pass
     items = _fetch_items(cur, where, params, today)
     if not items:
         return {'created': 0, 'resolved': 0}
     ids = [i['id'] for i in items]
     marks = ','.join(['?'] * len(ids))
-    cur.execute(f"""SELECT id, item_id, alert_type, batch_key FROM inventory_alerts
+    cur.execute(f"""SELECT id, item_id, alert_type, batch_key, message, quantity, threshold, expiry_date
+                    FROM inventory_alerts
                     WHERE status = 'active' AND item_id IN ({marks})""", ids)
-    active = {(r['item_id'], r['alert_type'], int(r['batch_key'])): r['id'] for r in cur.fetchall()}
+    active_rows = {(r['item_id'], r['alert_type'], int(r['batch_key'])): r for r in cur.fetchall()}
+    active = {k: r['id'] for k, r in active_rows.items()}
     cur.execute(f"""SELECT id, item_id, batch_no, expiry_date, remaining_qty FROM inventory_batches
                     WHERE remaining_qty > 0 AND expiry_date IS NOT NULL AND expiry_date <= ?
                       AND item_id IN ({marks})""", [today + _dt.timedelta(days=days)] + ids)
@@ -2426,6 +2749,16 @@ def refresh_alerts(conn, item_id=None):
     created = resolved = 0
     for key, (msg, qty, thr, exp, bid) in desired.items():
         if key in active:
+            # The condition still holds but its numbers moved (stock went
+            # 5 -> 3, the threshold was raised): the open alert must say so.
+            old = active_rows[key]
+            if (old['message'] != msg[:255] or _dec(old['quantity']) != _dec(qty)
+                    or (old['threshold'] is None) != (thr is None)
+                    or (thr is not None and _dec(old['threshold']) != _dec(thr))
+                    or old['expiry_date'] != exp):
+                cur.execute("""UPDATE inventory_alerts SET message = ?, quantity = ?, threshold = ?,
+                               expiry_date = ? WHERE id = ? AND status = 'active'""",
+                            (msg[:255], qty, thr, exp, old['id']))
             continue
         cur.execute("""INSERT IGNORE INTO inventory_alerts
                        (item_id, alert_type, batch_id, batch_key, status, active_marker, message,
@@ -2441,23 +2774,91 @@ def refresh_alerts(conn, item_id=None):
     return {'created': created, 'resolved': resolved}
 
 
+# A full refresh reads every item and lot, and the pages ask for alerts and the
+# summary often. Writes refresh the items they touch inside their own
+# transaction; this timer is only for what changes with the calendar (expiry),
+# so a full pass is run at most every REFRESH_EVERY seconds per process unless a
+# stock write happened since the last one.
+REFRESH_EVERY = 30
+_last_full_refresh = 0.0
+_alerts_dirty = True
+
+
+def mark_alerts_dirty():
+    global _alerts_dirty
+    _alerts_dirty = True
+
+
+def refresh_alerts_if_due(conn, lock=None, force=False):
+    """
+    Run a full alert refresh when a stock write happened or REFRESH_EVERY
+    seconds have passed. Writers hold the server's write lock, so the refresh
+    takes the same one (`lock`): run outside it, two threads inserting the same
+    alert, or one reading a lot half-way through a dispensing, could stall on
+    each other's row locks or leave a stale alert behind.
+
+    Never raises: the caller is a read. Returns True when a refresh ran.
+    """
+    global _last_full_refresh, _alerts_dirty
+    import time
+    now = time.monotonic()
+    if not (force or _alerts_dirty or now - _last_full_refresh >= REFRESH_EVERY):
+        return False
+    import contextlib
+    ctx = lock if lock is not None else contextlib.nullcontext()
+    with ctx:
+        # Re-check inside the lock: the thread ahead of us just did the work.
+        now = time.monotonic()
+        if not (force or _alerts_dirty or now - _last_full_refresh >= REFRESH_EVERY):
+            return False
+        try:
+            _alerts_dirty = False
+            refresh_alerts(conn)
+            conn.commit()
+            _last_full_refresh = time.monotonic()
+            return True
+        except Exception as e:
+            _alerts_dirty = True
+            print(f"[!] warehouse alert refresh failed: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
+
+
 def refresh_expiry_alerts(conn):
     """Startup / summary hook: expiry changes with the calendar, not with a movement."""
     result = refresh_alerts(conn)
     return result
 
 
-def list_alerts(conn, status='active', limit=300):
+ALERT_TYPES = ('low_stock', 'out_of_stock', 'expired', 'expiring_soon')
+
+
+def list_alerts(conn, status='active', limit=100, offset=0, item_id=None, alert_type=None):
+    """-> (alerts, total). Stable order: open first, then by urgency, newest, id."""
     cur = _cursor(conn)
-    where, params = '', []
+    where, params = [], []
     if status in ('active', 'resolved'):
-        where, params = 'WHERE a.status = ?', [status]
+        where.append('a.status = ?')
+        params.append(status)
+    if item_id:
+        where.append('a.item_id = ?')
+        params.append(item_id)
+    if alert_type:
+        where.append('a.alert_type = ?')
+        params.append(alert_type)
+    clause = ('WHERE ' + ' AND '.join(where)) if where else ''
+    cur.execute(f"SELECT COUNT(*) AS n FROM inventory_alerts a {clause}", params)
+    total = int(cur.fetchone()['n'])
     cur.execute(f"""SELECT a.*, mc.name AS item_name, mc.base_unit, b.batch_no
                     FROM inventory_alerts a JOIN medications_catalog mc ON mc.id = a.item_id
                     LEFT JOIN inventory_batches b ON b.id = a.batch_id
-                    {where} ORDER BY a.status, FIELD(a.alert_type, 'out_of_stock', 'expired', 'low_stock',
-                    'expiring_soon'), a.created_at DESC LIMIT ?""", params + [max(1, min(int(limit), 1000))])
-    return cur.fetchall()
+                    {clause} ORDER BY a.status, FIELD(a.alert_type, 'out_of_stock', 'expired', 'low_stock',
+                    'expiring_soon'), a.created_at DESC, a.id DESC LIMIT ? OFFSET ?""",
+                params + [max(1, min(int(limit), 500)), max(0, int(offset))])
+    return cur.fetchall(), total
 
 
 # ---------------------------------------------------------------------------
@@ -2489,17 +2890,9 @@ def valuation(conn):
 
 
 def summary(conn, can_cost=False, full=True):
+    """The counters and recent documents. Alerts are refreshed by the caller (refresh_alerts_if_due, under the write lock)."""
     ensure_ready(conn)
     cur = _cursor(conn)
-    try:
-        refresh_alerts(conn)
-        conn.commit()
-    except Exception as e:
-        print(f"[!] warehouse summary: alert refresh failed: {e}")
-        try:
-            conn.rollback()
-        except Exception:
-            pass
     everything = _fetch_items(cur, '', (), None)
     items = [i for i in everything if i['is_active']]
     units = {}
@@ -2564,9 +2957,29 @@ def _col(key, label, cost=False):
     return {'key': key, 'label': label, 'cost': cost}
 
 
-def report(conn, name, params=None, can_cost=False):
-    """-> {'name','title','columns','rows','totals'}. Cost columns are dropped for non-cost roles."""
+MAX_REPORT_ROWS = 5000        # one JSON page
+MAX_EXPORT_ROWS = 50000       # one CSV file
+_PAGED_REPORTS = ('receipts', 'dispensings', 'adjustments', 'movement')
+ADJUSTMENT_TYPES = ('adjustment_in', 'adjustment_out', 'writeoff', 'supplier_return', 'patient_return',
+                    'reversal')
+
+
+def report(conn, name, params=None, can_cost=False, limit=1000, offset=0, max_limit=MAX_REPORT_ROWS):
+    """
+    -> {'name','title','columns','rows','totals','total_rows','truncated','limit','offset'}.
+    Cost columns are dropped for non-cost roles.
+
+    The row-per-document reports (receipts, dispensings, adjustments, movement)
+    are filtered by type in SQL, totalled in SQL over the WHOLE date range and
+    paged with limit/offset; `total_rows` is the full count and `truncated` says
+    whether the rows returned are fewer than that, so a page can warn instead
+    of silently showing the first slice.
+    """
     p = params or {}
+    limit = max(1, min(int(limit), int(max_limit)))
+    offset = max(0, int(offset))
+    page = {'limit': limit, 'offset': offset, 'max_limit': max_limit}
+    total_rows = None
     if name not in REPORTS:
         raise NotFound("Hisobot topilmadi.")
     if name in COST_REPORTS and not can_cost:
@@ -2618,16 +3031,17 @@ def report(conn, name, params=None, can_cost=False):
                 _col('total_value', 'Jami qiymat', True), _col('expired_value', "Muddati o'tgan", True),
                 _col('available_value', 'Yaroqli', True)]
     elif name == 'receipts':
-        rows, _total = list_receipts(conn, {'from': p.get('from'), 'to': p.get('to'),
-                                            'supplier_id': p.get('supplier_id'), 'limit': 500}, True)
+        flt = {'from': p.get('from'), 'to': p.get('to'), 'supplier_id': p.get('supplier_id')}
+        rows, total_rows = list_receipts(conn, dict(flt, **page), True)
         cols = [_col('id', 'Hujjat'), _col('receipt_date', 'Sana'), _col('supplier_name', 'Yetkazib beruvchi'),
                 _col('invoice_number', 'Hisob-faktura'), _col('status', 'Holat'),
                 _col('line_count', 'Qatorlar'), _col('total_amount', 'Summa', True)]
-        totals = {'total_amount': _m(sum((_dec(r['total_amount']) for r in rows if r['status'] == 'posted'), ZERO))}
+        totals = {'total_amount': receipts_total(conn, flt)}
     elif name == 'dispensings':
-        rows, _t = list_dispensings(conn, {'from': p.get('from'), 'to': p.get('to'),
-                                           'patient_id': p.get('patient_id'), 'item_id': p.get('item_id'),
-                                           'limit': 500}, True)
+        flt = {'from': p.get('from'), 'to': p.get('to'),
+               'patient_id': p.get('patient_id'), 'item_id': p.get('item_id')}
+        rows, total_rows = list_dispensings(conn, dict(flt, **page), True)
+        totals = {'total_cost': dispensings_total_cost(conn, flt)}
         for r in rows:
             r['batch_list'] = ', '.join(f"{b['batch_no']}: {b['quantity']}" for b in r['batches'])
         cols = [_col('created_at', 'Vaqt'), _col('patient_name', 'Bemor'), _col('item_name', 'Mahsulot'),
@@ -2635,17 +3049,17 @@ def report(conn, name, params=None, can_cost=False):
                 _col('dispensed_by', 'Bergan xodim'), _col('status', 'Holat'),
                 _col('total_cost', 'Tannarxi', True)]
     elif name == 'adjustments':
-        rows, _t = list_transactions(conn, {'from': p.get('from'), 'to': p.get('to'), 'limit': 1000}, True)
-        rows = [r for r in rows if r['txn_type'] in ('adjustment_in', 'adjustment_out', 'writeoff',
-                                                    'supplier_return', 'patient_return', 'reversal')]
+        flt = {'from': p.get('from'), 'to': p.get('to'), 'types': ADJUSTMENT_TYPES}
+        rows, total_rows = list_transactions(conn, dict(flt, **page), True)
+        totals = {'value_delta': transactions_sum(conn, flt)}
         cols = [_col('created_at', 'Vaqt'), _col('txn_type', 'Tur'), _col('item_name', 'Mahsulot'),
                 _col('batch_no', 'Partiya'), _col('qty_delta', "O'zgarish"), _col('reason', 'Sabab'),
                 _col('performed_by', 'Xodim'), _col('value_delta', 'Qiymati', True)]
     elif name == 'movement':
         if not p.get('item_id'):
             raise InventoryError("Mahsulot (item_id) ko'rsatilishi shart.", 'item_id')
-        rows, _t = list_transactions(conn, {'item_id': p['item_id'], 'from': p.get('from'),
-                                            'to': p.get('to'), 'limit': 1000}, True)
+        rows, total_rows = list_transactions(conn, {'item_id': p['item_id'], 'from': p.get('from'),
+                                                    'to': p.get('to'), **page}, True)
         cols = [_col('created_at', 'Vaqt'), _col('txn_type', 'Tur'), _col('batch_no', 'Partiya'),
                 _col('qty_delta', "O'zgarish"), _col('balance_before', 'Oldin'),
                 _col('balance_after', 'Keyin'), _col('reason', 'Sabab'), _col('performed_by', 'Xodim'),
@@ -2662,5 +3076,10 @@ def report(conn, name, params=None, can_cost=False):
         keep = {c['key'] for c in cols} | {'id', 'item_id'}
         rows = [{k: v for k, v in r.items() if k in keep} for r in rows]
         totals = {k: v for k, v in totals.items()
-                  if k not in ('total_amount', 'total_value', 'expired_value', 'available_value')}
-    return {'name': name, 'title': name, 'columns': cols, 'rows': rows, 'totals': totals}
+                  if k not in ('total_amount', 'total_value', 'expired_value', 'available_value',
+                               'total_cost', 'value_delta')}
+    if total_rows is None:
+        total_rows = len(rows)
+    return {'name': name, 'title': name, 'columns': cols, 'rows': rows, 'totals': totals,
+            'total_rows': total_rows, 'truncated': (offset + len(rows)) < total_rows,
+            'limit': limit, 'offset': offset}

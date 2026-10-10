@@ -15,12 +15,12 @@ handler so a hidden button in the page is never the only guard.
 import csv
 import datetime as _dt
 import io
-import urllib.parse
+import re
 from decimal import Decimal
 
 import inventory
 import permissions
-from inventory import InventoryError, NotFound
+from inventory import InventoryError, NotFound, Forbidden
 
 PREFIX = '/api/warehouse'
 
@@ -39,11 +39,11 @@ def _int(query, key, default, minimum=0, maximum=100000):
     raw = _first(query, key)
     if raw in (None, ''):
         return default
-    try:
-        n = int(raw)
-    except ValueError:
+    # ASCII digits only: str.isdigit() and int() also accept characters such
+    # as superscript two or fullwidth digits, and '1_000'.
+    if not re.fullmatch(r'[0-9]{1,18}', str(raw).strip()):
         raise InventoryError(f"{key} butun son bo'lishi kerak.", key)
-    return max(minimum, min(n, maximum))
+    return max(minimum, min(int(str(raw).strip()), maximum))
 
 
 def _date_param(ctx, query, key, label):
@@ -75,8 +75,9 @@ def _csv_cell(v):
         return v.isoformat(sep=' ') if isinstance(v, _dt.datetime) else v.isoformat()
     s = str(v)
     # A cell that starts with = + - @ is executed as a formula by spreadsheet
-    # programs; names and notes come from people, so neutralise them.
-    if s and s[0] in '=+-@\t\r':
+    # programs; names and notes come from people, so neutralise them. A plain
+    # negative number (days_left -3) is data, not a formula, and stays as is.
+    if s and (s[0] in '=+@\t\r' or (s[0] == '-' and not re.fullmatch(r'-[0-9]+(\.[0-9]+)?', s))):
         s = "'" + s
     return s
 
@@ -110,7 +111,10 @@ def _notify_for(conn, trx_id):
 
 def handle(method, path, query, body, user, conn, ctx):
     """Dispatch one /api/warehouse request. Always returns (status, payload)."""
-    parts = [urllib.parse.unquote(s) for s in path[len(PREFIX):].split('/') if s]
+    # The same normalised path the permission check decided on.
+    parts = permissions.warehouse_parts(path)
+    if parts is None:
+        return 404, {'error': "Yo'nalish topilmadi."}
     if method != 'GET' and not isinstance(body, dict):
         return 400, {'error': "So'rov formati noto'g'ri (JSON obyekt kutilgan)."}
     try:
@@ -148,11 +152,20 @@ def _get(parts, query, user, conn, ctx):
     n = len(parts)
     has_wh = permissions.can(user, 'warehouse', 'read')
 
+    if head in permissions.WAREHOUSE_PUBLIC_READS and n == 1 and not permissions.can_read_warehouse_public(user):
+        raise Forbidden("Ombor ma'lumotini ko'rishga ruxsat yo'q.")
+
     if head == 'availability' and n == 1:
         return 200, {'items': inventory.availability(conn, _first(query, 'q'), _int(query, 'limit', 30, 1, 100))}
 
     if head == 'summary' and n == 1:
+        # Expiry changes with the calendar: bring the alerts up to date first,
+        # under the write lock (see inventory.refresh_alerts_if_due).
+        inventory.refresh_alerts_if_due(conn, ctx.get('write_lock'))
         return 200, inventory.summary(conn, can_cost=can_cost, full=has_wh)
+
+    if head == 'patients' and n == 1:
+        return 200, {'patients': inventory.search_patients(conn, _first(query, 'q'), _int(query, 'limit', 20, 1, 50))}
 
     if head == 'settings' and n == 1:
         return 200, inventory.get_settings(conn)
@@ -207,19 +220,16 @@ def _get(parts, query, user, conn, ctx):
         return 200, {'transactions': rows, 'total': total}
 
     if head == 'alerts' and n == 1:
-        # Expiry changes with the calendar, not with a movement, so reading the
-        # alerts first brings them up to date.
-        try:
-            inventory.refresh_expiry_alerts(conn)
-            conn.commit()
-        except Exception as e:
-            print(f"[!] warehouse alerts refresh failed: {e}")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
+        inventory.refresh_alerts_if_due(conn, ctx.get('write_lock'))
         status = _first(query, 'status', 'active')
-        return 200, {'alerts': inventory.list_alerts(conn, status)}
+        if status not in ('active', 'resolved', 'all'):
+            raise InventoryError("Holat noto'g'ri (active, resolved yoki all).", 'status')
+        a_type = _first(query, 'type') or None
+        if a_type and a_type not in inventory.ALERT_TYPES:
+            raise InventoryError(f"Turi noto'g'ri. Ruxsat etilgan: {', '.join(inventory.ALERT_TYPES)}.", 'type')
+        limit, offset = _int(query, 'limit', 100, 1, 500), _int(query, 'offset', 0)
+        rows, total = inventory.list_alerts(conn, status, limit, offset, _first(query, 'item_id') or None, a_type)
+        return 200, {'alerts': rows, 'total': total, 'limit': limit, 'offset': offset}
 
     if head == 'reconciliation' and n == 1:
         return 200, inventory.reconciliation(conn)
@@ -234,10 +244,17 @@ def _get(parts, query, user, conn, ctx):
         fmt = (_first(query, 'format') or 'json').lower()
         if fmt not in ('json', 'csv'):
             raise InventoryError("Format noto'g'ri (json yoki csv).", 'format')
-        rep = inventory.report(conn, parts[1], params, can_cost)
         if fmt == 'csv':
+            # The export carries the whole range (up to MAX_EXPORT_ROWS); a
+            # longer one is cut and says so in the X-Truncated header.
+            rep = inventory.report(conn, parts[1], params, can_cost, limit=inventory.MAX_EXPORT_ROWS,
+                                   offset=0, max_limit=inventory.MAX_EXPORT_ROWS)
             return 200, {'_csv': to_csv(rep['columns'], rep['rows']),
+                         '_truncated': bool(rep['truncated']),
                          '_filename': f"ombor-{parts[1]}-{_dt.date.today().isoformat()}.csv"}
+        rep = inventory.report(conn, parts[1], params, can_cost,
+                               limit=_int(query, 'limit', 1000, 1, inventory.MAX_REPORT_ROWS),
+                               offset=_int(query, 'offset', 0), max_limit=inventory.MAX_REPORT_ROWS)
         return 200, rep
 
     raise NotFound("Yo'nalish topilmadi.")
@@ -251,12 +268,45 @@ def _strip_item(item, can_cost):
     return item if can_cost else inventory.strip_costs(item, inventory.COST_ITEM_FIELDS)
 
 
+def _bool_field(body, key):
+    """A real boolean: true/false or the strings "true"/"false". Absent is False."""
+    v = body.get(key)
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str) and v in ('true', 'false'):
+        return v == 'true'
+    raise InventoryError(f"{key} true yoki false bo'lishi kerak.", key)
+
+
+def _payment_method(body, ctx):
+    """The payment method as the books know it; an unknown one is refused, not turned into cash."""
+    raw = body.get('payment_method')
+    if raw in (None, ''):
+        return 'cash'
+    if not isinstance(raw, str):
+        raise InventoryError("To'lov usuli noto'g'ri.", 'payment_method')
+    key = raw.strip().lower()
+    aliases = ctx.get('payment_method_aliases') or {}
+    if key not in aliases and key not in inventory.PAYMENT_METHODS:
+        raise InventoryError("To'lov usuli noto'g'ri. Ruxsat etilgan: " + ', '.join(inventory.PAYMENT_METHODS) + ".",
+                             'payment_method')
+    return ctx['normalize_payment_method'](key)
+
+
 def _write(method, parts, body, user, conn, ctx):
     actor = _actor(user)
     can_cost = permissions.can_see_costs(user)
     can_cost_write = permissions.can(user, 'accounting', 'write')
     head = parts[0] if parts else ''
     n = len(parts)
+
+    # Defence in depth: the route table already asked for accounting:write on
+    # these, but the handler must not depend on a path being spelled the way
+    # the table expected.
+    if permissions.warehouse_is_money_route(method, parts) and not can_cost_write:
+        raise Forbidden("Bu amal faqat buxgalteriya uchun.")
 
     if method == 'POST' and head == 'items':
         if n == 1:
@@ -278,10 +328,11 @@ def _write(method, parts, body, user, conn, ctx):
         return 201, inventory.create_supplier(conn, body, actor)
 
     if method == 'POST' and head == 'receipts':
-        norm, src = ctx['normalize_payment_method'], ctx['account_source_for']
+        src = ctx['account_source_for']
         if n == 1:
-            r = inventory.create_receipt(conn, body, actor, post=bool(body.get('post')),
-                                         payment_method=norm(body.get('payment_method', 'cash')),
+            post = _bool_field(body, 'post')
+            r = inventory.create_receipt(conn, body, actor, post=post,
+                                         payment_method=_payment_method(body, ctx),
                                          account_source_fn=src)
             return (200 if r.get('duplicate') else 201), r
         if n == 3 and parts[2] == 'post':
@@ -322,7 +373,7 @@ def _write(method, parts, body, user, conn, ctx):
         return (200 if res.get('duplicate') else 201), res
 
     if method == 'POST' and head == 'transactions' and n == 3 and parts[2] == 'reverse':
-        t = inventory.reverse_transaction(conn, int(parts[1]) if parts[1].isdigit() else -1,
+        t = inventory.reverse_transaction(conn, inventory.parse_int_id(parts[1], 'id', 'Harakat raqami') or -1,
                                           body.get('reason'), actor)
         if not can_cost:
             inventory._strip_txn(t)

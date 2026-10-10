@@ -631,7 +631,7 @@ def _undo_dose_stock(conn, prev, patient_id, actor):
         inventory.adjust(conn, {
             'kind': 'patient_return', 'item_id': prev['stock_medication_id'],
             'quantity': int(prev['stock_units']), 'patient_id': patient_id,
-            'reason': reason + " - eski yozuv"}, actor)
+            'reason': reason + " - eski yozuv"}, actor, no_expiry_ok=True)
 
 
 def record_dose(conn, prescription_id, day, slot_index, status,

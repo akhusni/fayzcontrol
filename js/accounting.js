@@ -2446,8 +2446,9 @@
         <input type="hidden" class="medpur-item-id" value="${initialData ? esc(initialData.id) : ''}">
         <details class="medpur-extra" style="margin-top: 6px;">
           <summary style="cursor: pointer; font-size: 0.74rem; color: var(--text-muted);">Qadoq / partiya / muddat (ixtiyoriy)</summary>
+          <div class="medpur-item-help" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;"></div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
-            <input type="number" class="form-input medpur-item-upp" min="0" step="any" placeholder="Qadoqda necha birlik" title="Bir qadoqda nechta birlik (dona, ml...). Bo'sh qoldirilsa 1." style="flex: 1 1 110px; font-size: 0.8rem;">
+            <input type="number" class="form-input medpur-item-upp" min="0" step="any" placeholder="Qadoqdagi dona (masalan 10)" title="Bir qadoqda nechta dona (tabletka, ml...). Bo'sh qoldirilsa: miqdor — dona, narx — 1 dona narxi." style="flex: 1 1 110px; font-size: 0.8rem;">
             <input type="text" class="form-input medpur-item-batch" maxlength="64" placeholder="Partiya №" style="flex: 1 1 90px; font-size: 0.8rem;">
             <input type="date" class="form-input medpur-item-expiry" title="Yaroqlilik muddati" style="flex: 1 1 130px; font-size: 0.8rem;">
           </div>
@@ -2458,10 +2459,12 @@
         <input type="text" class="form-input medpur-item-cat" placeholder="Guruhi" style="font-size: 0.82rem;" value="${initialData ? esc(initialData.group || initialData.category || '') : ''}">
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
+        <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni (dona)" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
+        <div class="medpur-item-qty-unit" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">dona</div>
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="Narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="">
+        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="1 dona narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="">
+        <div class="medpur-item-price-unit" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">1 dona narxi</div>
       </td>
       <td style="padding: 6px 8px;" class="mono-val medpur-item-total" style="font-weight: 700; color: var(--rose);">
         0 so'm
@@ -2521,13 +2524,30 @@
       const totalCell = tr.querySelector('.medpur-item-total');
       if (totalCell) totalCell.textContent = formatUZS(total);
       // With a package size, quantity counts packages and the price is per package.
+      // The two ways of reading the same two numbers are spelled out on the row, so the
+      // clerk can never mistake "10 packs at 50 000" for "10 tablets at 50 000".
       const upp = parseFloat(tr.querySelector('.medpur-item-upp')?.value) || 0;
+      const byPack = upp > 0;
       const note = tr.querySelector('.medpur-item-note');
       if (note) {
-        note.textContent = (upp > 0 && upp !== 1)
-          ? `Miqdor = qadoq soni, narx = bir qadoq narxi. Omborga: ${fmtQty(qty)} × ${fmtQty(upp)} = ${fmtQty(qty * upp)} birlik (1 birlik ≈ ${formatUZS(price / upp)}).`
+        note.textContent = byPack
+          ? `Miqdor = qadoq soni, narx = 1 qadoq narxi. Omborga: ${fmtQty(qty)} × ${fmtQty(upp)} = ${fmtQty(qty * upp)} dona (1 dona ≈ ${formatUZS(price / upp)}).`
           : '';
       }
+      const help = tr.querySelector('.medpur-item-help');
+      if (help) {
+        help.textContent = byPack
+          ? "Qadoqdagi dona kiritilgan: miqdor — qadoq soni, narx — 1 qadoq narxi."
+          : "Bo'sh qoldirilsa: miqdor — dona (asosiy birlik), narx — 1 dona narxi. Qadoq bilan sotib olingan bo'lsa, «Qadoqdagi dona»ni kiriting.";
+      }
+      const qtyEl = tr.querySelector('.medpur-item-qty');
+      if (qtyEl) qtyEl.placeholder = byPack ? 'Qadoq soni' : 'Soni (dona)';
+      const priceEl = tr.querySelector('.medpur-item-price');
+      if (priceEl) priceEl.placeholder = byPack ? '1 qadoq narxi' : '1 dona narxi';
+      const qtyUnit = tr.querySelector('.medpur-item-qty-unit');
+      if (qtyUnit) qtyUnit.textContent = byPack ? 'qadoq' : 'dona';
+      const priceUnit = tr.querySelector('.medpur-item-price-unit');
+      if (priceUnit) priceUnit.textContent = byPack ? '1 qadoq narxi' : '1 dona narxi';
     });
 
     const grandDisp = document.getElementById('medpur-grand-total-disp');
@@ -2630,12 +2650,28 @@
   }
 
   async function deleteMedPurchase(purchaseId) {
-    const p = (accountingData.medication_purchases || []).find(x => x.id === purchaseId);
+    const list = accountingData.medication_purchases || [];
+    const p = list.find(x => x.id === purchaseId);
     const medName = p ? p.medication_name : 'Ushbu dori xaridi';
+
+    // The server withdraws the WHOLE receipt this line was bought with (every line and the cash
+    // expense), not just the drug named in the row. The rows of one receipt share its receipt id,
+    // or at least its cash-desk transaction, so the dialog can say how many lines go.
+    let siblings = p ? [p] : [];
+    if (p) {
+      const same = p.receipt_id
+        ? list.filter(x => x.receipt_id === p.receipt_id)
+        : (p.accounting_transaction_id ? list.filter(x => x.accounting_transaction_id === p.accounting_transaction_id) : [p]);
+      if (same.length) siblings = same;
+    }
+    const lineCount = siblings.length || 1;
+    const namesList = siblings.length > 1
+      ? `<br><small>${siblings.map(x => esc(x.medication_name)).join(', ')}</small>`
+      : '';
 
     const confirmed = await fmhConfirm({
       title: "Dori Xaridini Bekor Qilish",
-      message: `<strong>${esc(medName)}</strong> bo'yicha xarid yozuvi o'chirilsinmi? Kassa chiqimi bekor qilinadi va ombor qoldig'i kamaytiriladi.`,
+      message: `<strong>${esc(medName)}</strong> xaridi bekor qilinsinmi?<br>Butun xarid (${lineCount} ta qator) va uning kassa yozuvi bekor qilinadi, ombor qoldig'i kamaytiriladi.${namesList}<br>Xaridning bir qismi allaqachon ishlatilgan bo'lsa, bekor qilib bo'lmaydi.`,
       confirmText: "O'chirish",
       cancelText: "Bekor qilish",
       type: 'danger'
@@ -2647,9 +2683,17 @@
         method: 'DELETE'
       });
       if (res.ok) {
+        const out = await res.json().catch(() => ({}));
+        // Drop every removed line from the list at once (a failed refresh must not leave
+        // ghost rows), then reload the real list from the server.
+        const removed = Array.isArray(out.removed_purchase_ids) && out.removed_purchase_ids.length
+          ? out.removed_purchase_ids : [purchaseId];
+        accountingData.medication_purchases = (accountingData.medication_purchases || []).filter(x => removed.indexOf(x.id) < 0);
         await syncWithLedgerAndBackend(false);
         renderAll();
-        showToast("✅ Dori xaridi muvaffaqiyatli bekor qilindi", 'info');
+        showToast(removed.length > 1
+          ? `✅ Dori xaridi bekor qilindi: ${removed.length} ta qator olib tashlandi`
+          : "✅ Dori xaridi muvaffaqiyatli bekor qilindi", 'info');
       } else {
         const err = await res.json().catch(() => ({}));
         showToast(err.error || "O'chirishda xatolik yuz berdi", 'warning');

@@ -451,7 +451,48 @@ WAREHOUSE_PREFIX = '/api/warehouse'
 # or gives medicine (the payload carries no costs; the handler trims the
 # summary further for roles outside the warehouse module).
 WAREHOUSE_PUBLIC_READS = ('availability', 'summary')
-WAREHOUSE_PUBLIC_READERS = ('warehouse', 'pharmacy', 'accounting', 'doctors', 'nursery')
+# Bare accounting:read (the front desk) is deliberately NOT here: reading the
+# cash desk's balances is not a reason to see what is on the pharmacy shelf.
+WAREHOUSE_PUBLIC_READERS = ('warehouse', 'pharmacy', 'doctors', 'nursery')
+
+
+def warehouse_parts(path):
+    """
+    The segments after /api/warehouse, percent-decoded exactly ONCE, or None
+    when the path is not a clean one.
+
+    Authorization and the route table must read the same path. They did not:
+    the permission check split the raw text while the handler decoded each
+    segment afterwards, so /api/warehouse/%72eceipts (= receipts) passed as an
+    unknown route for a pharmacist and was then run as the accounting-only one.
+    Now both call this. An encoded slash, backslash or NUL, or a . / .. segment,
+    is refused outright: no legitimate client sends them.
+    """
+    import urllib.parse
+    raw = path[len(WAREHOUSE_PREFIX):]
+    low = raw.lower()
+    if '\\' in raw or '\x00' in raw or '%2f' in low or '%5c' in low or '%00' in low:
+        return None
+    parts = []
+    for seg in raw.split('/'):
+        if not seg:
+            continue
+        seg = urllib.parse.unquote(seg)
+        if seg in ('.', '..') or '/' in seg or '\\' in seg or '\x00' in seg:
+            return None
+        parts.append(seg)
+    return parts
+
+
+def warehouse_is_money_route(method, parts):
+    """Receipts (any write) and a threshold change: accounting's, on top of the warehouse module."""
+    head = parts[0] if parts else ''
+    return (head == 'receipts' and method != 'GET') or (
+        method == 'PUT' and head == 'items' and len(parts) == 3 and parts[2] == 'threshold')
+
+
+def can_read_warehouse_public(user):
+    return any(can(user, m, 'read') for m in WAREHOUSE_PUBLIC_READERS)
 
 
 def can_see_costs(user):
@@ -475,15 +516,17 @@ def authorize_warehouse(user, method, path):
       via the API_RULES entry. Dispensing is warehouse:write only; the nurse's
       round takes stock through the service, not through this route.
     """
-    parts = [s for s in path[len(WAREHOUSE_PREFIX):].split('/') if s]
+    parts = warehouse_parts(path)
+    if parts is None:
+        return False, 'malformed warehouse path'
+    # From here on only the normalised path is used, the same one the handler routes on.
+    path = WAREHOUSE_PREFIX + ''.join('/' + p for p in parts)
     head = parts[0] if parts else ''
     if method == 'GET' and len(parts) == 1 and head in WAREHOUSE_PUBLIC_READS:
-        if any(can(user, m, 'read') for m in WAREHOUSE_PUBLIC_READERS):
+        if can_read_warehouse_public(user):
             return True, None
         return False, 'warehouse:read required'
-    money_route = (head == 'receipts' and method != 'GET') or (
-        method == 'PUT' and head == 'items' and len(parts) == 3 and parts[2] == 'threshold')
-    if money_route:
+    if warehouse_is_money_route(method, parts):
         if can(user, 'warehouse', 'read') and can(user, 'accounting', 'write'):
             return True, None
         return False, 'accounting:write required'

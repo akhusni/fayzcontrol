@@ -537,6 +537,8 @@ button.wh-kpi:hover { background: var(--bg-panel-hover, #122c54); transform: tra
   font-size: 0.84rem; color: var(--text-secondary, #cbd5e1);
 }
 .wh-line-calc b { color: var(--text-primary, #f8fafc); font-variant-numeric: tabular-nums; }
+.wh-line [data-nc-hint] { margin-top: 2px; }
+.wh-line .wh-check input[aria-invalid="true"] { outline: 2px solid var(--danger-border, #f43f5e); outline-offset: 2px; }
 .wh-line-error { margin-top: 8px; color: var(--danger-text, #fda4af); font-size: 0.82rem; font-weight: 600; }
 .wh-newitem { margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--bg-panel, #0a1b33); border: 1px dashed var(--border-glow, rgba(56, 189, 248, 0.25)); }
 .wh-receipt-total {

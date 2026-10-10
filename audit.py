@@ -39,7 +39,11 @@ AUTH_ACTIONS = {
     'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'ACCESS_DENIED', 'PASSWORD_CHANGED',
 }
 
-ALL_ACTIONS = CLINICAL_ACTIONS | AUTH_ACTIONS
+# Warehouse document steps that are not "a new row": posting a draft receipt,
+# cancelling a draft, reversing a posted document. They were all logged as CREATE.
+WAREHOUSE_ACTIONS = {'POST_RECEIPT', 'CANCEL', 'REVERSE'}
+
+ALL_ACTIONS = CLINICAL_ACTIONS | AUTH_ACTIONS | WAREHOUSE_ACTIONS
 
 _schema_checked = False
 
@@ -72,7 +76,7 @@ def ensure_schema(conn):
                 target = (r['CONSTRAINT_NAME'] if hasattr(r, 'keys') else r[0], clause)
                 break
 
-        if target and all(a in target[1] for a in AUTH_ACTIONS):
+        if target and all(a in target[1] for a in (AUTH_ACTIONS | WAREHOUSE_ACTIONS)):
             _schema_checked = True
             return
 
@@ -392,6 +396,14 @@ def action_for(method, path):
     Translate an HTTP verb into one of the schema's action types, preferring a
     clinically meaningful label where the path says what happened.
     """
+    if path.startswith('/api/warehouse/') and method == 'POST':
+        tail = path.rstrip('/').rsplit('/', 1)[-1]
+        if tail == 'post':
+            return 'POST_RECEIPT'
+        if tail == 'cancel':
+            return 'CANCEL'
+        if tail == 'reverse':
+            return 'REVERSE'
     if '/discharge' in path:
         return 'CHECK_OUT'
     if '/transfer' in path:
@@ -407,6 +419,25 @@ def action_for(method, path):
     if path.rstrip('/').endswith('/payments') or '/payments' in path:
         return 'PAYMENT_RECEIVED' if method == 'POST' else 'UPDATE'
     return {'POST': 'CREATE', 'PUT': 'UPDATE', 'DELETE': 'DELETE'}.get(method, 'UPDATE')
+
+
+def note_for(path, response_body):
+    """
+    A short note for the trail when the response says something the request
+    does not: a reversed receipt deleted its accounting expense (named by id),
+    an item edit changed the rules that decide how it is counted.
+    """
+    if not isinstance(response_body, dict):
+        return None
+    if path.startswith('/api/warehouse/receipts/') and path.rstrip('/').endswith('/reverse'):
+        exp = response_body.get('deleted_expense_id')
+        if exp:
+            return f"Receipt reversed: accounting_transactions {exp} deleted"
+        return "Receipt reversed (no accounting expense to delete)"
+    changed = response_body.get('changed_fields')
+    if path.startswith('/api/warehouse/items/') and isinstance(changed, dict) and changed:
+        return "Item rules changed: " + json.dumps(changed, ensure_ascii=False, default=str)
+    return None
 
 
 def entity_id_from(path, body, response_body):
