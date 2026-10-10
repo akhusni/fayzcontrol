@@ -278,20 +278,61 @@
   // board on most pages but the ward round on the duty roster. The list is
   // grouped by department; what a role sees is filtered by the server's
   // session.pages, so there is still only one copy of the page rules.
-  const FMH_MENU = [
-    { group: 'qabul',      key: '/reception.html',           label: 'Qabulxona',      icon: 'fa-concierge-bell', pill: 'pill-reception',  title: 'Bemorlar qabuli, xonalar, yozuvlar' },
-    { group: 'qabul',      key: '/crm.html',                 label: 'CRM',            icon: 'fa-address-book',   pill: 'pill-crm',        title: 'Bemorlar reestri va dossyesi' },
-    { group: 'klinika',    key: '/doctor.html',              label: 'Shifokor Posti', icon: 'fa-user-md',        pill: 'pill-doctor',     title: 'Shifokor posti (EMR)' },
-    { group: 'klinika',    key: '/consultation.html',        label: 'Konsultatsiya',  icon: 'fa-user-doctor',    pill: 'pill-doctor',     title: 'Narkologik / psixiatrik konsultatsiya' },
-    { group: 'klinika',    key: '/ward.html',                label: "Ko'rik",         icon: 'fa-stethoscope',    pill: 'pill-doctor',     title: "Statsionar kundalik ko'rigi" },
-    { group: 'klinika',    key: '/nurse.html',               label: 'Hamshira Posti', icon: 'fa-syringe',        pill: 'pill-nurse',      title: 'Dori berish va vital ko\'rsatkichlar' },
-    { group: 'statsionar', key: '/building_management.html', label: 'Statsionar',     icon: 'fa-bed',            pill: 'pill-building',   title: 'Karavotlar xaritasi' },
-    { group: 'statsionar', key: '/duty_schedule.html',       label: 'Navbatchilik',   icon: 'fa-calendar-check', pill: 'pill-hr',         title: 'Navbatchilik jadvali' },
-    { group: 'moliya',     key: '/accounting.html',          label: 'Buxgalteriya',   icon: 'fa-coins',          pill: 'pill-accounting', title: 'Kassa, hisoblar, ombor' },
-    { group: 'moliya',     key: '/warehouse.html',           label: 'Ombor',          icon: 'fa-boxes-stacked',  pill: 'pill-accounting', title: 'Dori va materiallar ombori' },
-    { group: 'moliya',     key: '/owner.html',               label: 'Pul oqimi',      icon: 'fa-chart-line',     pill: 'pill-accounting', title: 'Rahbar uchun pul oqimi' },
-    { group: 'kadrlar',    key: '/hr.html',                  label: 'HR & Kadrlar',   icon: 'fa-users-cog',      pill: 'pill-hr',         title: 'Xodimlar, davomat, oylik' },
-    { group: 'boshqaruv',  key: '/superpage.html',           label: 'Super-Portal',   icon: 'fa-crown',          pill: 'pill-super',      title: 'Boshqaruv markazi' },
+  const FMH_DEPARTMENTS = [
+    {
+      id: 'qabul',
+      label: 'Qabul & CRM',
+      icon: 'fa-concierge-bell',
+      colorClass: 'dept-qabul',
+      pages: [
+        { key: '/reception.html', label: 'Qabulxona', icon: 'fa-concierge-bell', desc: "Bemorlar qabuli, navbat va ro'yxat" },
+        { key: '/crm.html', label: 'Bemorlar CRM', icon: 'fa-address-book', desc: "Bemorlar reestri va to'liq dossye" }
+      ]
+    },
+    {
+      id: 'klinika',
+      label: 'Klinika & EMR',
+      icon: 'fa-user-md',
+      colorClass: 'dept-klinika',
+      pages: [
+        { key: '/doctor.html', label: 'Shifokor Posti', icon: 'fa-user-md', desc: "EMR, tashxis, dori tayinlash va ko'rik" },
+        { key: '/consultation.html', label: 'Konsultatsiya', icon: 'fa-user-doctor', desc: 'Narkologik / psixiatrik konsultatsiya' },
+        { key: '/ward.html', label: "Statsionar Ko'rigi", icon: 'fa-stethoscope', desc: "Yotgan bemorlarning kunlik ko'riklari" },
+        { key: '/nurse.html', label: 'Hamshira Posti', icon: 'fa-syringe', desc: "Dori berish, muolaja va ko'rsatkichlar" },
+        { key: '/medical_blank.html', label: 'Tibbiy Blanklar', icon: 'fa-file-lines', desc: "A4 tibbiy blanklar va shablonlar" }
+      ]
+    },
+    {
+      id: 'statsionar',
+      label: 'Statsionar',
+      icon: 'fa-bed',
+      colorClass: 'dept-statsionar',
+      pages: [
+        { key: '/building_management.html', label: 'Palatalar Xaritasi', icon: 'fa-bed', desc: '14 karavot CAD, bandlik va joylashtirish' },
+        { key: '/duty_schedule.html', label: 'Navbatchilik', icon: 'fa-calendar-check', desc: '24/7 navbatchilik jadvali va smenalar' }
+      ]
+    },
+    {
+      id: 'moliya',
+      label: 'Moliya & Ombor',
+      icon: 'fa-coins',
+      colorClass: 'dept-moliya',
+      pages: [
+        { key: '/accounting.html', label: 'Buxgalteriya', icon: 'fa-coins', desc: 'Kassa qoldiqlari, tushum, xarajat, maosh' },
+        { key: '/warehouse.html', label: 'Dori Ombori', icon: 'fa-boxes-stacked', desc: 'Dori va materiallar kirim/chiqim, FEFO' },
+        { key: '/owner.html', label: 'Pul Oqimi', icon: 'fa-chart-line', desc: 'Rahbar uchun umumiy moliyaviy tahlil' }
+      ]
+    },
+    {
+      id: 'boshqaruv',
+      label: 'Boshqaruv & HR',
+      icon: 'fa-crown',
+      colorClass: 'dept-boshqaruv',
+      pages: [
+        { key: '/superpage.html', label: 'Super-Portal', icon: 'fa-crown', desc: 'Boshqaruv markazi, narxlar va sozlamalar' },
+        { key: '/hr.html', label: 'HR & Kadrlar', icon: 'fa-users-cog', desc: "Xodimlar ro'yxati, davomat va oyliklar" }
+      ]
+    }
   ];
 
   // Hide the static pills until the shared menu replaces them, so staff do
@@ -306,36 +347,108 @@
     const pages = session.pages;
     if (!nav || !Array.isArray(pages) || !pages.length) return;
     const allowed = new Set(pages);
-    const here = location.pathname;
-    const items = FMH_MENU.filter(m => allowed.has(m.key));
-    if (!items.length) return;
+    let here = location.pathname.toLowerCase();
+    if (here === '/' || here.endsWith('/index.html')) here = '/superpage.html';
+
     const built = [];
-    let lastGroup = null;
-    items.forEach(m => {
-      if (lastGroup && m.group !== lastGroup) {
-        const sep = document.createElement('span');
-        sep.className = 'fmh-nav-sep';
-        sep.setAttribute('aria-hidden', 'true');
-        built.push(sep);
+
+    FMH_DEPARTMENTS.forEach(dept => {
+      const validPages = dept.pages.filter(p => allowed.has(p.key));
+      if (!validPages.length) return;
+
+      const isDeptActive = validPages.some(p => here.endsWith(p.key.toLowerCase()));
+
+      if (validPages.length === 1) {
+        const p = validPages[0];
+        const isCurrent = here.endsWith(p.key.toLowerCase());
+        const a = document.createElement('a');
+        a.href = p.key.slice(1);
+        a.className = 'fmh-dept-direct-link ' + dept.colorClass + (isCurrent ? ' active' : '');
+        a.title = p.desc;
+        if (isCurrent) a.setAttribute('aria-current', 'page');
+        a.innerHTML = '<i class="fas ' + p.icon + '"></i> <span>' + p.label + '</span>';
+        built.push(a);
+      } else {
+        const wrap = document.createElement('div');
+        wrap.className = 'fmh-dept-dropdown ' + dept.colorClass + (isDeptActive ? ' active-dept' : '');
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'fmh-dept-trigger';
+        trigger.setAttribute('aria-haspopup', 'true');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.innerHTML = '<i class="fas ' + dept.icon + '"></i> <span>' + dept.label + '</span> <i class="fas fa-chevron-down fmh-dept-arrow"></i>';
+
+        const menu = document.createElement('div');
+        menu.className = 'fmh-dept-menu';
+        menu.setAttribute('role', 'menu');
+
+        validPages.forEach(p => {
+          const isCurrent = here.endsWith(p.key.toLowerCase());
+          const item = document.createElement('a');
+          item.href = p.key.slice(1);
+          item.className = 'fmh-dept-item' + (isCurrent ? ' active' : '');
+          item.setAttribute('role', 'menuitem');
+          if (isCurrent) item.setAttribute('aria-current', 'page');
+
+          const badgeHtml = isCurrent ? '<span class="fmh-dept-item-badge">Faol</span>' : '';
+          item.innerHTML = `
+            <span class="fmh-dept-item-icon"><i class="fas ${p.icon}"></i></span>
+            <span class="fmh-dept-item-content">
+              <span class="fmh-dept-item-title">${p.label}</span>
+              <span class="fmh-dept-item-desc">${p.desc}</span>
+            </span>
+            ${badgeHtml}
+          `;
+          menu.appendChild(item);
+        });
+
+        // Click / touch toggle
+        trigger.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const wasOpen = wrap.classList.contains('is-open');
+          document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
+            if (d !== wrap) {
+              d.classList.remove('is-open');
+              const t = d.querySelector('.fmh-dept-trigger');
+              if (t) t.setAttribute('aria-expanded', 'false');
+            }
+          });
+          wrap.classList.toggle('is-open', !wasOpen);
+          trigger.setAttribute('aria-expanded', !wasOpen ? 'true' : 'false');
+        });
+
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        built.push(wrap);
       }
-      lastGroup = m.group;
-      const a = document.createElement('a');
-      a.href = m.key.slice(1);
-      a.className = 'portal-nav-pill ' + m.pill + (m.key === here ? ' active' : '');
-      a.title = m.title;
-      if (m.key === here) a.setAttribute('aria-current', 'page');
-      const icon = document.createElement('i');
-      icon.className = 'fas ' + m.icon;
-      const span = document.createElement('span');
-      span.textContent = m.label;
-      a.appendChild(icon);
-      a.appendChild(document.createTextNode(' '));
-      a.appendChild(span);
-      built.push(a);
     });
+
     nav.replaceChildren(...built);
     nav.setAttribute('aria-label', "Bo'limlar");
-    nav.classList.toggle('fmh-menu-many', items.length > 7);
+  }
+
+  // Global click & esc listener
+  if (!window.__fmhNavEventsBound) {
+    window.__fmhNavEventsBound = true;
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.fmh-dept-dropdown')) {
+        document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
+          d.classList.remove('is-open');
+          const t = d.querySelector('.fmh-dept-trigger');
+          if (t) t.setAttribute('aria-expanded', 'false');
+        });
+      }
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
+          d.classList.remove('is-open');
+          const t = d.querySelector('.fmh-dept-trigger');
+          if (t) t.setAttribute('aria-expanded', 'false');
+        });
+      }
+    });
   }
 
   // Links the header may contain, and the page each points at.

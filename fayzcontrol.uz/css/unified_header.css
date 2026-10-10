@@ -320,14 +320,16 @@ body.night-mode .super-topbar {
 .portal-master-nav {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 3px !important;
-  background: rgba(0, 0, 0, 0.28) !important;
-  padding: 3px !important;
-  border-radius: 9px !important;
+  gap: 4px !important;
+  background: rgba(0, 0, 0, 0.32) !important;
+  padding: 3px 6px !important;
+  border-radius: 10px !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   flex-shrink: 0 !important;
-  height: 38px !important;
+  height: 40px !important;
   box-sizing: border-box !important;
+  position: relative !important;
+  overflow: visible !important;
 }
 
 [data-theme="day"] .portal-master-nav, body.day-mode .portal-master-nav {
@@ -1451,16 +1453,9 @@ body.super-portal-page .portal-master-nav .portal-nav-pill:not(.active) span {
   min-width: 0 !important;
 }
 
-/* Last resort. If the pills genuinely cannot fit, they scroll within their
-   own track instead of spilling over the brand or the controls. */
 .portal-master-nav {
   max-width: 100% !important;
-  overflow-x: auto !important;
-  scrollbar-width: none !important;
-}
-
-.portal-master-nav::-webkit-scrollbar {
-  display: none !important;
+  overflow: visible !important;
 }
 
 /* The cluster keeps its content width now that it has a track of its own. */
@@ -1558,44 +1553,478 @@ body.super-portal-page .portal-master-nav .portal-nav-pill:not(.active) span {
 }
 
 /* ==========================================================================
-   ONE MENU (js/fmh_dialogs.js renders it from the session)
-   - Static pills are hidden until the shared menu replaces them, so the old
-     per-page row does not flash first.
-   - A thin rule separates the departments.
-   - With more than 7 pills (admin roles) only the current page keeps its
-     label below 1800px; the rest show the icon, with the name as a tooltip.
+   FMH ENTERPRISE DEPARTMENT DROPDOWN NAVIGATION SYSTEM
+   - 5 Grouped Hubs (Qabul, Klinika, Statsionar, Moliya, Boshqaruv)
+   - High-contrast, crystal-clear typography and icons in Day & Night modes
+   - Click & Hover interactions with backdrop-blur floating menus
+   - Active badges and route indicator state
    ========================================================================== */
 html.fmh-nav-pending .portal-master-nav {
   visibility: hidden !important;
 }
 
-.portal-master-nav .fmh-nav-sep {
-  flex: none !important;
-  width: 1px !important;
-  height: 18px !important;
-  margin: 0 3px !important;
-  background: rgba(255, 255, 255, 0.14) !important;
-}
-[data-theme="day"] .portal-master-nav .fmh-nav-sep, body.day-mode .portal-master-nav .fmh-nav-sep {
-  background: #cbd5e1 !important;
-}
-
-.portal-nav-pill.pill-nurse { color: #f472b6 !important; }
-[data-theme="day"] .portal-nav-pill.pill-nurse, body.day-mode .portal-nav-pill.pill-nurse { color: #db2777 !important; }
-.portal-nav-pill.pill-nurse.active {
-  background: rgba(236, 72, 153, 0.18) !important;
-  border-color: rgba(244, 114, 182, 0.4) !important;
-  color: #f472b6 !important;
-}
-[data-theme="day"] .portal-nav-pill.pill-nurse.active, body.day-mode .portal-nav-pill.pill-nurse.active {
-  background: #fce7f3 !important;
-  border-color: #f9a8d4 !important;
-  color: #be185d !important;
+.portal-master-nav {
+  position: relative !important;
+  overflow: visible !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  background: rgba(0, 0, 0, 0.32) !important;
+  padding: 3px 6px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  flex-shrink: 0 !important;
+  height: 40px !important;
+  box-sizing: border-box !important;
 }
 
-@media (max-width: 1800px) {
-  .portal-master-nav.fmh-menu-many .portal-nav-pill:not(.active) span {
-    display: none !important;
+[data-theme="day"] .portal-master-nav,
+body.day-mode .portal-master-nav {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Dropdown Hub Wrappers */
+.fmh-dept-dropdown {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Department Trigger Button & Direct Single Link */
+.fmh-dept-trigger,
+.fmh-dept-direct-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 11px !important;
+  border-radius: 7px !important;
+  font-family: var(--font-main, 'Plus Jakarta Sans', sans-serif) !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+  color: #94a3b8 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+  transition: all 0.16s ease !important;
+  height: 32px !important;
+  box-sizing: border-box !important;
+  user-select: none !important;
+  line-height: 1 !important;
+}
+
+[data-theme="day"] .fmh-dept-trigger,
+[data-theme="day"] .fmh-dept-direct-link,
+body.day-mode .fmh-dept-trigger,
+body.day-mode .fmh-dept-direct-link {
+  color: #475569 !important;
+}
+
+.fmh-dept-trigger:hover,
+.fmh-dept-direct-link:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="day"] .fmh-dept-trigger:hover,
+[data-theme="day"] .fmh-dept-direct-link:hover,
+body.day-mode .fmh-dept-trigger:hover,
+body.day-mode .fmh-dept-direct-link:hover {
+  color: #0f172a !important;
+  background: #e2e8f0 !important;
+}
+
+/* Chevron indicator */
+.fmh-dept-arrow {
+  font-size: 0.62rem !important;
+  margin-left: 2px !important;
+  opacity: 0.6 !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease !important;
+}
+
+.fmh-dept-dropdown.is-open .fmh-dept-arrow {
+  transform: rotate(180deg) !important;
+  opacity: 1 !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fmh-dept-dropdown:hover .fmh-dept-arrow {
+    transform: rotate(180deg) !important;
+    opacity: 1 !important;
+  }
+}
+
+.fmh-dept-dropdown.is-open .fmh-dept-trigger {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="day"] .fmh-dept-dropdown.is-open .fmh-dept-trigger,
+body.day-mode .fmh-dept-dropdown.is-open .fmh-dept-trigger {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Individual Department Color Accents */
+.dept-qabul .fmh-dept-trigger i:first-child,
+.dept-qabul.fmh-dept-direct-link i:first-child { color: #2dd4bf !important; }
+[data-theme="day"] .dept-qabul .fmh-dept-trigger i:first-child,
+[data-theme="day"] .dept-qabul.fmh-dept-direct-link i:first-child,
+body.day-mode .dept-qabul .fmh-dept-trigger i:first-child,
+body.day-mode .dept-qabul.fmh-dept-direct-link i:first-child { color: #0d9488 !important; }
+
+.dept-klinika .fmh-dept-trigger i:first-child,
+.dept-klinika.fmh-dept-direct-link i:first-child { color: #38bdf8 !important; }
+[data-theme="day"] .dept-klinika .fmh-dept-trigger i:first-child,
+[data-theme="day"] .dept-klinika.fmh-dept-direct-link i:first-child,
+body.day-mode .dept-klinika .fmh-dept-trigger i:first-child,
+body.day-mode .dept-klinika.fmh-dept-direct-link i:first-child { color: #0284c7 !important; }
+
+.dept-statsionar .fmh-dept-trigger i:first-child,
+.dept-statsionar.fmh-dept-direct-link i:first-child { color: #818cf8 !important; }
+[data-theme="day"] .dept-statsionar .fmh-dept-trigger i:first-child,
+[data-theme="day"] .dept-statsionar.fmh-dept-direct-link i:first-child,
+body.day-mode .dept-statsionar .fmh-dept-trigger i:first-child,
+body.day-mode .dept-statsionar.fmh-dept-direct-link i:first-child { color: #4f46e5 !important; }
+
+.dept-moliya .fmh-dept-trigger i:first-child,
+.dept-moliya.fmh-dept-direct-link i:first-child { color: #34d399 !important; }
+[data-theme="day"] .dept-moliya .fmh-dept-trigger i:first-child,
+[data-theme="day"] .dept-moliya.fmh-dept-direct-link i:first-child,
+body.day-mode .dept-moliya .fmh-dept-trigger i:first-child,
+body.day-mode .dept-moliya.fmh-dept-direct-link i:first-child { color: #059669 !important; }
+
+.dept-boshqaruv .fmh-dept-trigger i:first-child,
+.dept-boshqaruv.fmh-dept-direct-link i:first-child { color: #c084fc !important; }
+[data-theme="day"] .dept-boshqaruv .fmh-dept-trigger i:first-child,
+[data-theme="day"] .dept-boshqaruv.fmh-dept-direct-link i:first-child,
+body.day-mode .dept-boshqaruv .fmh-dept-trigger i:first-child,
+body.day-mode .dept-boshqaruv.fmh-dept-direct-link i:first-child { color: #7c3aed !important; }
+
+/* Active Department Highlights */
+.dept-qabul.active-dept .fmh-dept-trigger,
+.dept-qabul.fmh-dept-direct-link.active {
+  color: #2dd4bf !important;
+  background: rgba(45, 212, 191, 0.16) !important;
+  border-color: rgba(45, 212, 191, 0.38) !important;
+  font-weight: 800 !important;
+}
+[data-theme="day"] .dept-qabul.active-dept .fmh-dept-trigger,
+[data-theme="day"] .dept-qabul.fmh-dept-direct-link.active,
+body.day-mode .dept-qabul.active-dept .fmh-dept-trigger,
+body.day-mode .dept-qabul.fmh-dept-direct-link.active {
+  color: #0f766e !important;
+  background: #ccfbf1 !important;
+  border-color: #5eead4 !important;
+}
+
+.dept-klinika.active-dept .fmh-dept-trigger,
+.dept-klinika.fmh-dept-direct-link.active {
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.16) !important;
+  border-color: rgba(56, 189, 248, 0.38) !important;
+  font-weight: 800 !important;
+}
+[data-theme="day"] .dept-klinika.active-dept .fmh-dept-trigger,
+[data-theme="day"] .dept-klinika.fmh-dept-direct-link.active,
+body.day-mode .dept-klinika.active-dept .fmh-dept-trigger,
+body.day-mode .dept-klinika.fmh-dept-direct-link.active {
+  color: #0284c7 !important;
+  background: #e0f2fe !important;
+  border-color: #7dd3fc !important;
+}
+
+.dept-statsionar.active-dept .fmh-dept-trigger,
+.dept-statsionar.fmh-dept-direct-link.active {
+  color: #818cf8 !important;
+  background: rgba(129, 140, 248, 0.16) !important;
+  border-color: rgba(129, 140, 248, 0.38) !important;
+  font-weight: 800 !important;
+}
+[data-theme="day"] .dept-statsionar.active-dept .fmh-dept-trigger,
+[data-theme="day"] .dept-statsionar.fmh-dept-direct-link.active,
+body.day-mode .dept-statsionar.active-dept .fmh-dept-trigger,
+body.day-mode .dept-statsionar.fmh-dept-direct-link.active {
+  color: #4338ca !important;
+  background: #e0e7ff !important;
+  border-color: #a5b4fc !important;
+}
+
+.dept-moliya.active-dept .fmh-dept-trigger,
+.dept-moliya.fmh-dept-direct-link.active {
+  color: #34d399 !important;
+  background: rgba(52, 211, 153, 0.16) !important;
+  border-color: rgba(52, 211, 153, 0.38) !important;
+  font-weight: 800 !important;
+}
+[data-theme="day"] .dept-moliya.active-dept .fmh-dept-trigger,
+[data-theme="day"] .dept-moliya.fmh-dept-direct-link.active,
+body.day-mode .dept-moliya.active-dept .fmh-dept-trigger,
+body.day-mode .dept-moliya.fmh-dept-direct-link.active {
+  color: #047857 !important;
+  background: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+}
+
+.dept-boshqaruv.active-dept .fmh-dept-trigger,
+.dept-boshqaruv.fmh-dept-direct-link.active {
+  color: #c084fc !important;
+  background: rgba(192, 132, 252, 0.16) !important;
+  border-color: rgba(192, 132, 252, 0.38) !important;
+  font-weight: 800 !important;
+}
+[data-theme="day"] .dept-boshqaruv.active-dept .fmh-dept-trigger,
+[data-theme="day"] .dept-boshqaruv.fmh-dept-direct-link.active,
+body.day-mode .dept-boshqaruv.active-dept .fmh-dept-trigger,
+body.day-mode .dept-boshqaruv.fmh-dept-direct-link.active {
+  color: #6d28d9 !important;
+  background: #ede9fe !important;
+  border-color: #c4b5fd !important;
+}
+
+/* Floating Dropdown Menus */
+.fmh-dept-menu {
+  position: absolute !important;
+  top: calc(100% + 7px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) translateY(-6px) scale(0.97) !important;
+  min-width: 290px !important;
+  max-width: 350px !important;
+  background: rgba(8, 20, 42, 0.97) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  box-shadow: 0 18px 40px -6px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.16s ease !important;
+  z-index: 100000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  box-sizing: border-box !important;
+}
+
+/* Seamless hover bridge */
+.fmh-dept-menu::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -10px !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 10px !important;
+  background: transparent !important;
+}
+
+/* Dropdown alignment edge cases: first leans left, last leans right */
+.fmh-dept-dropdown:first-child .fmh-dept-menu {
+  left: 0 !important;
+  transform: translateY(-6px) scale(0.97) !important;
+}
+
+.fmh-dept-dropdown:last-child .fmh-dept-menu {
+  left: auto !important;
+  right: 0 !important;
+  transform: translateY(-6px) scale(0.97) !important;
+}
+
+/* Open states on click / touch */
+.fmh-dept-dropdown.is-open .fmh-dept-menu {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: translateX(-50%) translateY(0) scale(1) !important;
+}
+
+.fmh-dept-dropdown:first-child.is-open .fmh-dept-menu {
+  transform: translateY(0) scale(1) !important;
+}
+
+.fmh-dept-dropdown:last-child.is-open .fmh-dept-menu {
+  transform: translateY(0) scale(1) !important;
+}
+
+/* Open states on desktop hover */
+@media (hover: hover) and (pointer: fine) {
+  .fmh-dept-dropdown:hover .fmh-dept-menu {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateX(-50%) translateY(0) scale(1) !important;
+  }
+  .fmh-dept-dropdown:first-child:hover .fmh-dept-menu {
+    transform: translateY(0) scale(1) !important;
+  }
+  .fmh-dept-dropdown:last-child:hover .fmh-dept-menu {
+    transform: translateY(0) scale(1) !important;
+  }
+}
+
+/* Day Mode Menu Surface */
+[data-theme="day"] .fmh-dept-menu,
+body.day-mode .fmh-dept-menu {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.15), 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Dropdown Sub-Item Rows */
+.fmh-dept-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 10px !important;
+  border-radius: 8px !important;
+  text-decoration: none !important;
+  color: #e2e8f0 !important;
+  transition: all 0.14s ease !important;
+  position: relative !important;
+  box-sizing: border-box !important;
+  border: 1px solid transparent !important;
+  cursor: pointer !important;
+}
+
+[data-theme="day"] .fmh-dept-item,
+body.day-mode .fmh-dept-item {
+  color: #1e293b !important;
+}
+
+.fmh-dept-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="day"] .fmh-dept-item:hover,
+body.day-mode .fmh-dept-item:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Active Sub-Item */
+.fmh-dept-item.active {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+  color: #38bdf8 !important;
+}
+
+[data-theme="day"] .fmh-dept-item.active,
+body.day-mode .fmh-dept-item.active {
+  background: #e0f2fe !important;
+  border-color: #7dd3fc !important;
+  color: #0284c7 !important;
+}
+
+/* Sub-Item Icon */
+.fmh-dept-item-icon {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 7px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.88rem !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #cbd5e1 !important;
+  flex-shrink: 0 !important;
+  transition: all 0.14s ease !important;
+}
+
+.fmh-dept-item:hover .fmh-dept-item-icon {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="day"] .fmh-dept-item-icon,
+body.day-mode .fmh-dept-item-icon {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+[data-theme="day"] .fmh-dept-item:hover .fmh-dept-item-icon,
+body.day-mode .fmh-dept-item:hover .fmh-dept-item-icon {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+.fmh-dept-item.active .fmh-dept-item-icon {
+  background: rgba(56, 189, 248, 0.22) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  color: #38bdf8 !important;
+}
+
+[data-theme="day"] .fmh-dept-item.active .fmh-dept-item-icon,
+body.day-mode .fmh-dept-item.active .fmh-dept-item-icon {
+  background: #bae6fd !important;
+  border-color: #38bdf8 !important;
+  color: #0284c7 !important;
+}
+
+/* Sub-Item Typography */
+.fmh-dept-item-content {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  flex-grow: 1 !important;
+  min-width: 0 !important;
+}
+
+.fmh-dept-item-title {
+  font-size: 0.80rem !important;
+  font-weight: 700 !important;
+  color: inherit !important;
+  line-height: 1.2 !important;
+}
+
+.fmh-dept-item-desc {
+  font-size: 0.67rem !important;
+  font-weight: 500 !important;
+  color: #94a3b8 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+[data-theme="day"] .fmh-dept-item-desc,
+body.day-mode .fmh-dept-item-desc {
+  color: #64748b !important;
+}
+
+/* Active Badge Pill */
+.fmh-dept-item-badge {
+  font-size: 0.60rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  padding: 2px 7px !important;
+  border-radius: 999px !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  flex-shrink: 0 !important;
+}
+
+[data-theme="day"] .fmh-dept-item-badge,
+body.day-mode .fmh-dept-item-badge {
+  background: #bae6fd !important;
+  color: #0369a1 !important;
+  border-color: #7dd3fc !important;
+}
+
+/* Responsive optimization for smaller laptop screens */
+@media (max-width: 1200px) {
+  .fmh-dept-trigger,
+  .fmh-dept-direct-link {
+    padding: 5px 8px !important;
+    font-size: 0.73rem !important;
+    gap: 4px !important;
   }
 }
 
