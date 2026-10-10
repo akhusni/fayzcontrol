@@ -362,7 +362,7 @@
         const p = validPages[0];
         const isCurrent = here.endsWith(p.key.toLowerCase());
         const a = document.createElement('a');
-        a.href = p.key.slice(1);
+        a.href = p.key;
         a.className = 'fmh-dept-direct-link ' + dept.colorClass + (isCurrent ? ' active' : '');
         a.title = p.desc;
         if (isCurrent) a.setAttribute('aria-current', 'page');
@@ -372,12 +372,26 @@
         const wrap = document.createElement('div');
         wrap.className = 'fmh-dept-dropdown ' + dept.colorClass + (isDeptActive ? ' active-dept' : '');
 
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.className = 'fmh-dept-trigger';
-        trigger.setAttribute('aria-haspopup', 'true');
-        trigger.setAttribute('aria-expanded', 'false');
-        trigger.innerHTML = '<i class="fas ' + dept.icon + '"></i> <span>' + dept.label + '</span> <i class="fas fa-chevron-down fmh-dept-arrow"></i>';
+        const primaryPage = validPages[0];
+        const isExactCurrent = here.endsWith(primaryPage.key.toLowerCase());
+
+        const triggerGroup = document.createElement('div');
+        triggerGroup.className = 'fmh-dept-trigger-group';
+
+        const link = document.createElement('a');
+        link.href = primaryPage.key;
+        link.className = 'fmh-dept-trigger-link';
+        link.title = dept.label + " (" + primaryPage.label + ")";
+        link.innerHTML = '<i class="fas ' + dept.icon + '"></i> <span>' + dept.label + '</span>';
+
+        const arrow = document.createElement('button');
+        arrow.type = 'button';
+        arrow.className = 'fmh-dept-trigger-arrow';
+        arrow.setAttribute('aria-haspopup', 'true');
+        arrow.setAttribute('aria-expanded', 'false');
+        arrow.setAttribute('aria-label', dept.label + " menyusi");
+        arrow.title = "Barcha sahifalar (" + validPages.length + " ta)";
+        arrow.innerHTML = '<i class="fas fa-chevron-down fmh-dept-arrow"></i>';
 
         const menu = document.createElement('div');
         menu.className = 'fmh-dept-menu';
@@ -386,7 +400,7 @@
         validPages.forEach(p => {
           const isCurrent = here.endsWith(p.key.toLowerCase());
           const item = document.createElement('a');
-          item.href = p.key.slice(1);
+          item.href = p.key;
           item.className = 'fmh-dept-item' + (isCurrent ? ' active' : '');
           item.setAttribute('role', 'menuitem');
           if (isCurrent) item.setAttribute('aria-current', 'page');
@@ -403,22 +417,37 @@
           menu.appendChild(item);
         });
 
-        // Click / touch toggle
-        trigger.addEventListener('click', function(e) {
-          e.stopPropagation();
+        function toggleDropdown(openState) {
           const wasOpen = wrap.classList.contains('is-open');
+          const shouldOpen = (typeof openState === 'boolean') ? openState : !wasOpen;
           document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
             if (d !== wrap) {
               d.classList.remove('is-open');
-              const t = d.querySelector('.fmh-dept-trigger');
-              if (t) t.setAttribute('aria-expanded', 'false');
+              const aBtn = d.querySelector('.fmh-dept-trigger-arrow');
+              if (aBtn) aBtn.setAttribute('aria-expanded', 'false');
             }
           });
-          wrap.classList.toggle('is-open', !wasOpen);
-          trigger.setAttribute('aria-expanded', !wasOpen ? 'true' : 'false');
+          wrap.classList.toggle('is-open', shouldOpen);
+          arrow.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        }
+
+        arrow.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleDropdown();
         });
 
-        wrap.appendChild(trigger);
+        link.addEventListener('click', function(e) {
+          if (isExactCurrent) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDropdown();
+          }
+        });
+
+        triggerGroup.appendChild(link);
+        triggerGroup.appendChild(arrow);
+        wrap.appendChild(triggerGroup);
         wrap.appendChild(menu);
         built.push(wrap);
       }
@@ -435,7 +464,7 @@
       if (!e.target.closest('.fmh-dept-dropdown')) {
         document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
           d.classList.remove('is-open');
-          const t = d.querySelector('.fmh-dept-trigger');
+          const t = d.querySelector('.fmh-dept-trigger-arrow, .fmh-dept-trigger');
           if (t) t.setAttribute('aria-expanded', 'false');
         });
       }
@@ -444,7 +473,7 @@
       if (e.key === 'Escape') {
         document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
           d.classList.remove('is-open');
-          const t = d.querySelector('.fmh-dept-trigger');
+          const t = d.querySelector('.fmh-dept-trigger-arrow, .fmh-dept-trigger');
           if (t) t.setAttribute('aria-expanded', 'false');
         });
       }
