@@ -17,3 +17,5 @@ fayzcontrol.uz/data/users[ .]*
 !fayzcontrol.uz/data/users.json
 .git_fayzcontrol_uz_backup/
 .agents/
+*.zip
+deploy_to_server.py
