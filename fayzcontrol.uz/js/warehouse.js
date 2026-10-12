@@ -931,6 +931,7 @@
             sorts.map((s) => '<option value="' + s[0] + '">' + esc(s[1]) + '</option>').join('') + '</select>' +
             '<button type="button" class="wh-btn" id="inv-dir" data-action="inv-dir" title="Tartibni almashtirish" aria-label="Saralash tartibi"><i class="fas fa-arrow-down-short-wide" aria-hidden="true"></i></button></div></div>' +
           '<div class="wh-toolbar-end">' +
+            '<button type="button" class="wh-btn" data-action="inv-print" title="Inventarizatsiya varaqasini chop etish"><i class="fas fa-print" aria-hidden="true"></i> Chop etish</button>' +
             '<button type="button" class="wh-btn" data-action="inv-reset"><i class="fas fa-filter-circle-xmark" aria-hidden="true"></i> Tozalash</button>' +
             (S.whWrite ? '<button type="button" class="wh-btn wh-btn-primary" data-action="item-new"><i class="fas fa-plus" aria-hidden="true"></i> Yangi mahsulot</button>' : '') +
           '</div>' +
@@ -1594,13 +1595,13 @@
       '<div class="wh-block"><h3 class="wh-block-title"><i class="fas fa-list" aria-hidden="true"></i> Qatorlar (' + lines.length + ')</h3>' +
       '<div class="wh-table-wrap"><table class="wh-table wh-stack wh-compact"><thead><tr><th>№</th><th>Mahsulot</th><th class="wh-right">Qadoq × birlik</th><th class="wh-right">Jami miqdor</th>' +
         (lineCost ? '<th class="wh-right">Qadoq narxi</th><th class="wh-right">Birlik narxi</th><th class="wh-right">Summa</th>' : '') + '<th>Muddati</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
-    let foot = '';
-    const id = esc(rec.id);
+    let foot = '<button type="button" class="wh-btn wh-btn-outline" data-action="receipt-print" data-id="' + id + '"><i class="fas fa-print" aria-hidden="true"></i> Nakladnoyani chop etish</button>';
     if (S.accWrite && rec.status === 'draft') {
       foot = '<div class="wh-foot-left"><button type="button" class="wh-btn wh-btn-danger" data-action="receipt-cancel" data-id="' + id + '"><i class="fas fa-ban" aria-hidden="true"></i> Qoralamani bekor qilish</button></div>' +
+        foot +
         '<button type="button" class="wh-btn wh-btn-primary" data-action="receipt-post" data-id="' + id + '"><i class="fas fa-circle-check" aria-hidden="true"></i> Tasdiqlash va omborga qabul qilish</button>';
     } else if (S.accWrite && rec.status === 'posted') {
-      foot = '<div class="wh-foot-left"><button type="button" class="wh-btn wh-btn-danger" data-action="receipt-reverse" data-id="' + id + '"><i class="fas fa-rotate-left" aria-hidden="true"></i> Kirimni qaytarish</button></div>';
+      foot = '<div class="wh-foot-left"><button type="button" class="wh-btn wh-btn-danger" data-action="receipt-reverse" data-id="' + id + '"><i class="fas fa-rotate-left" aria-hidden="true"></i> Kirimni qaytarish</button></div>' + foot;
     }
     layer.setFoot(foot);
   }
@@ -1614,6 +1615,26 @@
 
   ACTIONS['open-receipt'] = (t) => openReceipt(t.dataset.id);
   ACTIONS['receipt-reload'] = () => { const l = receiptLayer(); if (l) paintReceipt(l); };
+  ACTIONS['receipt-print'] = (t) => {
+    const l = receiptLayer();
+    const rec = l && l.receipt;
+    if (!rec) return;
+    if (window.FMH_Print && typeof window.FMH_Print.warehouseReceipt === 'function') {
+      window.FMH_Print.warehouseReceipt(rec, rec.lines || []);
+    } else {
+      window.print();
+    }
+  };
+  ACTIONS['inv-print'] = () => {
+    if (window.FMH_Print && typeof window.FMH_Print.warehouseInventory === 'function') {
+      window.FMH_Print.warehouseInventory(INV.items || [], {
+        date: todayISO(),
+        manager: (S.user && (S.user.full_name || S.user.username)) || "Ombor Mudiri"
+      });
+    } else {
+      window.print();
+    }
+  };
   ACTIONS['receipt-post'] = async (t) => {
     const l = receiptLayer();
     const rec = l && l.receipt;

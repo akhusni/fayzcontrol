@@ -281,7 +281,7 @@
   const FMH_DEPARTMENTS = [
     {
       id: 'qabul',
-      label: 'Qabul & CRM',
+      label: 'Qabul',
       icon: 'fa-concierge-bell',
       colorClass: 'dept-qabul',
       pages: [
@@ -291,7 +291,7 @@
     },
     {
       id: 'klinika',
-      label: 'Klinika & EMR',
+      label: 'Klinika',
       icon: 'fa-user-md',
       colorClass: 'dept-klinika',
       pages: [
@@ -314,7 +314,7 @@
     },
     {
       id: 'moliya',
-      label: 'Moliya & Ombor',
+      label: 'Moliya',
       icon: 'fa-coins',
       colorClass: 'dept-moliya',
       pages: [
@@ -325,7 +325,7 @@
     },
     {
       id: 'boshqaruv',
-      label: 'Boshqaruv & HR',
+      label: 'Boshqaruv',
       icon: 'fa-crown',
       colorClass: 'dept-boshqaruv',
       pages: [
@@ -438,11 +438,9 @@
         });
 
         link.addEventListener('click', function(e) {
-          if (isExactCurrent) {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleDropdown();
-          }
+          e.preventDefault();
+          e.stopPropagation();
+          toggleDropdown();
         });
 
         triggerGroup.appendChild(link);
@@ -526,66 +524,103 @@
 
     // Show who is signed in, with their job title, and offer a way out.
     const cluster = document.querySelector('.portal-actions-cluster');
-    if (cluster && !document.getElementById('fmh-session-chip')) {
-      const chip = document.createElement('div');
-      chip.id = 'fmh-session-chip';
-      chip.style.cssText = 'display:inline-flex;align-items:center;gap:8px;' +
-        'padding:5px 10px;border-radius:999px;font-size:0.74rem;font-weight:700;' +
-        'background:var(--bg-panel,#0a1b33);border:1px solid var(--border-subtle,rgba(255,255,255,0.08));' +
-        'color:var(--text-secondary,#cbd5e1);white-space:nowrap;min-height:32px;';
-      const u = session.user || {};
-      const name = u.full_name || u.username || '';
-      const role = session.role_label || u.role || '';
+    if (cluster) {
+      const existingWidget = cluster.querySelector('.user-role-widget');
+      if (existingWidget) {
+        existingWidget.classList.add('fmh-identity-capsule');
+        if (!existingWidget.querySelector('.fmh-user-extra-actions')) {
+          const extra = document.createElement('div');
+          extra.className = 'fmh-user-extra-actions';
 
-      // Built as nodes rather than innerHTML: the name comes from the staff
-      // record, and concatenating it into markup let a name containing angle
-      // brackets write into the header.
-      const avatar = document.createElement('span');
-      avatar.textContent = u.avatar || '👤';
+          if (location.pathname !== '/change-password.html') {
+            const pw = document.createElement('a');
+            pw.href = '/change-password.html';
+            pw.className = 'fmh-user-action-btn fmh-key-btn';
+            pw.setAttribute('aria-label', "Parolni o'zgartirish");
+            pw.title = "Parolni o'zgartirish";
+            pw.innerHTML = '<i class="fas fa-key"></i>';
+            extra.appendChild(pw);
+          }
 
-      const label = document.createElement('span');
-      label.textContent = name;
+          const out = document.createElement('button');
+          out.type = 'button';
+          out.className = 'fmh-user-action-btn fmh-logout-btn';
+          out.setAttribute('aria-label', 'Tizimdan chiqish');
+          out.title = 'Tizimdan chiqish';
+          out.innerHTML = '<i class="fas fa-right-from-bracket"></i>';
+          out.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const ok = window.fmhConfirm
+              ? await window.fmhConfirm({
+                  title: 'Tizimdan Chiqish',
+                  message: 'Hisobingizdan chiqmoqchimisiz?',
+                  confirmText: 'Chiqish', cancelText: 'Bekor Qilish', type: 'warning' })
+              : true;
+            if (!ok) return;
+            try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
+            location.replace('/login.html');
+          });
+          extra.appendChild(out);
+          existingWidget.appendChild(extra);
+        }
+      } else if (!document.getElementById('fmh-session-chip')) {
+        const chip = document.createElement('div');
+        chip.id = 'fmh-session-chip';
+        chip.className = 'fmh-session-chip fmh-identity-capsule';
 
-      // The stylesheet caps this span's width and ellipsises it, so the whole
-      // name has to stay reachable somewhere: the chip carries it as a title
-      // alongside the job title it already showed.
-      chip.title = role ? name + ' — ' + role : name;
+        const u = session.user || {};
+        const name = u.full_name || u.username || '';
+        const role = session.role_label || u.role || '';
 
-      chip.appendChild(avatar);
-      chip.appendChild(label);
+        const avatar = document.createElement('span');
+        avatar.className = 'user-avatar-badge';
+        avatar.textContent = u.avatar || '👤';
 
-      // Staff could change their password only when forced at first sign-in;
-      // nothing linked to the page.
-      if (location.pathname !== '/change-password.html') {
-        const pw = document.createElement('a');
-        pw.href = '/change-password.html';
-        pw.setAttribute('aria-label', "Parolni o'zgartirish");
-        pw.title = "Parolni o'zgartirish";
-        pw.innerHTML = '<i class="fas fa-key"></i>';
-        pw.style.cssText = 'color:inherit;padding:0 2px;font-size:0.8rem;text-decoration:none;';
-        chip.appendChild(pw);
+        const label = document.createElement('span');
+        label.className = 'user-display-name';
+        label.textContent = name;
+
+        chip.title = role ? name + ' — ' + role : name;
+
+        chip.appendChild(avatar);
+        chip.appendChild(label);
+
+        const extra = document.createElement('div');
+        extra.className = 'fmh-user-extra-actions';
+
+        if (location.pathname !== '/change-password.html') {
+          const pw = document.createElement('a');
+          pw.href = '/change-password.html';
+          pw.className = 'fmh-user-action-btn fmh-key-btn';
+          pw.setAttribute('aria-label', "Parolni o'zgartirish");
+          pw.title = "Parolni o'zgartirish";
+          pw.innerHTML = '<i class="fas fa-key"></i>';
+          extra.appendChild(pw);
+        }
+
+        const out = document.createElement('button');
+        out.type = 'button';
+        out.className = 'fmh-user-action-btn fmh-logout-btn';
+        out.setAttribute('aria-label', 'Tizimdan chiqish');
+        out.title = 'Tizimdan chiqish';
+        out.innerHTML = '<i class="fas fa-right-from-bracket"></i>';
+        out.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const ok = window.fmhConfirm
+            ? await window.fmhConfirm({
+                title: 'Tizimdan Chiqish',
+                message: 'Hisobingizdan chiqmoqchimisiz?',
+                confirmText: 'Chiqish', cancelText: 'Bekor Qilish', type: 'warning' })
+            : true;
+          if (!ok) return;
+          try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
+          location.replace('/login.html');
+        });
+        extra.appendChild(out);
+        chip.appendChild(extra);
+
+        cluster.insertBefore(chip, cluster.firstChild);
       }
-
-      const out = document.createElement('button');
-      out.type = 'button';
-      out.setAttribute('aria-label', 'Tizimdan chiqish');
-      out.title = 'Tizimdan chiqish';
-      out.innerHTML = '<i class="fas fa-right-from-bracket"></i>';
-      out.style.cssText = 'background:transparent;border:none;color:inherit;cursor:pointer;' +
-        'padding:0 2px;font-size:0.8rem;';
-      out.addEventListener('click', async () => {
-        const ok = window.fmhConfirm
-          ? await window.fmhConfirm({
-              title: 'Tizimdan Chiqish',
-              message: 'Hisobingizdan chiqmoqchimisiz?',
-              confirmText: 'Chiqish', cancelText: 'Bekor Qilish', type: 'warning' })
-          : true;
-        if (!ok) return;
-        try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
-        location.replace('/login.html');
-      });
-      chip.appendChild(out);
-      cluster.insertBefore(chip, cluster.firstChild);
     }
   }
 

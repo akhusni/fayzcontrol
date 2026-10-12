@@ -1102,7 +1102,12 @@
 
   function printDutySchedule() {
     updatePrintSheet();
-    window.print();
+    const sheet = document.getElementById('official-duty-print-sheet');
+    if (sheet && window.FMH_Print && typeof window.FMH_Print.printDocument === 'function') {
+      window.FMH_Print.printDocument(sheet.innerHTML, "FMH_Navbatchilik_Jadvali", { orientation: 'landscape' });
+    } else {
+      window.print();
+    }
   }
 
   // -------------------------------------------------------------------------

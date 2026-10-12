@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <!-- Unified Enterprise Stylesheets -->
-  <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+  <link rel="stylesheet" href="css/unified_print.css?v=6.0">
   <link rel="stylesheet" href="css/unified_header.css?v=7.1">
   <link rel="stylesheet" href="css/duty_schedule.css?v=1.4">
 
@@ -69,7 +69,7 @@
         </a>
 
         <!-- Official Print -->
-        <button type="button" class="btn-duty-action btn-duty-outline" onclick="window.print()" title="A4 formatda chop etish">
+        <button type="button" class="btn-duty-action btn-duty-outline" onclick="window.FMH_DutySchedule.printDutySchedule()" title="A4 formatda chop etish">
           <i class="fas fa-print"></i> <span>Chop Etish</span>
         </button>
 
@@ -387,6 +387,7 @@
   </div>
 
   <!-- Controller Script -->
-  <script src="js/duty_schedule.js?v=1.6"></script>
+  <script src="js/unified_print_engine.js?v=6.0"></script>
+  <script src="js/duty_schedule.js?v=1.7"></script>
 </body>
 </html>

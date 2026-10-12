@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+    <link rel="stylesheet" href="css/unified_print.css?v=6.0">
 <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
@@ -931,7 +931,7 @@
   <div class="super-modal-backdrop" id="super-receipt-modal">
     <div class="super-modal-box" style="max-width: 620px;">
       <div class="super-modal-header">
-        <h3 class="super-modal-title"><i class="fas fa-receipt" style="color: var(--primary);"></i> Rasmiy Klinik Kvitansiya (Invoice)</h3> fa-receipt" style="color: #38bdf8;"></i> Rasmiy Klinik Kvitansiya (Invoice)</h3>
+        <h3 class="super-modal-title"><i class="fas fa-receipt" style="color: var(--primary);"></i> Rasmiy Klinik Kvitansiya (Invoice)</h3>
         <button class="btn-super btn-super-outline" style="padding: 4px 8px;" onclick="window.FMH_Super.closeAllModals()">&times;</button>
       </div>
       <div class="super-modal-body" style="background: #f1f5f9; padding: 1.5rem;">
@@ -985,7 +985,7 @@
       </div>
       <div class="super-modal-footer">
         <button class="btn-super btn-super-outline" onclick="window.FMH_Super.closeAllModals()">Yopish</button>
-        <button class="btn-super btn-super-primary" onclick="window.print()"><i class="fas fa-print"></i> Kvitansiyani Chop Etish (Print)</button>
+        <button class="btn-super btn-super-primary" onclick="window.FMH_Super.printCurrentInvoice()"><i class="fas fa-print"></i> Kvitansiyani Chop Etish (Print)</button>
       </div>
     </div>
   </div>
@@ -1611,9 +1611,9 @@
 
   <!-- Scripts -->
   <script src="js/xlsx.full.min.js"></script>
-    <script src="js/unified_print_engine.js?v=5.4"></script>
-    <script src="js/med_search_engine.js?v=4.0"></script>
-<script src="js/superpage.js?v=8.7"></script>
+  <script src="js/unified_print_engine.js?v=6.0"></script>
+  <script src="js/med_search_engine.js?v=4.0"></script>
+  <script src="js/superpage.js?v=8.8"></script>
   <div id="print-area"></div>
 </body>
 </html>

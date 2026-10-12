@@ -1988,8 +1988,7 @@ window.FMH_Reception = (function () {
   function printConsultationSlip(data, aptId) {
     const doctorObj = (State.data.doctors || []).find(d => d.id === data.doctorId) || { full_name: 'Mas\'ul Shifokor' };
     const printArea = document.getElementById('print-area');
-    if (!printArea) return;
-    printArea.innerHTML = `
+    const slipHtml = `
       <div class="print-sheet-a4" style="max-width: 600px; margin: 0 auto; padding: 25px; font-family: sans-serif; border: 1px solid #ddd; background: #fff; color: #000;">
         <div style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px;">
           <h2 style="margin: 0; font-size: 1.4rem;">FAYZ MEDICAL HOUSE</h2>
@@ -2014,9 +2013,14 @@ window.FMH_Reception = (function () {
         </div>
       </div>
     `;
-    setTimeout(() => {
-      window.print();
-    }, 200);
+    if (printArea) printArea.innerHTML = slipHtml;
+    if (window.FMH_Print && typeof window.FMH_Print.printDocument === 'function') {
+      window.FMH_Print.printDocument(slipHtml, `Konsultatsiya_${data.name || 'Bemor'}`);
+    } else {
+      setTimeout(() => {
+        window.print();
+      }, 200);
+    }
   }
 
   function startDirectIntake(options = {}) {
@@ -2735,10 +2739,11 @@ window.FMH_Reception = (function () {
         histEl.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><p>Tashrif tarixi yo\'q</p></div>';
       } else {
         histEl.innerHTML = admissions.map(a => `
-          <div class="apt-summary-row">
+          <div class="apt-summary-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <span class="label">${formatDate(a.start_date)} → ${formatDate(a.planned_end_date)}</span>
             <span class="value">${a.bed_code || a.bed_id}</span>
             <span class="status-pill ${a.status === 'active' ? 'pill-admitted' : 'pill-completed'}">${a.status === 'active' ? 'Yotmoqda' : 'Chiqarilgan'}</span>
+            <button type="button" class="btn-portal btn-outline-portal" style="padding:2px 8px; font-size:0.7rem;" onclick="window.FMH_Reception.printAdmissionSlipById('${a.id}')" title="Qabul varaqasini chop etish"><i class="fas fa-print"></i> Varaqa</button>
           </div>`).join('');
       }
     }
@@ -2777,6 +2782,33 @@ window.FMH_Reception = (function () {
     } else {
       window.print();
     }
+  }
+
+  function printAdmissionSlipById(admissionId) {
+    const admission = (State.admissions || []).find(a => a.id === admissionId);
+    if (!admission) {
+      showToast("Tashrif ma'lumotlari topilmadi", 'warning');
+      return;
+    }
+    const patient = (State.patients || []).find(p => p.id === admission.patient_id) || {};
+    const slipData = {
+      patient_name: patient.full_name || 'Anonim Bemor',
+      patient_phone: patient.phone || '',
+      birth_date: patient.birth_date || '',
+      address: patient.address || '',
+      service_type: admission.service_type || 'Statsionar',
+      program_label: admission.program_name || 'Standart',
+      doctor_name: admission.doctor_name || '',
+      bed_id: admission.bed_code || admission.bed_id || '',
+      start_date: formatDate(admission.start_date),
+      end_date: formatDate(admission.planned_end_date || admission.end_date),
+      days: admission.days || 1,
+      daily_rate: Number(admission.daily_rate) || 0,
+      discount_percent: Number(admission.discount_percent) || 0,
+      advance: Number(admission.advance_paid) || Number(admission.total_paid) || 0,
+      notes: admission.notes || ''
+    };
+    printAdmissionSlip(slipData, admission.id);
   }
 
   // Reads what the desk has actually entered on the intake form. Returns
@@ -2994,6 +3026,7 @@ window.FMH_Reception = (function () {
     printPatientReceipt,
     deletePatient,
     printBlankIntakeForm,
+    printAdmissionSlipById,
     exportToExcel,
     renderBedPicker,
     renderIntakeSections,

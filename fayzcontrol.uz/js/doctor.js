@@ -2497,7 +2497,7 @@
     if (modal) modal.style.display = 'none';
   }
 
-    function printOfficialDocument(docType = 'prescriptions') {
+  function printOfficialDocument(docType = 'prescriptions') {
     const p = state.selectedPatient;
     if (!p) {
       showToast('Iltimos, avval bemorni tanlang!', 'warning');
@@ -2506,16 +2506,25 @@
     const activeDoc = state.authenticatedDoctor || state.doctors.find(d => d.id === state.activeDoctorId) || state.doctors[0];
     const rxList = state.prescriptionsMap[p.id] || [];
     const epicrisis = (state.epicrisisMap && state.epicrisisMap[p.id]) || {};
+    const anam = state.anamnesisMap[p.id] || {};
+    const dailyNotes = state.dailyNotesMap[p.id] || [];
 
     if (window.FMH_Print) {
       if (docType === 'prescriptions') {
         window.FMH_Print.prescriptionSheet(p, rxList, activeDoc);
       } else if (docType === 'epicrisis') {
         window.FMH_Print.dischargeEpicrisis(p, epicrisis, activeDoc);
+      } else if (docType === 'anamnesis') {
+        window.FMH_Print.caseHistory(p, anam, activeDoc, dailyNotes);
+      } else if (docType === 'full_dossier') {
+        renderOfficialDocumentPreview();
+        const container = document.getElementById('printable-a4-document');
+        if (container) {
+          window.FMH_Print.printDocument(container.innerHTML, `EMR_Dossier_${p.patient_code || p.id}`);
+        } else {
+          window.FMH_Print.caseHistory(p, anam, activeDoc, dailyNotes);
+        }
       } else {
-        // The print engine has no history or dossier layout, and this branch
-        // printed the discharge summary instead. Those two documents come
-        // from the server PDF, which builds them from the saved record.
         downloadPDF(docType);
       }
     } else {

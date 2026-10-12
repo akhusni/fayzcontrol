@@ -1385,24 +1385,27 @@
     showToast(`📗 <strong>${fileName}</strong> muvaffaqiyatli yuklab olindi!`);
   }
 
-    function printCurrentInvoice() {
-    const rcId = document.getElementById('rc-id')?.textContent || 'RCP-2026';
-    const rcPatient = document.getElementById('rc-patient')?.textContent || 'Bemor';
-    const rcAmountStr = document.getElementById('rc-amount')?.textContent || '720000';
-    const cleanAmount = parseFloat(rcAmountStr.replace(/[^0-9]/g, '')) || 720000;
+  function printCurrentInvoice() {
+    const rcId = (document.getElementById('rc-id')?.textContent || '').trim();
+    const rcPatient = (document.getElementById('rc-patient')?.textContent || 'Bemor').trim();
+    const rcAmountStr = document.getElementById('rc-amount')?.textContent || '';
+    const cleanAmount = parseFloat(rcAmountStr.replace(/[^0-9]/g, '')) || 0;
+    const rcDate = (document.getElementById('rc-date')?.textContent || '').trim();
+    const rcMethod = (document.getElementById('rc-method')?.textContent || "Naqd / Karta").trim();
 
-    if (window.FMH_Print) {
+    if (window.FMH_Print && typeof window.FMH_Print.patientReceipt === 'function') {
       window.FMH_Print.patientReceipt({
         full_name: rcPatient,
-        patient_code: 'FMH-2026-TX'
+        patient_code: 'FMH-KVITANSIYA'
       }, {
         total_amount: cleanAmount,
         paid_amount: cleanAmount
       }, {
-        id: rcId,
+        id: rcId || ('KVT-' + Date.now().toString(36).toUpperCase()),
+        date: rcDate || new Date().toISOString(),
         amount: cleanAmount,
-        payment_method: 'terminal',
-        notes: 'Klinik xizmatlar to`lovi'
+        payment_method: rcMethod,
+        notes: "Klinik xizmatlar to'lovi kvitansiyasi"
       });
     } else {
       window.print();

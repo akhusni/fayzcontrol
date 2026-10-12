@@ -1625,6 +1625,11 @@
     const t = accountingData.transactions.find(x => x.id === txnId);
     if (!t) return;
 
+    if (window.FMH_Print && window.FMH_Print.transactionReceipt) {
+      window.FMH_Print.transactionReceipt(t, accountingData.clinic_info);
+      return;
+    }
+
     const modal = document.getElementById('invoice-receipt-modal');
     const content = document.getElementById('invoice-receipt-content');
     if (!modal || !content) return;
@@ -1787,6 +1792,12 @@
     closeAllModals();
     await syncWithLedgerAndBackend(false);
     renderAll();
+
+    if (!isRefund) {
+      setTimeout(() => {
+        openInvoiceReceipt(bill.id);
+      }, 250);
+    }
   }
 
   // ==========================================================================
@@ -3402,13 +3413,55 @@
   function printInvoice() {
     const content = document.getElementById('invoice-receipt-content');
     if (!content) return;
-    printHtmlContent(content.innerHTML, "FMH_Tolov_Kvitansiyasi");
+    if (window.FMH_Print && window.FMH_Print.printDocument) {
+      window.FMH_Print.printDocument(content.innerHTML, "FMH_Tolov_Kvitansiyasi");
+    } else {
+      printHtmlContent(content.innerHTML, "FMH_Tolov_Kvitansiyasi");
+    }
   }
 
   function printZReport() {
+    const today = new Date().toISOString().split('T')[0];
+    const todayTxns = (accountingData && accountingData.transactions ? accountingData.transactions : []).filter(t => t.date === today);
+    let todayIncome = 0;
+    let todayExpense = 0;
+    let todayCash = 0;
+    let todayTerminal = 0;
+    let todayOnline = 0;
+
+    todayTxns.forEach(t => {
+      const amt = Number(t.amount) || 0;
+      if (t.type === 'income') {
+        todayIncome += amt;
+        if (t.payment_method === 'cash') todayCash += amt;
+        else if (t.payment_method === 'terminal') todayTerminal += amt;
+        else if (t.payment_method === 'online') todayOnline += amt;
+      } else {
+        todayExpense += amt;
+      }
+    });
+
+    if (window.FMH_Print && window.FMH_Print.zReport) {
+      window.FMH_Print.zReport({
+        date: today,
+        income: todayIncome,
+        expense: todayExpense,
+        cash: todayCash,
+        terminal: todayTerminal,
+        online: todayOnline,
+        txnCount: todayTxns.length,
+        cashier: (accountingData && accountingData.clinic_info && accountingData.clinic_info.cashier) || "Bosh Buxgalter"
+      });
+      return;
+    }
+
     const content = document.getElementById('z-report-content');
     if (!content) return;
-    printHtmlContent(content.innerHTML, "FMH_Kunlik_Z_Hisobot");
+    if (window.FMH_Print && window.FMH_Print.printDocument) {
+      window.FMH_Print.printDocument(content.innerHTML, "FMH_Kunlik_Z_Hisobot");
+    } else {
+      printHtmlContent(content.innerHTML, "FMH_Kunlik_Z_Hisobot");
+    }
   }
 
   function renderAll() {

@@ -16,3 +16,4 @@ fayzcontrol.uz/pymysql.broken.vendored/
 fayzcontrol.uz/data/users[ .]*
 !fayzcontrol.uz/data/users.json
 .git_fayzcontrol_uz_backup/
+.agents/

@@ -1,40 +1,58 @@
 /* ==========================================================================
-   OWNER MONEY REPORT — phone first.
-   Reads like a till statement: what came in, what went out, what is left,
-   then where each so'm came from and went. One colour per meaning:
-   teal = money in, apricot = money out, lavender = owed to the clinic.
+   OWNER MONEY REPORT & DASHBOARD — FAYZ MEDICAL HOUSE
+   Fully responsive, adaptable executive financial dashboard:
+   Mobile (1 col touch-friendly), Tablet (2 col), Desktop (multi-col grid).
+   Harmonious medical aesthetic: teal = in, coral = out, emerald = net, lavender = debt.
    ========================================================================== */
 
 :root,
 [data-theme="night"] {
   --own-in: #5eead4;
-  --own-in-soft: rgba(94, 234, 212, 0.16);
+  --own-in-soft: rgba(94, 234, 212, 0.14);
   --own-out: #fdba74;
-  --own-out-soft: rgba(253, 186, 116, 0.16);
+  --own-out-soft: rgba(253, 186, 116, 0.14);
+  --own-net: #34d399;
+  --own-net-soft: rgba(52, 211, 153, 0.14);
   --own-debt: #c4b5fd;
+  --own-debt-soft: rgba(196, 181, 253, 0.14);
   --own-loss: #fb7185;
-  --own-rule: rgba(255, 255, 255, 0.10);
+  --own-loss-soft: rgba(251, 113, 133, 0.14);
+  --own-rule: rgba(255, 255, 255, 0.08);
+  --own-rule-strong: rgba(255, 255, 255, 0.16);
   --own-ink: #f8fafc;
   --own-ink-2: #cbd5e1;
   --own-ink-3: #94a3b8;
-  --own-bg: var(--bg-base, #040914);
+  --own-bg: var(--bg-base, #060d1d);
   --own-raise: #0c1830;
+  --own-card-bg: rgba(12, 24, 48, 0.76);
+  --own-card-hover: rgba(16, 32, 64, 0.90);
+  --own-shadow: 0 10px 30px -6px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --own-chart-grid: rgba(255, 255, 255, 0.06);
 }
 
 [data-theme="day"],
 [data-theme="light"] {
   --own-in: #0f766e;
-  --own-in-soft: rgba(15, 118, 110, 0.12);
+  --own-in-soft: rgba(15, 118, 110, 0.10);
   --own-out: #c2410c;
-  --own-out-soft: rgba(194, 65, 12, 0.10);
+  --own-out-soft: rgba(194, 65, 12, 0.09);
+  --own-net: #059669;
+  --own-net-soft: rgba(5, 150, 105, 0.10);
   --own-debt: #6d28d9;
+  --own-debt-soft: rgba(109, 40, 217, 0.09);
   --own-loss: #be123c;
-  --own-rule: rgba(15, 23, 42, 0.12);
+  --own-loss-soft: rgba(190, 18, 60, 0.09);
+  --own-rule: rgba(15, 23, 42, 0.09);
+  --own-rule-strong: rgba(15, 23, 42, 0.18);
   --own-ink: #0f172a;
   --own-ink-2: #334155;
   --own-ink-3: #64748b;
   --own-bg: var(--bg-base, #f1f5f9);
   --own-raise: #ffffff;
+  --own-card-bg: #ffffff;
+  --own-card-hover: #f8fafc;
+  --own-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --own-chart-grid: rgba(15, 23, 42, 0.07);
 }
 
 body.owner-portal {
@@ -42,57 +60,122 @@ body.owner-portal {
   background: var(--own-bg);
   color: var(--own-ink);
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
 }
 
+/* ==========================================================================
+   MAIN DASHBOARD CONTAINER — Responsive & Adaptable
+   ========================================================================== */
 .own-main {
-  max-width: 560px;
+  width: 100%;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 12px 16px calc(40px + env(safe-area-inset-bottom));
+  padding: 16px 24px calc(50px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
 }
 
-/* ---- Period switch ------------------------------------------------------ */
-.own-periods {
+/* ---- Sticky Toolbar (Periods + Tools) ----------------------------------- */
+.own-toolbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 25;
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -24px;
+  padding: 10px 24px;
+  background: var(--own-bg);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--own-rule);
+}
+
+.own-periods {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;
-  margin: 0 -16px;
-  padding: 10px 16px;
-  background: var(--own-bg);
-  border-bottom: 1px solid var(--own-rule);
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0;
 }
 .own-periods::-webkit-scrollbar { display: none; }
 
 .own-period {
   flex: 0 0 auto;
-  font: 600 14px/1 'Plus Jakarta Sans', sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 13px/1 'Plus Jakarta Sans', sans-serif;
   color: var(--own-ink-2);
-  background: transparent;
+  background: var(--own-raise);
   border: 1px solid var(--own-rule);
   border-radius: 999px;
-  padding: 10px 14px;
-  min-height: 40px;
+  padding: 9px 15px;
+  min-height: 38px;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+.own-period:hover {
+  color: var(--own-ink);
+  border-color: var(--own-rule-strong);
+  background: var(--own-card-hover);
 }
 .own-period[aria-pressed="true"] {
   color: var(--own-bg);
   background: var(--own-ink);
   border-color: var(--own-ink);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+.own-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.own-btn-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 600 13px 'Plus Jakarta Sans', sans-serif;
+  color: var(--own-ink-2);
+  background: var(--own-raise);
+  border: 1px solid var(--own-rule);
+  border-radius: 10px;
+  padding: 8px 14px;
+  min-height: 38px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.own-btn-tool:hover {
+  color: var(--own-ink);
+  border-color: var(--own-in);
+  background: var(--own-card-hover);
+}
+.own-btn-tool:active {
+  transform: scale(0.97);
+}
+
+/* Custom date selector bar */
 .own-custom {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: end;
-  padding: 12px 0 4px;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 12px 18px;
+  background: var(--own-card-bg);
+  border: 1px solid var(--own-rule);
+  border-radius: 12px;
 }
 .own-custom[hidden] { display: none; }
 .own-custom label {
@@ -100,126 +183,372 @@ body.owner-portal {
   gap: 4px;
   font-size: 13px;
   color: var(--own-ink-3);
-  flex: 1 1 130px;
+  flex: 1 1 140px;
 }
 .own-custom input {
-  font: 500 15px 'Plus Jakarta Sans', sans-serif;
+  font: 500 14.5px 'Plus Jakarta Sans', sans-serif;
   color: var(--own-ink);
   background: var(--own-raise);
   border: 1px solid var(--own-rule);
   border-radius: 10px;
-  padding: 9px 10px;
-  min-height: 42px;
+  padding: 8px 12px;
+  min-height: 40px;
 }
 .own-apply {
-  font: 700 14px 'Plus Jakarta Sans', sans-serif;
+  font: 700 13.5px 'Plus Jakarta Sans', sans-serif;
   color: var(--own-bg);
   background: var(--own-in);
   border: 0;
   border-radius: 10px;
-  padding: 0 16px;
-  min-height: 42px;
+  padding: 0 18px;
+  min-height: 40px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.2s;
 }
+.own-apply:hover { opacity: 0.9; }
 
-.own-period:focus-visible,
-.own-apply:focus-visible,
-.own-group-btn:focus-visible,
-.own-more:focus-visible,
-.own-custom input:focus-visible {
-  outline: 2px solid var(--own-in);
-  outline-offset: 2px;
-}
-
-/* ---- Statement (hero) --------------------------------------------------- */
-.own-statement {
-  padding: 22px 0 18px;
-}
-.own-when {
-  margin: 0 0 14px;
-  font-size: 15px;
-  color: var(--own-ink-3);
-}
-.own-lines { margin: 0; }
-.own-line {
+/* Period Status & Comparison Banner */
+.own-period-banner {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0;
+  gap: 10px;
+  padding: 12px 18px;
+  background: var(--own-card-bg);
+  border: 1px solid var(--own-rule);
+  border-radius: 12px;
+  box-shadow: var(--own-shadow);
 }
-.own-line dt {
+.own-when-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 15px;
-  color: var(--own-ink-2);
-}
-.own-line dd {
-  margin: 0;
-  font-family: 'Outfit', sans-serif;
-  font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: clamp(26px, 8vw, 34px);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-.own-line-in dd { color: var(--own-in); }
-.own-line-out dd { color: var(--own-out); }
-.own-line-net {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 2px solid var(--own-ink);
-}
-.own-line-net dt {
-  font-weight: 700;
   color: var(--own-ink);
 }
-.own-line-net dd {
-  font-size: clamp(40px, 13vw, 56px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.own-when-wrap i { color: var(--own-in); font-size: 15px; }
+.own-compare-badge {
+  font-size: 13.5px;
+  color: var(--own-ink-3);
 }
-.own-line-net.is-loss dd,
-.own-line-net.is-loss dt { color: var(--own-loss); }
-.own-line dd small {
-  font-size: 0.5em;
+.own-compare-badge b { color: var(--own-ink-2); font-weight: 700; }
+.own-compare-badge .up { color: var(--own-in); }
+.own-compare-badge .down { color: var(--own-out); }
+
+/* ==========================================================================
+   EXECUTIVE KPI GRID (4 Primary Cards)
+   ========================================================================== */
+.own-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.own-kpi-card {
+  position: relative;
+  background: var(--own-card-bg);
+  border: 1px solid var(--own-rule);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--own-shadow);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.25s ease;
+  overflow: hidden;
+}
+.own-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--own-rule);
+}
+.own-kpi-in::before { background: var(--own-in); }
+.own-kpi-out::before { background: var(--own-out); }
+.own-kpi-net::before { background: var(--own-net); }
+.own-kpi-net.is-loss::before { background: var(--own-loss); }
+.own-kpi-debt::before { background: var(--own-debt); }
+
+.own-kpi-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--own-rule-strong);
+}
+
+.own-kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.own-kpi-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.own-kpi-in .own-kpi-icon { background: var(--own-in-soft); color: var(--own-in); }
+.own-kpi-out .own-kpi-icon { background: var(--own-out-soft); color: var(--own-out); }
+.own-kpi-net .own-kpi-icon { background: var(--own-net-soft); color: var(--own-net); }
+.own-kpi-net.is-loss .own-kpi-icon { background: var(--own-loss-soft); color: var(--own-loss); }
+.own-kpi-debt .own-kpi-icon { background: var(--own-debt-soft); color: var(--own-debt); }
+
+.own-kpi-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--own-ink-3);
+  letter-spacing: 0.02em;
+  flex: 1;
+  margin-left: 6px;
+}
+
+.own-kpi-trend {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.own-kpi-trend.is-up { background: var(--own-in-soft); color: var(--own-in); }
+.own-kpi-trend.is-down { background: var(--own-out-soft); color: var(--own-out); }
+
+.own-kpi-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--own-net-soft);
+  color: var(--own-net);
+  white-space: nowrap;
+}
+.own-kpi-net.is-loss .own-kpi-badge {
+  background: var(--own-loss-soft);
+  color: var(--own-loss);
+}
+.debt-badge {
+  background: var(--own-debt-soft);
+  color: var(--own-debt);
+}
+
+.own-kpi-value {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(24px, 2.2vw, 32px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.own-kpi-in .own-kpi-value { color: var(--own-in); }
+.own-kpi-out .own-kpi-value { color: var(--own-out); }
+.own-kpi-net .own-kpi-value { color: var(--own-net); }
+.own-kpi-net.is-loss .own-kpi-value { color: var(--own-loss); }
+.own-kpi-debt .own-kpi-value { color: var(--own-debt); }
+
+.own-kpi-value small {
+  font-size: 0.52em;
   font-weight: 500;
   color: var(--own-ink-3);
   margin-left: 4px;
 }
-.own-compare {
-  margin: 10px 0 0;
-  font-size: 14px;
+
+.own-kpi-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--own-ink-3);
+  border-top: 1px solid var(--own-rule);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+.own-kpi-sub {
+  font-weight: 600;
+  color: var(--own-ink-2);
+}
+
+/* ---- Quick Secondary Metrics Strip -------------------------------------- */
+.own-quick-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.own-quick-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--own-card-bg);
+  border: 1px solid var(--own-rule);
+  border-radius: 12px;
+  box-shadow: var(--own-shadow);
+}
+.quick-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--own-raise);
+  border: 1px solid var(--own-rule);
+  color: var(--own-in);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.own-quick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.own-quick-text small {
+  font-size: 12px;
   color: var(--own-ink-3);
 }
-.own-compare b { font-weight: 700; color: var(--own-ink-2); }
-
-/* ---- Blocks ------------------------------------------------------------- */
-.own-block {
-  padding: 22px 0;
-  border-top: 1px solid var(--own-rule);
-}
-.own-h2 {
-  margin: 0 0 4px;
+.own-quick-text strong {
   font-family: 'Outfit', sans-serif;
-  font-size: 21px;
+  font-size: 15.5px;
   font-weight: 600;
   color: var(--own-ink);
 }
+
+/* ==========================================================================
+   CARDS & BLOCKS (Modern Cards & Visual Panels)
+   ========================================================================== */
+.own-card-block {
+  background: var(--own-card-bg);
+  border: 1px solid var(--own-rule);
+  border-radius: 16px;
+  padding: 22px 24px;
+  box-shadow: var(--own-shadow);
+  backdrop-filter: blur(10px);
+}
+
+.own-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.own-h2 {
+  margin: 0 0 4px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--own-ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.own-h2 i {
+  color: var(--own-in);
+  font-size: 17px;
+}
+
 .own-hint {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 13px;
   color: var(--own-ink-3);
 }
 
-/* ---- "Of every 100 so'm" river ------------------------------------------ */
+/* ---- Chart Controls ----------------------------------------------------- */
+.own-chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.own-btn-group {
+  display: inline-flex;
+  border: 1px solid var(--own-rule);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--own-raise);
+}
+.own-btn-toggle {
+  background: transparent;
+  border: 0;
+  color: var(--own-ink-3);
+  font: 600 12.5px 'Plus Jakarta Sans', sans-serif;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.own-btn-toggle:hover {
+  color: var(--own-ink);
+}
+.own-btn-toggle.active {
+  background: var(--own-in-soft);
+  color: var(--own-in);
+  font-weight: 700;
+}
+
+.own-chart-container {
+  position: relative;
+  width: 100%;
+  height: 320px;
+}
+
+.own-chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--own-ink-3);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-item i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.dot-in { background: var(--own-in); }
+.dot-out { background: var(--own-out); }
+.dot-net { background: var(--own-net); }
+
+/* ==========================================================================
+   RIVER: "Har 100 so'm tushumdan"
+   ========================================================================== */
+.own-river-wrapper {
+  margin-top: 14px;
+}
 .own-river {
   display: flex;
   height: 44px;
-  margin-top: 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--own-rule);
+  position: relative;
 }
-.own-river { position: relative; }
 .own-river-over,
 .own-river-key i.is-over {
   background: repeating-linear-gradient(135deg, var(--own-loss) 0 3px, transparent 3px 7px);
@@ -235,22 +564,26 @@ body.owner-portal {
   display: block;
   height: 100%;
   min-width: 3px;
+  transition: width 0.4s ease;
 }
 .own-river span + span { box-shadow: inset 2px 0 0 var(--own-bg); }
+
 .own-river-key {
   list-style: none;
-  margin: 12px 0 0;
+  margin: 16px 0 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px 16px;
 }
 .own-river-key li {
   display: grid;
   grid-template-columns: 12px 1fr auto;
   gap: 10px;
   align-items: center;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--own-ink-2);
+  padding: 4px 0;
 }
 .own-river-key i {
   width: 12px;
@@ -264,7 +597,36 @@ body.owner-portal {
   color: var(--own-ink);
 }
 
-/* ---- Grouped income / expense rows -------------------------------------- */
+/* ==========================================================================
+   2-COLUMN & BOTTOM DASHBOARD GRIDS
+   ========================================================================== */
+.own-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.own-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.own-donut-wrapper {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  margin: 10px 0 16px;
+}
+
+.own-methods-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  margin-bottom: 12px;
+}
+
+/* ---- Grouped income / expense accordion rows ---------------------------- */
 .own-groups {
   list-style: none;
   margin: 0;
@@ -283,9 +645,13 @@ body.owner-portal {
   text-align: left;
   cursor: pointer;
   font: inherit;
+  transition: opacity 0.15s ease;
+}
+.own-group-btn:hover {
+  opacity: 0.85;
 }
 .own-group-name {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--own-ink);
 }
@@ -298,7 +664,7 @@ body.owner-portal {
   font-family: 'Outfit', sans-serif;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: 17px;
+  font-size: 16px;
   white-space: nowrap;
 }
 .own-group-bar {
@@ -312,9 +678,11 @@ body.owner-portal {
   display: block;
   height: 100%;
   border-radius: 3px;
+  transition: width 0.4s ease;
 }
 .is-in .own-group-bar i { background: var(--own-in); }
 .is-out .own-group-bar i { background: var(--own-out); }
+
 .own-group-btn .fa-chevron-down {
   transition: transform 0.2s ease;
   color: var(--own-ink-3);
@@ -326,7 +694,7 @@ body.owner-portal {
 .own-entries {
   list-style: none;
   margin: 0 0 12px;
-  padding: 4px 0 4px 12px;
+  padding: 6px 0 6px 14px;
   border-left: 2px solid var(--own-rule);
 }
 .own-entries li {
@@ -334,11 +702,11 @@ body.owner-portal {
   grid-template-columns: 1fr auto;
   gap: 2px 10px;
   padding: 8px 0;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .own-entries li + li { border-top: 1px dashed var(--own-rule); }
 .own-entry-what { color: var(--own-ink); overflow-wrap: anywhere; }
-.own-entry-meta { grid-column: 1 / -1; font-size: 12.5px; color: var(--own-ink-3); }
+.own-entry-meta { grid-column: 1 / -1; font-size: 12px; color: var(--own-ink-3); }
 .own-entry-amount {
   font-family: 'Outfit', sans-serif;
   font-variant-numeric: tabular-nums;
@@ -348,50 +716,44 @@ body.owner-portal {
 .own-more {
   font: 600 13px 'Plus Jakarta Sans', sans-serif;
   color: var(--own-ink-2);
-  background: none;
+  background: var(--own-raise);
   border: 1px solid var(--own-rule);
   border-radius: 999px;
-  padding: 8px 14px;
-  margin: 4px 0 8px;
+  padding: 8px 16px;
+  margin: 6px 0 10px;
   cursor: pointer;
+  transition: all 0.2s;
+}
+.own-more:hover {
+  color: var(--own-ink);
+  border-color: var(--own-in);
 }
 .own-empty {
   font-size: 14px;
   color: var(--own-ink-3);
-  padding: 8px 0;
+  padding: 10px 0;
 }
 .own-transfer {
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   font-size: 13px;
   color: var(--own-ink-3);
+  padding: 8px 12px;
+  background: var(--own-raise);
+  border-left: 3px solid var(--own-in);
+  border-radius: 4px;
 }
 
-/* ---- Daily chart -------------------------------------------------------- */
-.own-chart { margin-top: 10px; }
-.own-chart svg { display: block; width: 100%; height: auto; }
-.own-chart-key {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: var(--own-ink-3);
+/* ==========================================================================
+   TABLES & SIMPLE LISTS
+   ========================================================================== */
+.own-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
-.own-chart-key span {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-.own-chart-key span.key-out { margin-left: 10px; }
-.key-in { background: var(--own-in); }
-.key-out { background: var(--own-out); }
-
-/* ---- Tables and simple lists -------------------------------------------- */
 .own-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 10px;
   font-size: 14px;
 }
 body.owner-portal .own-table th {
@@ -400,9 +762,9 @@ body.owner-portal .own-table th {
   letter-spacing: 0;
   font-size: 13px;
   text-align: left;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--own-ink-3);
-  padding: 6px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--own-rule);
 }
 body.owner-portal .own-table th + th,
@@ -417,21 +779,6 @@ body.owner-portal .own-table td {
 body.owner-portal .own-table td.in { color: var(--own-in); font-family: 'Outfit', sans-serif; font-weight: 600; }
 body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfit', sans-serif; font-weight: 600; }
 
-.own-debt-total {
-  margin: 8px 0 10px;
-  font-family: 'Outfit', sans-serif;
-  font-variant-numeric: tabular-nums;
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--own-debt);
-}
-.own-debt-total small {
-  display: block;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--own-ink-3);
-}
 .own-list {
   list-style: none;
   margin: 0;
@@ -443,13 +790,96 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   gap: 2px 10px;
   padding: 10px 0;
   border-top: 1px solid var(--own-rule);
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .own-list .own-entry-amount { color: var(--own-ink); }
 .own-list .is-low { color: var(--own-out); font-weight: 600; }
 
-/* ---- Header on a phone -------------------------------------------------- */
+/* Focus states */
+.own-period:focus-visible,
+.own-apply:focus-visible,
+.own-btn-tool:focus-visible,
+.own-btn-toggle:focus-visible,
+.own-group-btn:focus-visible,
+.own-more:focus-visible,
+.own-custom input:focus-visible {
+  outline: 2px solid var(--own-in);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   RESPONSIVE BREAKPOINTS (Mobile, Tablet, Desktop)
+   ========================================================================== */
+
+/* Large Tablets & Medium Laptops */
+@media (max-width: 1100px) {
+  .own-bottom-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Tablets (portrait & landscape) */
+@media (max-width: 900px) {
+  .own-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .own-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .own-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+  .own-quick-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile Devices */
 @media (max-width: 640px) {
+  .own-main {
+    padding: 12px 14px calc(40px + env(safe-area-inset-bottom));
+    gap: 14px;
+  }
+  .own-toolbar {
+    margin: 0 -14px;
+    padding: 8px 14px;
+  }
+  .own-toolbar-actions .own-btn-tool span {
+    display: none;
+  }
+  .own-toolbar-actions .own-btn-tool {
+    padding: 8px 10px;
+  }
+  .own-kpi-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .own-kpi-card {
+    padding: 16px 18px;
+  }
+  .own-chart-container {
+    height: 250px;
+  }
+  .own-donut-wrapper {
+    height: 190px;
+  }
+  .own-block-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .own-chart-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .btn-lbl {
+    display: none;
+  }
+  .own-card-block {
+    padding: 16px 18px;
+    border-radius: 14px;
+  }
+
   body.owner-portal .portal-nav-wrapper {
     display: flex !important;
     align-items: center;
@@ -480,6 +910,41 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   }
 }
 
+/* ==========================================================================
+   PRINT / PDF STYLES
+   ========================================================================== */
+@media print {
+  body.owner-portal {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .portal-master-header,
+  .own-toolbar,
+  .own-custom,
+  .own-chart-controls {
+    display: none !important;
+  }
+  .own-main {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+  .own-card-block,
+  .own-kpi-card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    background: #fff !important;
+    break-inside: avoid;
+  }
+  .own-kpi-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  .own-dashboard-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .own-group-btn .fa-chevron-down { transition: none; }
+  .own-kpi-card { transition: none; }
+  .own-period { transition: none; }
 }

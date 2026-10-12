@@ -111,44 +111,51 @@ window.FMH_Print = (function() {
   /**
    * Print HTML Document via dedicated clean print window or in-page print-area
    */
-    /**
-   * Print HTML Document via dedicated isolated invisible iframe
+  /**
+   * Print HTML Document via dedicated isolated iframe
    * Guarantees 100% clean A4 print preview with zero parent-portal CSS interference.
    */
-  function printDocument(innerHtml, docTitle = "FAYZ MEDICAL HOUSE") {
+  function printDocument(innerHtml, docTitle = "FAYZ MEDICAL HOUSE", options = {}) {
     try {
+      const isLandscape = Boolean(options && (options.landscape || options.orientation === 'landscape'));
+      const pageSize = isLandscape ? 'A4 landscape' : 'A4 portrait';
+
       // Remove any existing print iframe
       const oldFrame = document.getElementById('fmh-isolated-print-frame');
       if (oldFrame) {
         try { oldFrame.remove(); } catch(e) {}
       }
 
-      // Create new invisible iframe
+      // Create new iframe placed off-screen for full rendering fidelity
       const iframe = document.createElement('iframe');
       iframe.id = 'fmh-isolated-print-frame';
       iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
+      iframe.style.left = '-9999px';
+      iframe.style.top = '0';
+      iframe.style.width = isLandscape ? '297mm' : '210mm';
+      iframe.style.height = isLandscape ? '210mm' : '297mm';
       iframe.style.border = '0';
-      iframe.style.visibility = 'hidden';
       iframe.style.zIndex = '-9999';
       document.body.appendChild(iframe);
 
       const frameDoc = iframe.contentWindow.document;
+      const documentBody = innerHtml.includes('fmh-print-document')
+        ? innerHtml
+        : `<div class="fmh-print-document ${isLandscape ? 'is-landscape' : ''}"><div class="fmh-print-content">${innerHtml}</div></div>`;
+
       const fullDocHtml = `<!DOCTYPE html>
 <html lang="uz">
 <head>
   <meta charset="UTF-8">
   <title>${docTitle}</title>
+  <base href="${window.location.origin}/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="css/unified_print.css?v=5.0">
+  <link rel="stylesheet" href="css/unified_print.css?v=6.0">
   <style>
-    @page { size: A4 portrait; margin: 8mm 10mm 8mm 10mm; }
+    @page { size: ${pageSize}; margin: 8mm 10mm 8mm 10mm; }
     *, *::before, *::after {
       box-sizing: border-box;
       -webkit-print-color-adjust: exact !important;
@@ -166,20 +173,53 @@ window.FMH_Print = (function() {
     }
     .fmh-print-document {
       width: 100% !important;
-      max-width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
+      max-width: ${isLandscape ? '297mm' : '210mm'} !important;
+      margin: 0 auto !important;
+      padding: ${isLandscape ? '8mm 12mm' : '10mm 12mm'} !important;
       box-shadow: none !important;
       border: none !important;
+      background: #ffffff !important;
     }
+    .fmh-doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #0f766e; padding-bottom: 8px; margin-bottom: 10px; }
+    .fmh-brand-left { display: flex; align-items: center; gap: 10px; }
+    .fmh-crest-icon { width: 44px; height: 44px; background: #0f766e !important; color: #fff !important; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; }
+    .fmh-brand-text h1 { font-size: 14pt; font-weight: 800; color: #0f766e; margin: 0; line-height: 1.15; text-transform: uppercase; }
+    .fmh-brand-text .fmh-tagline { font-size: 7.5pt; font-weight: 600; color: #475569; margin-top: 1px; }
+    .fmh-brand-text .fmh-contacts { font-size: 7.2pt; color: #64748b; margin-top: 2px; }
+    .fmh-header-badge-box { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+    .fmh-doc-badge { display: inline-block; background: #0f766e !important; color: #fff !important; font-size: 8.5pt; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; }
+    .fmh-doc-meta-sub { font-size: 7.2pt; color: #475569; margin-top: 3px; font-weight: 600; }
+    .fmh-doc-id-pill { font-family: 'JetBrains Mono', Consolas, monospace; background: #f1f5f9; border: 1px solid #cbd5e1; padding: 1px 5px; border-radius: 3px; font-size: 7.5pt; font-weight: 700; margin-top: 2px; }
+    .fmh-meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 7px 10px; margin-bottom: 8px; }
+    .fmh-meta-grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .fmh-meta-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .fmh-meta-item { display: flex; flex-direction: column; font-size: 8.5pt; }
+    .fmh-meta-item .lbl { font-size: 7pt; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; }
+    .fmh-meta-item .val { font-weight: 600; color: #0f172a; margin-top: 1px; }
+    .fmh-meta-item .val.highlight { color: #0f766e !important; font-weight: 700 !important; }
+    .fmh-section-title { display: flex; align-items: center; gap: 5px; font-size: 8.8pt; font-weight: 700; color: #0f766e; text-transform: uppercase; margin-top: 8px; margin-bottom: 5px; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; }
+    .fmh-callout-box { background: #f0fdf4; border-left: 3px solid #10b981; padding: 5px 8px; margin: 6px 0; font-size: 8pt; color: #14532d; border-radius: 0 4px 4px 0; }
+    .fmh-callout-box.blue { background: #f0f9ff; border-left-color: #0284c7; color: #0c4a6e; }
+    .fmh-callout-box.amber { background: #fffbeb; border-left-color: #f59e0b; color: #78350f; }
+    .fmh-data-table { width: 100%; border-collapse: collapse; margin: 5px 0 8px 0; font-size: 8pt; }
+    .fmh-data-table th { background: #0f766e !important; color: #ffffff !important; font-weight: 700; text-transform: uppercase; font-size: 7pt; padding: 4px 6px; text-align: left; border: 1px solid #0f766e; }
+    .fmh-data-table td { padding: 4px 6px; border: 1px solid #cbd5e1; color: #1e293b; vertical-align: middle; }
+    .fmh-data-table tr:nth-child(even) td { background: #f8fafc !important; }
+    .fmh-data-table tfoot td { font-weight: 700; background: #e2e8f0 !important; border-top: 1.5px solid #0f766e; }
+    .fmh-auth-zone { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; page-break-inside: avoid; break-inside: avoid; }
+    .fmh-sign-box { width: 30%; text-align: center; font-size: 7pt; color: #334155; }
+    .fmh-sign-line { border-bottom: 1.2px solid #0f172a; height: 24px; margin-bottom: 3px; }
+    .fmh-sign-title { font-weight: 700; color: #0f172a; text-transform: uppercase; }
+    .fmh-sign-name { color: #64748b; margin-top: 1px; font-style: italic; }
+    .fmh-official-stamp { width: 72px; height: 72px; border: 1.8px dashed #0f766e; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #0f766e; font-size: 5pt; font-weight: 800; text-transform: uppercase; padding: 2px; transform: rotate(-6deg); }
+    .fmh-doc-footer { margin-top: 10px; padding-top: 5px; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; font-size: 6.8pt; color: #64748b; page-break-inside: avoid; break-inside: avoid; }
+    .text-right { text-align: right !important; }
+    .text-center { text-align: center !important; }
+    .font-mono { font-family: 'JetBrains Mono', Consolas, monospace !important; }
   </style>
 </head>
 <body>
-  <div class="fmh-print-document">
-    <div class="fmh-print-content">
-      ${innerHtml}
-    </div>
-  </div>
+  ${documentBody}
 </body>
 </html>`;
 
@@ -187,20 +227,18 @@ window.FMH_Print = (function() {
       frameDoc.write(fullDocHtml);
       frameDoc.close();
 
-      // Wait briefly for CSS & fonts to attach in iframe, then trigger print
       setTimeout(() => {
         try {
           iframe.contentWindow.focus();
           iframe.contentWindow.print();
         } catch (iframeErr) {
           console.warn('[FMH_Print] Iframe print fallback:', iframeErr);
-          // Fallback to standalone window if iframe printing is restricted
           const win = window.open('', '_blank');
           if (win) {
             win.document.open();
             win.document.write(fullDocHtml);
             win.document.close();
-            setTimeout(() => { win.focus(); win.print(); }, 200);
+            setTimeout(() => { win.focus(); win.print(); }, 250);
           } else {
             window.print();
           }
@@ -854,6 +892,522 @@ window.FMH_Print = (function() {
     printDocument(html, `FMH_Maosh_${staff.id || 'STF'}`);
   }
 
+  /**
+   * 7. ACCOUNTING / POS: Official Transaction Receipt & Cash Voucher
+   */
+  function transactionReceipt(txn, clinicInfo = {}) {
+    const t = txn || {};
+    const txnId = t.id || 'TXN-' + Date.now().toString().slice(-6);
+    const isIncome = t.type === 'income' || t.category === 'income';
+    const isIncasso = t.category === 'incasso';
+    const opTitle = isIncasso
+      ? "INKASSATSIYA DALOLATNOMASI"
+      : (isIncome ? "RASMIY KIRIM KASSA KVITANSIYASI" : "RASMIY CHIQIM KASSA ORDERI");
+    const amount = Math.abs(Number(t.amount) || 0);
+    const cashier = t.cashier || t.created_by || "Bosh Buxgalter";
+
+    const html = `
+      ${getCommonHeader(opTitle, txnId, "KASSA & MOLIYA BO'LIMI")}
+      
+      <div class="fmh-meta-grid fmh-meta-grid-4">
+        <div class="fmh-meta-item">
+          <span class="lbl">Operatsiya Turi:</span>
+          <span class="val highlight">${isIncasso ? 'INKASSATSIYA' : (isIncome ? 'Kirim (Tushum)' : 'Chiqim (Xarajat)')}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Hujjat Raqami:</span>
+          <span class="val font-mono">${txnId}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">To'lov Usuli:</span>
+          <span class="val">${String(t.payment_method || 'naqd').toUpperCase()}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Sana va Vaqt:</span>
+          <span class="val">${t.date || formatDate(new Date())} ${t.time || ''}</span>
+        </div>
+      </div>
+
+      <div class="fmh-section-title"><i class="fas fa-receipt"></i> Operatsiya Tafsilotlari</div>
+      <table class="fmh-data-table">
+        <thead>
+          <tr>
+            <th>Xarajat / Kirim Maqsadi</th>
+            <th class="text-center">Kategoriya</th>
+            <th class="text-right">Summa (UZS)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>${t.title || t.notes || 'Klinik kassa operatsiyasi'}</strong>
+              <div style="font-size:7.5pt; color:#64748b;">${t.notes && t.notes !== t.title ? t.notes : 'Fayz Medical House rasmiy markaziy kassasi orqali qayd etildi'}</div>
+            </td>
+            <td class="text-center"><strong>${t.category || (isIncome ? 'Tushum' : 'Xarajat')}</strong></td>
+            <td class="text-right font-mono" style="font-size:10pt; font-weight:800; color:${isIncome ? '#059669' : '#dc2626'};">
+              ${formatUZS(amount)}
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="text-right">JAMI OPERATSIYA QIYMATI:</td>
+            <td class="text-right font-mono" style="font-size:10.5pt; color:${isIncome ? '#059669' : '#dc2626'};">
+              <strong>${formatUZS(amount)}</strong>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="fmh-callout-box ${isIncome ? '' : 'amber'}">
+        <strong>Fiskal & Buxgalteriya Qaydnomasi:</strong> Ushbu kassa cheki va orderi O'zbekiston Respublikasi buxgalteriya hisobi standartlariga asosan birlamchi kassa hujjati hisoblanadi.
+      </div>
+
+      ${getCommonAuthZone({
+        doctor: cashier,
+        patientTitle: isIncome ? "To'lovchi / Mijoz Imzosi" : "Mablag'ni Qabul Qiluvchi",
+        patient: t.patient || t.counterparty || "Mijoz / Xodim"
+      })}
+
+      ${getCommonFooter()}
+    `;
+
+    printDocument(html, `FMH_Chek_${txnId}`);
+  }
+
+  /**
+   * 8. ACCOUNTING: Daily Cash Closing Z-Report
+   */
+  function zReport(zData = {}, clinicInfo = {}) {
+    const today = zData.date || new Date().toISOString().slice(0, 10);
+    const income = Number(zData.income || 0);
+    const expense = Number(zData.expense || 0);
+    const net = income - expense;
+    const cash = Number(zData.cash || 0);
+    const terminal = Number(zData.terminal || 0);
+    const online = Number(zData.online || 0);
+    const txnCount = Number(zData.txnCount || 0);
+    const docId = `Z-${today.replace(/-/g, '')}-01`;
+
+    const html = `
+      ${getCommonHeader("KASSA SUTKALIK YOPILISH HISOBOTI (Z-REPORT)", docId, "KASSA & MOLIYA BO'LIMI")}
+      
+      <div class="fmh-meta-grid fmh-meta-grid-4">
+        <div class="fmh-meta-item">
+          <span class="lbl">Kassa Raqami:</span>
+          <span class="val highlight">Markaziy Kassa №1</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Hisob Sanasi:</span>
+          <span class="val font-mono">${formatDate(today)}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Operatsiyalar Soni:</span>
+          <span class="val font-mono"><strong>${txnCount} ta</strong></span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Hisobot Vaqti:</span>
+          <span class="val">${formatDateTime(new Date())}</span>
+        </div>
+      </div>
+
+      <div class="fmh-section-title"><i class="fas fa-coins"></i> 1. To'lov Turlari Bo'yicha Tushum (Kirim)</div>
+      <table class="fmh-data-table">
+        <thead>
+          <tr>
+            <th>To'lov Kanal / Turi</th>
+            <th class="text-center">Kanal Holati</th>
+            <th class="text-right">Summa (UZS)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Naqd Pul Tushumi (Kassa)</strong></td>
+            <td class="text-center" style="color:#059669;">Qabul qilindi</td>
+            <td class="text-right font-mono"><strong>${formatUZS(cash)}</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Terminal / Bank Plastik Kartalari</strong></td>
+            <td class="text-center" style="color:#0284c7;">Bank tranzaksiya</td>
+            <td class="text-right font-mono"><strong>${formatUZS(terminal)}</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Online / Click & Payme Merchant</strong></td>
+            <td class="text-center" style="color:#7c3aed;">Elektron to'lov</td>
+            <td class="text-right font-mono"><strong>${formatUZS(online)}</strong></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="text-right">JAMI SUTKALIK KIRIM:</td>
+            <td class="text-right font-mono" style="color:#059669; font-size:10pt;"><strong>${formatUZS(income)}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="fmh-section-title"><i class="fas fa-chart-pie"></i> 2. Balans va Yakuniy Kassa Qoldig'i</div>
+      <table class="fmh-data-table">
+        <thead>
+          <tr>
+            <th>Moliyaviy Ko'rsatkich</th>
+            <th class="text-right">Qiymat (UZS)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Jami Sutkalik Tushum (Kirim):</td>
+            <td class="text-right font-mono" style="color:#059669;">+${formatUZS(income)}</td>
+          </tr>
+          <tr>
+            <td>Jami Kassa Chiqimlari va Xarajatlari:</td>
+            <td class="text-right font-mono" style="color:#dc2626;">-${formatUZS(expense)}</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="text-right">SOF KASSA BALANSI (NET CASH):</td>
+            <td class="text-right font-mono" style="color:#0f766e; font-size:10.5pt;"><strong>${formatUZS(net)}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="fmh-callout-box">
+        <strong>Kassa Tasdig'i:</strong> Kunlik kassa summalari va terminallar bo'yicha tushumlar to'liq solishtirildi va qabul qilindi.
+      </div>
+
+      ${getCommonAuthZone({
+        doctor: zData.cashier || "Navbatchi Kassir-Buxgalter",
+        patientTitle: "Bosh Buxgalter",
+        patient: "Fayz Medical House"
+      })}
+
+      ${getCommonFooter()}
+    `;
+
+    printDocument(html, `FMH_Z_Report_${today}`);
+  }
+
+  /**
+   * 9. DOCTOR EMR: Official Patient Case Sheet & Anamnesis (Kasallik Tarixi)
+   */
+  function caseHistory(patient = {}, anamnesis = {}, doctor = {}, dailyNotes = []) {
+    const isAnon = Boolean(patient.is_anonymous);
+    const pName = isAnon ? "[ ANONIM BEMOR ]" : (patient.full_name || "Bemor");
+    const docName = doctor.full_name || "—";
+    const adm = patient.active_admission || {};
+    const bedStr = adm.bed_code || adm.bed_id || "Ambulator";
+
+    const html = `
+      ${getCommonHeader("KASALLIK TARIXI VA TIBBIY ANAMNEZ VARAQASI", `EMR-${patient.patient_code || patient.id || '2026'}`, "RASMIY TIBBIY KO'RIK HUJJATI")}
+      
+      <div class="fmh-meta-grid fmh-meta-grid-4">
+        <div class="fmh-meta-item">
+          <span class="lbl">Bemor F.I.Sh.</span>
+          <span class="val highlight">${pName}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Bemor KODI</span>
+          <span class="val font-mono">${patient.patient_code || patient.id || '—'}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Palata / Karavot</span>
+          <span class="val"><i class="fas fa-bed"></i> ${bedStr}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Mas'ul Shifokor</span>
+          <span class="val">${docName}</span>
+        </div>
+      </div>
+
+      <div class="fmh-section-title"><i class="fas fa-comment-medical"></i> 1. Bemor Shikoyatlari (Chief Complaints)</div>
+      <div class="fmh-callout-box">
+        ${anamnesis.complaints || NOT_RECORDED}
+      </div>
+
+      <div class="fmh-section-title"><i class="fas fa-history"></i> 2. Kasallik Rivojlanishi (Anamnesis Morbi)</div>
+      <p style="margin:4px 0; font-size:8.5pt;">
+        ${anamnesis.anamnesis_morbi || NOT_RECORDED}
+      </p>
+
+      <div class="fmh-section-title"><i class="fas fa-heartbeat"></i> 3. Hayot Anamnezi & Somatik Holat (Anamnesis Vitae)</div>
+      <p style="margin:4px 0; font-size:8.5pt;">
+        ${anamnesis.anamnesis_vitae || anamnesis.somatic_status || NOT_RECORDED}
+      </p>
+
+      <div class="fmh-section-title"><i class="fas fa-brain"></i> 4. Psixik Status va Xulq-Atvor</div>
+      <p style="margin:4px 0; font-size:8.5pt;">
+        ${anamnesis.psychiatric_status || NOT_RECORDED}
+      </p>
+
+      <div class="fmh-section-title"><i class="fas fa-diagnoses"></i> 5. Klinik Tashxis (ICD-10)</div>
+      <div class="fmh-callout-box blue">
+        <strong>Asosiy Tashxis:</strong> ${anamnesis.diagnosis || patient.diagnosis || NOT_RECORDED}
+      </div>
+
+      ${getCommonAuthZone({
+        doctor: docName,
+        patientTitle: "Bosh Shifokor",
+        patient: "Fayz Medical House"
+      })}
+
+      ${getCommonFooter()}
+    `;
+
+    printDocument(html, `FMH_Kasallik_Tarixi_${patient.patient_code || patient.id || '2026'}`);
+  }
+
+  /**
+   * 10. WAREHOUSE: Official Goods Receipt & Delivery Note (Kirim Nakladnasi)
+   */
+  function warehouseReceipt(receipt = {}, lines = [], clinicInfo = {}) {
+    const recId = receipt.id || 'RC-' + Date.now().toString().slice(-4);
+    const dateStr = receipt.receipt_date || new Date().toISOString().slice(0, 10);
+    const supplier = receipt.supplier_name || "Yetkazib Beruvchi";
+    const invoiceNum = receipt.invoice_number || "—";
+    const totalAmount = Number(receipt.total_amount) || 0;
+
+    let rowsHtml = '';
+    if (!lines || !lines.length) {
+      rowsHtml = `<tr><td colspan="7" class="text-center" style="padding:15px; color:#64748b;">Kirim qilingan tovarlar ro'yxati mavjud emas</td></tr>`;
+    } else {
+      rowsHtml = lines.map((l, i) => `
+        <tr>
+          <td class="text-center font-mono">${l.line_no || (i + 1)}</td>
+          <td><strong>${l.item_name || 'Dori / Material'}</strong></td>
+          <td class="text-center font-mono">${l.batch_no || '—'}</td>
+          <td class="text-center font-mono">${formatDate(l.expiry_date)}</td>
+          <td class="text-center font-mono">${l.packages ? `${l.packages} qadoq` : `${l.quantity_base} dona`}</td>
+          <td class="text-right font-mono">${formatUZS(l.package_price || l.unit_cost || 0)}</td>
+          <td class="text-right font-mono"><strong>${formatUZS(l.line_total || 0)}</strong></td>
+        </tr>
+      `).join('');
+    }
+
+    const html = `
+      ${getCommonHeader("TIBBIY OMBOR KIRIM NAKLADNASI (TOVAR CHEKI)", recId, "DORI-DARMON & MODDIY ZAXIRA")}
+      
+      <div class="fmh-meta-grid fmh-meta-grid-4">
+        <div class="fmh-meta-item">
+          <span class="lbl">Nakladnaya №:</span>
+          <span class="val highlight font-mono">${recId}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Kirim Sanasi:</span>
+          <span class="val">${formatDate(dateStr)}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Yetkazib Beruvchi:</span>
+          <span class="val">${supplier}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Faktura / Hisob №:</span>
+          <span class="val font-mono">${invoiceNum}</span>
+        </div>
+      </div>
+
+      <div class="fmh-section-title"><i class="fas fa-boxes-stacked"></i> Qabul Qilingan Dori va Tibbiy Buyumlar</div>
+      <table class="fmh-data-table">
+        <thead>
+          <tr>
+            <th class="text-center" style="width:30px;">№</th>
+            <th>Mahsulot Nomi</th>
+            <th class="text-center">Partiya</th>
+            <th class="text-center">Amal Qilish</th>
+            <th class="text-center">Miqdor</th>
+            <th class="text-right">Narxi</th>
+            <th class="text-right">Jami Summa</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6" class="text-right">JAMI KIRIM SUMMASI:</td>
+            <td class="text-right font-mono" style="font-size:10pt; color:#059669;"><strong>${formatUZS(totalAmount)}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="fmh-callout-box">
+        <strong>Moddiy Mas'uliyat Tasdig'i:</strong> Yuqorida ko'rsatilgan dori vositalari va materiallar butun, sertifikatlangan va yaroqlilik muddatlariga muvofiq qabul qilindi.
+      </div>
+
+      ${getCommonAuthZone({
+        doctor: receipt.created_by || "Ombor Mudiri / Farmatsevt",
+        patientTitle: "Yetkazib Beruvchi (Ekspeditor)",
+        patient: supplier
+      })}
+
+      ${getCommonFooter()}
+    `;
+
+    printDocument(html, `FMH_Nakladnaya_${recId}`);
+  }
+
+  /**
+   * 11. WAREHOUSE: Official Inventory Stock Sheet (Qoldiqlar Ro'yxati)
+   */
+  function warehouseInventory(items = [], meta = {}, clinicInfo = {}) {
+    const today = meta.date || new Date().toISOString().slice(0, 10);
+    const docId = `INV-${today.replace(/-/g, '')}`;
+
+    let rowsHtml = '';
+    if (!items || !items.length) {
+      rowsHtml = `<tr><td colspan="6" class="text-center" style="padding:15px; color:#64748b;">Omborda mahsulotlar topilmadi</td></tr>`;
+    } else {
+      rowsHtml = items.map((it, i) => `
+        <tr>
+          <td class="text-center font-mono">${i + 1}</td>
+          <td><strong>${it.name || it.item_name || 'Dori'}</strong></td>
+          <td class="text-center">${it.category_name || it.category || '—'}</td>
+          <td class="text-center font-mono"><strong>${it.total_quantity_base || it.stock || 0} ${it.base_unit || 'dona'}</strong></td>
+          <td class="text-right font-mono">${formatUZS(it.avg_unit_cost || it.price || 0)}</td>
+          <td class="text-right font-mono">${formatUZS((it.total_quantity_base || it.stock || 0) * (it.avg_unit_cost || it.price || 0))}</td>
+        </tr>
+      `).join('');
+    }
+
+    const html = `
+      ${getCommonHeader("OMBOR QOLDIQLARI VA INVENTARIZATSIYA VARAQASI", docId, "DORI-DARMON & MODDIY ZAXIRA")}
+      
+      <div class="fmh-meta-grid fmh-meta-grid-3">
+        <div class="fmh-meta-item">
+          <span class="lbl">Hisob Sanasi:</span>
+          <span class="val highlight">${formatDate(today)}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Mahsulot Turlari:</span>
+          <span class="val font-mono">${items.length} xil</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Mas'ul Shaxs:</span>
+          <span class="val">${meta.manager || "Bosh Farmatsevt / Omborchi"}</span>
+        </div>
+      </div>
+
+      <div class="fmh-section-title"><i class="fas fa-pills"></i> Ombordagi Zaxiralar Ro'yxati</div>
+      <table class="fmh-data-table">
+        <thead>
+          <tr>
+            <th class="text-center" style="width:30px;">№</th>
+            <th>Mahsulot Nomi</th>
+            <th class="text-center">Kategoriya</th>
+            <th class="text-center">Mavjud Zaxira</th>
+            <th class="text-right">Birlik Narxi</th>
+            <th class="text-right">Umumiy Qiymati</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+
+      ${getCommonAuthZone({
+        doctor: meta.manager || "Ombor Mudiri",
+        patientTitle: "Bosh Buxgalter",
+        patient: "Fayz Medical House"
+      })}
+
+      ${getCommonFooter()}
+    `;
+
+    printDocument(html, `FMH_Ombor_Qoldiq_${today}`, { orientation: 'landscape' });
+  }
+
+  /**
+   * 12. CONSULTATION: Official Consultation Protocol & Treatment Plan
+   */
+  function consultationProtocol(patient = {}, consData = {}, doctor = {}) {
+    const isAnon = Boolean(patient.is_anonymous);
+    const pName = isAnon ? "[ ANONIM BEMOR ]" : (patient.full_name || "Bemor");
+    const docName = doctor.full_name || doctor.username || "Shifokor";
+    const consId = consData.id || `CONS-${Date.now().toString().slice(-4)}`;
+    const sections = consData.sections || [];
+    const plan = consData.plan || {};
+    const meds = plan.medication_plan || [];
+
+    let sectionsHtml = '';
+    if (sections && sections.length) {
+      sectionsHtml = sections.map(sec => `
+        <div class="fmh-section-title"><i class="fas fa-stethoscope"></i> ${sec.label || 'Bo`lim'}</div>
+        <div class="fmh-meta-grid">
+          ${(sec.fields || []).map(f => `
+            <div class="fmh-meta-item">
+              <span class="lbl">${f.label || ''}</span>
+              <span class="val">${f.value || NOT_RECORDED}</span>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+    }
+
+    let medsHtml = '';
+    if (meds && meds.length) {
+      medsHtml = `
+        <div class="fmh-section-title"><i class="fas fa-pills"></i> Tavsiya Etilgan Farmakoterapiya</div>
+        <table class="fmh-data-table">
+          <thead>
+            <tr>
+              <th>Dori Vositasining Nomi</th>
+              <th class="text-center">Doza</th>
+              <th class="text-center">Yuborish Yo'li</th>
+              <th class="text-center">Tartib</th>
+              <th class="text-center">Davomiyligi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${meds.map(m => `
+              <tr>
+                <td><strong>${m.name || 'Dori'}</strong></td>
+                <td class="text-center font-mono">${m.dosage || '—'}</td>
+                <td class="text-center">${m.route || '—'}</td>
+                <td class="text-center">${m.frequency || '—'}</td>
+                <td class="text-center font-mono">${m.duration_days ? m.duration_days + ' kun' : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    const html = `
+      ${getCommonHeader("KONSULTATSIYA BAYONNOMASI & TAVSIYALAR", consId, "IXTISOSLASHGAN TIBBIY KO'RIK")}
+      
+      <div class="fmh-meta-grid fmh-meta-grid-4">
+        <div class="fmh-meta-item">
+          <span class="lbl">Bemor F.I.Sh.</span>
+          <span class="val highlight">${pName}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Bemor KODI</span>
+          <span class="val font-mono">${patient.patient_code || patient.id || '—'}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Ko'rik Sanasi</span>
+          <span class="val">${formatDate(consData.date || new Date())}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Mas'ul Shifokor</span>
+          <span class="val">${docName}</span>
+        </div>
+      </div>
+
+      ${sectionsHtml}
+      ${medsHtml}
+
+      ${getCommonAuthZone({
+        doctor: docName,
+        patientTitle: "Bemor / Qonuniy Vakil",
+        patient: pName
+      })}
+
+      ${getCommonFooter()}
+    `;
+
+    printDocument(html, `FMH_Konsultatsiya_${consId}`);
+  }
+
   // Public Exports
   return {
     admissionSlip,
@@ -861,8 +1415,15 @@ window.FMH_Print = (function() {
     prescriptionSheet,
     dischargeEpicrisis,
     patientReceipt,
+    transactionReceipt,
+    zReport,
+    caseHistory,
     employeePayslip,
+    warehouseReceipt,
+    warehouseInventory,
+    consultationProtocol,
     printDocument
   };
 
 })();
+

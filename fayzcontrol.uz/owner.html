@@ -4,18 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#060d1d">
-  <title>Pul oqimi | Fayz Medical House</title>
-  <meta name="description" content="Klinika egasi uchun: qancha pul tushdi, qayerdan, qancha sarflandi va nimaga.">
+  <title>Pul oqimi & Moliyaviy Tahlil | Fayz Medical House</title>
+  <meta name="description" content="Klinika egasi uchun boshqaruv paneli: qancha pul tushdi, qayerdan, qancha sarflandi, sof foyda va moliyaviy grafiklar.">
   <meta name="robots" content="noindex, nofollow, noarchive">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/unified_print.css?v=6.0">
   <link rel="stylesheet" href="css/unified_header.css?v=7.1">
-  <link rel="stylesheet" href="css/owner.css?v=1.2">
+  <link rel="stylesheet" href="css/owner.css?v=2.0">
 
   <script src="js/theme_engine.js"></script>
+  <script src="js/chart.min.js"></script>
   <script src="js/fmh_dialogs.js?v=2.1"></script>
 </head>
 <body class="owner-portal">
@@ -26,7 +28,7 @@
         <div class="portal-brand-logo"><i class="fas fa-hospital-alt"></i></div>
         <div class="portal-brand-text">
           <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
-          <div class="portal-brand-subtitle">PUL OQIMI</div>
+          <div class="portal-brand-subtitle">PUL OQIMI & TAHLIL</div>
         </div>
       </a>
 
@@ -54,86 +56,259 @@
 
   <main class="own-main">
 
-    <div class="own-periods" role="group" aria-label="Davr">
-      <button type="button" class="own-period" data-period="today">Bugun</button>
-      <button type="button" class="own-period" data-period="week">7 kun</button>
-      <button type="button" class="own-period" data-period="month">Shu oy</button>
-      <button type="button" class="own-period" data-period="last_month">O'tgan oy</button>
-      <button type="button" class="own-period" data-period="year">Yil</button>
-      <button type="button" class="own-period" data-period="custom">Boshqa</button>
+    <!-- Top control toolbar: periods + actions -->
+    <div class="own-toolbar">
+      <div class="own-periods" role="group" aria-label="Davr tanlash">
+        <button type="button" class="own-period" data-period="today"><i class="fas fa-calendar-day"></i> Bugun</button>
+        <button type="button" class="own-period" data-period="week"><i class="fas fa-calendar-week"></i> 7 kun</button>
+        <button type="button" class="own-period" data-period="month"><i class="fas fa-calendar-alt"></i> Shu oy</button>
+        <button type="button" class="own-period" data-period="last_month"><i class="fas fa-history"></i> O'tgan oy</button>
+        <button type="button" class="own-period" data-period="year"><i class="fas fa-calendar"></i> Yil</button>
+        <button type="button" class="own-period" data-period="custom"><i class="fas fa-sliders-h"></i> Boshqa</button>
+      </div>
+
+      <div class="own-toolbar-actions">
+        <button type="button" class="own-btn-tool" id="own-refresh" title="Ma'lumotlarni yangilash" aria-label="Yangilash">
+          <i class="fas fa-rotate"></i> <span>Yangilash</span>
+        </button>
+        <button type="button" class="own-btn-tool" id="own-print" title="Hisobotni chop etish yoki PDF saqlash" aria-label="Chop etish">
+          <i class="fas fa-print"></i> <span>Chop etish</span>
+        </button>
+      </div>
     </div>
+
+    <!-- Custom date filter bar -->
     <div class="own-custom" id="own-custom" hidden>
       <label>Dan <input type="date" id="own-start"></label>
       <label>Gacha <input type="date" id="own-end"></label>
-      <button type="button" class="own-apply" id="own-apply">Ko'rsatish</button>
+      <button type="button" class="own-apply" id="own-apply"><i class="fas fa-check"></i> Ko'rsatish</button>
     </div>
 
-    <section class="own-statement" aria-live="polite">
-      <p class="own-when" id="own-when">Yuklanmoqda…</p>
-      <dl class="own-lines">
-        <div class="own-line own-line-in">
-          <dt>Tushdi</dt>
-          <dd id="own-income">—</dd>
+    <!-- Period Status & Comparisons Banner -->
+    <div class="own-period-banner">
+      <div class="own-when-wrap">
+        <i class="fas fa-clock-rotate-left"></i>
+        <span class="own-when" id="own-when">Yuklanmoqda…</span>
+      </div>
+      <div class="own-compare-badge" id="own-compare"></div>
+    </div>
+
+    <!-- Executive KPI Grid (4 primary cards) -->
+    <section class="own-kpi-grid" aria-label="Asosiy moliyaviy ko'rsatkichlar">
+      <!-- Income Card -->
+      <div class="own-kpi-card own-kpi-in">
+        <div class="own-kpi-header">
+          <div class="own-kpi-icon"><i class="fas fa-arrow-down-left"></i></div>
+          <span class="own-kpi-title">Jami Tushum</span>
+          <span class="own-kpi-trend" id="own-trend-income"></span>
         </div>
-        <div class="own-line own-line-out">
-          <dt>Sarflandi</dt>
-          <dd id="own-expense">—</dd>
+        <div class="own-kpi-value" id="own-income">—</div>
+        <div class="own-kpi-footer">
+          <span id="own-income-count">— to'lov</span>
+          <span class="own-kpi-sub" id="own-income-full"></span>
         </div>
-        <div class="own-line own-line-net">
-          <dt id="own-net-label">Qoldi</dt>
-          <dd id="own-net">—</dd>
+      </div>
+
+      <!-- Expense Card -->
+      <div class="own-kpi-card own-kpi-out">
+        <div class="own-kpi-header">
+          <div class="own-kpi-icon"><i class="fas fa-arrow-up-right"></i></div>
+          <span class="own-kpi-title">Jami Xarajat</span>
+          <span class="own-kpi-trend" id="own-trend-expense"></span>
         </div>
-      </dl>
-      <p class="own-compare" id="own-compare"></p>
+        <div class="own-kpi-value" id="own-expense">—</div>
+        <div class="own-kpi-footer">
+          <span id="own-expense-count">— xarajat</span>
+          <span class="own-kpi-sub" id="own-expense-full"></span>
+        </div>
+      </div>
+
+      <!-- Net Profit Card -->
+      <div class="own-kpi-card own-kpi-net">
+        <div class="own-kpi-header">
+          <div class="own-kpi-icon"><i class="fas fa-wallet"></i></div>
+          <span class="own-kpi-title" id="own-net-label">Qoldi (Sof Foyda)</span>
+          <span class="own-kpi-badge" id="own-net-margin"></span>
+        </div>
+        <div class="own-kpi-value" id="own-net">—</div>
+        <div class="own-kpi-footer">
+          <span id="own-net-desc">Klinikada qolgan sof mablag'</span>
+          <span class="own-kpi-sub" id="own-net-full"></span>
+        </div>
+      </div>
+
+      <!-- Patient Debt Card -->
+      <div class="own-kpi-card own-kpi-debt">
+        <div class="own-kpi-header">
+          <div class="own-kpi-icon"><i class="fas fa-user-clock"></i></div>
+          <span class="own-kpi-title">Bemorlar Qarzi</span>
+          <span class="own-kpi-badge debt-badge" id="own-debt-count-badge">0 ta</span>
+        </div>
+        <div class="own-kpi-value" id="own-debt-total">—</div>
+        <div class="own-kpi-footer">
+          <span id="own-debt-summary">To'lanmagan hisoblar</span>
+          <span class="own-kpi-sub" id="own-debt-action">Top debitorlar</span>
+        </div>
+      </div>
     </section>
 
-    <section class="own-block own-river-block">
-      <h2 class="own-h2" id="own-river-title">Har 100 so'm tushumdan</h2>
-      <div class="own-river" id="own-river" role="img" aria-label="Tushum qanday taqsimlangani"></div>
+    <!-- Quick secondary stats strip -->
+    <div class="own-quick-strip">
+      <div class="own-quick-item">
+        <div class="quick-icon-wrap"><i class="fas fa-bolt"></i></div>
+        <div class="own-quick-text">
+          <small>Kunlik o'rtacha tushum</small>
+          <strong id="own-avg-daily">—</strong>
+        </div>
+      </div>
+      <div class="own-quick-item">
+        <div class="quick-icon-wrap"><i class="fas fa-pills"></i></div>
+        <div class="own-quick-text">
+          <small>Ishlatilgan dorilar qiymati</small>
+          <strong id="own-med-cost-quick">—</strong>
+        </div>
+      </div>
+      <div class="own-quick-item">
+        <div class="quick-icon-wrap"><i class="fas fa-money-bill-transfer"></i></div>
+        <div class="own-quick-text">
+          <small>Inkassatsiya / O'tkazma</small>
+          <strong id="own-transfer-quick">—</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Primary Interactive Trend Chart -->
+    <section class="own-card-block own-trend-block">
+      <div class="own-block-head">
+        <div>
+          <h2 class="own-h2"><i class="fas fa-chart-line"></i> Moliyaviy Dinamika (Kunma-kun)</h2>
+          <p class="own-hint">Tushum, xarajat va sof qoldiqning kunlik dinamikasi</p>
+        </div>
+        <div class="own-chart-controls">
+          <div class="own-btn-group" role="group" aria-label="Grafik turi">
+            <button type="button" class="own-btn-toggle active" data-chart-type="bar" id="btn-chart-bar" title="Ustunli grafik">
+              <i class="fas fa-chart-column"></i> <span class="btn-lbl">Ustunli</span>
+            </button>
+            <button type="button" class="own-btn-toggle" data-chart-type="line" id="btn-chart-line" title="Chiziqli grafik">
+              <i class="fas fa-chart-area"></i> <span class="btn-lbl">Chiziqli</span>
+            </button>
+          </div>
+          <div class="own-btn-group" role="group" aria-label="Metrika">
+            <button type="button" class="own-btn-toggle active" data-chart-metric="all" id="btn-metric-all">Barchasi</button>
+            <button type="button" class="own-btn-toggle" data-chart-metric="net" id="btn-metric-net">Sof Foyda</button>
+          </div>
+        </div>
+      </div>
+      <div class="own-chart-container" id="own-chart-container">
+        <canvas id="own-main-chart"></canvas>
+      </div>
+      <!-- Legacy fallback element preserved for compatibility -->
+      <div class="own-chart" id="own-chart" style="display:none;"></div>
+      <div class="own-chart-legend" id="own-chart-legend">
+        <span class="legend-item"><i class="dot-in"></i> Tushum</span>
+        <span class="legend-item"><i class="dot-out"></i> Xarajat</span>
+        <span class="legend-item"><i class="dot-net"></i> Sof Foyda</span>
+      </div>
+    </section>
+
+    <!-- River Section: "Har 100 so'm tushumdan" -->
+    <section class="own-card-block own-river-block">
+      <div class="own-block-head">
+        <div>
+          <h2 class="own-h2" id="own-river-title"><i class="fas fa-money-bill-wave"></i> Har 100 so'm tushumdan</h2>
+          <p class="own-hint">Har bir 100 so'm tushum qayerga taqsimlangani va klinikada qolgan ulushi</p>
+        </div>
+      </div>
+      <div class="own-river-wrapper">
+        <div class="own-river" id="own-river" role="img" aria-label="Tushum qanday taqsimlangani"></div>
+      </div>
       <ul class="own-river-key" id="own-river-key"></ul>
     </section>
 
-    <section class="own-block">
-      <h2 class="own-h2">Pul qayerdan keldi</h2>
-      <p class="own-hint">Bosing — har bir to'lovni ko'rasiz</p>
-      <ul class="own-groups" id="own-income-groups"></ul>
-    </section>
+    <!-- 2-Column Dashboard Grid: Income sources vs Expense categories -->
+    <div class="own-dashboard-grid">
+      <!-- Income Sources -->
+      <section class="own-card-block">
+        <div class="own-block-head">
+          <div>
+            <h2 class="own-h2"><i class="fas fa-hand-holding-dollar"></i> Pul Qayerdan Keldi</h2>
+            <p class="own-hint">Manbalar bo'yicha tushum. Guruhni bosing — to'lovlarni ko'rasiz</p>
+          </div>
+        </div>
+        <div class="own-donut-wrapper">
+          <canvas id="own-income-donut"></canvas>
+        </div>
+        <ul class="own-groups" id="own-income-groups"></ul>
+      </section>
 
-    <section class="own-block">
-      <h2 class="own-h2">Pul nimaga ketdi</h2>
-      <p class="own-hint">Bosing — har bir xarajatni ko'rasiz</p>
-      <ul class="own-groups" id="own-expense-groups"></ul>
-      <p class="own-transfer" id="own-transfer" hidden></p>
-    </section>
+      <!-- Expense Categories -->
+      <section class="own-card-block">
+        <div class="own-block-head">
+          <div>
+            <h2 class="own-h2"><i class="fas fa-receipt"></i> Pul Nimaga Ketdi</h2>
+            <p class="own-hint">Xarajat turlari. Guruhni bosing — har bir xarajatni ko'rasiz</p>
+          </div>
+        </div>
+        <div class="own-donut-wrapper">
+          <canvas id="own-expense-donut"></canvas>
+        </div>
+        <ul class="own-groups" id="own-expense-groups"></ul>
+        <p class="own-transfer" id="own-transfer" hidden></p>
+      </section>
+    </div>
 
-    <section class="own-block">
-      <h2 class="own-h2">Kunma-kun</h2>
-      <div class="own-chart" id="own-chart"></div>
-      <p class="own-chart-key"><span class="key-in"></span> tushum <span class="key-out"></span> xarajat</p>
-    </section>
+    <!-- Bottom Multi-Column Grid: Payment methods, Patient Debts, Medication Usage -->
+    <div class="own-bottom-grid">
+      <!-- Payment Methods -->
+      <section class="own-card-block">
+        <div class="own-block-head">
+          <div>
+            <h2 class="own-h2"><i class="fas fa-credit-card"></i> Qaysi Yo'l Bilan</h2>
+            <p class="own-hint">To'lov turlari bo'yicha aylanma</p>
+          </div>
+        </div>
+        <div class="own-methods-chart-wrap">
+          <canvas id="own-methods-chart"></canvas>
+        </div>
+        <div class="own-table-responsive">
+          <table class="own-table" id="own-methods">
+            <thead>
+              <tr>
+                <th scope="col">To'lov turi</th>
+                <th scope="col">Tushdi</th>
+                <th scope="col">Chiqdi</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-    <section class="own-block">
-      <h2 class="own-h2">Qaysi yo'l bilan</h2>
-      <table class="own-table" id="own-methods">
-        <thead><tr><th scope="col">To'lov turi</th><th scope="col">Tushdi</th><th scope="col">Chiqdi</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
+      <!-- Patient Debts -->
+      <section class="own-card-block">
+        <div class="own-block-head">
+          <div>
+            <h2 class="own-h2"><i class="fas fa-file-invoice-dollar"></i> Bemorlar Qarzi</h2>
+            <p class="own-hint" id="own-debts-hint">To'liq to'lanmagan hisoblar</p>
+          </div>
+        </div>
+        <ul class="own-list" id="own-debts"></ul>
+      </section>
 
-    <section class="own-block">
-      <h2 class="own-h2">Bemorlar qarzi</h2>
-      <p class="own-debt-total" id="own-debt-total">—</p>
-      <ul class="own-list" id="own-debts"></ul>
-    </section>
-
-    <section class="own-block">
-      <h2 class="own-h2">Bemorlarga berilgan dorilar</h2>
-      <p class="own-hint" id="own-med-summary"></p>
-      <ul class="own-list" id="own-meds"></ul>
-    </section>
+      <!-- Medication Usage -->
+      <section class="own-card-block">
+        <div class="own-block-head">
+          <div>
+            <h2 class="own-h2"><i class="fas fa-box-tissue"></i> Bo'limda Berilgan Dorilar</h2>
+            <p class="own-hint" id="own-med-summary"></p>
+          </div>
+        </div>
+        <ul class="own-list" id="own-meds"></ul>
+      </section>
+    </div>
 
   </main>
 
-  <script src="js/owner.js?v=1.3"></script>
+  <script src="js/owner.js?v=2.0"></script>
 </body>
 </html>

@@ -633,10 +633,16 @@
         <div class="pr-section-title">${esc(sec.label)}</div>${rows}</div>`;
     }).filter(Boolean).join('');
 
-    document.getElementById('print-root').innerHTML =
-      letterhead('KONSULTATSIYA BAYONNOMASI') + patientBlock() + sections +
+    const fullHtml = letterhead('KONSULTATSIYA BAYONNOMASI') + patientBlock() + sections +
       signatures('Shifokor imzosi');
-    window.print();
+    const root = document.getElementById('print-root');
+    if (root) root.innerHTML = fullHtml;
+
+    if (window.FMH_Print && typeof window.FMH_Print.printDocument === 'function') {
+      window.FMH_Print.printDocument(fullHtml, `FMH_Konsultatsiya_${state.patient.patient_code || state.patient.id || 'Bemor'}`);
+    } else {
+      window.print();
+    }
   }
 
   function printPlan() {
@@ -646,8 +652,7 @@
     const row = (label, value) => value
       ? `<div class="pr-field"><span class="pr-label">${esc(label)}:</span> ${esc(value)}</div>` : '';
 
-    document.getElementById('print-root').innerHTML =
-      letterhead('DAVOLASH REJASI') + patientBlock() +
+    const fullHtml = letterhead('DAVOLASH REJASI') + patientBlock() +
       `<div class="pr-section">
          <div class="pr-section-title">Reja</div>
          ${row('Turi', PLAN_LABEL[d.plan_type] || d.plan_type)}
@@ -672,7 +677,15 @@
          </div>
        </div>` : ''}` +
       signatures('Shifokor imzosi');
-    window.print();
+
+    const root = document.getElementById('print-root');
+    if (root) root.innerHTML = fullHtml;
+
+    if (window.FMH_Print && typeof window.FMH_Print.printDocument === 'function') {
+      window.FMH_Print.printDocument(fullHtml, `FMH_Davolash_Rejasi_${state.patient.patient_code || state.patient.id || 'Bemor'}`);
+    } else {
+      window.print();
+    }
   }
 
   // -------------------------------------------------------------------------
