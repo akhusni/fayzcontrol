@@ -1306,34 +1306,37 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .user-role-pill {
-  font-size: 0.65rem;
-  color: var(--primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
+  display: none !important;
 }
 
 .btn-superadmin-gold {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #ffffff;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
-  transition: all 0.2s ease;
-  font-family: inherit;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.3)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  color: #fbbf24 !important;
+  font-size: 0.88rem !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.2) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-sizing: border-box !important;
+}
+
+.btn-superadmin-gold span {
+  display: none !important;
 }
 
 .btn-superadmin-gold:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.55);
-  filter: brightness(1.08);
+  transform: scale(1.08) !important;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35) !important;
+  filter: brightness(1.1) !important;
 }
 
 /* Superadmin Modal Specifics */

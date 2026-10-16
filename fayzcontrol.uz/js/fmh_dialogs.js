@@ -438,9 +438,11 @@
         });
 
         link.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleDropdown();
+          if (isExactCurrent) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDropdown();
+          }
         });
 
         triggerGroup.appendChild(link);
@@ -459,6 +461,26 @@
   if (!window.__fmhNavEventsBound) {
     window.__fmhNavEventsBound = true;
     document.addEventListener('click', function(e) {
+      const arrowBtn = e.target.closest('.fmh-dept-trigger-arrow');
+      if (arrowBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = arrowBtn.closest('.fmh-dept-dropdown');
+        if (wrap) {
+          const wasOpen = wrap.classList.contains('is-open');
+          document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
+            if (d !== wrap) {
+              d.classList.remove('is-open');
+              const a = d.querySelector('.fmh-dept-trigger-arrow');
+              if (a) a.setAttribute('aria-expanded', 'false');
+            }
+          });
+          wrap.classList.toggle('is-open', !wasOpen);
+          arrowBtn.setAttribute('aria-expanded', !wasOpen ? 'true' : 'false');
+        }
+        return;
+      }
+
       if (!e.target.closest('.fmh-dept-dropdown')) {
         document.querySelectorAll('.fmh-dept-dropdown.is-open').forEach(d => {
           d.classList.remove('is-open');

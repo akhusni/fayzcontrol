@@ -225,18 +225,18 @@ body.night-mode .super-topbar {
   box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.02) !important;
 }
 
-/* --- BALANCED 3-ZONE FLUID GRID WRAPPER --- */
+/* --- BALANCED 3-ZONE FLUID WRAPPER --- */
 .portal-nav-wrapper {
   width: 100% !important;
   max-width: 1680px !important;
   margin: 0 auto !important;
   height: 64px !important;
-  padding: 0 1.5rem !important;
-  display: grid !important;
-  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  padding: 0 1.25rem !important;
+  display: flex !important;
+  justify-content: space-between !important;
   align-items: center !important;
   box-sizing: border-box !important;
-  gap: 0 1rem !important;
+  gap: 0.75rem !important;
 }
 
 /* --- ZONE 1: BRAND ANCHOR --- */
@@ -318,12 +318,12 @@ body.night-mode .super-topbar {
   color: #0284c7 !important;
 }
 
-/* --- ZONE 2: CENTER MASTER 6-PORTAL NAVIGATION (Exact center, zero movement) --- */
+/* --- ZONE 2: CENTER MASTER NAVIGATION (Exact center, zero movement) --- */
 .portal-center-nav-zone {
   display: flex !important;
   justify-content: center !important;
   align-items: center !important;
-  width: 100% !important;
+  flex: 1 1 auto !important;
   min-width: 0 !important;
   overflow: visible !important;
 }
@@ -905,42 +905,101 @@ body.day-mode .fmh-user-action-btn:hover {
   display: none !important;
 }
 
-/* --- RESPONSIVE INTELLIGENCE --- */
-@media (max-width: 1450px) {
+/* --- RESPONSIVE INTELLIGENCE & ADAPTIVE VIEWPORTS --- */
+@media (max-width: 1440px) {
   .portal-nav-wrapper {
-    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    padding: 0 0.85rem !important;
+    gap: 0.5rem !important;
+  }
+  .portal-brand-subtitle {
+    display: none !important;
+  }
+  .portal-brand-title {
+    font-size: 0.88rem !important;
+  }
+  /* Hide external website link to save precious header space */
+  .portal-actions-cluster a.btn-header-outline[href^="https://fayzmedical"] {
+    display: none !important;
+  }
+  /* Yangi Qabul button compact */
+  .portal-actions-cluster .btn-header-primary {
+    padding: 0 10px !important;
+    font-size: 0.74rem !important;
+    height: 34px !important;
   }
 }
 
-@media (max-width: 1080px) {
-  .portal-nav-wrapper {
-    grid-template-columns: 60px 1fr auto !important;
+@media (max-width: 1280px) {
+  .fmh-dept-trigger,
+  .fmh-dept-direct-link {
+    padding: 0 7px !important;
+    font-size: 0.72rem !important;
+    gap: 4px !important;
+  }
+  .fmh-dept-trigger-link {
+    padding: 0 3px 0 7px !important;
+    font-size: 0.72rem !important;
+    gap: 4px !important;
+  }
+  .fmh-dept-trigger-arrow {
+    padding: 0 5px 0 2px !important;
+    font-size: 0.60rem !important;
+  }
+  /* Yangi Qabul icon-only */
+  .portal-actions-cluster .btn-header-primary {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    justify-content: center !important;
+  }
+  .portal-actions-cluster .btn-header-primary span {
+    display: none !important;
+  }
+  /* A4 Blanklar button hidden (already inside Klinika dropdown) */
+  .portal-actions-cluster a.btn-header-outline[href*="medical_blank"] {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .portal-brand-title {
+    display: none !important;
   }
   .portal-brand {
-    width: 60px !important;
-    min-width: 60px !important;
+    gap: 0 !important;
   }
-  .portal-brand-text {
+  .user-role-widget .user-display-name,
+  .fmh-identity-capsule .user-display-name,
+  #fmh-session-chip .user-display-name {
     display: none !important;
+  }
+  .user-role-widget,
+  .fmh-identity-capsule,
+  #fmh-session-chip {
+    padding: 3px 5px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .fmh-dept-trigger-link span,
+  .fmh-dept-direct-link span {
+    display: none !important;
+  }
+  .fmh-dept-trigger-link {
+    padding: 0 2px 0 7px !important;
+  }
+  .fmh-dept-trigger-arrow {
+    padding: 0 4px 0 1px !important;
+  }
+  .fmh-dept-direct-link {
+    padding: 0 7px !important;
   }
   .portal-master-nav {
     gap: 2px !important;
-    padding: 2px !important;
-  }
-  .portal-nav-pill {
-    padding: 4px 6px !important;
-    font-size: 0.7rem !important;
-  }
-  .portal-nav-pill span {
-    display: none !important;
-  }
-  .portal-actions-cluster {
-    width: auto !important;
-    min-width: auto !important;
-  }
-  .portal-actions-cluster a.btn-header-outline span,
-  .portal-actions-cluster button.btn-header-primary span {
-    display: none !important;
+    padding: 2px 4px !important;
   }
 }
 
@@ -2494,23 +2553,6 @@ body.day-mode .fmh-dept-item-badge {
   border-color: #7dd3fc !important;
 }
 
-/* Responsive optimization for smaller laptop screens */
-@media (max-width: 1200px) {
-  .fmh-dept-trigger,
-  .fmh-dept-direct-link {
-    padding: 0 9px !important;
-    font-size: 0.74rem !important;
-    gap: 5px !important;
-  }
-  .fmh-dept-trigger-link {
-    padding: 0 4px 0 10px !important;
-    font-size: 0.74rem !important;
-    gap: 5px !important;
-  }
-  .fmh-dept-trigger-arrow {
-    padding: 0 8px 0 2px !important;
-  }
-}
 
 /* type "warning" (fmhConfirm) had no icon colour */
 .fmh-confirm-icon-warning {
