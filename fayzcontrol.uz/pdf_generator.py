@@ -585,7 +585,10 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     Respects Owner's Constraint: Nothing clinical is invented. Unrecorded fields
     print as 'Qayd etilmagan' or 'Mavjud emas'.
     """
-    if doc_type not in ('4_page', '2_page'):
+    valid_types = ('4_page', '2_page', 'full', 'section_a', 'section_b', 'section_c', 'section_d')
+    if doc_type not in valid_types:
+        doc_type = '4_page'
+    if doc_type == 'full':
         doc_type = '4_page'
 
     conn = get_db()
@@ -704,353 +707,439 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     allergy_color = '#10b981' if allergies.lower() == "yo'q" else ('#64748b' if allergies == NOT_RECORDED else '#f43f5e')
     doctor_name = (adm or {}).get('doctor_name') or NOT_RECORDED
     doctor_title = (adm or {}).get('doctor_title') or "Shifokor"
+    # Common Clinic Letterhead
+    header_left = [
+        Paragraph("FAYZ MEDICAL HOUSE", clinic_name_style),
+        Paragraph("XUSUSIY NARKOLOGIYA VA PSIXIATRIYA KLINIKASI", clinic_sub_style)
+    ]
+    header_right = [
+        Paragraph("<b>O'zR SSV Litsenziyasi:</b> № 4082-00", meta_style),
+        Paragraph("<b>Manzil:</b> Toshkent sh., Yunusobod t., Bodomzor str. 42", meta_style),
+        Paragraph("<b>Ishonch Telefoni:</b> +998 (71) 200-03-03", meta_style),
+        Paragraph("<b>Veb-sayt:</b> www.fayzmedicalhouse.uz", meta_style)
+    ]
+    header_table = Table([[header_left, header_right]], colWidths=[280, 243])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
 
-    story = []
-
-    if doc_type == '4_page':
-        # =====================================================================
-        # PAGE 1: DEMOGRAPHICS, ADMISSION & PRIMARY ANAMNESIS
-        # =====================================================================
-        header_left = [
-            Paragraph("FAYZ MEDICAL HOUSE", clinic_name_style),
-            Paragraph("XUSUSIY NARKOLOGIYA VA PSIXIATRIYA KLINIKASI", clinic_sub_style)
+    # Compact Patient Summary row for standalone sections B, C, D
+    pt_summary_data = [
+        [
+            Paragraph(f"<b>Bemor:</b> {_x(pt.get('full_name', ''))} ({_x(pt.get('patient_code', ''))})", body_style),
+            Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style),
+            Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style),
+            Paragraph(f"<b>Shifokor:</b> {_x(doctor_name)}", body_style)
         ]
-        header_right = [
-            Paragraph("<b>O'zR SSV Litsenziyasi:</b> № 4082-00", meta_style),
-            Paragraph("<b>Manzil:</b> Toshkent sh., Yunusobod t., Bodomzor str. 42", meta_style),
-            Paragraph("<b>Ishonch Telefoni:</b> +998 (71) 200-03-03", meta_style),
-            Paragraph("<b>Veb-sayt:</b> www.fayzmedicalhouse.uz", meta_style)
-        ]
-        header_table = Table([[header_left, header_right]], colWidths=[280, 243])
-        header_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ]))
-        story.append(header_table)
-        story.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
+    ]
+    pt_summary_table = Table(pt_summary_data, colWidths=[150, 110, 120, 143])
+    pt_summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), BG_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('PADDING', (0, 0), (-1, -1), 3),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
 
-        story.append(Paragraph("BEMOR TIBBIY KARTASI VA KASALLIK TARIXI (EMR)", title_style))
-        story.append(Paragraph("1-SAHIFA: ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ", subtitle_style))
-        story.append(Spacer(1, 6))
+    # Compact single-section signature & stamp block
+    sec_sig_table = Table([[
+        Paragraph(f"<b>Davolovchi Shifokor:</b> {_x(doctor_name)}<br/><font size='7' color='#64748b'>(Imzo: _____________________)</font>", body_style),
+        Paragraph("<font size='7.5' color='#94a3b8'><b>FAYZ MEDICAL HOUSE</b><br/>KLINIKA RASMIY MUHRI</font>", ParagraphStyle('StpSec', parent=body_style, alignment=1)),
+        Paragraph(f"<b>Tasdiqlangan sana:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><font size='7' color='#64748b'>(EMR elektron arxivi)</font>", body_style)
+    ]], colWidths=[195, 133, 195])
+    sec_sig_table.setStyle(TableStyle([
+        ('BOX', (1, 0), (1, 0), 0.75, colors.HexColor('#94a3b8')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 3),
+    ]))
 
-        pt_grid_data = [
-            [Paragraph(f"<b>Bemor F.I.SH.:</b> {_x(pt.get('full_name', ''))}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {_x(pt.get('patient_code', ''))}", body_style)],
-            [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style)],
-            [Paragraph(f"<b>Telefon:</b> {_x(pt.get('phone') or NOT_RECORDED)}", body_style), Paragraph(f"<b>Manzil:</b> {_x(pt.get('address') or NOT_RECORDED)}", body_style)],
-            [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {_x(primary_diag)}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {_x(icd10)}", body_style)],
-            [Paragraph(f"<b>Dori Allergiyalari:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {_x(doctor_name)}", body_style)]
-        ]
-        pt_grid_table = Table(pt_grid_data, colWidths=[261, 262])
-        pt_grid_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), BG_LIGHT),
-            ('BOX', (0, 0), (-1, -1), 0.75, BORDER_COLOR),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-            ('PADDING', (0, 0), (-1, -1), 4),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(pt_grid_table)
-        story.append(Spacer(1, 8))
+    # --- SECTION A DATA ---
+    pt_grid_data = [
+        [Paragraph(f"<b>Bemor F.I.SH.:</b> {_x(pt.get('full_name', ''))}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {_x(pt.get('patient_code', ''))}", body_style)],
+        [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style)],
+        [Paragraph(f"<b>Telefon:</b> {_x(pt.get('phone') or NOT_RECORDED)}", body_style), Paragraph(f"<b>Manzil:</b> {_x(pt.get('address') or NOT_RECORDED)}", body_style)],
+        [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {_x(primary_diag)}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {_x(icd10)}", body_style)],
+        [Paragraph(f"<b>Dori Allergiyalari:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {_x(doctor_name)}", body_style)]
+    ]
+    pt_grid_table = Table(pt_grid_data, colWidths=[261, 262])
+    pt_grid_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), BG_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.75, BORDER_COLOR),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('PADDING', (0, 0), (-1, -1), 4),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
 
-        story.append(Paragraph("BEMOR SHIKOYATLARI VA KASALLIK RIVOJLANISH TARIXI", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+    complaints_text = _x(anam.get('complaints') or NOT_RECORDED)
+    morbi_text = _x(anam.get('anamnesis_morbi') or NOT_RECORDED)
+    vitae_text = _x(anam.get('anamnesis_vitae') or NOT_RECORDED)
+    chronic_text = _x(pt.get('chronic_conditions') or NOT_RECORDED)
 
-        complaints_text = _x(anam.get('complaints') or NOT_RECORDED)
-        morbi_text = _x(anam.get('anamnesis_morbi') or NOT_RECORDED)
-        vitae_text = _x(anam.get('anamnesis_vitae') or NOT_RECORDED)
-        chronic_text = _x(pt.get('chronic_conditions') or NOT_RECORDED)
+    anam_rows = [
+        [Paragraph("<b>Birlamchi Shikoyatlar:</b>", bold_style), Paragraph(complaints_text, body_style)],
+        [Paragraph("<b>Kasallik Tarixi (Morbi):</b>", bold_style), Paragraph(morbi_text, body_style)],
+        [Paragraph("<b>Hayot Tarixi (Vitae):</b>", bold_style), Paragraph(vitae_text, body_style)],
+        [Paragraph("<b>Surunkali Kasalliklar:</b>", bold_style), Paragraph(chronic_text, body_style)]
+    ]
+    anam_table = Table(anam_rows, colWidths=[140, 383])
+    anam_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
+    ]))
+    lab_plan = "Klinik qon tahlili, EKG, biokimyoviy skrining (ALT, AST, glyukoza, umumiy oqsil, kreatinin). Spirtli va toksik intoksikatsiya darajasi bo'yicha intensiv infuzion terapiya va psixofarmakoterapiya boshlandi."
 
-        anam_rows = [
-            [Paragraph("<b>Birlamchi Shikoyatlar:</b>", bold_style), Paragraph(complaints_text, body_style)],
-            [Paragraph("<b>Kasallik Tarixi (Morbi):</b>", bold_style), Paragraph(morbi_text, body_style)],
-            [Paragraph("<b>Hayot Tarixi (Vitae):</b>", bold_style), Paragraph(vitae_text, body_style)],
-            [Paragraph("<b>Surunkali Kasalliklar:</b>", bold_style), Paragraph(chronic_text, body_style)]
-        ]
-        anam_table = Table(anam_rows, colWidths=[140, 383])
-        anam_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
-        ]))
-        story.append(anam_table)
-        story.append(Spacer(1, 8))
+    # --- SECTION B DATA ---
+    somatic_raw = anam.get('somatic_status') or NOT_RECORDED
+    psych_raw = anam.get('psychiatric_status') or NOT_RECORDED
 
-        story.append(Paragraph("BIRLAMCHI LABORATOR-DIAGNOSTIK KO'RSATKICHLAR VA REJA", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-        lab_plan = "Klinik qon tahlili, EKG, biokimyoviy skrining (ALT, AST, glyukoza, umumiy oqsil, kreatinin). Spirtli va toksik intoksikatsiya darajasi bo'yicha intensiv infuzion terapiya va psixofarmakoterapiya boshlandi."
-        story.append(Paragraph(lab_plan, body_style))
+    somatic_data = [
+        [Paragraph("<b>Umumiy Somatik Holati:</b>", bold_style), Paragraph(_x(somatic_raw), body_style)],
+        [Paragraph("<b>Nafas Olish Tizimi:</b>", bold_style), Paragraph("Burun orqali erkin, vezikulyar nafas, patologik xirillashlar yo'q.", body_style)],
+        [Paragraph("<b>Yurak-Qon Tomir:</b>", bold_style), Paragraph("Yurak tonlari ritmik, bo'g'iqlashgan. Periferik shishlar mavjud emas.", body_style)],
+        [Paragraph("<b>Oshqozon-Ichak Tizimi:</b>", bold_style), Paragraph("Tili karashli, qorin yumshoq, og'riqsiz, jigar qovurg'a yoyi bo'ylab.", body_style)],
+        [Paragraph("<b>Nevrologik Status:</b>", bold_style), Paragraph("Ko'z qorachiqlari D=S, yorug'likka reaksiyasi saqlangan. Barmoqlarda tremor kuzatiladi.", body_style)]
+    ]
+    somatic_table = Table(somatic_data, colWidths=[140, 383])
+    somatic_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
+    ]))
 
-        # Explicit PageBreak to enforce 4-page bound
-        story.append(PageBreak())
+    psych_data = [
+        [Paragraph("<b>Ong Holati & Kontakt:</b>", bold_style), Paragraph("Ongi ravshan, savollarga adekvat javob beradi. Kontaktga kirishuvchan.", body_style)],
+        [Paragraph("<b>Orientatsiya:</b>", bold_style), Paragraph("Zamon, makon va o'z shaxsiga nisbatan to'liq orientatsiyalashgan.", body_style)],
+        [Paragraph("<b>Idrok va Fikrlash:</b>", bold_style), Paragraph("Ko'rish va eshitish gallyutsinatsiyalari, alahsirash g'oyalari aniqlanmadi.", body_style)],
+        [Paragraph("<b>Emotsional-Irodaviy:</b>", bold_style), Paragraph(_x(psych_raw), body_style)],
+        [Paragraph("<b>Narkologik Mayl:</b>", bold_style), Paragraph("Moddaga nisbatan ikkilamchi patologik mayl, o'z holatiga tanqidiy baho qisman saqlangan.", body_style)]
+    ]
+    psych_table = Table(psych_data, colWidths=[140, 383])
+    psych_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
+    ]))
 
-        # =====================================================================
-        # PAGE 2: OBJECTIVE CLINICAL & PSYCHOSOMATIC STATUS
-        # =====================================================================
-        page2_header = Table([[
-            Paragraph("<b>FAYZ MEDICAL HOUSE</b> — KLINIK EMR DOSSYESI", clinic_sub_style),
-            Paragraph("2-SAHIFA: OBYEKTIV KO'RIK VA PSIXOSOMATIK STATUS", meta_style)
-        ]], colWidths=[280, 243])
-        story.append(page2_header)
-        story.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=6))
-
-        story.append(Paragraph("SOMATIK VA NEVROLOGIK STATUS", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-
-        somatic_raw = anam.get('somatic_status') or NOT_RECORDED
-        psych_raw = anam.get('psychiatric_status') or NOT_RECORDED
-
-        somatic_data = [
-            [Paragraph("<b>Umumiy Somatik Holati:</b>", bold_style), Paragraph(_x(somatic_raw), body_style)],
-            [Paragraph("<b>Nafas Olish Tizimi:</b>", bold_style), Paragraph("Burun orqali erkin, vezikulyar nafas, patologik xirillashlar yo'q.", body_style)],
-            [Paragraph("<b>Yurak-Qon Tomir:</b>", bold_style), Paragraph("Yurak tonlari ritmik, bo'g'iqlashgan. Periferik shishlar mavjud emas.", body_style)],
-            [Paragraph("<b>Oshqozon-Ichak Tizimi:</b>", bold_style), Paragraph("Tili karashli, qorin yumshoq, og'riqsiz, jigar qovurg'a yoyi bo'ylab.", body_style)],
-            [Paragraph("<b>Nevrologik Status:</b>", bold_style), Paragraph("Ko'z qorachiqlari D=S, yorug'likka reaksiyasi saqlangan. Barmoqlarda tremor kuzatiladi.", body_style)]
-        ]
-        somatic_table = Table(somatic_data, colWidths=[140, 383])
-        somatic_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
-        ]))
-        story.append(somatic_table)
-        story.append(Spacer(1, 8))
-
-        story.append(Paragraph("PSIXIK STATUS VA NARKOLOGIK KO'RIK", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-
-        psych_data = [
-            [Paragraph("<b>Ong Holati & Kontakt:</b>", bold_style), Paragraph("Ongi ravshan, savollarga adekvat javob beradi. Kontaktga kirishuvchan.", body_style)],
-            [Paragraph("<b>Orientatsiya:</b>", bold_style), Paragraph("Zamon, makon va o'z shaxsiga nisbatan to'liq orientatsiyalashgan.", body_style)],
-            [Paragraph("<b>Idrok va Fikrlash:</b>", bold_style), Paragraph("Ko'rish va eshitish gallyutsinatsiyalari, alahsirash g'oyalari aniqlanmadi.", body_style)],
-            [Paragraph("<b>Emotsional-Irodaviy:</b>", bold_style), Paragraph(_x(psych_raw), body_style)],
-            [Paragraph("<b>Narkologik Mayl:</b>", bold_style), Paragraph("Moddaga nisbatan ikkilamchi patologik mayl, o'z holatiga tanqidiy baho qisman saqlangan.", body_style)]
-        ]
-        psych_table = Table(psych_data, colWidths=[140, 383])
-        psych_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
-        ]))
-        story.append(psych_table)
-        story.append(Spacer(1, 8))
-
-        story.append(Paragraph("OBYEKTIV GEMODINAMIKA VA ASOSIY VITAL KO'RSATKICHLAR", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-
-        vitals_headers = ["Sana & Vaqt", "Arterial Bosim (AB)", "Puls (urish/min)", "Harorat (T, °C)", "SpO2 (%)", "Bemor Holati"]
-        vitals_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in vitals_headers]]
-        if daily_notes:
-            for dn in daily_notes[:4]:
-                _sys, _dia = dn.get('vital_bp_systolic'), dn.get('vital_bp_diastolic')
-                bp_str = f"{_sys}/{_dia}" if _sys and _dia else "—"
-                p_str = str(dn.get('vital_pulse') or "—")
-                t_str = f"{dn.get('vital_temp')}°C" if dn.get('vital_temp') else "—"
-                spo_str = f"{dn.get('vital_spo2')}%" if dn.get('vital_spo2') else "—"
-                vitals_rows.append([
-                    Paragraph(_x(dn.get('note_date', '')), body_style),
-                    Paragraph(bp_str, body_style),
-                    Paragraph(p_str, body_style),
-                    Paragraph(t_str, body_style),
-                    Paragraph(spo_str, body_style),
-                    Paragraph(_x(dn.get('patient_condition') or 'Stabil'), body_style)
-                ])
-        else:
+    vitals_headers = ["Sana & Vaqt", "Arterial Bosim (AB)", "Puls (urish/min)", "Harorat (T, °C)", "SpO2 (%)", "Bemor Holati"]
+    vitals_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in vitals_headers]]
+    if daily_notes:
+        for dn in daily_notes[:4]:
+            _sys, _dia = dn.get('vital_bp_systolic'), dn.get('vital_bp_diastolic')
+            bp_str = f"{_sys}/{_dia}" if _sys and _dia else "—"
+            p_str = str(dn.get('vital_pulse') or "—")
+            t_str = f"{dn.get('vital_temp')}°C" if dn.get('vital_temp') else "—"
+            spo_str = f"{dn.get('vital_spo2')}%" if dn.get('vital_spo2') else "—"
             vitals_rows.append([
-                Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style),
-                Paragraph("125/80 mm", body_style),
-                Paragraph("76", body_style),
-                Paragraph("36.6 °C", body_style),
-                Paragraph("98%", body_style),
-                Paragraph("Stabil", body_style)
+                Paragraph(_x(dn.get('note_date', '')), body_style),
+                Paragraph(bp_str, body_style),
+                Paragraph(p_str, body_style),
+                Paragraph(t_str, body_style),
+                Paragraph(spo_str, body_style),
+                Paragraph(_x(dn.get('patient_condition') or 'Stabil'), body_style)
             ])
-        vitals_table = Table(vitals_rows, colWidths=[90, 110, 80, 80, 80, 83])
-        vitals_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-            ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
-            ('PADDING', (0, 0), (-1, -1), 3),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ]))
-        story.append(vitals_table)
+    else:
+        vitals_rows.append([
+            Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style),
+            Paragraph("125/80 mm", body_style),
+            Paragraph("76", body_style),
+            Paragraph("36.6 °C", body_style),
+            Paragraph("98%", body_style),
+            Paragraph("Stabil", body_style)
+        ])
+    vitals_table = Table(vitals_rows, colWidths=[90, 110, 80, 80, 80, 83])
+    vitals_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('PADDING', (0, 0), (-1, -1), 3),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+    ]))
 
-        # Explicit PageBreak to enforce 4-page bound
-        story.append(PageBreak())
+    # --- SECTION C DATA ---
+    rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Yuborish yo'li", "Qabul tartibi", "Davomiyligi", "Holati"]
+    rx_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in rx_headers]]
+    if prescriptions:
+        for idx, r in enumerate(prescriptions[:7], 1):
+            status_color = "#10b981" if r.get('status') == 'completed' else ("#f43f5e" if r.get('status') == 'cancelled' else "#0284c7")
+            status_lbl = "Bajarildi" if r.get('status') == 'completed' else ("Bekor" if r.get('status') == 'cancelled' else "Faol")
+            rx_rows.append([
+                Paragraph(str(idx), body_style),
+                Paragraph(f"<b>{_x(r.get('medication_name', ''))}</b><br/><font color='#64748b' size='6.5'>{_x(r.get('form', ''))}</font>", body_style),
+                Paragraph(f"<b>{_x(r.get('dosage', ''))}</b>", body_style),
+                Paragraph(_x(r.get('route', '')), body_style),
+                Paragraph(f"{_x(r.get('frequency', ''))}<br/><font color='#64748b' size='6.5'>{_x(r.get('timing', ''))}</font>", body_style),
+                Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
+                Paragraph(f"<font color='{status_color}'><b>{status_lbl}</b></font>", body_style)
+            ])
+    else:
+        rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*6)
 
-        # =====================================================================
-        # PAGE 3: PRESCRIBED MEDICATIONS & MEDICATIONS TAKEN (ADMINISTERED)
-        # =====================================================================
-        page3_header = Table([[
-            Paragraph("<b>FAYZ MEDICAL HOUSE</b> — KLINIK EMR DOSSYESI", clinic_sub_style),
-            Paragraph("3-SAHIFA: DAVOLASH REJASI VA QABUL QILINGAN DORILAR", meta_style)
-        ]], colWidths=[280, 243])
-        story.append(page3_header)
-        story.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=6))
+    rx_table = Table(rx_rows, colWidths=[18, 145, 75, 85, 95, 55, 50])
+    rx_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('PADDING', (0, 0), (-1, -1), 3),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
 
-        story.append(Paragraph("TAYINLANGAN DORI VOSITALARI (FARMAKOTERAPIYA REJASI)", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+    adm_headers = ["Sana", "Vaqt / Smena", "Dori vositasi", "Yuborilgan doza", "Ijrochi Hamshira", "Holat", "Qayd"]
+    adm_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in adm_headers]]
+    if administrations:
+        for ma in administrations[:6]:
+            status_clr = "#10b981" if ma.get('status') == 'given' else "#f43f5e"
+            status_txt = "Qabul qilindi" if ma.get('status') == 'given' else "O'tkazildi"
+            adm_rows.append([
+                Paragraph(_x(ma.get('scheduled_date', '')), body_style),
+                Paragraph(_x(ma.get('slot_label', '')), body_style),
+                Paragraph(_x(ma.get('medication_name') or 'Dori'), body_style),
+                Paragraph(_x(ma.get('dosage') or '1 doza'), body_style),
+                Paragraph(_x(ma.get('nurse_name') or 'Navbatchi hamshira'), body_style),
+                Paragraph(f"<font color='{status_clr}'><b>{status_txt}</b></font>", body_style),
+                Paragraph(_x(ma.get('notes') or 'Asoratsiz'), body_style)
+            ])
+    else:
+        adm_rows.append([Paragraph("Amalda qabul qilingan dori qaydlari mavjud emas", body_style)] + [""]*6)
 
-        rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Yuborish yo'li", "Qabul tartibi", "Davomiyligi", "Holati"]
-        rx_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in rx_headers]]
-        if prescriptions:
-            for idx, r in enumerate(prescriptions[:7], 1):
-                status_color = "#10b981" if r.get('status') == 'completed' else ("#f43f5e" if r.get('status') == 'cancelled' else "#0284c7")
-                status_lbl = "Bajarildi" if r.get('status') == 'completed' else ("Bekor" if r.get('status') == 'cancelled' else "Faol")
-                rx_rows.append([
-                    Paragraph(str(idx), body_style),
-                    Paragraph(f"<b>{_x(r.get('medication_name', ''))}</b><br/><font color='#64748b' size='6.5'>{_x(r.get('form', ''))}</font>", body_style),
-                    Paragraph(f"<b>{_x(r.get('dosage', ''))}</b>", body_style),
-                    Paragraph(_x(r.get('route', '')), body_style),
-                    Paragraph(f"{_x(r.get('frequency', ''))}<br/><font color='#64748b' size='6.5'>{_x(r.get('timing', ''))}</font>", body_style),
-                    Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
-                    Paragraph(f"<font color='{status_color}'><b>{status_lbl}</b></font>", body_style)
-                ])
-        else:
-            rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*6)
+    adm_table = Table(adm_rows, colWidths=[55, 65, 125, 70, 95, 55, 58])
+    adm_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('PADDING', (0, 0), (-1, -1), 3),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
 
-        rx_table = Table(rx_rows, colWidths=[18, 145, 75, 85, 95, 55, 50])
-        rx_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-            ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
-            ('PADDING', (0, 0), (-1, -1), 3),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(rx_table)
-        story.append(Spacer(1, 8))
-
-        story.append(Paragraph("HAMSHIRA POSTI TOMONIDAN AMALDA QABUL QILINGAN DORILAR (NURSE LOG)", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-
-        adm_headers = ["Sana", "Vaqt / Smena", "Dori vositasi", "Yuborilgan doza", "Ijrochi Hamshira", "Holat", "Qayd"]
-        adm_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in adm_headers]]
-        if administrations:
-            for ma in administrations[:6]:
-                status_clr = "#10b981" if ma.get('status') == 'given' else "#f43f5e"
-                status_txt = "Qabul qilindi" if ma.get('status') == 'given' else "O'tkazildi"
-                adm_rows.append([
-                    Paragraph(_x(ma.get('scheduled_date', '')), body_style),
-                    Paragraph(_x(ma.get('slot_label', '')), body_style),
-                    Paragraph(_x(ma.get('medication_name') or 'Dori'), body_style),
-                    Paragraph(_x(ma.get('dosage') or '1 doza'), body_style),
-                    Paragraph(_x(ma.get('nurse_name') or 'Navbatchi hamshira'), body_style),
-                    Paragraph(f"<font color='{status_clr}'><b>{status_txt}</b></font>", body_style),
-                    Paragraph(_x(ma.get('notes') or 'Asoratsiz'), body_style)
-                ])
-        else:
-            adm_rows.append([Paragraph("Amalda qabul qilingan dori qaydlari mavjud emas", body_style)] + [""]*6)
-
-        adm_table = Table(adm_rows, colWidths=[55, 65, 125, 70, 95, 55, 58])
-        adm_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-            ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
-            ('PADDING', (0, 0), (-1, -1), 3),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(adm_table)
-        story.append(Spacer(1, 8))
-
-        story.append(Paragraph("KLINIK REJIM, PARHEZ VA REABILITATSIYA QAYDLARI", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-        story.append(Paragraph("Palata tartibi: yarim yotoq rejimi. Parhez: 15-sonli parhez, tuzli minerallashgan eritmalar. Psixoterapevtik suhbat va emotsional barqarorlik monitoringi. Hamshira tomonidan qat'iy nazorat ostida beriladi.", body_style))
-
-        # Explicit PageBreak to enforce 4-page bound
-        story.append(PageBreak())
-
-        # =====================================================================
-        # PAGE 4: DAILY PROGRESS, DISCHARGE EPICRISIS & SIGNATURES
-        # =====================================================================
-        page4_header = Table([[
-            Paragraph("<b>FAYZ MEDICAL HOUSE</b> — KLINIK EMR DOSSYESI", clinic_sub_style),
-            Paragraph("4-SAHIFA: KUNDALIK DINAMIKA, EPIKRIZ VA TASDIQ", meta_style)
-        ]], colWidths=[280, 243])
-        story.append(page4_header)
-        story.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=6))
-
-        story.append(Paragraph("SHIFOKOR KUNDALIK KO'RIGI QAYDLARI (DNEVNIK OBXODA)", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-
-        dn_headers = ["Sana", "Gemodinamika", "Bemor Dinamikasi & Holati", "Davolashdagi Korreksiya"]
-        dn_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in dn_headers]]
-        if daily_notes:
-            for dn in daily_notes[:3]:
-                _sys, _dia = dn.get('vital_bp_systolic'), dn.get('vital_bp_diastolic')
-                bp_str = f"AB: {_sys}/{_dia}" if _sys and _dia else "AB: —"
-                pulse_str = f"P: {dn.get('vital_pulse')}" if dn.get('vital_pulse') else "P: —"
-                temp_str = f"T: {dn.get('vital_temp')}°C" if dn.get('vital_temp') else "T: —"
-                dn_rows.append([
-                    Paragraph(_x(dn.get('note_date', '')), body_style),
-                    Paragraph(f"{bp_str}<br/>{pulse_str}<br/>{temp_str}", body_style),
-                    Paragraph(_x(dn.get('dynamics_notes') or 'Stabil ijobiy dinamika'), body_style),
-                    Paragraph(_x(dn.get('treatment_adjustments') or 'Tayinlov bo\'yicha davom ettirilsin'), body_style)
-                ])
-        else:
+    # --- SECTION D DATA ---
+    dn_headers = ["Sana", "Gemodinamika", "Bemor Dinamikasi & Holati", "Davolashdagi Korreksiya"]
+    dn_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in dn_headers]]
+    if daily_notes:
+        for dn in daily_notes[:3]:
+            _sys, _dia = dn.get('vital_bp_systolic'), dn.get('vital_bp_diastolic')
+            bp_str = f"AB: {_sys}/{_dia}" if _sys and _dia else "AB: —"
+            pulse_str = f"P: {dn.get('vital_pulse')}" if dn.get('vital_pulse') else "P: —"
+            temp_str = f"T: {dn.get('vital_temp')}°C" if dn.get('vital_temp') else "T: —"
             dn_rows.append([
-                Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style),
-                Paragraph("AB: 125/80<br/>P: 76<br/>T: 36.6°C", body_style),
-                Paragraph("Intoksikatsiya belgilari kamaygan, uyqu va ishtaha yaxshilangan.", body_style),
-                Paragraph("Belgilangan terapiya davom ettirilsin.", body_style)
+                Paragraph(_x(dn.get('note_date', '')), body_style),
+                Paragraph(f"{bp_str}<br/>{pulse_str}<br/>{temp_str}", body_style),
+                Paragraph(_x(dn.get('dynamics_notes') or 'Stabil ijobiy dinamika'), body_style),
+                Paragraph(_x(dn.get('treatment_adjustments') or 'Tayinlov bo\'yicha davom ettirilsin'), body_style)
             ])
-        dn_table = Table(dn_rows, colWidths=[65, 80, 245, 133])
-        dn_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-            ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
-            ('PADDING', (0, 0), (-1, -1), 3),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-        story.append(dn_table)
-        story.append(Spacer(1, 8))
+    else:
+        dn_rows.append([
+            Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style),
+            Paragraph("AB: 125/80<br/>P: 76<br/>T: 36.6°C", body_style),
+            Paragraph("Intoksikatsiya belgilari kamaygan, uyqu va ishtaha yaxshilangan.", body_style),
+            Paragraph("Belgilangan terapiya davom ettirilsin.", body_style)
+        ])
+    dn_table = Table(dn_rows, colWidths=[65, 80, 245, 133])
+    dn_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('PADDING', (0, 0), (-1, -1), 3),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
 
-        story.append(Paragraph("YAKUNIY KLINIK EPIKRIZ VA TAVSIYALAR", sec_style))
-        story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+    summary_text = _x(epicrisis.get('treatment_summary') or "Kompleks detoksikatsiya va psixoterapevtik davolash kursi o'tkazildi. Somatik va psixik ko'rsatkichlar me'yorlashdi.")
+    home_rx_text = _x(epicrisis.get('home_prescriptions') or "Uy sharoitida sedativ va nootrop terapiyani davom ettirish, qat'iy hushyorlik rejimiga rioya qilish.")
+    psycho_text = _x(epicrisis.get('psycho_recommendations') or "Ambulator psixoterapiya va dispanser kuzatuvida bo'lish tavsiya etiladi.")
 
-        summary_text = _x(epicrisis.get('treatment_summary') or "Kompleks detoksikatsiya va psixoterapevtik davolash kursi o'tkazildi. Somatik va psixik ko'rsatkichlar me'yorlashdi.")
-        home_rx_text = _x(epicrisis.get('home_prescriptions') or "Uy sharoitida sedativ va nootrop terapiyani davom ettirish, qat'iy hushyorlik rejimiga rioya qilish.")
-        psycho_text = _x(epicrisis.get('psycho_recommendations') or "Ambulator psixoterapiya va dispanser kuzatuvida bo'lish tavsiya etiladi.")
+    epi_data = [
+        [Paragraph("<b>Davolash Natijasi:</b>", bold_style), Paragraph(summary_text, body_style)],
+        [Paragraph("<b>Uyda Davolanish:</b>", bold_style), Paragraph(home_rx_text.replace('\n', '<br/>'), body_style)],
+        [Paragraph("<b>Reabilitatsiya:</b>", bold_style), Paragraph(psycho_text.replace('\n', '<br/>'), body_style)]
+    ]
+    epi_table = Table(epi_data, colWidths=[130, 393])
+    epi_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
+    ]))
 
-        epi_data = [
-            [Paragraph("<b>Davolash Natijasi:</b>", bold_style), Paragraph(summary_text, body_style)],
-            [Paragraph("<b>Uyda Davolanish:</b>", bold_style), Paragraph(home_rx_text.replace('\n', '<br/>'), body_style)],
-            [Paragraph("<b>Reabilitatsiya:</b>", bold_style), Paragraph(psycho_text.replace('\n', '<br/>'), body_style)]
-        ]
-        epi_table = Table(epi_data, colWidths=[130, 393])
-        epi_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
-        ]))
-        story.append(epi_table)
-        story.append(Spacer(1, 10))
+    # Official Signatures & Stamp block
+    sig_col1 = [
+        Paragraph("<b>Davolovchi Shifokor:</b>", body_style),
+        Paragraph(f"<b>{_x(doctor_name)}</b>", ParagraphStyle('DocN', parent=body_style, fontName='Helvetica-Bold', textColor=PRIMARY)),
+        Paragraph(f"<font size='7' color='#64748b'>{_x(doctor_title)}</font>", body_style),
+        Spacer(1, 14),
+        Paragraph("_______________________<br/><font size='7' color='#64748b'>(Shaxsiy imzo va muhr)</font>", body_style)
+    ]
+    sig_col2 = [
+        Paragraph("<font size='7.5' color='#94a3b8'><b>FAYZ MEDICAL HOUSE</b><br/>KLINIKA RASMIY MUHRI<br/>(OFFICIAL STAMP)</font>", ParagraphStyle('Stp', parent=body_style, alignment=1))
+    ]
+    sig_col3 = [
+        Paragraph("<b>Bosh Shifokor Tasdig'i:</b>", body_style),
+        Paragraph(f"<font size='7' color='#64748b'>Sertifikat: EMR-{_x(pt.get('patient_code', ''))}-SQL</font>", body_style),
+        Paragraph(f"<font size='7' color='#64748b'>Sana: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</font>", body_style),
+        Spacer(1, 8),
+        Paragraph("_______________________<br/><font size='7' color='#64748b'>(Bosh shifokor imzosi)</font>", body_style)
+    ]
+    sig_table = Table([[sig_col1, sig_col2, sig_col3]], colWidths=[180, 163, 180])
+    sig_table.setStyle(TableStyle([
+        ('BOX', (1, 0), (1, 0), 1, colors.HexColor('#94a3b8')),
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('PADDING', (0, 0), (-1, -1), 4),
+    ]))
 
-        # Signatures & Stamp block
-        sig_col1 = [
-            Paragraph("<b>Davolovchi Shifokor:</b>", body_style),
-            Paragraph(f"<b>{_x(doctor_name)}</b>", ParagraphStyle('DocN', parent=body_style, fontName='Helvetica-Bold', textColor=PRIMARY)),
-            Paragraph(f"<font size='7' color='#64748b'>{_x(doctor_title)}</font>", body_style),
-            Spacer(1, 14),
-            Paragraph("_______________________<br/><font size='7' color='#64748b'>(Shaxsiy imzo va muhr)</font>", body_style)
-        ]
-        sig_col2 = [
-            Paragraph("<font size='7.5' color='#94a3b8'><b>FAYZ MEDICAL HOUSE</b><br/>KLINIKA RASMIY MUHRI<br/>(OFFICIAL STAMP)</font>", ParagraphStyle('Stp', parent=body_style, alignment=1))
-        ]
-        sig_col3 = [
-            Paragraph("<b>Bosh Shifokor Tasdig'i:</b>", body_style),
-            Paragraph(f"<font size='7' color='#64748b'>Sertifikat: EMR-{_x(pt.get('patient_code', ''))}-SQL</font>", body_style),
-            Paragraph(f"<font size='7' color='#64748b'>Sana: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</font>", body_style),
-            Spacer(1, 8),
-            Paragraph("_______________________<br/><font size='7' color='#64748b'>(Bosh shifokor imzosi)</font>", body_style)
-        ]
-        sig_table = Table([[sig_col1, sig_col2, sig_col3]], colWidths=[180, 163, 180])
-        sig_table.setStyle(TableStyle([
-            ('BOX', (1, 0), (1, 0), 1, colors.HexColor('#94a3b8')),
-            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-            ('PADDING', (0, 0), (-1, -1), 4),
-        ]))
-        story.append(KeepTogether([
+    def build_sec_a(standalone=False):
+        res = []
+        res.append(header_table)
+        res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
+        res.append(Paragraph("BEMOR TIBBIY KARTASI VA KASALLIK TARIXI (EMR)", title_style))
+        subtitle = "A BO'LIM: ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ" if standalone else "1-SAHIFA: ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ"
+        res.append(Paragraph(subtitle, subtitle_style))
+        res.append(Spacer(1, 6))
+        res.append(pt_grid_table)
+        res.append(Spacer(1, 8))
+        res.append(Paragraph("BEMOR SHIKOYATLARI VA KASALLIK RIVOJLANISH TARIXI", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(anam_table)
+        res.append(Spacer(1, 8))
+        res.append(Paragraph("BIRLAMCHI LABORATOR-DIAGNOSTIK KO'RSATKICHLAR VA REJA", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(Paragraph(lab_plan, body_style))
+        if standalone:
+            res.append(Spacer(1, 14))
+            res.append(KeepTogether([
+                HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=5),
+                sec_sig_table
+            ]))
+        return res
+
+    def build_sec_b(standalone=False):
+        res = []
+        if standalone:
+            res.append(header_table)
+            res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
+            res.append(Paragraph("BEMOR TIBBIY KARTASI — B BO'LIM: STATUS VA KO'RIK", title_style))
+            res.append(Paragraph("OBYEKTIV SOMATIK, PSIXIK VA GEMODINAMIK KO'RSATKICHLAR", subtitle_style))
+            res.append(Spacer(1, 4))
+            res.append(pt_summary_table)
+            res.append(Spacer(1, 6))
+        else:
+            page2_header = Table([[
+                Paragraph("<b>FAYZ MEDICAL HOUSE</b> — KLINIK EMR DOSSYESI", clinic_sub_style),
+                Paragraph("2-SAHIFA: OBYEKTIV KO'RIK VA PSIXOSOMATIK STATUS", meta_style)
+            ]], colWidths=[280, 243])
+            res.append(page2_header)
+            res.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=6))
+
+        res.append(Paragraph("SOMATIK VA NEVROLOGIK STATUS", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(somatic_table)
+        res.append(Spacer(1, 8))
+
+        res.append(Paragraph("PSIXIK STATUS VA NARKOLOGIK KO'RIK", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(psych_table)
+        res.append(Spacer(1, 8))
+
+        res.append(Paragraph("OBYEKTIV GEMODINAMIKA VA ASOSIY VITAL KO'RSATKICHLAR", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(vitals_table)
+
+        if standalone:
+            res.append(Spacer(1, 10))
+            res.append(KeepTogether([
+                HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=5),
+                sec_sig_table
+            ]))
+        return res
+
+    def build_sec_c(standalone=False):
+        res = []
+        if standalone:
+            res.append(header_table)
+            res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
+            res.append(Paragraph("BEMOR TIBBIY KARTASI — C BO'LIM: FARMAKOTERAPIYA", title_style))
+            res.append(Paragraph("TAYINLANGAN VA QABUL QILINGAN DORILAR VARAQASI", subtitle_style))
+            res.append(Spacer(1, 4))
+            res.append(pt_summary_table)
+            res.append(Spacer(1, 6))
+        else:
+            page3_header = Table([[
+                Paragraph("<b>FAYZ MEDICAL HOUSE</b> — KLINIK EMR DOSSYESI", clinic_sub_style),
+                Paragraph("3-SAHIFA: DAVOLASH REJASI VA QABUL QILINGAN DORILAR", meta_style)
+            ]], colWidths=[280, 243])
+            res.append(page3_header)
+            res.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=6))
+
+        res.append(Paragraph("TAYINLANGAN DORI VOSITALARI (FARMAKOTERAPIYA REJASI)", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(rx_table)
+        res.append(Spacer(1, 8))
+
+        res.append(Paragraph("HAMSHIRA POSTI TOMONIDAN AMALDA QABUL QILINGAN DORILAR (NURSE LOG)", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(adm_table)
+        res.append(Spacer(1, 8))
+
+        res.append(Paragraph("KLINIK REJIM, PARHEZ VA REABILITATSIYA QAYDLARI", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(Paragraph("Palata tartibi: yarim yotoq rejimi. Parhez: 15-sonli parhez, tuzli minerallashgan eritmalar. Psixoterapevtik suhbat va emotsional barqarorlik monitoringi. Hamshira tomonidan qat'iy nazorat ostida beriladi.", body_style))
+
+        if standalone:
+            res.append(Spacer(1, 10))
+            res.append(KeepTogether([
+                HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=5),
+                sec_sig_table
+            ]))
+        return res
+
+    def build_sec_d(standalone=False):
+        res = []
+        if standalone:
+            res.append(header_table)
+            res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
+            res.append(Paragraph("BEMOR TIBBIY KARTASI — D BO'LIM: CHIQARISH EPIKRIZI", title_style))
+            res.append(Paragraph("KUNDALIK SHIFOKOR MONITORINGI, EPIKRIZ VA YAKUNIY TAVSIYALAR", subtitle_style))
+            res.append(Spacer(1, 4))
+            res.append(pt_summary_table)
+            res.append(Spacer(1, 6))
+        else:
+            page4_header = Table([[
+                Paragraph("<b>FAYZ MEDICAL HOUSE</b> — KLINIK EMR DOSSYESI", clinic_sub_style),
+                Paragraph("4-SAHIFA: KUNDALIK DINAMIKA, EPIKRIZ VA TASDIQ", meta_style)
+            ]], colWidths=[280, 243])
+            res.append(page4_header)
+            res.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=6))
+
+        res.append(Paragraph("SHIFOKOR KUNDALIK KO'RIGI QAYDLARI (DNEVNIK OBXODA)", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(dn_table)
+        res.append(Spacer(1, 8))
+
+        res.append(Paragraph("YAKUNIY KLINIK EPIKRIZ VA TAVSIYALAR", sec_style))
+        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+        res.append(epi_table)
+        res.append(Spacer(1, 10))
+
+        res.append(KeepTogether([
             HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=4, spaceAfter=8),
             sig_table
         ]))
+        return res
+
+    story = []
+    if doc_type == 'section_a':
+        story = build_sec_a(standalone=True)
+    elif doc_type == 'section_b':
+        story = build_sec_b(standalone=True)
+    elif doc_type == 'section_c':
+        story = build_sec_c(standalone=True)
+    elif doc_type == 'section_d':
+        story = build_sec_d(standalone=True)
+    elif doc_type in ('4_page', 'full'):
+        story = (
+            build_sec_a(standalone=False) + [PageBreak()] +
+            build_sec_b(standalone=False) + [PageBreak()] +
+            build_sec_c(standalone=False) + [PageBreak()] +
+            build_sec_d(standalone=False)
+        )
 
     else:
         # =====================================================================
@@ -1273,7 +1362,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         'patient_name': pt.get('full_name'),
         'admission_id': adm.get('id'),
         'doc_type': doc_type,
-        'page_count': 4 if doc_type == '4_page' else 2,
+        'page_count': {'section_a': 1, 'section_b': 1, 'section_c': 1, 'section_d': 1, '2_page': 2}.get(doc_type, 4),
         'diagnosis': primary_diag,
         'medications_count': len(prescriptions),
     }

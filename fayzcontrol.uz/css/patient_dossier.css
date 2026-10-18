@@ -881,3 +881,572 @@ textarea.form-control {
   background: var(--dossier-card-subtle);
   color: var(--dossier-text-muted);
 }
+
+/* ==========================================================================
+   Fayz Medical House — Patient Dossier Windows File Explorer & Registry Styles
+   ========================================================================== */
+
+.dossier-registry-workspace {
+  padding: 16px 24px 32px;
+  max-width: 1720px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 1. Toolbar & Header */
+.registry-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: var(--dossier-card-bg);
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-lg);
+  padding: 16px 20px;
+  box-shadow: var(--dossier-shadow-sm);
+}
+
+.registry-title-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.registry-title-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--dossier-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.registry-title {
+  font-size: 19px;
+  font-weight: 800;
+  margin: 0 0 4px 0;
+  color: var(--dossier-text-main);
+  letter-spacing: -0.3px;
+}
+
+.registry-subtitle {
+  font-size: 13px;
+  color: var(--dossier-text-muted);
+  margin: 0;
+}
+
+.registry-stats-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--dossier-card-subtle);
+  border: 1px solid var(--dossier-border);
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dossier-text-main);
+}
+
+.stat-pill .stat-label {
+  color: var(--dossier-text-muted);
+}
+
+.stat-pill .stat-value {
+  font-weight: 800;
+  color: var(--dossier-text-main);
+}
+
+.stat-pill .stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.stat-inpatient .stat-dot { background: var(--dossier-accent); }
+.stat-inpatient .stat-value { color: var(--dossier-accent); }
+.stat-outpatient .stat-dot { background: var(--dossier-blue); }
+.stat-outpatient .stat-value { color: var(--dossier-blue); }
+
+/* 2. Controls Bar (Search + Filter Tabs) */
+.registry-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.search-input-group {
+  position: relative;
+  flex: 1;
+  min-width: 280px;
+  max-width: 500px;
+}
+
+.search-input-group .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dossier-text-light);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.search-input-group .search-field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 36px 10px 38px;
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-md);
+  background: var(--dossier-card-bg);
+  color: var(--dossier-text-main);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s;
+  box-shadow: var(--dossier-shadow-sm);
+}
+
+.search-input-group .search-field:focus {
+  border-color: var(--dossier-accent);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--dossier-text-light);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.filter-tab-group {
+  display: flex;
+  gap: 6px;
+  background: var(--dossier-card-bg);
+  border: 1px solid var(--dossier-border);
+  padding: 4px;
+  border-radius: var(--dossier-radius-md);
+  box-shadow: var(--dossier-shadow-sm);
+}
+
+.filter-btn {
+  padding: 6px 14px;
+  border-radius: var(--dossier-radius-sm);
+  border: none;
+  background: none;
+  color: var(--dossier-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.filter-btn:hover {
+  color: var(--dossier-text-main);
+  background: var(--dossier-card-subtle);
+}
+
+.filter-btn.active {
+  background: var(--dossier-accent);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.25);
+}
+
+.btn-refresh-registry {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--dossier-radius-md);
+  border: 1px solid var(--dossier-border);
+  background: var(--dossier-card-bg);
+  color: var(--dossier-text-main);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--dossier-shadow-sm);
+}
+
+.btn-refresh-registry:hover {
+  border-color: var(--dossier-accent);
+  color: var(--dossier-accent);
+}
+
+/* 3. The Master Registry Table Card */
+.registry-table-card {
+  background: var(--dossier-card-bg);
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-lg);
+  box-shadow: var(--dossier-shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.registry-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 13px;
+}
+
+.registry-table thead th {
+  background: var(--dossier-card-subtle);
+  border-bottom: 2px solid var(--dossier-border);
+  padding: 12px 14px;
+  font-weight: 700;
+  color: var(--dossier-text-main);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.th-sec-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.th-sec-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  width: fit-content;
+  text-transform: uppercase;
+}
+
+.th-sec-badge.th-a { background: #e0f2fe; color: #0284c7; }
+.th-sec-badge.th-b { background: #fef3c7; color: #d97706; }
+.th-sec-badge.th-c { background: #dcfce7; color: #15803d; }
+.th-sec-badge.th-d { background: #f3e8ff; color: #7e22ce; }
+
+.th-full-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  width: fit-content;
+}
+
+.th-sec-desc {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--dossier-text-muted);
+}
+
+/* Row Styling (Windows File Explorer aesthetic) */
+.registry-table tbody tr {
+  border-bottom: 1px solid var(--dossier-border);
+  transition: background-color 0.15s ease;
+}
+
+.registry-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.registry-table tbody tr:hover {
+  background-color: #f0f7ff;
+}
+
+[data-theme="night"] .registry-table tbody tr:hover,
+body.night-mode .registry-table tbody tr:hover {
+  background-color: #1e293b;
+}
+
+.registry-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dossier-border);
+  vertical-align: middle;
+}
+
+.col-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--dossier-text-light);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Patient Info Column */
+.patient-cell-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.patient-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.patient-name {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--dossier-text-main);
+}
+
+.patient-code-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-muted);
+  border: 1px solid var(--dossier-border);
+}
+
+.patient-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dossier-text-muted);
+}
+
+.ward-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.ward-badge.inpatient {
+  background: rgba(13, 148, 136, 0.1);
+  color: var(--dossier-accent);
+}
+
+.ward-badge.outpatient {
+  background: rgba(100, 116, 139, 0.1);
+  color: var(--dossier-text-muted);
+}
+
+/* Phone Column */
+.phone-cell-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--dossier-text-main);
+  white-space: nowrap;
+}
+
+.phone-cell-wrap i {
+  color: var(--dossier-text-light);
+  font-size: 11px;
+}
+
+/* Age & Gender Column */
+.age-gender-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.age-text {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--dossier-text-main);
+}
+
+.gender-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.gender-badge.male { color: #0284c7; }
+.gender-badge.female { color: #db2777; }
+
+/* Section Action Cells (A, B, C, D) */
+.section-action-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-status-indicator {
+  color: var(--dossier-success);
+  font-size: 13px;
+}
+
+.btn-sec-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: var(--dossier-radius-sm);
+  border: 1px solid var(--dossier-border);
+  background: var(--dossier-card-bg);
+  color: var(--dossier-text-main);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.btn-sec-download:hover {
+  background: var(--dossier-card-subtle);
+  border-color: var(--dossier-accent);
+  color: var(--dossier-accent);
+  transform: translateY(-1px);
+}
+
+.btn-sec-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--dossier-radius-sm);
+  border: 1px solid var(--dossier-border);
+  background: var(--dossier-card-bg);
+  color: var(--dossier-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-sec-preview:hover {
+  background: var(--dossier-card-subtle);
+  border-color: var(--dossier-blue);
+  color: var(--dossier-blue);
+}
+
+/* Full Consolidated Dossier Action Cell */
+.full-action-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-full-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--dossier-radius-sm);
+  border: 1px solid #10b981;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.25);
+}
+
+.btn-full-download:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-full-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--dossier-radius-sm);
+  border: 1px solid var(--dossier-border);
+  background: var(--dossier-card-bg);
+  color: var(--dossier-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-full-preview:hover {
+  background: var(--dossier-card-subtle);
+  border-color: var(--dossier-accent);
+  color: var(--dossier-accent);
+}
+
+/* Footer & Hints */
+.registry-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--dossier-border);
+  background: var(--dossier-card-subtle);
+  font-size: 12px;
+  color: var(--dossier-text-muted);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.footer-count {
+  font-weight: 700;
+  color: var(--dossier-text-main);
+}
+
+.footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-hint i {
+  color: var(--dossier-accent);
+}
+
+.table-loading-cell {
+  text-align: center;
+  padding: 40px !important;
+  color: var(--dossier-text-muted);
+}
+
+.table-loading-cell i {
+  font-size: 24px;
+  color: var(--dossier-accent);
+  margin-bottom: 8px;
+}

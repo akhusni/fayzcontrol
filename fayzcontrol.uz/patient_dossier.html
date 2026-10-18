@@ -248,290 +248,130 @@
   </div>
 
   <!-- =========================================================================
-       3. MAIN WORKSPACE LAYOUT
+       3. MAIN REGISTRY WORKSPACE (WINDOWS EXPLORER STYLE TABLE)
        ========================================================================= -->
-  <main class="dossier-layout">
+  <main class="dossier-registry-workspace">
     
-    <!-- LEFT SIDEBAR: PATIENTS SELECTOR -->
-    <aside class="dossier-sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-title">
-          <span><i class="fas fa-users" style="color: var(--dossier-accent); margin-right: 6px;"></i> Bemorlar Ro'yxati</span>
-          <span class="sidebar-badge" id="patient-count-badge">0 ta bemor</span>
-        </div>
-        <div class="search-box">
-          <i class="fas fa-search"></i>
-          <input type="text" id="patient-search-input" class="search-input" placeholder="Ism, ID yoki telefon..." autocomplete="off">
-        </div>
-        <div class="patient-filter-pills">
-          <button type="button" class="filter-pill active" data-filter="all">Barchasi</button>
-          <button type="button" class="filter-pill" data-filter="inpatient">Statsionar</button>
-          <button type="button" class="filter-pill" data-filter="has_dossier">Dossyesi bor</button>
-        </div>
-      </div>
-
-      <div class="patient-list" id="patients-scroll-container">
-        <!-- Rendered dynamically by patient_dossier.js -->
-        <div style="text-align: center; padding: 30px; color: var(--dossier-text-light);">
-          <i class="fas fa-circle-notch fa-spin" style="font-size: 24px;"></i>
-          <p style="margin-top: 10px; font-size: 13px;">Bemorlar yuklanmoqda...</p>
-        </div>
-      </div>
-    </aside>
-
-    <!-- RIGHT MAIN PANEL: DOSSIER WORKSTATION -->
-    <section class="dossier-main" id="dossier-workstation">
-      
-      <!-- Patient Hero Card -->
-      <div class="patient-hero" id="patient-hero-card">
-        <div class="hero-header">
-          <div class="hero-patient-info">
-            <div class="hero-avatar" id="hero-avatar-icon">
-              <i class="fas fa-user"></i>
-            </div>
-            <div class="hero-title-group">
-              <h2 id="hero-patient-name">Bemor tanlanmagan</h2>
-              <div class="hero-meta-row">
-                <span class="hero-meta-item" id="hero-patient-id"><i class="fas fa-id-badge"></i> PAT-0000</span>
-                <span class="hero-meta-item" id="hero-patient-age-gender"><i class="fas fa-venus-mars"></i> -</span>
-                <span class="hero-meta-item" id="hero-patient-phone"><i class="fas fa-phone"></i> -</span>
-                <span class="hero-meta-item" id="hero-patient-bed"><i class="fas fa-bed"></i> -</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Hero Action Buttons -->
-          <div class="hero-action-buttons">
-            <button type="button" class="btn-dossier-primary" id="btn-generate-4page" title="Bemorning to'liq 4 sahifali rasmiy kasallik tarixi va dori varaqasini yaratish">
-              <i class="fas fa-file-pdf"></i> <span>4 Sahifali Dossye (PDF)</span>
-            </button>
-            <button type="button" class="btn-dossier-secondary" id="btn-generate-2page" title="Bemorning 2 sahifali qisqartirilgan rasmiy kasallik tarixi va dori varaqasini yaratish">
-              <i class="fas fa-file-medical"></i> <span>2 Sahifali Dossye (PDF)</span>
-            </button>
-            <button type="button" class="btn-dossier-secondary" id="btn-custom-dossier-modal" title="Qo'shimcha izoh va ma'lumotlar bilan dossye yaratish">
-              <i class="fas fa-sliders"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- Clinical Meta Grid -->
-        <div class="hero-meta-grid">
-          <div class="meta-box">
-            <div class="meta-box-label">Klinik Tashxis</div>
-            <div class="meta-box-value" id="hero-diagnosis">Qayd etilmagan</div>
-          </div>
-          <div class="meta-box">
-            <div class="meta-box-label">Davolovchi Shifokor</div>
-            <div class="meta-box-value" id="hero-doctor">Qayd etilmagan</div>
-          </div>
-          <div class="meta-box">
-            <div class="meta-box-label">Qabul Sanasi / Muddat</div>
-            <div class="meta-box-value" id="hero-admission-date">-</div>
-          </div>
-          <div class="meta-box">
-            <div class="meta-box-label">Allergiya & Qarshi Ko'rsatmalar</div>
-            <div class="meta-box-value allergy" id="hero-allergies">Mavjud emas</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dossier Tabs Navigation -->
-      <div class="dossier-tabs" role="tablist">
-        <button type="button" class="tab-btn active" data-tab="tab-archive">
-          <i class="fas fa-folder-open"></i> <span>Saqlangan PDF Arxivi</span>
-          <span class="dossier-count-badge" id="tab-archive-badge">0</span>
-        </button>
-        <button type="button" class="tab-btn" data-tab="tab-anamnesis">
-          <i class="fas fa-notes-medical"></i> <span>Kasallik Tarixi & Anamnez</span>
-        </button>
-        <button type="button" class="tab-btn" data-tab="tab-medications">
-          <i class="fas fa-pills"></i> <span>Qabul Qilingan Dorilar & Retseptlar</span>
-          <span class="dossier-count-badge" id="tab-med-badge">0</span>
-        </button>
-        <button type="button" class="tab-btn" data-tab="tab-vitals">
-          <i class="fas fa-heart-pulse"></i> <span>Vital Belgilar & Monitoring</span>
-        </button>
-        <button type="button" class="tab-btn" data-tab="tab-epicrisis">
-          <i class="fas fa-clipboard-check"></i> <span>Epikriz & Tavsiyalar</span>
-        </button>
-      </div>
-
-      <!-- TAB 1: SAQLANGAN PDF DOSSIERLAR ARXIVI -->
-      <div class="tab-pane active" id="tab-archive">
-        <div class="pane-header">
-          <div class="pane-title">
-            <i class="fas fa-file-pdf" style="color: var(--dossier-accent);"></i>
-            <span>Bemorning Saqlangan Rasmiy PDF Dossyelari</span>
-          </div>
+    <!-- Top Registry Toolbar / Statistics -->
+    <div class="registry-toolbar">
+      <div class="registry-toolbar-left">
+        <div class="registry-title-block">
+          <div class="registry-title-icon"><i class="fas fa-folder-tree"></i></div>
           <div>
-            <button type="button" class="btn-dossier-secondary" id="btn-refresh-dossiers" style="padding: 6px 12px; font-size: 12px;">
-              <i class="fas fa-sync-alt"></i> <span>Yangilash</span>
-            </button>
-          </div>
-        </div>
-
-        <div id="dossiers-grid-container" class="dossier-grid">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <!-- TAB 2: KASALLIK TARIXI VA ANAMNEZ -->
-      <div class="tab-pane" id="tab-anamnesis">
-        <div class="pane-header">
-          <div class="pane-title">
-            <i class="fas fa-user-injured" style="color: var(--dossier-accent);"></i>
-            <span>Birlamchi Qabul va Anamnez Ma'lumotlari</span>
-          </div>
-          <div>
-            <button type="button" class="btn-dossier-primary" id="btn-save-anamnesis" style="padding: 8px 16px; font-size: 12px;">
-              <i class="fas fa-save"></i> <span>O'zgarishlarni Saqlash</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Asosiy Tashxis (Klinik / Narkologik)</label>
-          <input type="text" id="input-clinical-diagnosis" class="form-control" placeholder="Masalan: F10.2 Surunkali alkogolizm II bosqich, abstinent sindrom...">
-        </div>
-
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label>Bemor Shikoyatlari (Complaints)</label>
-            <textarea id="input-complaints" class="form-control" placeholder="Bemor va uning yaqinlarining asosiy shikoyatlari..."></textarea>
-          </div>
-          <div class="form-group">
-            <label>Kasallik Rivojlanishi (Anamnesis Morbi)</label>
-            <textarea id="input-past-history" class="form-control" placeholder="Qachondan boshlangan, intoksikatsiya davomiyligi, oldingi davolanishlar..."></textarea>
-          </div>
-        </div>
-
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label>Somatik Holati (Status Somaticus)</label>
-            <textarea id="input-somatic-status" class="form-control" placeholder="Nafas olish, yurak-qon tomir tizimi, jigar, tremor, terlash..."></textarea>
-          </div>
-          <div class="form-group">
-            <label>Ruhiy va Narkologik Holati (Status Psychicus)</label>
-            <textarea id="input-mental-status" class="form-control" placeholder="Hushida, oriyentatsiya, nutq, intellekt, affekt, patologik mayl..."></textarea>
+            <h1 class="registry-title">Bemorlar Dossyesi & Kasallik Tarixi Reestri</h1>
+            <p class="registry-subtitle">Oxirgi kelgan bemorlar bo'yicha saralangan (LIFO), A, B, C, D bo'limlari va umumiy rasmiy hujjatlar</p>
           </div>
         </div>
       </div>
 
-      <!-- TAB 3: QABUL QILINGAN DORILAR VA RETSEPTLAR -->
-      <div class="tab-pane" id="tab-medications">
-        <div class="pane-header">
-          <div class="pane-title">
-            <i class="fas fa-pills" style="color: var(--dossier-accent);"></i>
-            <span>Tayinlangan va Bemor Qabul Qilgan Barcha Dorilar</span>
+      <div class="registry-toolbar-right">
+        <div class="registry-stats-pills">
+          <div class="stat-pill">
+            <span class="stat-label">Jami bemorlar:</span>
+            <span class="stat-value" id="stat-total-patients">0</span>
           </div>
-          <span style="font-size: 12px; color: var(--dossier-text-muted);">
-            Hamshira jurnali va shifokor retseptlari asosida shakllangan
-          </span>
-        </div>
-
-        <h4 style="font-size: 14px; font-weight: 700; margin: 0 0 10px; color: var(--dossier-text-main); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-prescription" style="color: var(--dossier-accent);"></i> Shifokor Tayinlagan Retseptlar (Prescriptions)
-        </h4>
-        <div class="dossier-table-container">
-          <table class="dossier-table">
-            <thead>
-              <tr>
-                <th>Dori Nomi</th>
-                <th>Dozasi & Shakli</th>
-                <th>Yuborish Yo'li</th>
-                <th>Davomiyligi</th>
-                <th>Qabul Vaqti / Yo'riqnoma</th>
-                <th>Holati</th>
-              </tr>
-            </thead>
-            <tbody id="prescriptions-table-body">
-              <tr><td colspan="6" style="text-align: center; color: var(--dossier-text-light);">Ma'lumotlar yuklanmoqda...</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h4 style="font-size: 14px; font-weight: 700; margin: 24px 0 10px; color: var(--dossier-text-main); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-check-double" style="color: var(--dossier-success);"></i> Bemor Qabul Qilgan Dorilar Jurnali (Medication Administrations)
-        </h4>
-        <div class="dossier-table-container">
-          <table class="dossier-table">
-            <thead>
-              <tr>
-                <th>Berilgan Vaqt</th>
-                <th>Dori Nomi</th>
-                <th>Dozasi & Shakli</th>
-                <th>Yuborish Yo'li</th>
-                <th>Ijrochi Hamshira</th>
-                <th>Holati</th>
-              </tr>
-            </thead>
-            <tbody id="administrations-table-body">
-              <tr><td colspan="6" style="text-align: center; color: var(--dossier-text-light);">Qabul qilingan dori yozuvlari mavjud emas</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- TAB 4: VITAL BELGILAR VA MONITORING -->
-      <div class="tab-pane" id="tab-vitals">
-        <div class="pane-header">
-          <div class="pane-title">
-            <i class="fas fa-heart-pulse" style="color: var(--dossier-danger);"></i>
-            <span>Vital Ko'rsatkichlar va Hamshiralar Monitoring Jurnali</span>
+          <div class="stat-pill stat-inpatient">
+            <span class="stat-dot"></span>
+            <span class="stat-label">Statsionar:</span>
+            <span class="stat-value" id="stat-inpatient-count">0</span>
           </div>
-        </div>
-
-        <div class="dossier-table-container">
-          <table class="dossier-table">
-            <thead>
-              <tr>
-                <th>Sana & Vaqt</th>
-                <th>AQB (Bosim, mm.rt.st)</th>
-                <th>Puls (zarba/daq)</th>
-                <th>Harorat (°C)</th>
-                <th>SpO2 (%)</th>
-                <th>Holati / Izoh</th>
-              </tr>
-            </thead>
-            <tbody id="vitals-table-body">
-              <tr><td colspan="6" style="text-align: center; color: var(--dossier-text-light);">Vital belgilar yuklanmoqda...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- TAB 5: EPIKRIZ VA YAKUNIY XULOSA -->
-      <div class="tab-pane" id="tab-epicrisis">
-        <div class="pane-header">
-          <div class="pane-title">
-            <i class="fas fa-file-medical-alt" style="color: var(--dossier-accent);"></i>
-            <span>Chiqarish Epikrizi va Tavsiyalar</span>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Epikriz Turi & Davolash Natijasi</label>
-          <div id="epicrisis-result-display" style="padding: 10px 14px; background: var(--dossier-card-subtle); border-radius: 8px; font-weight: 700;">
-            -
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Epikriz Matni (Xulosa va Dinamika)</label>
-          <div id="epicrisis-text-display" style="padding: 12px 14px; background: var(--dossier-card-subtle); border-radius: 8px; min-height: 80px; line-height: 1.6; white-space: pre-line;">
-            Qayd etilmagan
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Tavsiyalar va Profilaktika</label>
-          <div id="epicrisis-recs-display" style="padding: 12px 14px; background: var(--dossier-card-subtle); border-radius: 8px; min-height: 60px; line-height: 1.6; white-space: pre-line;">
-            Qayd etilmagan
+          <div class="stat-pill stat-outpatient">
+            <span class="stat-dot"></span>
+            <span class="stat-label">Ambulator:</span>
+            <span class="stat-value" id="stat-outpatient-count">0</span>
           </div>
         </div>
       </div>
+    </div>
 
-    </section>
+    <!-- Controls Row: Search, Tabs, Refresh -->
+    <div class="registry-controls-bar">
+      <div class="search-input-group">
+        <i class="fas fa-search search-icon"></i>
+        <input type="text" id="patient-search-input" class="search-field" placeholder="Bemor F.I.SH., telefon raqami yoki ID orqali qidirish..." autocomplete="off">
+        <button type="button" id="btn-clear-search" class="btn-clear-search" title="Tozalash" style="display: none;"><i class="fas fa-times"></i></button>
+      </div>
+
+      <div class="filter-tab-group">
+        <button type="button" class="filter-btn active" data-filter="all">
+          <i class="fas fa-list-ul"></i> Barchasi
+        </button>
+        <button type="button" class="filter-btn" data-filter="inpatient">
+          <i class="fas fa-bed"></i> Statsionar
+        </button>
+        <button type="button" class="filter-btn" data-filter="outpatient">
+          <i class="fas fa-walking"></i> Ambulator
+        </button>
+      </div>
+
+      <div class="controls-actions">
+        <button type="button" class="btn-refresh-registry" id="btn-refresh-list" title="Ro'yxatni yangilash">
+          <i class="fas fa-sync-alt"></i> <span>Yangilash</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- The Master Registry Table Card -->
+    <div class="registry-table-card">
+      <div class="table-responsive">
+        <table class="registry-table" id="dossier-registry-table">
+          <thead>
+            <tr>
+              <th class="col-num" style="width: 48px;">№</th>
+              <th class="col-patient" style="min-width: 230px;">Bemor (Ism, familiya & ID)</th>
+              <th class="col-phone" style="width: 145px;">Telefon raqami</th>
+              <th class="col-age" style="width: 115px;">Yoshi & Jinsi</th>
+              <th class="col-section col-sec-a" style="min-width: 135px;">
+                <div class="th-sec-wrap">
+                  <span class="th-sec-badge th-a">A bo'lim</span>
+                  <span class="th-sec-desc">Anamnez & Tarix</span>
+                </div>
+              </th>
+              <th class="col-section col-sec-b" style="min-width: 135px;">
+                <div class="th-sec-wrap">
+                  <span class="th-sec-badge th-b">B bo'lim</span>
+                  <span class="th-sec-desc">Status & Ko'rik</span>
+                </div>
+              </th>
+              <th class="col-section col-sec-c" style="min-width: 135px;">
+                <div class="th-sec-wrap">
+                  <span class="th-sec-badge th-c">C bo'lim</span>
+                  <span class="th-sec-desc">Dorilar varaqasi</span>
+                </div>
+              </th>
+              <th class="col-section col-sec-d" style="min-width: 135px;">
+                <div class="th-sec-wrap">
+                  <span class="th-sec-badge th-d">D bo'lim</span>
+                  <span class="th-sec-desc">Chiqarish epikrizi</span>
+                </div>
+              </th>
+              <th class="col-general" style="min-width: 185px;">
+                <div class="th-sec-wrap">
+                  <span class="th-full-badge"><i class="fas fa-file-contract"></i> Umumiy Hujjat</span>
+                  <span class="th-sec-desc">A+B+C+D to'liq dossye</span>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="registry-table-tbody">
+            <tr>
+              <td colspan="9" class="table-loading-cell">
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <p>Bemorlar reestri yuklanmoqda...</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer info -->
+      <div class="registry-table-footer">
+        <div class="footer-count" id="table-showing-count">Ko'rsatilmoqda: 0 ta bemor</div>
+        <div class="footer-hint">
+          <i class="fas fa-info-circle"></i> Har bir ustundagi <b>"Ko'chirish"</b> tugmasi orqali alohida bo'limni, <b>"Umumiy Hujjat"</b> orqali 4 sahifali to'liq rasmiy EMR dossyeni yuklab olishingiz mumkin.
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- =========================================================================

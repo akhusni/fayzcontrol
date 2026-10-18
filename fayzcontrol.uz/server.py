@@ -2943,7 +2943,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path == '/api/dossiers/patients':
                 cur.execute("""
                     SELECT p.id, p.patient_code, p.full_name, p.birth_date, p.birth_year, p.gender, p.phone, p.status,
-                           p.medical_allergies, p.chronic_conditions,
+                           p.medical_allergies, p.chronic_conditions, p.created_at,
                            a.id AS admission_id, a.start_date AS admission_date, a.planned_end_date AS discharge_date,
                            (SELECT COALESCE(mh.diagnosis_primary, '') FROM medical_histories mh WHERE mh.patient_id = p.id ORDER BY mh.created_at DESC LIMIT 1) AS diagnosis,
                            r.room_number, b.bed_code AS bed_number,
@@ -2952,7 +2952,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     LEFT JOIN admissions a ON a.patient_id = p.id AND a.status = 'active'
                     LEFT JOIN beds b ON a.bed_id = b.id
                     LEFT JOIN rooms r ON b.room_id = r.id
-                    ORDER BY (a.id IS NOT NULL) DESC, p.created_at DESC
+                    ORDER BY COALESCE(a.start_date, p.created_at) DESC, p.id DESC
                 """)
                 pts = cur.fetchall()
                 self._set_json_headers(200)
@@ -3078,6 +3078,87 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header('Content-Length', str(len(pdf_data)))
                 self.end_headers()
                 self.wfile.write(pdf_data)
+                return
+
+            elif path.startswith('/api/dossiers/section-pdf'):
+                pid = query.get('patient_id', [None])[0]
+                if not pid:
+                    parts = [p for p in path.split('/') if p]
+                    if len(parts) >= 4:
+                        pid = urllib.parse.unquote(parts[3]).strip()
+                if not pid:
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps({'error': "Bemor ID ko'rsatilmadi"}).encode('utf-8'))
+                    return
+
+                cur.execute("SELECT id, patient_code, full_name FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
+                patient_row = cur.fetchone()
+                if not patient_row:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Bemor topilmadi'}).encode('utf-8'))
+                    return
+                patient = dict(patient_row)
+                real_pid = patient['id']
+
+                sec = (query.get('section', ['full'])[0] or 'full').lower().strip()
+                if sec in ('a', 'section_a'):
+                    doc_type = 'section_a'
+                    prefix = 'A_Bolim_Anamnez'
+                elif sec in ('b', 'section_b'):
+                    doc_type = 'section_b'
+                    prefix = 'B_Bolim_Status'
+                elif sec in ('c', 'section_c'):
+                    doc_type = 'section_c'
+                    prefix = 'C_Bolim_Dorilar'
+                elif sec in ('d', 'section_d'):
+                    doc_type = 'section_d'
+                    prefix = 'D_Bolim_Epikriz'
+                elif sec in ('2', '2_page'):
+                    doc_type = '2_page'
+                    prefix = 'Qisqacha_Dossye'
+                else:
+                    doc_type = '4_page'
+                    prefix = 'Umumiy_Dossye_Toliq'
+
+                try:
+                    pdf_result = generate_patient_dossier_pdf(real_pid, doc_type=doc_type)
+                except Exception as ex:
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps({'error': f'PDF shakllantirishda xatolik: {str(ex)}'}).encode('utf-8'))
+                    return
+
+                if not pdf_result or not pdf_result.get('pdf_bytes'):
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps({'error': 'PDF shakllantirilmadi'}).encode('utf-8'))
+                    return
+
+                try:
+                    create_patient_dossier_record(conn, data={
+                        'patient_id': real_pid,
+                        'admission_id': pdf_result.get('admission_id'),
+                        'file_name': pdf_result.get('file_name'),
+                        'file_path': pdf_result.get('file_path'),
+                        'file_size': pdf_result.get('file_size'),
+                        'doc_type': doc_type,
+                        'page_count': pdf_result.get('page_count', 1),
+                        'created_by': user.get('id') if user else None,
+                        'notes': f"Klinik reestrdan {doc_type} yuklab olindi/ko'rildi"
+                    })
+                except Exception:
+                    pass
+
+                is_download = query.get('download', ['0'])[0] == '1'
+                disposition = 'attachment' if is_download else 'inline'
+                p_code = patient.get('patient_code') or f"PT{real_pid}"
+                clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', patient.get('full_name') or 'Bemor')
+                fname_header = f"{prefix}_{clean_name}_{p_code}.pdf"
+
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', f'{disposition}; filename="{fname_header}"')
+                self.send_header('Content-Length', str(len(pdf_result['pdf_bytes'])))
+                self.end_headers()
+                self.wfile.write(pdf_result['pdf_bytes'])
                 return
 
             else:
