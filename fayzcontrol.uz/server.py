@@ -54,10 +54,11 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 try:
-    from pdf_generator import generate_patient_pdf, generate_round_pdf
+    from pdf_generator import generate_patient_pdf, generate_round_pdf, generate_patient_dossier_pdf
 except Exception as e:
     generate_patient_pdf = None
     generate_round_pdf = None
+    generate_patient_dossier_pdf = None
 
 try:
     import telegram_service
@@ -796,6 +797,11 @@ from db import (
     ensure_invoice_visit_link,
     ensure_user_sessions,
     ensure_transaction_payroll_month,
+    ensure_patient_dossiers_table,
+    list_patient_dossiers,
+    get_patient_dossier_by_id,
+    create_patient_dossier_record,
+    delete_patient_dossier_record,
     STAFF_HR_COLUMNS,
     STAFF_ROLES,
     load_config
@@ -2932,6 +2938,147 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     r_data = {"floors": []}
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(r_data, ensure_ascii=False).encode('utf-8'))
+
+            # 19. Patient Dossiers API
+            elif path == '/api/dossiers/patients':
+                cur.execute("""
+                    SELECT p.id, p.patient_code, p.full_name, p.birth_date, p.birth_year, p.gender, p.phone, p.status,
+                           p.medical_allergies, p.chronic_conditions,
+                           a.id AS admission_id, a.start_date AS admission_date, a.planned_end_date AS discharge_date,
+                           (SELECT COALESCE(mh.diagnosis_primary, '') FROM medical_histories mh WHERE mh.patient_id = p.id ORDER BY mh.created_at DESC LIMIT 1) AS diagnosis,
+                           r.room_number, b.bed_code AS bed_number,
+                           (SELECT COUNT(*) FROM patient_dossiers pd WHERE pd.patient_id = p.id) AS dossiers_count
+                    FROM patients p
+                    LEFT JOIN admissions a ON a.patient_id = p.id AND a.status = 'active'
+                    LEFT JOIN beds b ON a.bed_id = b.id
+                    LEFT JOIN rooms r ON b.room_id = r.id
+                    ORDER BY (a.id IS NOT NULL) DESC, p.created_at DESC
+                """)
+                pts = cur.fetchall()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'patients': pts}, ensure_ascii=False).encode('utf-8'))
+
+            elif path == '/api/dossiers/list':
+                dossiers = list_patient_dossiers(conn, limit=200)
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'dossiers': dossiers}, ensure_ascii=False).encode('utf-8'))
+
+            elif path.startswith('/api/dossiers/patient/'):
+                pid = urllib.parse.unquote(path.replace('/api/dossiers/patient/', '')).strip()
+                cur.execute("SELECT * FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
+                patient = cur.fetchone()
+                if not patient:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Bemor topilmadi'}).encode('utf-8'))
+                    return
+                real_pid = patient['id']
+
+                cur.execute("""
+                    SELECT a.*, a.start_date AS admission_date, a.planned_end_date AS discharge_date,
+                           r.room_number, b.bed_code AS bed_number, s.full_name AS doctor_name
+                    FROM admissions a
+                    LEFT JOIN beds b ON a.bed_id = b.id
+                    LEFT JOIN rooms r ON b.room_id = r.id
+                    LEFT JOIN staff s ON a.attending_doctor_id = s.id
+                    WHERE a.patient_id = ?
+                    ORDER BY (a.status = 'active') DESC, a.start_date DESC
+                    LIMIT 1
+                """, (real_pid,))
+                admission = cur.fetchone()
+
+                cur.execute("""
+                    SELECT mh.*, mh.diagnosis_primary AS clinical_diagnosis 
+                    FROM medical_histories mh 
+                    WHERE mh.patient_id = ? 
+                    ORDER BY mh.created_at DESC 
+                    LIMIT 1
+                """, (real_pid,))
+                anamnesis = cur.fetchone()
+
+                cur.execute("""
+                    SELECT dl.*, dl.vital_bp_systolic, dl.vital_bp_diastolic, dl.vital_pulse, dl.vital_temp, dl.vital_spo2, dl.nurse_notes
+                    FROM daily_logs dl
+                    JOIN admissions a ON dl.admission_id = a.id
+                    WHERE a.patient_id = ?
+                    ORDER BY dl.log_date DESC, dl.created_at DESC
+                    LIMIT 10
+                """, (real_pid,))
+                vitals = cur.fetchall()
+
+                cur.execute("""
+                    SELECT * FROM prescriptions 
+                    WHERE patient_id = ? 
+                    ORDER BY (status = 'active') DESC, created_at DESC
+                """, (real_pid,))
+                prescriptions = cur.fetchall()
+
+                cur.execute("""
+                    SELECT ma.*, rx.medication_name, rx.dosage, rx.route, s.full_name AS nurse_name
+                    FROM medication_administrations ma
+                    LEFT JOIN prescriptions rx ON ma.prescription_id = rx.id
+                    LEFT JOIN staff s ON ma.administered_by_staff_id = s.id
+                    WHERE ma.patient_id = ?
+                    ORDER BY ma.administered_at DESC
+                    LIMIT 50
+                """, (real_pid,))
+                administrations = cur.fetchall()
+
+                cur.execute("""
+                    SELECT de.*, de.treatment_summary AS epicrisis_text, de.psycho_recommendations AS recommendations, de.discharge_status AS treatment_outcome
+                    FROM discharge_epicrises de
+                    WHERE de.patient_id = ?
+                    ORDER BY de.created_at DESC
+                    LIMIT 1
+                """, (real_pid,))
+                epicrisis = cur.fetchone()
+
+                cur.execute("SELECT * FROM patient_dossiers WHERE patient_id = ? ORDER BY created_at DESC", (real_pid,))
+                dossiers = cur.fetchall()
+
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'patient': patient,
+                    'admission': admission,
+                    'anamnesis': anamnesis,
+                    'vitals': vitals,
+                    'prescriptions': prescriptions,
+                    'administrations': administrations,
+                    'epicrisis': epicrisis,
+                    'dossiers': dossiers
+                }, ensure_ascii=False).encode('utf-8'))
+
+            elif path.startswith('/api/dossiers/file/'):
+                dossier_id = urllib.parse.unquote(path.replace('/api/dossiers/file/', '')).strip()
+                dossier = get_patient_dossier_by_id(conn, dossier_id)
+                if not dossier:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Dossye hujjati topilmadi'}).encode('utf-8'))
+                    return
+                fpath = dossier.get('file_path')
+                if not fpath or not os.path.exists(fpath):
+                    fname = dossier.get('file_name')
+                    alt_path = os.path.join(BASE_DIR, 'data', 'patient_dossiers', fname) if fname else None
+                    if alt_path and os.path.exists(alt_path):
+                        fpath = alt_path
+                    else:
+                        self._set_json_headers(404)
+                        self.wfile.write(json.dumps({'error': 'PDF fayli server diskida topilmadi'}).encode('utf-8'))
+                        return
+
+                with open(fpath, 'rb') as f:
+                    pdf_data = f.read()
+
+                is_download = query.get('download', ['0'])[0] == '1'
+                disposition = 'attachment' if is_download else 'inline'
+                fname_header = dossier.get('file_name', f'dossier_{dossier_id}.pdf')
+
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', f'{disposition}; filename="{fname_header}"')
+                self.send_header('Content-Length', str(len(pdf_data)))
+                self.end_headers()
+                self.wfile.write(pdf_data)
+                return
 
             else:
                 self._set_json_headers(404)
@@ -5091,6 +5238,149 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'consultation_type': consultation_type
                 }, ensure_ascii=False).encode('utf-8'))
 
+            # 11c. POST /api/dossiers/generate (Generate & Save 4-page or 2-page Patient Dossier PDF)
+            elif path == '/api/dossiers/generate':
+                pid = (body.get('patient_id') or '').strip()
+                if not pid:
+                    self._send_validation_error("Bemor tanlanmagan.", 'patient_id')
+                    return
+                cur.execute("SELECT id, patient_code, full_name FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
+                p = cur.fetchone()
+                if not p:
+                    self._send_validation_error("Bemor topilmadi.", 'patient_id')
+                    return
+                real_pid = p['id']
+                p_code = p['patient_code'] or 'PAT'
+                p_name = p['full_name'] or 'Bemor'
+
+                doc_type = body.get('doc_type', '4_page')
+                if doc_type not in ('4_page', '2_page'):
+                    doc_type = '4_page'
+                page_count = 4 if doc_type == '4_page' else 2
+
+                custom_notes = (body.get('notes') or '').strip() or None
+                custom_data = body.get('custom_data') or None
+
+                if not generate_patient_dossier_pdf:
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps({'error': 'PDF generator moduli yuklanmagan'}).encode('utf-8'))
+                    return
+
+                try:
+                    gen_res = generate_patient_dossier_pdf(real_pid, doc_type=doc_type, custom_notes=custom_notes, custom_data=custom_data)
+                except Exception as gen_err:
+                    traceback.print_exc()
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps({'error': f'PDF yaratishda xatolik: {str(gen_err)}'}).encode('utf-8'))
+                    return
+
+                if not gen_res:
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps({'error': 'PDF shakllantirib bo\'lmadi'}).encode('utf-8'))
+                    return
+
+                if isinstance(gen_res, dict):
+                    file_name = gen_res['file_name']
+                    file_path = gen_res['file_path']
+                    file_size = gen_res['file_size']
+                    page_count = gen_res.get('page_count', page_count)
+                    adm_id = gen_res.get('admission_id') or body.get('admission_id')
+                    diagnosis = gen_res.get('diagnosis')
+                    medications_count = gen_res.get('medications_count', 0)
+                else:
+                    dossier_dir = os.path.join(BASE_DIR, 'data', 'patient_dossiers')
+                    os.makedirs(dossier_dir, exist_ok=True)
+                    ts_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', p_name)[:30]
+                    file_name = f"Dossier_{p_code}_{clean_name}_{doc_type}_{ts_str}.pdf"
+                    file_path = os.path.join(dossier_dir, file_name)
+                    with open(file_path, 'wb') as f:
+                        f.write(gen_res)
+                    file_size = len(gen_res)
+                    cur.execute("SELECT id FROM admissions WHERE patient_id = ? ORDER BY (status='active') DESC, start_date DESC LIMIT 1", (real_pid,))
+                    adm = cur.fetchone()
+                    adm_id = adm['id'] if adm else body.get('admission_id')
+                    cur.execute("SELECT diagnosis_primary FROM medical_histories WHERE patient_id = ? ORDER BY created_at DESC LIMIT 1", (real_pid,))
+                    mh_row = cur.fetchone()
+                    diagnosis = (custom_data.get('diagnosis') if (custom_data and custom_data.get('diagnosis')) else (mh_row['diagnosis_primary'] if mh_row else None))
+                    cur.execute("SELECT COUNT(*) AS c FROM prescriptions WHERE patient_id = ?", (real_pid,))
+                    rx_row = cur.fetchone()
+                    medications_count = rx_row['c'] if rx_row else 0
+
+                sess = self.current_session()
+                user = sess['user'] if sess else None
+                created_by = user.get('username') if user else 'system'
+
+                dossier_rec = create_patient_dossier_record(
+                    conn=conn,
+                    patient_id=real_pid,
+                    patient_code=p_code,
+                    patient_name=p_name,
+                    admission_id=adm_id,
+                    doc_type=doc_type,
+                    page_count=page_count,
+                    file_name=file_name,
+                    file_path=file_path,
+                    file_size=file_size,
+                    diagnosis=diagnosis,
+                    medications_count=medications_count,
+                    created_by=created_by,
+                    notes=custom_notes
+                )
+                conn.commit()
+
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'message': f"{page_count} sahifali rasmiy PDF dossye muvaffaqiyatli saqlandi!",
+                    'dossier': dossier_rec
+                }, ensure_ascii=False).encode('utf-8'))
+
+            # 11d. POST /api/dossiers/save-clinical-data (Quick update clinical info before dossier print)
+            elif path == '/api/dossiers/save-clinical-data':
+                pid = (body.get('patient_id') or '').strip()
+                if not pid:
+                    self._send_validation_error("Bemor tanlanmagan.", 'patient_id')
+                    return
+                cur.execute("SELECT id FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
+                p = cur.fetchone()
+                if not p:
+                    self._send_validation_error("Bemor topilmadi.", 'patient_id')
+                    return
+                real_pid = p['id']
+
+                # Update or insert medical history
+                diag = (body.get('diagnosis') or '').strip()
+                complaints = (body.get('complaints') or '').strip()
+                past_history = (body.get('past_history') or '').strip()
+                somatic_status = (body.get('somatic_status') or '').strip()
+                mental_status = (body.get('mental_status') or '').strip()
+
+                if diag or complaints or past_history or somatic_status or mental_status:
+                    cur.execute("SELECT id FROM medical_histories WHERE patient_id = ? ORDER BY created_at DESC LIMIT 1", (real_pid,))
+                    mh_row = cur.fetchone()
+                    if mh_row:
+                        cur.execute("""
+                            UPDATE medical_histories
+                            SET diagnosis_primary = COALESCE(NULLIF(?, ''), diagnosis_primary),
+                                complaints = COALESCE(NULLIF(?, ''), complaints),
+                                anamnesis_morbi = COALESCE(NULLIF(?, ''), anamnesis_morbi),
+                                somatic_status = COALESCE(NULLIF(?, ''), somatic_status),
+                                psychiatric_status = COALESCE(NULLIF(?, ''), psychiatric_status),
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        """, (diag, complaints, past_history, somatic_status, mental_status, mh_row['id']))
+                    else:
+                        hid = f"MH-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+                        cur.execute("""
+                            INSERT INTO medical_histories (id, patient_id, diagnosis_primary, complaints, anamnesis_morbi, somatic_status, psychiatric_status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (hid, real_pid, diag or None, complaints or None, past_history or None, somatic_status or None, mental_status or None))
+
+                conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'success': True, 'message': 'Klinik ma\'lumotlar yangilandi'}, ensure_ascii=False).encode('utf-8'))
+
             # 12. POST /api/settings/pricing (Superadmin updates any price dynamically)
             elif path == '/api/settings/pricing':
                 # Nothing here was checked: any package name was merged in,
@@ -6183,7 +6473,25 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             conn = get_db()
             cur = conn.cursor()
 
-            if path.startswith('/api/doctor/prescriptions/'):
+            if path.startswith('/api/dossiers/'):
+                dossier_id = urllib.parse.unquote(path.replace('/api/dossiers/', '')).strip()
+                doc = get_patient_dossier_by_id(conn, dossier_id)
+                if not doc:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Dossye topilmadi'}).encode('utf-8'))
+                    return
+                fpath = doc.get('file_path')
+                if fpath and os.path.exists(fpath):
+                    try:
+                        os.remove(fpath)
+                    except Exception as _fe:
+                        print(f"Error removing dossier file: {_fe}")
+                delete_patient_dossier_record(conn, dossier_id)
+                conn.commit()
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'success': True, 'message': 'Dossye muvaffaqiyatli o\'chirildi'}).encode('utf-8'))
+
+            elif path.startswith('/api/doctor/prescriptions/'):
                 rx_id = path.replace('/api/doctor/prescriptions/', '')
                 cur.execute("DELETE FROM prescriptions WHERE id = ?", (rx_id,))
                 conn.commit()
@@ -6233,6 +6541,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     cur.execute("DELETE FROM doctor_daily_notes WHERE patient_id = ?", (tid,))
                     cur.execute("DELETE FROM discharge_epicrises WHERE patient_id = ?", (tid,))
                     cur.execute("DELETE FROM appointments WHERE patient_id = ?", (tid,))
+                    cur.execute("DELETE FROM patient_dossiers WHERE patient_id = ?", (tid,))
                     cur.execute("DELETE FROM patients WHERE id = ?", (tid,))
 
                 cur.execute("PRAGMA foreign_keys = ON;")
@@ -6535,6 +6844,7 @@ def run_server():
         ('invoice visit link', ensure_invoice_visit_link),
         # The month a salary payout pays for (one payout per month).
         ('salary payroll month', ensure_transaction_payroll_month),
+        ('patient dossiers table', ensure_patient_dossiers_table),
         ('user sessions', _sessions),
     )
     _c = None

@@ -204,6 +204,8 @@ API_RULES = [
     ('/api/doctor/ward-round',        'doctors',    'read'),
     ('/api/doctor/notes',             'doctors',    None),
     ('/api/doctor/prescriptions',     'doctors',    None),
+    ('/api/dossiers/file/',           'doctors',    'read'),
+    ('/api/dossiers',                 'doctors',    None),
     # Nurses record administration and vitals against a stay.
     ('/api/nursery/round/pdf',        'nursery',    'read'),
     ('/api/nursery/round',            'nursery',    'read'),
@@ -332,6 +334,7 @@ PAGE_RULES = {
     '/hr.html':                   ('hr',         'read'),
     '/warehouse.html':            ('warehouse',  'read'),
     '/medical_blank.html':        ('doctors',    'write'),
+    '/patient_dossier.html':      ('doctors',    'read'),
     # Both reports now live in docs/ and are not served (nested .html is
     # refused). The rules stay so that a copy put back at the top level is
     # still admin-only: a page missing here is open to everyone signed in.

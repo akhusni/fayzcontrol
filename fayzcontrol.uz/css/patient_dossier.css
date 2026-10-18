@@ -1,0 +1,883 @@
+/* ==========================================================================
+   Fayz Medical House — Patient Dossier Portal Styles
+   Enterprise EMR Suite (Day & Night Mode Compatible)
+   ========================================================================== */
+
+:root {
+  --dossier-primary: #0b3b60;
+  --dossier-primary-dark: #07253d;
+  --dossier-accent: #0d9488;
+  --dossier-accent-hover: #0f766e;
+  --dossier-success: #10b981;
+  --dossier-success-hover: #059669;
+  --dossier-warning: #f59e0b;
+  --dossier-danger: #ef4444;
+  --dossier-purple: #8b5cf6;
+  --dossier-blue: #3b82f6;
+
+  --dossier-bg: #f8fafc;
+  --dossier-card-bg: #ffffff;
+  --dossier-card-subtle: #f1f5f9;
+  --dossier-border: #e2e8f0;
+  --dossier-border-focus: #0d9488;
+
+  --dossier-text-main: #0f172a;
+  --dossier-text-muted: #64748b;
+  --dossier-text-light: #94a3b8;
+
+  --dossier-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --dossier-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --dossier-shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.12);
+  --dossier-radius-sm: 6px;
+  --dossier-radius-md: 10px;
+  --dossier-radius-lg: 14px;
+}
+
+[data-theme="night"], body.night-mode {
+  --dossier-primary: #38bdf8;
+  --dossier-primary-dark: #0284c7;
+  --dossier-accent: #2dd4bf;
+  --dossier-accent-hover: #14b8a6;
+  --dossier-success: #34d399;
+  --dossier-success-hover: #10b981;
+  --dossier-warning: #fbbf24;
+  --dossier-danger: #f87171;
+  --dossier-purple: #a78bfa;
+  --dossier-blue: #60a5fa;
+
+  --dossier-bg: #090f1d;
+  --dossier-card-bg: #111a2e;
+  --dossier-card-subtle: #18233a;
+  --dossier-border: #1e293b;
+  --dossier-border-focus: #2dd4bf;
+
+  --dossier-text-main: #f1f5f9;
+  --dossier-text-muted: #94a3b8;
+  --dossier-text-light: #64748b;
+
+  --dossier-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --dossier-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --dossier-shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+body.dossier-portal {
+  background-color: var(--dossier-bg);
+  color: var(--dossier-text-main);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Fast Mode Switch Row */
+.dossier-modeswitch {
+  display: flex;
+  gap: 12px;
+  background: var(--dossier-card-bg);
+  border-bottom: 1px solid var(--dossier-border);
+  padding: 10px 24px;
+  overflow-x: auto;
+  align-items: center;
+}
+
+.dossier-mode-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: var(--dossier-radius-md);
+  text-decoration: none;
+  color: var(--dossier-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.dossier-mode-item i {
+  font-size: 16px;
+}
+
+.dossier-mode-item:hover {
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-main);
+}
+
+.dossier-mode-item.active {
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--dossier-accent);
+  border: 1px solid rgba(13, 148, 136, 0.3);
+}
+
+/* Main Container Layout */
+.dossier-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 20px;
+  padding: 20px 24px 40px;
+  flex: 1;
+  max-width: 1720px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1080px) {
+  .dossier-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar - Patient List */
+.dossier-sidebar {
+  background: var(--dossier-card-bg);
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-lg);
+  box-shadow: var(--dossier-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 150px);
+  position: sticky;
+  top: 80px;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--dossier-border);
+}
+
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sidebar-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--dossier-card-subtle);
+  padding: 3px 8px;
+  border-radius: 12px;
+  color: var(--dossier-accent);
+}
+
+.search-box {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.search-box i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dossier-text-light);
+  font-size: 14px;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px 9px 34px;
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-md);
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-main);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--dossier-border-focus);
+  background: var(--dossier-card-bg);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+.patient-filter-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.filter-pill {
+  flex: 1;
+  padding: 6px 4px;
+  border: 1px solid var(--dossier-border);
+  background: var(--dossier-card-bg);
+  color: var(--dossier-text-muted);
+  border-radius: var(--dossier-radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.filter-pill.active {
+  background: var(--dossier-primary);
+  color: #ffffff;
+  border-color: var(--dossier-primary);
+}
+
+/* Patient List Scrollable */
+.patient-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.patient-card {
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--dossier-radius-md);
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: var(--dossier-card-bg);
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.patient-card:hover {
+  background: var(--dossier-card-subtle);
+  border-color: var(--dossier-border);
+  transform: translateX(2px);
+}
+
+.patient-card.active {
+  background: rgba(13, 148, 136, 0.08);
+  border-color: var(--dossier-accent);
+}
+
+.patient-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.patient-card-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--dossier-text-main);
+  line-height: 1.3;
+}
+
+.patient-card-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dossier-text-muted);
+  background: var(--dossier-card-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.patient-card-details {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--dossier-text-muted);
+}
+
+.patient-card-bed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dossier-accent);
+  font-weight: 600;
+}
+
+.patient-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--dossier-text-light);
+  margin-top: 2px;
+}
+
+.dossier-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--dossier-success);
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.dossier-count-badge.zero {
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-light);
+}
+
+/* Main Panel - Dossier Content */
+.dossier-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Patient Hero Card */
+.patient-hero {
+  background: var(--dossier-card-bg);
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-lg);
+  box-shadow: var(--dossier-shadow-sm);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.hero-patient-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hero-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--dossier-primary), var(--dossier-accent));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 24px;
+  box-shadow: 0 4px 10px rgba(11, 59, 96, 0.2);
+}
+
+.hero-title-group h2 {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: var(--dossier-text-main);
+}
+
+.hero-meta-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--dossier-text-muted);
+  flex-wrap: wrap;
+}
+
+.hero-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Top Action Buttons */
+.hero-action-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-dossier-primary {
+  background: linear-gradient(135deg, #10b981, #0d9488);
+  color: #ffffff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: var(--dossier-radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transition: all 0.2s;
+}
+
+.btn-dossier-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.btn-dossier-secondary {
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-main);
+  border: 1px solid var(--dossier-border);
+  padding: 10px 16px;
+  border-radius: var(--dossier-radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.btn-dossier-secondary:hover {
+  background: var(--dossier-card-bg);
+  border-color: var(--dossier-accent);
+  color: var(--dossier-accent);
+}
+
+/* Clinical Meta Grid */
+.hero-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dossier-border);
+}
+
+.meta-box {
+  background: var(--dossier-card-subtle);
+  padding: 10px 14px;
+  border-radius: var(--dossier-radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-box-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dossier-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.meta-box-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dossier-text-main);
+}
+
+.meta-box-value.allergy {
+  color: var(--dossier-danger);
+}
+
+/* Tabs Navigation */
+.dossier-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid var(--dossier-border);
+  padding-bottom: 2px;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dossier-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--dossier-radius-md) var(--dossier-radius-md) 0 0;
+  transition: all 0.2s;
+  position: relative;
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--dossier-text-main);
+  background: var(--dossier-card-subtle);
+}
+
+.tab-btn.active {
+  color: var(--dossier-accent);
+}
+
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--dossier-accent);
+  border-radius: 3px;
+}
+
+/* Tab Content Sections */
+.tab-pane {
+  display: none;
+  background: var(--dossier-card-bg);
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-lg);
+  box-shadow: var(--dossier-shadow-sm);
+  padding: 24px;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+/* Section Header */
+.pane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--dossier-border);
+}
+
+.pane-title {
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dossier-text-main);
+}
+
+/* Archive Grid of Dossiers */
+.dossier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.dossier-item-card {
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-md);
+  padding: 16px;
+  background: var(--dossier-card-bg);
+  box-shadow: var(--dossier-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.dossier-item-card:hover {
+  border-color: var(--dossier-accent);
+  box-shadow: var(--dossier-shadow-md);
+}
+
+.dossier-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.dossier-card-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.dossier-card-type.four-page {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--dossier-success);
+}
+
+.dossier-card-type.two-page {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--dossier-blue);
+}
+
+.dossier-card-date {
+  font-size: 11px;
+  color: var(--dossier-text-light);
+}
+
+.dossier-card-file {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dossier-text-main);
+  word-break: break-all;
+}
+
+.dossier-card-meta {
+  font-size: 12px;
+  color: var(--dossier-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dossier-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dossier-border);
+}
+
+.btn-card-action {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: var(--dossier-radius-sm);
+  border: 1px solid var(--dossier-border);
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-main);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.btn-card-action:hover {
+  background: var(--dossier-card-bg);
+  border-color: var(--dossier-accent);
+  color: var(--dossier-accent);
+}
+
+.btn-card-action.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--dossier-danger);
+  color: var(--dossier-danger);
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--dossier-text-muted);
+}
+
+.empty-state i {
+  font-size: 48px;
+  color: var(--dossier-text-light);
+  margin-bottom: 12px;
+}
+
+.empty-state h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--dossier-text-main);
+  margin-bottom: 6px;
+}
+
+.empty-state p {
+  font-size: 13px;
+  max-width: 400px;
+  margin: 0 auto 16px;
+}
+
+/* Form Groups & Clinical Inputs */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dossier-text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-control {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-md);
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-main);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.form-control:focus {
+  border-color: var(--dossier-border-focus);
+  background: var(--dossier-card-bg);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+textarea.form-control {
+  min-height: 90px;
+  resize: vertical;
+}
+
+/* Tables in Workstation */
+.dossier-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--dossier-border);
+  border-radius: var(--dossier-radius-md);
+  margin-bottom: 16px;
+}
+
+.dossier-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.dossier-table th {
+  background: var(--dossier-card-subtle);
+  padding: 10px 14px;
+  font-weight: 700;
+  color: var(--dossier-text-muted);
+  border-bottom: 1px solid var(--dossier-border);
+  white-space: nowrap;
+}
+
+.dossier-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--dossier-border);
+  color: var(--dossier-text-main);
+}
+
+.dossier-table tr:last-child td {
+  border-bottom: none;
+}
+
+.dossier-table tr:hover td {
+  background: var(--dossier-card-subtle);
+}
+
+/* Modal PDF Preview */
+.pdf-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 99999;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pdf-modal-overlay.active {
+  display: flex;
+}
+
+.pdf-modal-window {
+  background: var(--dossier-card-bg);
+  border-radius: var(--dossier-radius-lg);
+  width: 100%;
+  max-width: 1100px;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.pdf-modal-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--dossier-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--dossier-card-subtle);
+}
+
+.pdf-modal-title {
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-modal-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pdf-modal-body {
+  flex: 1;
+  background: #525659;
+  position: relative;
+}
+
+.pdf-modal-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--dossier-text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.btn-close-modal:hover {
+  color: var(--dossier-danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Status Badges */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-pill.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--dossier-success);
+}
+
+.status-pill.inactive {
+  background: var(--dossier-card-subtle);
+  color: var(--dossier-text-muted);
+}

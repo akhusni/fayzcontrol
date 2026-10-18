@@ -1166,6 +1166,127 @@ def ensure_user_sessions(conn):
         print(f"[!] Could not create user_sessions table: {e}")
 
 
+_patient_dossiers_checked = False
+
+def ensure_patient_dossiers_table(conn):
+    """
+    Ensure the patient_dossiers table exists for tracking generated and uploaded
+    patient PDF dossiers and medical records.
+    """
+    global _patient_dossiers_checked
+    if _patient_dossiers_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS patient_dossiers (
+                id VARCHAR(64) PRIMARY KEY,
+                patient_id VARCHAR(64) NOT NULL,
+                patient_code VARCHAR(64) NULL,
+                patient_name VARCHAR(255) NOT NULL,
+                admission_id VARCHAR(64) NULL,
+                doc_type VARCHAR(32) NOT NULL DEFAULT '4_page',
+                page_count INT NOT NULL DEFAULT 4,
+                file_name VARCHAR(255) NOT NULL,
+                file_path VARCHAR(512) NOT NULL,
+                file_size INT NOT NULL DEFAULT 0,
+                diagnosis VARCHAR(255) NULL,
+                medications_count INT NOT NULL DEFAULT 0,
+                created_by VARCHAR(100) NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT NULL,
+                INDEX idx_pd_patient (patient_id),
+                INDEX idx_pd_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+        conn.commit()
+        _patient_dossiers_checked = True
+    except Exception as e:
+        print(f"[!] Could not create patient_dossiers table: {e}")
+
+
+def list_patient_dossiers(conn, patient_id=None):
+    """
+    List patient dossiers, optionally filtered by patient_id.
+    """
+    ensure_patient_dossiers_table(conn)
+    cur = conn.cursor()
+    if patient_id:
+        cur.execute("""
+            SELECT * FROM patient_dossiers 
+            WHERE patient_id = %s OR patient_code = %s
+            ORDER BY created_at DESC
+        """, (patient_id, patient_id))
+    else:
+        cur.execute("SELECT * FROM patient_dossiers ORDER BY created_at DESC LIMIT 200")
+    return [dict(r) for r in cur.fetchall()]
+
+
+def get_patient_dossier_by_id(conn, dossier_id):
+    """
+    Fetch a single dossier record by ID.
+    """
+    ensure_patient_dossiers_table(conn)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM patient_dossiers WHERE id = %s", (dossier_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def create_patient_dossier_record(conn, data=None, **kwargs):
+    """
+    Insert a newly generated or uploaded dossier into patient_dossiers.
+    Accepts data dictionary or keyword arguments, returning the saved record.
+    """
+    if data is None:
+        data = kwargs
+    elif isinstance(data, dict) and kwargs:
+        data = dict(data)
+        data.update(kwargs)
+    ensure_patient_dossiers_table(conn)
+    cur = conn.cursor()
+    dossier_id = data.get('id') or f"DOS-{_dt.datetime.now().strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex().upper()}"
+    cur.execute("""
+        INSERT INTO patient_dossiers (
+            id, patient_id, patient_code, patient_name, admission_id,
+            doc_type, page_count, file_name, file_path, file_size,
+            diagnosis, medications_count, created_by, notes, created_at
+        ) VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, NOW()
+        )
+    """, (
+        dossier_id,
+        data.get('patient_id'),
+        data.get('patient_code'),
+        data.get('patient_name'),
+        data.get('admission_id'),
+        data.get('doc_type', '4_page'),
+        data.get('page_count', 4),
+        data.get('file_name'),
+        data.get('file_path'),
+        data.get('file_size', 0),
+        data.get('diagnosis'),
+        data.get('medications_count', 0),
+        data.get('created_by'),
+        data.get('notes')
+    ))
+    conn.commit()
+    return get_patient_dossier_by_id(conn, dossier_id) or {'id': dossier_id, **data}
+
+
+def delete_patient_dossier_record(conn, dossier_id):
+    """
+    Delete a dossier record by ID.
+    """
+    ensure_patient_dossiers_table(conn)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM patient_dossiers WHERE id = %s", (dossier_id,))
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def list_room_availability(conn, start_date, end_date):
     """
     The occupancy board for one date range, room by room.

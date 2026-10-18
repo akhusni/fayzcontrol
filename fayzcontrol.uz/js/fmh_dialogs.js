@@ -299,7 +299,8 @@
         { key: '/consultation.html', label: 'Konsultatsiya', icon: 'fa-user-doctor', desc: 'Narkologik / psixiatrik konsultatsiya' },
         { key: '/ward.html', label: "Statsionar Ko'rigi", icon: 'fa-stethoscope', desc: "Yotgan bemorlarning kunlik ko'riklari" },
         { key: '/nurse.html', label: 'Hamshira Posti', icon: 'fa-syringe', desc: "Dori berish, muolaja va ko'rsatkichlar" },
-        { key: '/medical_blank.html', label: 'Tibbiy Blanklar', icon: 'fa-file-lines', desc: "A4 tibbiy blanklar va shablonlar" }
+        { key: '/medical_blank.html', label: 'Tibbiy Blanklar', icon: 'fa-file-lines', desc: "A4 tibbiy blanklar va shablonlar" },
+        { key: '/patient_dossier.html', label: 'PDF Dossye & Tarix', icon: 'fa-file-pdf', desc: "Bemorlarning 2-4 sahifali rasmiy PDF kasallik tarixi va dori varaqasi" }
       ]
     },
     {
