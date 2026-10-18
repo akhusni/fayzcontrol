@@ -372,7 +372,7 @@ window.FMH_Print = (function() {
     const balance = Math.max(0, net - advance);
 
     const moneyBlock = !isFilled ? '' : `
-      <div class="fmh-section-title"><i class="fas fa-calculator"></i> 4. To\u2018lov Hisob-Kitobi</div>
+      <div class="fmh-section-title"><i class="fas fa-calculator"></i> 3. To\u2018lov Hisob-Kitobi</div>
       <table class="fmh-data-table">
         <thead>
           <tr>
@@ -446,26 +446,7 @@ window.FMH_Print = (function() {
         </div>
       </div>
 
-      <div class="fmh-section-title"><i class="fas fa-stethoscope"></i> 2. Murojaat Yo'nalishi va Tashxis Belgilari</div>
-      <div class="fmh-check-group" style="margin-bottom:6px;">
-        <span class="fmh-check-item"><span class="fmh-box-sq"></span> Alkogol intoksikatsiyasi</span>
-        <span class="fmh-check-item"><span class="fmh-box-sq"></span> Narkotik / Modda qaramligi</span>
-        <span class="fmh-check-item"><span class="fmh-box-sq"></span> Depressiya & Xavotir</span>
-        <span class="fmh-check-item"><span class="fmh-box-sq"></span> Qimor / Kiber qaramlik</span>
-        <span class="fmh-check-item"><span class="fmh-box-sq"></span> Boshqa</span>
-      </div>
-      <div class="fmh-meta-grid fmh-meta-grid-2">
-        <div class="fmh-meta-item">
-          <span class="lbl">Allergik Reaksiyalar (Dori vositalariga):</span>
-          <div class="fmh-line-fill"></div>
-        </div>
-        <div class="fmh-meta-item">
-          <span class="lbl">Surunkali Kasalliklar (Yurak, Jigar, Qand):</span>
-          <div class="fmh-line-fill"></div>
-        </div>
-      </div>
-
-      <div class="fmh-section-title"><i class="fas fa-bed"></i> 3. Belgilangan Qabul va Joylashtirish Rejasi</div>
+      <div class="fmh-section-title"><i class="fas fa-bed"></i> 2. Belgilangan Qabul va Joylashtirish Rejasi</div>
       <div class="fmh-meta-grid fmh-meta-grid-4">
         <div class="fmh-meta-item">
           <span class="lbl">Dastur / Tarif:</span>
@@ -512,7 +493,7 @@ window.FMH_Print = (function() {
 
       ${moneyBlock}
 
-      <div class="fmh-section-title"><i class="fas fa-file-contract"></i> ${isFilled ? '5' : '4'}. Shaxsiy Rozilik va Majburiyat</div>
+      <div class="fmh-section-title"><i class="fas fa-file-contract"></i> ${isFilled ? '4' : '3'}. Shaxsiy Rozilik va Majburiyat</div>
       <div class="fmh-callout-box">
         Men, yuqorida ko'rsatilgan bemor (yoki uning qonuniy vakili), «Fayz Medical House» klinikasida davolanishga va shifokor ko'riklariga ixtiyoriy rozilik beraman. Barcha tibbiy ma'lumotlar maxfiy saqlanishi ma'lum qilindi.
       </div>
