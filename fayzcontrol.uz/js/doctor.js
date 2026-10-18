@@ -2644,11 +2644,11 @@
     const anamnesisHtml = `
       <div class="a4-section-title"><i class="fas fa-notes-medical"></i> Bemor Shikoyatlari & Anamnezi</div>
       <div style="font-size: 12.5px; display: grid; gap: 8px; margin-bottom: 16px;">
-        <div><strong>Bemor shikoyatlari:</strong> ${document.getElementById('anam-complaints')?.value || anam.complaints || NOT_RECORDED}</div>
-        <div><strong>Anamnesis Morbi (Kasallik rivojlanishi):</strong> ${document.getElementById('anam-morbi')?.value || anam.anamnesis_morbi || NOT_RECORDED}</div>
-        <div><strong>Anamnesis Vitae (Hayotiy anamnez):</strong> ${document.getElementById('anam-vitae')?.value || anam.anamnesis_vitae || NOT_RECORDED}</div>
-        <div><strong>Somatik & Nevrologik holat:</strong> ${document.getElementById('anam-somatic')?.value || anam.somatic_status || NOT_RECORDED}</div>
-        <div><strong>Psixik status:</strong> ${document.getElementById('anam-psychiatric')?.value || anam.psychiatric_status || NOT_RECORDED}</div>
+        <div><strong>1. Bemor shikoyatlari:</strong> ${escapeHtml(document.getElementById('anam-complaints')?.value || anam.complaints || NOT_RECORDED)}</div>
+        <div><strong>2. Anamnesis Morbi (Kasallik rivojlanishi):</strong> ${escapeHtml(document.getElementById('anam-morbi')?.value || anam.anamnesis_morbi || NOT_RECORDED)}</div>
+        <div><strong>3. Anamnesis Vitae (Hayotiy anamnez):</strong> ${escapeHtml(document.getElementById('anam-vitae')?.value || anam.anamnesis_vitae || NOT_RECORDED)}</div>
+        <div><strong>4. Somatik & Nevrologik holat:</strong> ${escapeHtml(document.getElementById('anam-somatic')?.value || anam.somatic_status || NOT_RECORDED)}</div>
+        <div><strong>5. Psixik status va xulq-atvor:</strong> ${escapeHtml(document.getElementById('anam-psychiatric')?.value || anam.psychiatric_status || NOT_RECORDED)}</div>
       </div>
     `;
 
@@ -2706,7 +2706,10 @@
     }
 
     const primaryDiag = document.getElementById('anam-diagnosis-primary')?.value || anam.diagnosis_primary || NOT_RECORDED;
+    const secondaryDiag = document.getElementById('anam-diagnosis-secondary')?.value || anam.diagnosis_secondary || NOT_RECORDED;
     const icdCode = document.getElementById('anam-icd10')?.value || anam.icd10_code || '—';
+    const allergies = document.getElementById('anam-allergy')?.value || anam.allergic_status || p.medical_allergies || NOT_RECORDED;
+    const allergyColor = allergies.toLowerCase() === "yo'q" ? '#10b981' : (allergies === NOT_RECORDED ? '#64748b' : '#f43f5e');
 
     container.innerHTML = `
       <!-- Official Clinic Header Letterhead -->
@@ -2737,13 +2740,14 @@
 
       <!-- Patient Identity Grid -->
       <div class="a4-patient-grid">
-        <div class="a4-patient-field"><span>Bemor F.I.SH.:</span> <strong>${p.full_name}</strong></div>
-        <div class="a4-patient-field"><span>Bemor Kodi/ID:</span> <strong style="color: #0284c7;">${p.patient_code}</strong></div>
+        <div class="a4-patient-field"><span>Bemor F.I.SH.:</span> <strong>${escapeHtml(p.full_name)}</strong></div>
+        <div class="a4-patient-field"><span>Bemor Kodi/ID:</span> <strong style="color: #0284c7;">${escapeHtml(p.patient_code)}</strong></div>
         <div class="a4-patient-field"><span>Yoshi / Jinsi:</span> <strong>${age} yosh (${genderStr})</strong></div>
-        <div class="a4-patient-field"><span>Joylashuvi / Xona:</span> <strong>${roomStr}</strong></div>
-        <div class="a4-patient-field"><span>Asosiy Klinik Tashxis:</span> <strong>${primaryDiag}</strong></div>
-        <div class="a4-patient-field"><span>XKT-10 (ICD-10) Kodi:</span> <strong>${icdCode}</strong></div>
-        <div class="a4-patient-field" style="grid-column: span 2;"><span>Dori Allergiyalari Statusi:</span> <strong style="color: ${!p.medical_allergies ? '#64748b' : (p.medical_allergies.toLowerCase() !== 'yo\'q' ? '#f43f5e' : '#10b981')};">${p.medical_allergies || NOT_RECORDED}</strong></div>
+        <div class="a4-patient-field"><span>Joylashuvi / Xona:</span> <strong>${escapeHtml(roomStr)}</strong></div>
+        <div class="a4-patient-field"><span>Asosiy Klinik Tashxis:</span> <strong>${escapeHtml(primaryDiag)}</strong></div>
+        <div class="a4-patient-field"><span>XKT-10 (ICD-10) Kodi:</span> <strong>${escapeHtml(icdCode)}</strong></div>
+        <div class="a4-patient-field"><span>Qo'shimcha / Yo'ldosh Tashxis:</span> <strong>${escapeHtml(secondaryDiag)}</strong></div>
+        <div class="a4-patient-field"><span>Dori Allergiyalari Statusi:</span> <strong style="color: ${allergyColor};">${escapeHtml(allergies)}</strong></div>
       </div>
 
       <!-- Main Clinical Content Area -->

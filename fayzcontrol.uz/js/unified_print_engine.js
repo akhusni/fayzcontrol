@@ -1074,9 +1074,18 @@ window.FMH_Print = (function() {
   function caseHistory(patient = {}, anamnesis = {}, doctor = {}, dailyNotes = []) {
     const isAnon = Boolean(patient.is_anonymous);
     const pName = isAnon ? "[ ANONIM BEMOR ]" : (patient.full_name || "Bemor");
-    const docName = doctor.full_name || "—";
+    const docName = doctor.full_name || doctor.name || (patient.active_admission && patient.active_admission.doctor_name) || "—";
+    const docTitle = doctor.title || doctor.specialty || (patient.active_admission && patient.active_admission.doctor_title) || "Davolovchi Shifokor";
     const adm = patient.active_admission || {};
-    const bedStr = adm.bed_code || adm.bed_id || "Ambulator";
+    const bedStr = adm.bed_code || (adm.room_number ? `${adm.room_number}-xona` : null) || "Ambulator";
+    const currentYear = new Date().getFullYear();
+    const ageStr = patient.birth_year ? `${currentYear - parseInt(patient.birth_year)} yosh` : "—";
+    const genderStr = patient.gender === 'female' ? 'Ayol' : (patient.gender === 'male' ? 'Erkak' : '—');
+    const primaryDiag = anamnesis.diagnosis_primary || anamnesis.diagnosis || patient.diagnosis || NOT_RECORDED;
+    const secondaryDiag = anamnesis.diagnosis_secondary || NOT_RECORDED;
+    const icdCode = anamnesis.icd10_code || '—';
+    const allergies = anamnesis.allergic_status || patient.medical_allergies || NOT_RECORDED;
+    const allergyColor = allergies.toLowerCase() === "yo'q" ? '#10b981' : (allergies === NOT_RECORDED ? '#64748b' : '#dc2626');
 
     const html = `
       ${getCommonHeader("KASALLIK TARIXI VA TIBBIY ANAMNEZ VARAQASI", `EMR-${patient.patient_code || patient.id || '2026'}`, "RASMIY TIBBIY KO'RIK HUJJATI")}
@@ -1084,46 +1093,76 @@ window.FMH_Print = (function() {
       <div class="fmh-meta-grid fmh-meta-grid-4">
         <div class="fmh-meta-item">
           <span class="lbl">Bemor F.I.Sh.</span>
-          <span class="val highlight">${pName}</span>
+          <span class="val highlight">${escapeHtml(pName)}</span>
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Bemor KODI</span>
-          <span class="val font-mono">${patient.patient_code || patient.id || '—'}</span>
+          <span class="val font-mono">${escapeHtml(patient.patient_code || patient.id || '—')}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Yoshi / Jinsi</span>
+          <span class="val">${escapeHtml(ageStr)} (${escapeHtml(genderStr)})</span>
         </div>
         <div class="fmh-meta-item">
           <span class="lbl">Palata / Karavot</span>
-          <span class="val"><i class="fas fa-bed"></i> ${bedStr}</span>
+          <span class="val"><i class="fas fa-bed"></i> ${escapeHtml(bedStr)}</span>
         </div>
         <div class="fmh-meta-item">
+          <span class="lbl">Asosiy Klinik Tashxis</span>
+          <span class="val highlight">${escapeHtml(primaryDiag)}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">XKT-10 (ICD-10)</span>
+          <span class="val font-mono">${escapeHtml(icdCode)}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Qo'shimcha / Yo'ldosh Tashxis</span>
+          <span class="val">${escapeHtml(secondaryDiag)}</span>
+        </div>
+        <div class="fmh-meta-item">
+          <span class="lbl">Dori Allergiyalari</span>
+          <span class="val" style="color: ${allergyColor}; font-weight:700;">${escapeHtml(allergies)}</span>
+        </div>
+        <div class="fmh-meta-item" style="grid-column: span 2;">
           <span class="lbl">Mas'ul Shifokor</span>
-          <span class="val">${docName}</span>
+          <span class="val">${escapeHtml(docName)} (${escapeHtml(docTitle)})</span>
+        </div>
+        <div class="fmh-meta-item" style="grid-column: span 2;">
+          <span class="lbl">Telefon / Manzil</span>
+          <span class="val">${escapeHtml(patient.phone || '—')} ${patient.address ? '• ' + escapeHtml(patient.address) : ''}</span>
         </div>
       </div>
 
       <div class="fmh-section-title"><i class="fas fa-comment-medical"></i> 1. Bemor Shikoyatlari (Chief Complaints)</div>
       <div class="fmh-callout-box">
-        ${anamnesis.complaints || NOT_RECORDED}
+        ${escapeHtml(anamnesis.complaints || NOT_RECORDED)}
       </div>
 
       <div class="fmh-section-title"><i class="fas fa-history"></i> 2. Kasallik Rivojlanishi (Anamnesis Morbi)</div>
-      <p style="margin:4px 0; font-size:8.5pt;">
-        ${anamnesis.anamnesis_morbi || NOT_RECORDED}
+      <p style="margin:4px 0; font-size:8.5pt; white-space: pre-wrap;">
+        ${escapeHtml(anamnesis.anamnesis_morbi || NOT_RECORDED)}
       </p>
 
-      <div class="fmh-section-title"><i class="fas fa-heartbeat"></i> 3. Hayot Anamnezi & Somatik Holat (Anamnesis Vitae)</div>
-      <p style="margin:4px 0; font-size:8.5pt;">
-        ${anamnesis.anamnesis_vitae || anamnesis.somatic_status || NOT_RECORDED}
+      <div class="fmh-section-title"><i class="fas fa-user-shield"></i> 3. Hayot Anamnezi & Ijtimoiy Sharoit (Anamnesis Vitae)</div>
+      <p style="margin:4px 0; font-size:8.5pt; white-space: pre-wrap;">
+        ${escapeHtml(anamnesis.anamnesis_vitae || NOT_RECORDED)}
       </p>
 
-      <div class="fmh-section-title"><i class="fas fa-brain"></i> 4. Psixik Status va Xulq-Atvor</div>
-      <p style="margin:4px 0; font-size:8.5pt;">
-        ${anamnesis.psychiatric_status || NOT_RECORDED}
+      <div class="fmh-section-title"><i class="fas fa-heartbeat"></i> 4. Somatik & Nevrologik Status</div>
+      <p style="margin:4px 0; font-size:8.5pt; white-space: pre-wrap;">
+        ${escapeHtml(anamnesis.somatic_status || NOT_RECORDED)}
       </p>
 
-      <div class="fmh-section-title"><i class="fas fa-diagnoses"></i> 5. Klinik Tashxis (ICD-10)</div>
-      <div class="fmh-callout-box blue">
-        <strong>Asosiy Tashxis:</strong> ${anamnesis.diagnosis || patient.diagnosis || NOT_RECORDED}
-      </div>
+      <div class="fmh-section-title"><i class="fas fa-brain"></i> 5. Psixik Status va Xulq-Atvor</div>
+      <p style="margin:4px 0; font-size:8.5pt; white-space: pre-wrap;">
+        ${escapeHtml(anamnesis.psychiatric_status || NOT_RECORDED)}
+      </p>
+
+      ${patient.chronic_conditions ? `
+      <div class="fmh-section-title"><i class="fas fa-file-medical"></i> 6. Surunkali Kasalliklar</div>
+      <p style="margin:4px 0; font-size:8.5pt;">
+        ${escapeHtml(patient.chronic_conditions)}
+      </p>` : ''}
 
       ${getCommonAuthZone({
         doctor: docName,

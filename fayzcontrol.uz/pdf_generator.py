@@ -51,8 +51,8 @@ def generate_patient_pdf(*args, **kwargs):
     cur.execute("""
         SELECT a.*, r.room_number, b.bed_code, s.full_name AS doctor_name, s.specialty AS doctor_title
         FROM admissions a
-        JOIN beds b ON a.bed_id = b.id
-        JOIN rooms r ON b.room_id = r.id
+        LEFT JOIN beds b ON a.bed_id = b.id
+        LEFT JOIN rooms r ON b.room_id = r.id
         LEFT JOIN staff s ON a.attending_doctor_id = s.id
         WHERE a.patient_id = ?
         ORDER BY a.start_date DESC LIMIT 1
@@ -61,9 +61,46 @@ def generate_patient_pdf(*args, **kwargs):
     adm = dict(adm_row) if adm_row else {}
 
     # 3. Fetch Medical History
-    cur.execute("SELECT * FROM medical_histories WHERE patient_id = ? ORDER BY updated_at DESC LIMIT 1", (actual_id,))
+    cur.execute("SELECT * FROM medical_histories WHERE patient_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1", (actual_id,))
     anam_row = cur.fetchone()
     anam = dict(anam_row) if anam_row else {}
+
+    # Fallback to consultations table if medical_histories is missing fields
+    cur.execute("SELECT * FROM consultations WHERE patient_id = ? ORDER BY consultation_date DESC, id DESC LIMIT 1", (actual_id,))
+    cons_row = cur.fetchone()
+    cons = dict(cons_row) if cons_row else {}
+
+    if not anam.get('complaints') and cons.get('primary_complaint'):
+        anam['complaints'] = cons['primary_complaint']
+    if not anam.get('anamnesis_morbi') and cons.get('onset_note'):
+        morbi_parts = [cons['onset_note']]
+        if cons.get('withdrawal_history'):
+            morbi_parts.append(f"Abstinent sindromi: {cons['withdrawal_history']}")
+        anam['anamnesis_morbi'] = "\n".join(morbi_parts)
+    if not anam.get('anamnesis_vitae') and cons.get('living_situation'):
+        anam['anamnesis_vitae'] = cons['living_situation']
+    if not anam.get('allergic_status') and cons.get('drug_allergies'):
+        anam['allergic_status'] = cons['drug_allergies']
+    if not anam.get('psychiatric_status') and (cons.get('observed_mood') or cons.get('observed_behaviour')):
+        psych_parts = []
+        if cons.get('observed_mood'):
+            psych_parts.append(f"Kayfiyat (affekt): {cons['observed_mood']}")
+        if cons.get('observed_behaviour'):
+            psych_parts.append(f"Xulq-atvor: {cons['observed_behaviour']}")
+        anam['psychiatric_status'] = "\n".join(psych_parts)
+    if not anam.get('diagnosis_primary') and cons.get('working_diagnosis'):
+        anam['diagnosis_primary'] = cons['working_diagnosis']
+    if not anam.get('icd10_code') and cons.get('icd10_code'):
+        anam['icd10_code'] = cons['icd10_code']
+
+    doc_id = anam.get('doctor_id') or cons.get('doctor_id') or adm.get('attending_doctor_id')
+    if (not adm.get('doctor_name') or adm.get('doctor_name') == "Qayd etilmagan") and doc_id:
+        cur.execute("SELECT full_name, specialty FROM staff WHERE id = ?", (doc_id,))
+        doc_row = cur.fetchone()
+        if doc_row:
+            adm['doctor_name'] = doc_row['full_name']
+            if doc_row.get('specialty'):
+                adm['doctor_title'] = doc_row['specialty']
 
     # 4. Fetch Prescriptions
     cur.execute("SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC", (actual_id,))
@@ -179,9 +216,10 @@ def generate_patient_pdf(*args, **kwargs):
     NOT_RECORDED = "Qayd etilmagan"
     gender_str = {'female': "Ayol", 'male': "Erkak"}.get(pt.get('gender'), NOT_RECORDED)
     room_str = f"{adm.get('room_number', 'N/A')}-xona ({adm.get('bed_code', '')})" if adm else "Ambulator"
-    primary_diag = anam.get('diagnosis_primary') or NOT_RECORDED
+    primary_diag = anam.get('diagnosis_primary') or pt.get('chronic_conditions') or NOT_RECORDED
+    secondary_diag = anam.get('diagnosis_secondary') or NOT_RECORDED
     icd10 = anam.get('icd10_code') or NOT_RECORDED
-    allergies = pt.get('medical_allergies') or NOT_RECORDED
+    allergies = anam.get('allergic_status') or pt.get('medical_allergies') or NOT_RECORDED
     # Computed outside the f-string below: an escaped quote inside an f-string
     # expression is a syntax error before Python 3.12, which made this whole
     # module fail to import and silently disabled every PDF export.
@@ -191,7 +229,8 @@ def generate_patient_pdf(*args, **kwargs):
         [Paragraph(f"<b>Bemor F.I.SH.:</b> {_x(pt.get('full_name', ''))}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {_x(pt.get('patient_code', ''))}", body_style)],
         [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style)],
         [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {_x(primary_diag)}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {_x(icd10)}", body_style)],
-        [Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {_x((adm or {}).get('doctor_name') or NOT_RECORDED)}", body_style)]
+        [Paragraph(f"<b>Qo'shimcha / Yo'ldosh Tashxis:</b> {_x(secondary_diag)}", body_style), Paragraph(f"<b>Dori Allergiyalari Statusi:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style)],
+        [Paragraph(f"<b>Mas'ul Shifokor:</b> {_x((adm or {}).get('doctor_name') or NOT_RECORDED)}", body_style), Paragraph(f"<b>Shifokor Mutaxassisligi:</b> {_x((adm or {}).get('doctor_title') or 'Davolovchi Shifokor')}", body_style)]
     ]
 
     pt_grid_table = Table(pt_grid_data, colWidths=[260, 260])
@@ -212,14 +251,16 @@ def generate_patient_pdf(*args, **kwargs):
         
         complaints_text = _x(anam.get('complaints') or NOT_RECORDED)
         morbi_text = _x(anam.get('anamnesis_morbi') or NOT_RECORDED)
+        vitae_text = _x(anam.get('anamnesis_vitae') or NOT_RECORDED)
         somatic_text = _x(anam.get('somatic_status') or NOT_RECORDED)
         psych_text = _x(anam.get('psychiatric_status') or NOT_RECORDED)
 
         anam_data = [
-            [Paragraph("<b>Shikoyat va Anamnez:</b>", bold_style), Paragraph(complaints_text, body_style)],
-            [Paragraph("<b>Anamnesis Morbi:</b>", bold_style), Paragraph(morbi_text, body_style)],
-            [Paragraph("<b>Somatik & Nevrologik:</b>", bold_style), Paragraph(somatic_text, body_style)],
-            [Paragraph("<b>Psixik Status:</b>", bold_style), Paragraph(psych_text, body_style)]
+            [Paragraph("<b>Bemor Shikoyatlari:</b>", bold_style), Paragraph(complaints_text, body_style)],
+            [Paragraph("<b>Kasallik Rivojlanishi (Morbi):</b>", bold_style), Paragraph(morbi_text, body_style)],
+            [Paragraph("<b>Hayot Anamnezi (Vitae):</b>", bold_style), Paragraph(vitae_text, body_style)],
+            [Paragraph("<b>Somatik & Nevrologik Holat:</b>", bold_style), Paragraph(somatic_text, body_style)],
+            [Paragraph("<b>Psixik Status va Xulq-Atvor:</b>", bold_style), Paragraph(psych_text, body_style)]
         ]
 
         anam_table = Table(anam_data, colWidths=[130, 390])
@@ -628,8 +669,8 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     cur.execute("""
         SELECT a.*, r.room_number, b.bed_code, s.full_name AS doctor_name, s.specialty AS doctor_title
         FROM admissions a
-        JOIN beds b ON a.bed_id = b.id
-        JOIN rooms r ON b.room_id = r.id
+        LEFT JOIN beds b ON a.bed_id = b.id
+        LEFT JOIN rooms r ON b.room_id = r.id
         LEFT JOIN staff s ON a.attending_doctor_id = s.id
         WHERE a.patient_id = %s
         ORDER BY a.start_date DESC LIMIT 1
@@ -638,9 +679,46 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     adm = dict(adm_row) if adm_row else {}
 
     # 3. Fetch Medical History (Latest)
-    cur.execute("SELECT * FROM medical_histories WHERE patient_id = %s ORDER BY updated_at DESC LIMIT 1", (actual_id,))
+    cur.execute("SELECT * FROM medical_histories WHERE patient_id = %s ORDER BY updated_at DESC, id DESC LIMIT 1", (actual_id,))
     anam_row = cur.fetchone()
     anam = dict(anam_row) if anam_row else {}
+
+    # Check consultations table as fallback for missing anamnesis fields
+    cur.execute("SELECT * FROM consultations WHERE patient_id = %s ORDER BY consultation_date DESC, id DESC LIMIT 1", (actual_id,))
+    cons_row = cur.fetchone()
+    cons = dict(cons_row) if cons_row else {}
+
+    if not anam.get('complaints') and cons.get('primary_complaint'):
+        anam['complaints'] = cons['primary_complaint']
+    if not anam.get('anamnesis_morbi') and cons.get('onset_note'):
+        morbi_parts = [cons['onset_note']]
+        if cons.get('withdrawal_history'):
+            morbi_parts.append(f"Abstinent sindromi: {cons['withdrawal_history']}")
+        anam['anamnesis_morbi'] = "\n".join(morbi_parts)
+    if not anam.get('anamnesis_vitae') and cons.get('living_situation'):
+        anam['anamnesis_vitae'] = cons['living_situation']
+    if not anam.get('allergic_status') and cons.get('drug_allergies'):
+        anam['allergic_status'] = cons['drug_allergies']
+    if not anam.get('psychiatric_status') and (cons.get('observed_mood') or cons.get('observed_behaviour')):
+        psych_parts = []
+        if cons.get('observed_mood'):
+            psych_parts.append(f"Kayfiyat (affekt): {cons['observed_mood']}")
+        if cons.get('observed_behaviour'):
+            psych_parts.append(f"Xulq-atvor: {cons['observed_behaviour']}")
+        anam['psychiatric_status'] = "\n".join(psych_parts)
+    if not anam.get('diagnosis_primary') and cons.get('working_diagnosis'):
+        anam['diagnosis_primary'] = cons['working_diagnosis']
+    if not anam.get('icd10_code') and cons.get('icd10_code'):
+        anam['icd10_code'] = cons['icd10_code']
+
+    doc_id = anam.get('doctor_id') or cons.get('doctor_id') or adm.get('attending_doctor_id')
+    if (not adm.get('doctor_name') or adm.get('doctor_name') == "Qayd etilmagan") and doc_id:
+        cur.execute("SELECT full_name, specialty FROM staff WHERE id = %s", (doc_id,))
+        doc_row = cur.fetchone()
+        if doc_row:
+            adm['doctor_name'] = doc_row['full_name']
+            if doc_row.get('specialty'):
+                adm['doctor_title'] = doc_row['specialty']
 
     # 4. Fetch Prescriptions
     cur.execute("SELECT * FROM prescriptions WHERE patient_id = %s ORDER BY created_at DESC", (actual_id,))
@@ -672,8 +750,12 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     if custom_data and isinstance(custom_data, dict):
         if 'diagnosis_primary' in custom_data:
             anam['diagnosis_primary'] = custom_data['diagnosis_primary']
+        if 'diagnosis_secondary' in custom_data:
+            anam['diagnosis_secondary'] = custom_data['diagnosis_secondary']
         if 'icd10_code' in custom_data:
             anam['icd10_code'] = custom_data['icd10_code']
+        if 'allergic_status' in custom_data:
+            anam['allergic_status'] = custom_data['allergic_status']
         if 'complaints' in custom_data:
             anam['complaints'] = custom_data['complaints']
         if 'anamnesis_morbi' in custom_data:
@@ -723,11 +805,12 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     gender_str = {'female': "Ayol", 'male': "Erkak"}.get(pt.get('gender'), NOT_RECORDED)
     room_str = f"{adm.get('room_number', 'N/A')}-xona ({adm.get('bed_code', '')})" if adm else "Ambulator"
     primary_diag = anam.get('diagnosis_primary') or pt.get('chronic_conditions') or NOT_RECORDED
+    secondary_diag = anam.get('diagnosis_secondary') or NOT_RECORDED
     icd10 = anam.get('icd10_code') or NOT_RECORDED
-    allergies = pt.get('medical_allergies') or NOT_RECORDED
+    allergies = anam.get('allergic_status') or pt.get('medical_allergies') or NOT_RECORDED
     allergy_color = '#10b981' if allergies.lower() == "yo'q" else ('#64748b' if allergies == NOT_RECORDED else '#f43f5e')
     doctor_name = (adm or {}).get('doctor_name') or NOT_RECORDED
-    doctor_title = (adm or {}).get('doctor_title') or "Shifokor"
+    doctor_title = (adm or {}).get('doctor_title') or "Davolovchi Shifokor"
     # Common Clinic Letterhead
     header_left = [
         Paragraph("FAYZ MEDICAL HOUSE", clinic_name_style),
@@ -781,7 +864,8 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style)],
         [Paragraph(f"<b>Telefon:</b> {_x(pt.get('phone') or NOT_RECORDED)}", body_style), Paragraph(f"<b>Manzil:</b> {_x(pt.get('address') or NOT_RECORDED)}", body_style)],
         [Paragraph(f"<b>Asosiy Klinik Tashxis:</b> {_x(primary_diag)}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {_x(icd10)}", body_style)],
-        [Paragraph(f"<b>Dori Allergiyalari:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {_x(doctor_name)}", body_style)]
+        [Paragraph(f"<b>Qo'shimcha / Yo'ldosh Tashxis:</b> {_x(secondary_diag)}", body_style), Paragraph(f"<b>Dori Allergiyalari:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style)],
+        [Paragraph(f"<b>Mas'ul Shifokor:</b> {_x(doctor_name)}", body_style), Paragraph(f"<b>Shifokor Mutaxassisligi:</b> {_x(doctor_title)}", body_style)]
     ]
     pt_grid_table = Table(pt_grid_data, colWidths=[261, 262])
     pt_grid_table.setStyle(TableStyle([
@@ -795,14 +879,20 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     complaints_text = _x(anam.get('complaints') or NOT_RECORDED)
     morbi_text = _x(anam.get('anamnesis_morbi') or NOT_RECORDED)
     vitae_text = _x(anam.get('anamnesis_vitae') or NOT_RECORDED)
+    somatic_text = _x(anam.get('somatic_status') or NOT_RECORDED)
+    psych_text = _x(anam.get('psychiatric_status') or NOT_RECORDED)
     chronic_text = _x(pt.get('chronic_conditions') or NOT_RECORDED)
 
     anam_rows = [
         [Paragraph("<b>Birlamchi Shikoyatlar:</b>", bold_style), Paragraph(complaints_text, body_style)],
         [Paragraph("<b>Kasallik Tarixi (Morbi):</b>", bold_style), Paragraph(morbi_text, body_style)],
         [Paragraph("<b>Hayot Tarixi (Vitae):</b>", bold_style), Paragraph(vitae_text, body_style)],
-        [Paragraph("<b>Surunkali Kasalliklar:</b>", bold_style), Paragraph(chronic_text, body_style)]
+        [Paragraph("<b>Somatik & Nevrologik Status:</b>", bold_style), Paragraph(somatic_text, body_style)],
+        [Paragraph("<b>Psixik Status & Xulq-Atvor:</b>", bold_style), Paragraph(psych_text, body_style)]
     ]
+    if chronic_text != NOT_RECORDED:
+        anam_rows.append([Paragraph("<b>Surunkali Kasalliklar:</b>", bold_style), Paragraph(chronic_text, body_style)])
+
     anam_table = Table(anam_rows, colWidths=[140, 383])
     anam_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -810,39 +900,30 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
     ]))
-    lab_plan = "Klinik qon tahlili, EKG, biokimyoviy skrining (ALT, AST, glyukoza, umumiy oqsil, kreatinin). Spirtli va toksik intoksikatsiya darajasi bo'yicha intensiv infuzion terapiya va psixofarmakoterapiya boshlandi."
 
     # --- SECTION B DATA ---
     somatic_raw = anam.get('somatic_status') or NOT_RECORDED
     psych_raw = anam.get('psychiatric_status') or NOT_RECORDED
 
     somatic_data = [
-        [Paragraph("<b>Umumiy Somatik Holati:</b>", bold_style), Paragraph(_x(somatic_raw), body_style)],
-        [Paragraph("<b>Nafas Olish Tizimi:</b>", bold_style), Paragraph("Burun orqali erkin, vezikulyar nafas, patologik xirillashlar yo'q.", body_style)],
-        [Paragraph("<b>Yurak-Qon Tomir:</b>", bold_style), Paragraph("Yurak tonlari ritmik, bo'g'iqlashgan. Periferik shishlar mavjud emas.", body_style)],
-        [Paragraph("<b>Oshqozon-Ichak Tizimi:</b>", bold_style), Paragraph("Tili karashli, qorin yumshoq, og'riqsiz, jigar qovurg'a yoyi bo'ylab.", body_style)],
-        [Paragraph("<b>Nevrologik Status:</b>", bold_style), Paragraph("Ko'z qorachiqlari D=S, yorug'likka reaksiyasi saqlangan. Barmoqlarda tremor kuzatiladi.", body_style)]
+        [Paragraph("<b>Somatik va Nevrologik Holat:</b>", bold_style), Paragraph(_x(somatic_raw), body_style)]
     ]
     somatic_table = Table(somatic_data, colWidths=[140, 383])
     somatic_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
     ]))
 
     psych_data = [
-        [Paragraph("<b>Ong Holati & Kontakt:</b>", bold_style), Paragraph("Ongi ravshan, savollarga adekvat javob beradi. Kontaktga kirishuvchan.", body_style)],
-        [Paragraph("<b>Orientatsiya:</b>", bold_style), Paragraph("Zamon, makon va o'z shaxsiga nisbatan to'liq orientatsiyalashgan.", body_style)],
-        [Paragraph("<b>Idrok va Fikrlash:</b>", bold_style), Paragraph("Ko'rish va eshitish gallyutsinatsiyalari, alahsirash g'oyalari aniqlanmadi.", body_style)],
-        [Paragraph("<b>Emotsional-Irodaviy:</b>", bold_style), Paragraph(_x(psych_raw), body_style)],
-        [Paragraph("<b>Narkologik Mayl:</b>", bold_style), Paragraph("Moddaga nisbatan ikkilamchi patologik mayl, o'z holatiga tanqidiy baho qisman saqlangan.", body_style)]
+        [Paragraph("<b>Psixik Status va Xulq-Atvor:</b>", bold_style), Paragraph(_x(psych_raw), body_style)]
     ]
     psych_table = Table(psych_data, colWidths=[140, 383])
     psych_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
     ]))
 
@@ -865,12 +946,12 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             ])
     else:
         vitals_rows.append([
-            Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style),
-            Paragraph("125/80 mm", body_style),
-            Paragraph("76", body_style),
-            Paragraph("36.6 °C", body_style),
-            Paragraph("98%", body_style),
-            Paragraph("Stabil", body_style)
+            Paragraph("Vital ko'rsatkichlar qayd etilmagan", body_style),
+            Paragraph("—", body_style),
+            Paragraph("—", body_style),
+            Paragraph("—", body_style),
+            Paragraph("—", body_style),
+            Paragraph("—", body_style)
         ])
     vitals_table = Table(vitals_rows, colWidths=[90, 110, 80, 80, 80, 83])
     vitals_table.setStyle(TableStyle([
@@ -946,15 +1027,15 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             dn_rows.append([
                 Paragraph(_x(dn.get('note_date', '')), body_style),
                 Paragraph(f"{bp_str}<br/>{pulse_str}<br/>{temp_str}", body_style),
-                Paragraph(_x(dn.get('dynamics_notes') or 'Stabil ijobiy dinamika'), body_style),
-                Paragraph(_x(dn.get('treatment_adjustments') or 'Tayinlov bo\'yicha davom ettirilsin'), body_style)
+                Paragraph(_x(dn.get('dynamics_notes') or NOT_RECORDED), body_style),
+                Paragraph(_x(dn.get('treatment_adjustments') or NOT_RECORDED), body_style)
             ])
     else:
         dn_rows.append([
             Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style),
-            Paragraph("AB: 125/80<br/>P: 76<br/>T: 36.6°C", body_style),
-            Paragraph("Intoksikatsiya belgilari kamaygan, uyqu va ishtaha yaxshilangan.", body_style),
-            Paragraph("Belgilangan terapiya davom ettirilsin.", body_style)
+            Paragraph("—", body_style),
+            Paragraph("Kundalik shifokor ko'rigi qaydlari kiritilmagan", body_style),
+            Paragraph("—", body_style)
         ])
     dn_table = Table(dn_rows, colWidths=[65, 80, 245, 133])
     dn_table.setStyle(TableStyle([
@@ -964,9 +1045,9 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
 
-    summary_text = _x(epicrisis.get('treatment_summary') or "Kompleks detoksikatsiya va psixoterapevtik davolash kursi o'tkazildi. Somatik va psixik ko'rsatkichlar me'yorlashdi.")
-    home_rx_text = _x(epicrisis.get('home_prescriptions') or "Uy sharoitida sedativ va nootrop terapiyani davom ettirish, qat'iy hushyorlik rejimiga rioya qilish.")
-    psycho_text = _x(epicrisis.get('psycho_recommendations') or "Ambulator psixoterapiya va dispanser kuzatuvida bo'lish tavsiya etiladi.")
+    summary_text = _x(epicrisis.get('treatment_summary') or NOT_RECORDED)
+    home_rx_text = _x(epicrisis.get('home_prescriptions') or NOT_RECORDED)
+    psycho_text = _x(epicrisis.get('psycho_recommendations') or NOT_RECORDED)
 
     epi_data = [
         [Paragraph("<b>Davolash Natijasi:</b>", bold_style), Paragraph(summary_text, body_style)],
@@ -1016,14 +1097,15 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         res.append(Spacer(1, 6))
         res.append(pt_grid_table)
         res.append(Spacer(1, 8))
-        res.append(Paragraph("BEMOR SHIKOYATLARI VA KASALLIK RIVOJLANISH TARIXI", sec_style))
+        res.append(Paragraph("BEMOR SHIKOYATLARI VA ANAMNEZ MA'LUMOTLARI", sec_style))
         res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
         res.append(anam_table)
-        res.append(Spacer(1, 8))
-        res.append(Paragraph("BIRLAMCHI LABORATOR-DIAGNOSTIK KO'RSATKICHLAR VA REJA", sec_style))
-        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-        res.append(Paragraph(lab_plan, body_style))
         if standalone:
+            if prescriptions:
+                res.append(Spacer(1, 8))
+                res.append(Paragraph("TAYINLANGAN DORI VOSITALARI (FARMAKOTERAPIYA)", sec_style))
+                res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+                res.append(rx_table)
             res.append(Spacer(1, 14))
             res.append(KeepTogether([
                 HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=2, spaceAfter=5),
@@ -1099,9 +1181,10 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         res.append(adm_table)
         res.append(Spacer(1, 8))
 
-        res.append(Paragraph("KLINIK REJIM, PARHEZ VA REABILITATSIYA QAYDLARI", sec_style))
-        res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
-        res.append(Paragraph("Palata tartibi: yarim yotoq rejimi. Parhez: 15-sonli parhez, tuzli minerallashgan eritmalar. Psixoterapevtik suhbat va emotsional barqarorlik monitoringi. Hamshira tomonidan qat'iy nazorat ostida beriladi.", body_style))
+        if custom_notes:
+            res.append(Paragraph("KLINIK REJIM VA QO'SHIMCHA KO'RSATMALAR", sec_style))
+            res.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
+            res.append(Paragraph(_x(custom_notes), body_style))
 
         if standalone:
             res.append(Spacer(1, 10))
@@ -1187,7 +1270,8 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             [Paragraph(f"<b>Bemor F.I.SH.:</b> {_x(pt.get('full_name', ''))}", body_style), Paragraph(f"<b>Bemor Kodi:</b> {_x(pt.get('patient_code', ''))}", body_style)],
             [Paragraph(f"<b>Yoshi / Jinsi:</b> {age_str} ({gender_str})", body_style), Paragraph(f"<b>Joylashuvi:</b> {_x(room_str)}", body_style)],
             [Paragraph(f"<b>Asosiy Tashxis:</b> {_x(primary_diag)}", body_style), Paragraph(f"<b>XKT-10 Kodi:</b> {_x(icd10)}", body_style)],
-            [Paragraph(f"<b>Dori Allergiyalari:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style), Paragraph(f"<b>Mas'ul Shifokor:</b> {_x(doctor_name)}", body_style)]
+            [Paragraph(f"<b>Qo'shimcha Tashxis:</b> {_x(secondary_diag)}", body_style), Paragraph(f"<b>Dori Allergiyalari:</b> <font color='{allergy_color}'><b>{_x(allergies)}</b></font>", body_style)],
+            [Paragraph(f"<b>Mas'ul Shifokor:</b> {_x(doctor_name)}", body_style), Paragraph(f"<b>Mutaxassisligi:</b> {_x(doctor_title)}", body_style)]
         ]
         pt_grid_table = Table(pt_grid_data, colWidths=[261, 262])
         pt_grid_table.setStyle(TableStyle([
@@ -1235,7 +1319,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
                     Paragraph(f"{dn.get('vital_spo2')}%" if dn.get('vital_spo2') else "—", body_style)
                 ])
         else:
-            vitals_rows.append([Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style), Paragraph("125/80 mm", body_style), Paragraph("76", body_style), Paragraph("36.6 °C", body_style), Paragraph("98%", body_style)])
+            vitals_rows.append([Paragraph(datetime.date.today().strftime('%Y-%m-%d'), body_style), Paragraph("—", body_style), Paragraph("—", body_style), Paragraph("—", body_style), Paragraph("—", body_style)])
         vitals_table = Table(vitals_rows, colWidths=[105, 110, 100, 104, 104])
         vitals_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
@@ -1314,8 +1398,8 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         story.append(Paragraph("CHIQARISH EPIKRIZI VA TAVSIYALAR", sec_style))
         story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=1, spaceAfter=3))
 
-        summary_text = _x(epicrisis.get('treatment_summary') or "O'tkazilgan muolajalar natijasida bemor ahvoli barqarorlashdi. Somatik va psixik ko'rsatkichlar me'yorida.")
-        home_rx_text = _x(epicrisis.get('home_prescriptions') or "Tavsiya etilgan dori-darmonlar jadvaliga qat'iy amal qilish, spirtli ichimliklarni qat'iyan taqiqlash.")
+        summary_text = _x(epicrisis.get('treatment_summary') or NOT_RECORDED)
+        home_rx_text = _x(epicrisis.get('home_prescriptions') or NOT_RECORDED)
 
         epi_data = [
             [Paragraph("<b>Davolash Natijasi:</b>", bold_style), Paragraph(summary_text, body_style)],
