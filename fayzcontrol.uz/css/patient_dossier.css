@@ -73,6 +73,7 @@ body.dossier-portal {
 
 /* Fast Mode Switch Row */
 .dossier-modeswitch {
+  margin-top: 64px;
   display: flex;
   gap: 12px;
   background: var(--dossier-card-bg);

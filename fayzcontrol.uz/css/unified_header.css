@@ -180,7 +180,7 @@ html {
 
 
 /* --- ROOT FIXED PORTAL HEADER (Strictly 64px, full width on every page) --- */
-.portal-header, .super-topbar {
+.portal-header, .portal-master-header, .super-topbar {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -204,8 +204,10 @@ html {
 }
 
 [data-theme="day"] .portal-header,
+[data-theme="day"] .portal-master-header,
 [data-theme="day"] .super-topbar,
 body.day-mode .portal-header,
+body.day-mode .portal-master-header,
 body.day-mode .super-topbar {
   background: rgba(255, 255, 255, 0.86) !important;
   backdrop-filter: blur(24px) saturate(180%) !important;
@@ -215,8 +217,10 @@ body.day-mode .super-topbar {
 }
 
 [data-theme="night"] .portal-header,
+[data-theme="night"] .portal-master-header,
 [data-theme="night"] .super-topbar,
 body.night-mode .portal-header,
+body.night-mode .portal-master-header,
 body.night-mode .super-topbar {
   background: rgba(8, 14, 28, 0.82) !important;
   backdrop-filter: blur(24px) saturate(180%) !important;
@@ -897,6 +901,27 @@ body.day-mode .fmh-user-action-btn:hover {
   padding-right: 1.5rem !important;
   padding-top: 80px !important;
   box-sizing: border-box !important;
+}
+
+/* Ensure all portal main containers have clearance beneath the 64px fixed header */
+.own-main,
+.duty-container,
+.dossier-registry-workspace {
+  padding-top: 80px !important;
+  box-sizing: border-box !important;
+}
+
+/* Sub-headers, mode-switchers and chipbars docked cleanly below the 64px header */
+.doc-modeswitch {
+  margin-top: 80px !important;
+}
+
+.dossier-modeswitch {
+  margin-top: 64px !important;
+}
+
+.nurse-chipbar {
+  padding-top: 80px !important;
 }
 
 /* --- SUPERPAGE DOCKING ADJUSTMENTS (Docked under 64px rectangular header) --- */

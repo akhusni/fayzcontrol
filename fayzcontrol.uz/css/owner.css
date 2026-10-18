@@ -73,7 +73,7 @@ body.owner-portal {
   width: 100%;
   max-width: 1360px;
   margin: 0 auto;
-  padding: 16px 24px calc(50px + env(safe-area-inset-bottom));
+  padding: 80px 24px calc(50px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -83,8 +83,8 @@ body.owner-portal {
 /* ---- Sticky Toolbar (Periods + Tools) ----------------------------------- */
 .own-toolbar {
   position: sticky;
-  top: 0;
-  z-index: 25;
+  top: 64px;
+  z-index: 900;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -837,7 +837,7 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
 /* Mobile Devices */
 @media (max-width: 640px) {
   .own-main {
-    padding: 12px 14px calc(40px + env(safe-area-inset-bottom));
+    padding: 76px 14px calc(40px + env(safe-area-inset-bottom));
     gap: 14px;
   }
   .own-toolbar {
