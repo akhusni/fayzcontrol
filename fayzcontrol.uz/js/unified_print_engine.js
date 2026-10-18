@@ -48,7 +48,7 @@ window.FMH_Print = (function() {
       <div class="fmh-doc-header">
         <div class="fmh-brand-left">
           <div class="fmh-crest-icon">
-            <i class="fas fa-hospital-symbol"></i>
+            <img src="assets/images/logo.png" alt="Fayz Medical House" class="fmh-print-logo-img">
           </div>
           <div class="fmh-brand-text">
             <h1>FAYZ MEDICAL HOUSE</h1>

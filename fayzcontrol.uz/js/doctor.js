@@ -2712,8 +2712,8 @@
       <!-- Official Clinic Header Letterhead -->
       <div class="a4-clinic-header">
         <div class="a4-brand-logo">
-          <div class="a4-brand-icon">
-            <i class="fas fa-hospital-alt"></i>
+          <div class="a4-brand-icon" style="background:#fff;overflow:hidden;padding:2px;">
+            <img src="assets/images/logo.png" alt="FMH" style="width:100%;height:100%;object-fit:contain;">
           </div>
           <div>
             <div class="a4-brand-name">FAYZ MEDICAL HOUSE</div>

@@ -113,6 +113,18 @@ def generate_patient_pdf(*args, **kwargs):
     story = []
 
     # --- CLINIC HEADER LETTERHEAD ---
+    logo_file = os.path.join(os.path.dirname(__file__), 'assets', 'images', 'logo.png')
+    header_row = []
+    col_widths = []
+    if os.path.exists(logo_file):
+        try:
+            from reportlab.platypus import Image as RLImage
+            logo_img = RLImage(logo_file, width=48, height=40)
+            header_row.append(logo_img)
+            col_widths.append(54)
+        except Exception:
+            pass
+
     header_left = [
         Paragraph("FAYZ MEDICAL HOUSE", clinic_name_style),
         Paragraph("XUSUSIY NARKOLOGIYA VA PSIXIATRIYA KLINIKASI", clinic_sub_style)
@@ -124,7 +136,14 @@ def generate_patient_pdf(*args, **kwargs):
         Paragraph("<b>Veb-sayt:</b> www.fayzmedicalhouse.uz", meta_style)
     ]
 
-    header_table = Table([[header_left, header_right]], colWidths=[280, 240])
+    header_row.append(header_left)
+    header_row.append(header_right)
+    if len(col_widths) == 1:
+        col_widths.extend([236, 230])
+    else:
+        col_widths = [280, 240]
+
+    header_table = Table([header_row], colWidths=col_widths)
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
