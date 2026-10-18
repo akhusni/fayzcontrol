@@ -19,7 +19,11 @@
   // DOM Elements
   const el = {};
 
-  document.addEventListener('DOMContentLoaded', init);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 
   function init() {
     cacheElements();
@@ -116,6 +120,37 @@
           } catch (err) {
             window.print();
           }
+        }
+      });
+    }
+
+    // Delegated click listener for table action buttons
+    if (el.tbody) {
+      el.tbody.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const action = btn.dataset.action;
+        const section = btn.dataset.section;
+        const pid = btn.dataset.id;
+        const code = btn.dataset.code;
+        const name = btn.dataset.name;
+
+        const titleMap = {
+          'a': 'Kasallik tarixi va anamnez',
+          'b': 'Psixosomatik status va ko\'rik',
+          'c': 'Dorilar varaqasi',
+          'd': 'Chiqarish epikrizi',
+          'full': 'Umumiy to\'liq dossye'
+        };
+        const title = `${titleMap[section] || 'Dossye'} (${name || code || pid})`;
+
+        if (action === 'download') {
+          downloadSection(pid, section, code);
+        } else if (action === 'preview') {
+          previewSection(pid, section, title);
         }
       });
     }
@@ -274,10 +309,10 @@
           <td class="col-section col-sec-a">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Kasallik tarixi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="Kasallik tarixi va anamnezni ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'a', '${escapeJs(safeCode)}')">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="a" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Kasallik tarixi va anamnezni ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="Kasallik tarixini ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'a', 'Kasallik tarixi va anamnez (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="a" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Kasallik tarixini ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -287,10 +322,10 @@
           <td class="col-section col-sec-b">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Status va ko'rik shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="Psixosomatik status va ko'rikni ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'b', '${escapeJs(safeCode)}')">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="b" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Psixosomatik status va ko'rikni ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="Status va ko'rikni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'b', 'Status va ko\\'rik (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="b" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Status va ko'rikni ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -300,10 +335,10 @@
           <td class="col-section col-sec-c">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Dorilar varaqasi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="Dorilar varaqasini ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'c', '${escapeJs(safeCode)}')">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="c" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Dorilar varaqasini ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="Dorilar varaqasini ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'c', 'Dorilar varaqasi (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="c" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Dorilar varaqasini ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -313,10 +348,10 @@
           <td class="col-section col-sec-d">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Chiqarish epikrizi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="Chiqarish epikrizini ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'd', '${escapeJs(safeCode)}')">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="Chiqarish epikrizini ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'd', 'Chiqarish epikrizi (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -325,10 +360,10 @@
           <!-- Umumiy to'liq dossye -->
           <td class="col-general">
             <div class="full-action-cell">
-              <button type="button" class="btn-full-download" title="1 ta umumlashtirilgan to'liq rasmiy dossyeni ko'chirish" onclick="window.FMHDossier.downloadSection(${pt.id}, 'full', '${escapeJs(safeCode)}')">
+              <button type="button" class="btn-full-download" data-action="download" data-section="full" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="1 ta umumlashtirilgan to'liq rasmiy dossyeni ko'chirish" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-file-pdf"></i> <span>To'liq Dossye</span>
               </button>
-              <button type="button" class="btn-full-preview" title="To'liq dossyeni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'full', 'Umumiy to\\'liq dossye (${escapeJs(safeName)}')">
+              <button type="button" class="btn-full-preview" data-action="preview" data-section="full" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="To'liq dossyeni ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -373,32 +408,58 @@
   // --- ACTIONS (DOWNLOAD & PREVIEW) ---
   function downloadSection(patientId, section, patientCode) {
     if (!patientId) return;
-    const url = `/api/dossiers/section-pdf?patient_id=${patientId}&section=${section}&download=1`;
-    
-    // Create temporary link to trigger immediate download
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const cleanId = encodeURIComponent(String(patientId));
+    const cleanSec = encodeURIComponent(String(section));
+    const url = `/api/dossiers/section-pdf?patient_id=${cleanId}&section=${cleanSec}&download=1`;
+
+    const secNameMap = {
+      'a': 'Kasallik tarixi va anamnez',
+      'b': 'Psixosomatik status va ko\'rik',
+      'c': 'Dorilar varaqasi',
+      'd': 'Chiqarish epikrizi',
+      'full': 'Umumiy to\'liq dossye'
+    };
+    const secName = secNameMap[section] || 'Dossye';
 
     if (window.FMHDialogs) {
-      const secName = {
-        'a': 'Kasallik tarixi va anamnez',
-        'b': 'Psixosomatik status va ko\'rik',
-        'c': 'Dorilar varaqasi',
-        'd': 'Chiqarish epikrizi',
-        'full': 'Umumiy to\'liq dossye'
-      }[section] || 'Dossye';
-      window.FMHDialogs.toast(`${secName} yuklab olinmoqda...`, 'info', 2500);
+      window.FMHDialogs.toast(`${secName} shakllantirilmoqda va yuklab olinmoqda...`, 'info', 3000);
     }
+
+    fetch(url)
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        const codeStr = patientCode || cleanId;
+        a.download = `FMH_${cleanSec.toUpperCase()}_${codeStr}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () {
+          URL.revokeObjectURL(blobUrl);
+          a.remove();
+        }, 2000);
+
+        if (window.FMHDialogs) {
+          window.FMHDialogs.toast(`✅ ${secName} muvaffaqiyatli yuklab olindi!`, 'success', 2500);
+        }
+      })
+      .catch(function (err) {
+        console.warn('Fetch blob download error, falling back to window.open', err);
+        window.open(url, '_blank');
+      });
   }
 
   function previewSection(patientId, section, docTitle) {
     if (!patientId) return;
-    const previewUrl = `/api/dossiers/section-pdf?patient_id=${patientId}&section=${section}&download=0`;
-    const downloadUrl = `/api/dossiers/section-pdf?patient_id=${patientId}&section=${section}&download=1`;
+    const cleanId = encodeURIComponent(String(patientId));
+    const cleanSec = encodeURIComponent(String(section));
+    const previewUrl = `/api/dossiers/section-pdf?patient_id=${cleanId}&section=${cleanSec}&download=0`;
+    const downloadUrl = `/api/dossiers/section-pdf?patient_id=${cleanId}&section=${cleanSec}&download=1`;
 
     if (el.pdfModalTitle) {
       el.pdfModalTitle.textContent = docTitle || 'Dossye hujjati';
@@ -414,6 +475,34 @@
 
     if (el.pdfModal) {
       el.pdfModal.classList.add('active');
+    }
+  }
+
+  function handleBtnClick(btn, e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const section = btn.dataset.section;
+    const pid = btn.dataset.id;
+    const code = btn.dataset.code;
+    const name = btn.dataset.name;
+
+    const titleMap = {
+      'a': 'Kasallik tarixi va anamnez',
+      'b': 'Psixosomatik status va ko\'rik',
+      'c': 'Dorilar varaqasi',
+      'd': 'Chiqarish epikrizi',
+      'full': 'Umumiy to\'liq dossye'
+    };
+    const title = `${titleMap[section] || 'Dossye'} (${name || code || pid})`;
+
+    if (action === 'download') {
+      downloadSection(pid, section, code);
+    } else if (action === 'preview') {
+      previewSection(pid, section, title);
     }
   }
 
@@ -447,7 +536,8 @@
     fetchPatients: fetchPatients,
     downloadSection: downloadSection,
     previewSection: previewSection,
-    closePdfModal: closePdfModal
+    closePdfModal: closePdfModal,
+    handleBtnClick: handleBtnClick
   };
 
 })();
