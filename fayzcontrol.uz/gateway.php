@@ -18,6 +18,43 @@ function is_server_alive($port) {
     return false;
 }
 
+// Backend restart trigger for deployments
+if (isset($_GET['fmh_restart_backend']) && $_GET['fmh_restart_backend'] === 'fmh_deploy_2026') {
+    putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
+    putenv('HOME=/var/www/s0377/data');
+    putenv('PM2_HOME=/var/www/s0377/data/.pm2');
+
+    $pm2 = '/var/www/s0377/data/node/bin/pm2';
+    $dir = __DIR__;
+
+    // Terminate existing server.py process
+    shell_exec("pkill -9 -f 'server.py 3000'");
+    if (file_exists($pm2)) {
+        shell_exec("cd " . escapeshellarg($dir) . " && $pm2 delete fayzcontrol > /dev/null 2>&1");
+    }
+    usleep(500000);
+
+    // Start server.py freshly
+    if (file_exists($pm2)) {
+        shell_exec("cd " . escapeshellarg($dir) . " && $pm2 start server.py --name fayzcontrol --interpreter python3 -- 3000 > /dev/null 2>&1 &");
+    } else {
+        shell_exec("cd " . escapeshellarg($dir) . " && nohup python3 server.py 3000 > server.log 2>&1 &");
+    }
+
+    $alive = false;
+    for ($i = 0; $i < 25; $i++) {
+        usleep(200000);
+        if (is_server_alive($port)) {
+            $alive = true;
+            break;
+        }
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode(['restarted' => true, 'alive' => $alive]);
+    exit;
+}
+
 // Watchdog: auto-start server.py if down
 if (!is_server_alive($port)) {
     putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');

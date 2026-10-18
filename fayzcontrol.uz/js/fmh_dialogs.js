@@ -348,6 +348,10 @@
     const pages = session.pages;
     if (!nav || !Array.isArray(pages) || !pages.length) return;
     const allowed = new Set(pages);
+    const userRole = session.role || (session.user && session.user.role);
+    if ((allowed.has('/doctor.html') || userRole === 'superadmin' || userRole === 'admin' || userRole === 'chief_doctor' || userRole === 'doctor') && !allowed.has('/patient_dossier.html')) {
+      allowed.add('/patient_dossier.html');
+    }
     let here = location.pathname.toLowerCase();
     if (here === '/' || here.endsWith('/index.html')) here = '/superpage.html';
 
