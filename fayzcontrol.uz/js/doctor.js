@@ -2712,8 +2712,8 @@
       <!-- Official Clinic Header Letterhead -->
       <div class="a4-clinic-header">
         <div class="a4-brand-logo">
-          <div class="a4-brand-icon" style="background:#fff;overflow:hidden;padding:2px;">
-            <img src="assets/images/logo.png" alt="FMH" style="width:100%;height:100%;object-fit:contain;">
+          <div class="a4-brand-icon" style="width: 54px; height: 54px; min-width: 54px; max-width: 54px; min-height: 54px; max-height: 54px; background: #ffffff; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 2px; flex-shrink: 0;">
+            <img src="assets/images/logo-emblem.png" alt="FMH" width="50" height="50" style="width: 50px; height: 50px; max-width: 50px; max-height: 50px; object-fit: contain; display: block;">
           </div>
           <div>
             <div class="a4-brand-name">FAYZ MEDICAL HOUSE</div>

@@ -257,6 +257,8 @@ body.night-mode .super-topbar {
   height: 38px !important;
   min-width: 38px !important;
   max-width: 38px !important;
+  min-height: 38px !important;
+  max-height: 38px !important;
   border-radius: 10px !important;
   background: #ffffff !important;
   border: 1px solid rgba(255, 255, 255, 0.25) !important;
@@ -281,9 +283,12 @@ body.night-mode .super-topbar {
   box-shadow: 0 4px 14px rgba(56, 189, 248, 0.28) !important;
 }
 
+.portal-brand-logo img,
 .portal-brand-img {
-  width: 100% !important;
-  height: 100% !important;
+  width: 34px !important;
+  height: 34px !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
   object-fit: contain !important;
   display: block !important;
 }

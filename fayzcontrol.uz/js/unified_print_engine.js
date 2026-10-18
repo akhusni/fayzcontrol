@@ -47,8 +47,8 @@ window.FMH_Print = (function() {
     return `
       <div class="fmh-doc-header">
         <div class="fmh-brand-left">
-          <div class="fmh-crest-icon">
-            <img src="assets/images/logo.png" alt="Fayz Medical House" class="fmh-print-logo-img">
+          <div class="fmh-crest-icon" style="width: 52px; height: 52px; min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; background: #ffffff; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; box-shadow: 0 2px 6px rgba(15, 118, 110, 0.15);">
+            <img src="assets/images/logo-emblem.png" alt="Fayz Medical House" class="fmh-print-logo-img" width="48" height="48" style="width: 48px; height: 48px; max-width: 48px; max-height: 48px; object-fit: contain; display: block;">
           </div>
           <div class="fmh-brand-text">
             <h1>FAYZ MEDICAL HOUSE</h1>

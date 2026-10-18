@@ -113,15 +113,17 @@ def generate_patient_pdf(*args, **kwargs):
     story = []
 
     # --- CLINIC HEADER LETTERHEAD ---
-    logo_file = os.path.join(os.path.dirname(__file__), 'assets', 'images', 'logo.png')
+    logo_file = os.path.join(os.path.dirname(__file__), 'assets', 'images', 'logo-emblem.png')
+    if not os.path.exists(logo_file):
+        logo_file = os.path.join(os.path.dirname(__file__), 'assets', 'images', 'logo.png')
     header_row = []
     col_widths = []
     if os.path.exists(logo_file):
         try:
             from reportlab.platypus import Image as RLImage
-            logo_img = RLImage(logo_file, width=48, height=40)
+            logo_img = RLImage(logo_file, width=42, height=42)
             header_row.append(logo_img)
-            col_widths.append(54)
+            col_widths.append(48)
         except Exception:
             pass
 
