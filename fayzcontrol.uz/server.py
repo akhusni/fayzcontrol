@@ -3103,22 +3103,22 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 sec = (query.get('section', ['full'])[0] or 'full').lower().strip()
                 if sec in ('a', 'section_a', 'anamnez', 'tarix'):
                     doc_type = 'section_a'
-                    prefix = 'Kasallik_Tarixi_va_Anamnez'
+                    doc_label = 'Kasallik_tarixi'
                 elif sec in ('b', 'section_b', 'status', 'korik'):
                     doc_type = 'section_b'
-                    prefix = 'Status_va_Korik'
+                    doc_label = 'Status_va_korik'
                 elif sec in ('c', 'section_c', 'dorilar', 'dori'):
                     doc_type = 'section_c'
-                    prefix = 'Dorilar_Varaqasi'
+                    doc_label = 'Dorilar_varaqasi'
                 elif sec in ('d', 'section_d', 'epikriz'):
                     doc_type = 'section_d'
-                    prefix = 'Chiqarish_Epikrizi'
+                    doc_label = 'Chiqarish_epikrizi'
                 elif sec in ('2', '2_page'):
                     doc_type = '2_page'
-                    prefix = 'Qisqacha_Dossye'
+                    doc_label = 'Qisqacha_dossye'
                 else:
                     doc_type = '4_page'
-                    prefix = 'Umumiy_Toliq_Dossye'
+                    doc_label = 'Umumiy_toliq_dossye'
 
                 try:
                     pdf_result = generate_patient_dossier_pdf(real_pid, doc_type=doc_type)
@@ -3149,13 +3149,17 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 is_download = query.get('download', ['0'])[0] == '1'
                 disposition = 'attachment' if is_download else 'inline'
-                p_code = patient.get('patient_code') or f"PT{real_pid}"
-                clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', patient.get('full_name') or 'Bemor')
-                fname_header = f"{prefix}_{clean_name}_{p_code}.pdf"
+                raw_name = (patient.get('full_name') or '').strip()
+                clean_name = re.sub(r"['`ʻʼ]", '', raw_name)
+                clean_name = re.sub(r'[^a-zA-Z0-9\u0400-\u04FF]', '_', clean_name)
+                clean_name = re.sub(r'_+', '_', clean_name).strip('_')
+                if not clean_name:
+                    clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', patient.get('patient_code') or f"Bemor_{real_pid}")
+                fname_header = f"{clean_name}_{doc_label}.pdf"
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/pdf')
-                self.send_header('Content-Disposition', f'{disposition}; filename="{fname_header}"')
+                self.send_header('Content-Disposition', f'{disposition}; filename="{fname_header}"; filename*=UTF-8\'\'{urllib.parse.quote(fname_header)}')
                 self.send_header('Content-Length', str(len(pdf_result['pdf_bytes'])))
                 self.end_headers()
                 self.wfile.write(pdf_result['pdf_bytes'])

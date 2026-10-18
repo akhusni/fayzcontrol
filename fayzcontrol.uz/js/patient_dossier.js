@@ -148,9 +148,9 @@
         const title = `${titleMap[section] || 'Dossye'} (${name || code || pid})`;
 
         if (action === 'download') {
-          downloadSection(pid, section, code);
+          downloadSection(pid, section, code, name);
         } else if (action === 'preview') {
-          previewSection(pid, section, title);
+          previewSection(pid, section, title, name);
         }
       });
     }
@@ -406,7 +406,27 @@
   }
 
   // --- ACTIONS (DOWNLOAD & PREVIEW) ---
-  function downloadSection(patientId, section, patientCode) {
+  function getSafeFileName(patientName, patientCode, section) {
+    const secFileLabelMap = {
+      'a': 'Kasallik_tarixi',
+      'b': 'Status_va_korik',
+      'c': 'Dorilar_varaqasi',
+      'd': 'Chiqarish_epikrizi',
+      'full': 'Umumiy_toliq_dossye'
+    };
+    const secFileLabel = secFileLabelMap[section] || 'Dossye';
+
+    let cleanName = (patientName || '').trim()
+      .replace(/['`ʻʼ]/g, '')
+      .replace(/[^a-zA-Z0-9\u0400-\u04FF]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+    if (!cleanName) cleanName = patientCode ? String(patientCode).replace(/[^a-zA-Z0-9]/g, '_') : 'Bemor';
+
+    return `${cleanName}_${secFileLabel}.pdf`;
+  }
+
+  function downloadSection(patientId, section, patientCode, patientName) {
     if (!patientId) return;
     const cleanId = encodeURIComponent(String(patientId));
     const cleanSec = encodeURIComponent(String(section));
@@ -420,6 +440,7 @@
       'full': 'Umumiy to\'liq dossye'
     };
     const secName = secNameMap[section] || 'Dossye';
+    const finalFileName = getSafeFileName(patientName, patientCode, section);
 
     if (window.FMHDialogs) {
       window.FMHDialogs.toast(`${secName} shakllantirilmoqda va yuklab olinmoqda...`, 'info', 3000);
@@ -435,8 +456,7 @@
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = blobUrl;
-        const codeStr = patientCode || cleanId;
-        a.download = `FMH_${cleanSec.toUpperCase()}_${codeStr}.pdf`;
+        a.download = finalFileName;
         document.body.appendChild(a);
         a.click();
         setTimeout(function () {
@@ -445,7 +465,7 @@
         }, 2000);
 
         if (window.FMHDialogs) {
-          window.FMHDialogs.toast(`✅ ${secName} muvaffaqiyatli yuklab olindi!`, 'success', 2500);
+          window.FMHDialogs.toast(`✅ ${finalFileName} muvaffaqiyatli yuklab olindi!`, 'success', 2500);
         }
       })
       .catch(function (err) {
@@ -454,19 +474,21 @@
       });
   }
 
-  function previewSection(patientId, section, docTitle) {
+  function previewSection(patientId, section, docTitle, patientName, patientCode) {
     if (!patientId) return;
     const cleanId = encodeURIComponent(String(patientId));
     const cleanSec = encodeURIComponent(String(section));
     const previewUrl = `/api/dossiers/section-pdf?patient_id=${cleanId}&section=${cleanSec}&download=0`;
     const downloadUrl = `/api/dossiers/section-pdf?patient_id=${cleanId}&section=${cleanSec}&download=1`;
+    const finalFileName = getSafeFileName(patientName, patientCode, section);
 
     if (el.pdfModalTitle) {
-      el.pdfModalTitle.textContent = docTitle || 'Dossye hujjati';
+      el.pdfModalTitle.textContent = `${finalFileName} — ${docTitle || 'Dossye'}`;
     }
 
     if (el.btnPdfModalDownload) {
       el.btnPdfModalDownload.href = downloadUrl;
+      el.btnPdfModalDownload.download = finalFileName;
     }
 
     if (el.pdfModalIframe) {
@@ -500,9 +522,9 @@
     const title = `${titleMap[section] || 'Dossye'} (${name || code || pid})`;
 
     if (action === 'download') {
-      downloadSection(pid, section, code);
+      downloadSection(pid, section, code, name);
     } else if (action === 'preview') {
-      previewSection(pid, section, title);
+      previewSection(pid, section, title, name, code);
     }
   }
 
