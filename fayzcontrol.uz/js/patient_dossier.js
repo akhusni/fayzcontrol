@@ -270,65 +270,65 @@
             </div>
           </td>
 
-          <!-- A bo'lim: Anamnez -->
+          <!-- Kasallik tarixi & Anamnez -->
           <td class="col-section col-sec-a">
             <div class="section-action-cell">
-              <i class="fas fa-check-circle file-status-indicator" title="A bo'lim shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="A bo'limni ko'chirish (Anamnez PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'a', '${escapeJs(safeCode)}')">
+              <i class="fas fa-check-circle file-status-indicator" title="Kasallik tarixi shakllantirishga tayyor"></i>
+              <button type="button" class="btn-sec-download" title="Kasallik tarixi va anamnezni ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'a', '${escapeJs(safeCode)}')">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="A bo'limni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'a', 'A bo\'lim: Anamnez (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" title="Kasallik tarixini ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'a', 'Kasallik tarixi va anamnez (${escapeJs(safeName)}')">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
           </td>
 
-          <!-- B bo'lim: Status & Ko'rik -->
+          <!-- Status & Ko'rik -->
           <td class="col-section col-sec-b">
             <div class="section-action-cell">
-              <i class="fas fa-check-circle file-status-indicator" title="B bo'lim shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="B bo'limni ko'chirish (Status & Ko'rik PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'b', '${escapeJs(safeCode)}')">
+              <i class="fas fa-check-circle file-status-indicator" title="Status va ko'rik shakllantirishga tayyor"></i>
+              <button type="button" class="btn-sec-download" title="Psixosomatik status va ko'rikni ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'b', '${escapeJs(safeCode)}')">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="B bo'limni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'b', 'B bo\'lim: Status & Ko\'rik (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" title="Status va ko'rikni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'b', 'Status va ko\\'rik (${escapeJs(safeName)}')">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
           </td>
 
-          <!-- C bo'lim: Dorilar varaqasi -->
+          <!-- Dorilar varaqasi -->
           <td class="col-section col-sec-c">
             <div class="section-action-cell">
-              <i class="fas fa-check-circle file-status-indicator" title="C bo'lim shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="C bo'limni ko'chirish (Dorilar varaqasi PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'c', '${escapeJs(safeCode)}')">
+              <i class="fas fa-check-circle file-status-indicator" title="Dorilar varaqasi shakllantirishga tayyor"></i>
+              <button type="button" class="btn-sec-download" title="Dorilar varaqasini ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'c', '${escapeJs(safeCode)}')">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="C bo'limni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'c', 'C bo\'lim: Dorilar (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" title="Dorilar varaqasini ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'c', 'Dorilar varaqasi (${escapeJs(safeName)}')">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
           </td>
 
-          <!-- D bo'lim: Chiqarish epikrizi -->
+          <!-- Chiqarish epikrizi -->
           <td class="col-section col-sec-d">
             <div class="section-action-cell">
-              <i class="fas fa-check-circle file-status-indicator" title="D bo'lim shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" title="D bo'limni ko'chirish (Chiqarish epikrizi PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'd', '${escapeJs(safeCode)}')">
+              <i class="fas fa-check-circle file-status-indicator" title="Chiqarish epikrizi shakllantirishga tayyor"></i>
+              <button type="button" class="btn-sec-download" title="Chiqarish epikrizini ko'chirish (PDF)" onclick="window.FMHDossier.downloadSection(${pt.id}, 'd', '${escapeJs(safeCode)}')">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" title="D bo'limni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'd', 'D bo\'lim: Epikriz (${escapeJs(safeName)}')">
+              <button type="button" class="btn-sec-preview" title="Chiqarish epikrizini ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'd', 'Chiqarish epikrizi (${escapeJs(safeName)}')">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
           </td>
 
-          <!-- Umumiy Hujjat: A+B+C+D jamlangan to'liq dossye -->
+          <!-- Umumiy to'liq dossye -->
           <td class="col-general">
             <div class="full-action-cell">
-              <button type="button" class="btn-full-download" title="1 ta umumlashtirilgan to'liq rasmiy hujjatni (A+B+C+D) ko'chirish" onclick="window.FMHDossier.downloadSection(${pt.id}, 'full', '${escapeJs(safeCode)}')">
+              <button type="button" class="btn-full-download" title="1 ta umumlashtirilgan to'liq rasmiy dossyeni ko'chirish" onclick="window.FMHDossier.downloadSection(${pt.id}, 'full', '${escapeJs(safeCode)}')">
                 <i class="fas fa-file-pdf"></i> <span>To'liq Dossye</span>
               </button>
-              <button type="button" class="btn-full-preview" title="To'liq dossyeni oldindan ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'full', 'Umumiy Dossye (${escapeJs(safeName)}')">
+              <button type="button" class="btn-full-preview" title="To'liq dossyeni ko'rish" onclick="window.FMHDossier.previewSection(${pt.id}, 'full', 'Umumiy to\\'liq dossye (${escapeJs(safeName)}')">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -385,11 +385,11 @@
 
     if (window.FMHDialogs) {
       const secName = {
-        'a': 'A bo\'lim (Anamnez)',
-        'b': 'B bo\'lim (Status)',
-        'c': 'C bo\'lim (Dorilar)',
-        'd': 'D bo\'lim (Epikriz)',
-        'full': 'Umumiy Dossye'
+        'a': 'Kasallik tarixi va anamnez',
+        'b': 'Psixosomatik status va ko\'rik',
+        'c': 'Dorilar varaqasi',
+        'd': 'Chiqarish epikrizi',
+        'full': 'Umumiy to\'liq dossye'
       }[section] || 'Dossye';
       window.FMHDialogs.toast(`${secName} yuklab olinmoqda...`, 'info', 2500);
     }

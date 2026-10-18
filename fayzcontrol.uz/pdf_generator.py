@@ -989,8 +989,8 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         res = []
         res.append(header_table)
         res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
-        res.append(Paragraph("BEMOR TIBBIY KARTASI VA KASALLIK TARIXI (EMR)", title_style))
-        subtitle = "A BO'LIM: ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ" if standalone else "1-SAHIFA: ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ"
+        res.append(Paragraph("BEMOR TIBBIY KARTASI — KASALLIK TARIXI VA ANAMNEZ" if standalone else "BEMOR TIBBIY KARTASI VA KASALLIK TARIXI (EMR)", title_style))
+        subtitle = "ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ" if standalone else "1-SAHIFA: ANKETA MA'LUMOTLARI VA BIRLAMCHI ANAMNEZ"
         res.append(Paragraph(subtitle, subtitle_style))
         res.append(Spacer(1, 6))
         res.append(pt_grid_table)
@@ -1015,7 +1015,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         if standalone:
             res.append(header_table)
             res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
-            res.append(Paragraph("BEMOR TIBBIY KARTASI — B BO'LIM: STATUS VA KO'RIK", title_style))
+            res.append(Paragraph("BEMOR TIBBIY KARTASI — STATUS VA KO'RIK", title_style))
             res.append(Paragraph("OBYEKTIV SOMATIK, PSIXIK VA GEMODINAMIK KO'RSATKICHLAR", subtitle_style))
             res.append(Spacer(1, 4))
             res.append(pt_summary_table)
@@ -1055,8 +1055,8 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         if standalone:
             res.append(header_table)
             res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
-            res.append(Paragraph("BEMOR TIBBIY KARTASI — C BO'LIM: FARMAKOTERAPIYA", title_style))
-            res.append(Paragraph("TAYINLANGAN VA QABUL QILINGAN DORILAR VARAQASI", subtitle_style))
+            res.append(Paragraph("BEMOR TIBBIY KARTASI — DORILAR VARAQASI", title_style))
+            res.append(Paragraph("TAYINLANGAN VA QABUL QILINGAN DORILAR (FARMAKOTERAPIYA)", subtitle_style))
             res.append(Spacer(1, 4))
             res.append(pt_summary_table)
             res.append(Spacer(1, 6))
@@ -1095,7 +1095,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         if standalone:
             res.append(header_table)
             res.append(HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceBefore=3, spaceAfter=6))
-            res.append(Paragraph("BEMOR TIBBIY KARTASI — D BO'LIM: CHIQARISH EPIKRIZI", title_style))
+            res.append(Paragraph("BEMOR TIBBIY KARTASI — CHIQARISH EPIKRIZI", title_style))
             res.append(Paragraph("KUNDALIK SHIFOKOR MONITORINGI, EPIKRIZ VA YAKUNIY TAVSIYALAR", subtitle_style))
             res.append(Spacer(1, 4))
             res.append(pt_summary_table)
@@ -1125,15 +1125,15 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         return res
 
     story = []
-    if doc_type == 'section_a':
+    if doc_type in ('section_a', 'section_anamnez', 'anamnez'):
         story = build_sec_a(standalone=True)
-    elif doc_type == 'section_b':
+    elif doc_type in ('section_b', 'section_status', 'status'):
         story = build_sec_b(standalone=True)
-    elif doc_type == 'section_c':
+    elif doc_type in ('section_c', 'section_dorilar', 'dorilar'):
         story = build_sec_c(standalone=True)
-    elif doc_type == 'section_d':
+    elif doc_type in ('section_d', 'section_epikriz', 'epikriz'):
         story = build_sec_d(standalone=True)
-    elif doc_type in ('4_page', 'full'):
+    elif doc_type in ('4_page', 'full', 'toliq'):
         story = (
             build_sec_a(standalone=False) + [PageBreak()] +
             build_sec_b(standalone=False) + [PageBreak()] +

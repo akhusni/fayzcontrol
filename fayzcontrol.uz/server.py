@@ -3101,24 +3101,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 real_pid = patient['id']
 
                 sec = (query.get('section', ['full'])[0] or 'full').lower().strip()
-                if sec in ('a', 'section_a'):
+                if sec in ('a', 'section_a', 'anamnez', 'tarix'):
                     doc_type = 'section_a'
-                    prefix = 'A_Bolim_Anamnez'
-                elif sec in ('b', 'section_b'):
+                    prefix = 'Kasallik_Tarixi_va_Anamnez'
+                elif sec in ('b', 'section_b', 'status', 'korik'):
                     doc_type = 'section_b'
-                    prefix = 'B_Bolim_Status'
-                elif sec in ('c', 'section_c'):
+                    prefix = 'Status_va_Korik'
+                elif sec in ('c', 'section_c', 'dorilar', 'dori'):
                     doc_type = 'section_c'
-                    prefix = 'C_Bolim_Dorilar'
-                elif sec in ('d', 'section_d'):
+                    prefix = 'Dorilar_Varaqasi'
+                elif sec in ('d', 'section_d', 'epikriz'):
                     doc_type = 'section_d'
-                    prefix = 'D_Bolim_Epikriz'
+                    prefix = 'Chiqarish_Epikrizi'
                 elif sec in ('2', '2_page'):
                     doc_type = '2_page'
                     prefix = 'Qisqacha_Dossye'
                 else:
                     doc_type = '4_page'
-                    prefix = 'Umumiy_Dossye_Toliq'
+                    prefix = 'Umumiy_Toliq_Dossye'
 
                 try:
                     pdf_result = generate_patient_dossier_pdf(real_pid, doc_type=doc_type)

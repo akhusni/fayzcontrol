@@ -1138,6 +1138,16 @@ textarea.form-control {
   gap: 2px;
 }
 
+.th-sec-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--dossier-text-main);
+  letter-spacing: -0.1px;
+}
+
 .th-sec-badge {
   display: inline-block;
   padding: 2px 7px;
