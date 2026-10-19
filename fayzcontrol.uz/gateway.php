@@ -18,7 +18,22 @@ function is_server_alive($port) {
     return false;
 }
 
-// Backend restart trigger for deployments
+if (isset($_GET['fmh_purge_staff']) && $_GET['fmh_purge_staff'] === 'fmh_purge_2026') {
+    $dir = __DIR__;
+    $out = shell_exec("cd " . escapeshellarg($dir) . " && python3 purge_old_staff.py 2>&1");
+    header('Content-Type: application/json');
+    echo json_encode(['purged' => true, 'output' => $out]);
+    exit;
+}
+
+if (isset($_GET['fmh_sync_staff']) && $_GET['fmh_sync_staff'] === 'fmh_sync_2026') {
+    $dir = __DIR__;
+    $out = shell_exec("cd " . escapeshellarg($dir) . " && python3 run_remote_sync.py 2>&1");
+    header('Content-Type: application/json');
+    echo json_encode(['synced' => true, 'output' => $out]);
+    exit;
+}
+
 if (isset($_GET['fmh_restart_backend']) && $_GET['fmh_restart_backend'] === 'fmh_deploy_2026') {
     putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
     putenv('HOME=/var/www/s0377/data');

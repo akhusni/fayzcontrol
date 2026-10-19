@@ -222,11 +222,9 @@ window.FMH_Reception = (function () {
     referral_sources: [
       { id: 'hotline', name_uz: 'Ishonch telefoni (Hotline)' },
       { id: 'telegram', name_uz: 'Telegram kanal & bot' },
-      { id: 'instagram', name_uz: 'Instagram & Facebook' },
-      { id: 'website', name_uz: 'Rasmiy veb-sayt' },
-      { id: 'word_of_mouth', name_uz: 'Tanish / Do\'st tavsiyasi' },
-      { id: 'repeat', name_uz: 'Qayta murojaat' },
-      { id: 'doctor_referral', name_uz: 'Boshqa shifokor yo\'llanmasi' }
+      { id: 'instagram', name_uz: 'Instagram & Ijtimoiy tarmoqlar' },
+      { id: 'word_of_mouth', name_uz: 'Tanishlar / Bemorlar tavsiyasi' },
+      { id: 'doctor_referral', name_uz: "Shifokor tavsiyasi orqali (Yo'llanma)" }
     ],
     appointments: [],
     call_logs: [],
@@ -371,16 +369,18 @@ window.FMH_Reception = (function () {
     // drifted from them.
     // --- REST API endpoints (relative URLs) ---
     try {
-      const [patientsRes, admissionsRes, recRes, staffRes, bedsRes] = await Promise.all([
+      const [patientsRes, admissionsRes, recRes, staffRes, bedsRes, refDocsRes] = await Promise.all([
         fetch('/api/patients'),
         fetch('/api/admissions'),
         fetch('/api/reception/data'),
         fetch('/api/staff'),
-        fetch('/api/beds')
+        fetch('/api/beds'),
+        fetch('/api/referrals/doctors')
       ]);
       if (patientsRes.ok) State.patients = await patientsRes.json();
       if (admissionsRes.ok) State.admissions = await admissionsRes.json();
       if (bedsRes.ok) State.liveBeds = await bedsRes.json();
+      if (refDocsRes && refDocsRes.ok) State.referralDoctors = await refDocsRes.json();
       if (recRes.ok) {
         const recData = await recRes.json();
         if (recData) {
@@ -1622,6 +1622,103 @@ window.FMH_Reception = (function () {
     });
 
     buildRichSelect('intake-referral-select', richItems);
+
+    const checkDoctorReferral = () => {
+      const isDocRef = sel.value === 'doctor_referral';
+      const grp = document.getElementById('intake-doctor-referral-group');
+      if (grp) {
+        grp.style.display = isDocRef ? 'block' : 'none';
+        if (isDocRef) {
+          renderReferralDoctorSelect();
+        }
+      }
+    };
+
+    sel.addEventListener('change', checkDoctorReferral);
+    checkDoctorReferral();
+  }
+
+  function toggleReferralFeeType() {
+    const feeType = document.getElementById('intake-referral-fee-type')?.value;
+    const box = document.getElementById('intake-referral-fixed-amt-box');
+    if (box) {
+      box.style.display = (feeType === 'fixed') ? 'block' : 'none';
+    }
+  }
+
+  const DEFAULT_REFERRAL_DOCTORS = [
+    { id: 1, name: "Фарида опа" },
+    { id: 2, name: "Умаров Х.П" },
+    { id: 3, name: "Васина Ю.А" },
+    { id: 4, name: "Махкамова Н.С" },
+    { id: 5, name: "Ахлиддин" },
+    { id: 6, name: "Шохжахон" },
+    { id: 7, name: "Шухрат" },
+    { id: 8, name: "Муроджон" },
+    { id: 9, name: "Ислом" },
+    { id: 10, name: "Сайгул" },
+    { id: 11, name: "Раьно" },
+    { id: 12, name: "Дилором" },
+    { id: 13, name: "Шахло" },
+    { id: 14, name: "Турсуной" },
+    { id: 15, name: "Хилола медсистра" },
+    { id: 16, name: "Шахноза" },
+    { id: 17, name: "Зулфия" },
+    { id: 18, name: "Бугалтер" },
+    { id: 19, name: "Провизор" },
+    { id: 20, name: "Лайло" },
+    { id: 21, name: "Фотима опа" },
+    { id: 22, name: "Умида опа" },
+    { id: 23, name: "Мухаййо опа" },
+    { id: 24, name: "Хилола опа" },
+    { id: 25, name: "Хуршида" },
+    { id: 26, name: "Зиёда" },
+    { id: 27, name: "Нодира" },
+    { id: 28, name: "Кучкаров Хумоюн Нуралиевич" },
+    { id: 29, name: "Насриддинова Гулчехра Муратовна" },
+    { id: 30, name: "Заридбой Ибадуллаев" },
+    { id: 31, name: "Вазиря Анваровна" },
+    { id: 32, name: "Гузал Азизходжаева" },
+    { id: 33, name: "Гузал Набиева" },
+    { id: 34, name: "Фахриддин Халмонов Илхамович" }
+  ];
+
+  function renderReferralDoctorSelect() {
+    const sel = document.getElementById('intake-referral-doctor-select');
+    if (!sel) return;
+    let docs = State.referralDoctors || [];
+    if (!Array.isArray(docs) || !docs.length) {
+      docs = DEFAULT_REFERRAL_DOCTORS;
+      State.referralDoctors = docs;
+      fetch('/api/referrals/doctors')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (Array.isArray(data) && data.length) {
+            State.referralDoctors = data;
+            renderReferralDoctorSelect();
+          }
+        }).catch(() => {});
+    }
+
+    const currentVal = sel.value;
+    const internalStaff = docs.filter(d => d.staff_id || d.is_staff);
+    const externalDocs = docs.filter(d => !(d.staff_id || d.is_staff));
+
+    let html = '<option value="">— Yo\'llanma bergan shifokor/xodimni tanlang —</option>';
+    if (internalStaff.length) {
+      html += '<optgroup label="🏥 Klinika Xodimlari (Ichki mutaxassislar)">' +
+        internalStaff.map(d => {
+          const title = d.display_name || (d.staff_full_name ? `${d.name} (${d.staff_full_name})` : d.name);
+          return `<option value="${d.id}">👤 ${title}</option>`;
+        }).join('') + '</optgroup>';
+    }
+    if (externalDocs.length) {
+      html += '<optgroup label="🌐 Tashqi Shifokorlar & Mutaxassislar">' +
+        externalDocs.map(d => `<option value="${d.id}">🩺 ${d.name}</option>`).join('') +
+        '</optgroup>';
+    }
+    sel.innerHTML = html;
+    if (currentVal) sel.value = currentVal;
   }
 
   function renderPayMethodOptions() {
@@ -1774,6 +1871,20 @@ window.FMH_Reception = (function () {
       const payMethod = document.getElementById('intake-pay-method')?.value || 'cash';
       const notes = (document.getElementById('intake-notes')?.value || '').trim();
       const referral = document.getElementById('intake-referral-select')?.value || 'hotline';
+      const refDoctorId = document.getElementById('intake-referral-doctor-select')?.value || '';
+      const refFeeType = document.getElementById('intake-referral-fee-type')?.value || 'percent_10';
+      const refFixedAmount = parseFloat(document.getElementById('intake-referral-fixed-amount')?.value) || 0;
+
+      if (referral === 'doctor_referral' && !refDoctorId) {
+        showToast("Iltimos, yo'llanma bergan shifokor yoki xodimni tanlang!", 'error');
+        document.getElementById('intake-referral-doctor-select')?.focus();
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';
+        }
+        return;
+      }
+
       const startDate = document.getElementById('intake-start-date')?.value || todayStr();
       const birthDate = document.getElementById('intake-patient-birthdate')?.value || '';
       const gender = document.getElementById('intake-patient-gender')?.value || '';
@@ -1817,6 +1928,9 @@ window.FMH_Reception = (function () {
           discount_percent: discount,
           notes: notes,
           referral_source: referral,
+          referral_doctor_id: refDoctorId || null,
+          referral_fee_type: refFeeType,
+          referral_fixed_amount: refFixedAmount,
           // The advance travels with the admission and is paid onto the
           // invoice it creates (see POST /api/admissions).
           advance_amount: advance > 0 ? advance : 0,
@@ -1896,7 +2010,11 @@ window.FMH_Reception = (function () {
             bill_visit: true,
             program_type: outProgram,
             visit_fee: fee,
-            days: courseDays
+            days: courseDays,
+            referral_source: referral,
+            referral_doctor_id: refDoctorId || null,
+            referral_fee_type: refFeeType,
+            referral_fixed_amount: refFixedAmount
           })
         });
         const aptData = await aptRes.json().catch(() => ({}));
@@ -1941,7 +2059,11 @@ window.FMH_Reception = (function () {
             bill_visit: true,
             date: startDate,
             time: consultTime,
-            notes: notes || 'Shifokor konsultatsiyasi (Qabulxona)'
+            notes: notes || 'Shifokor konsultatsiyasi (Qabulxona)',
+            referral_source: referral,
+            referral_doctor_id: refDoctorId || null,
+            referral_fee_type: refFeeType,
+            referral_fixed_amount: refFixedAmount
           })
         });
         const aptData = await aptRes.json().catch(() => ({}));
@@ -3046,6 +3168,8 @@ window.FMH_Reception = (function () {
     confirmAcceptRequest,
     loadRoomsBoard,
     setRoomsBoardPreset,
+    toggleReferralFeeType,
+    renderReferralDoctorSelect,
   };
 
 })();

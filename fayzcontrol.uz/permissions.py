@@ -247,7 +247,11 @@ API_RULES = [
     ('/api/accounting/medication-purchases', 'accounting', None),
     ('/api/accounting/transaction',   'accounting', None),
     ('/api/accounting/invoice-items', 'accounting', 'write'),
+    ('/api/accounting/duration',      'accounting', 'write'),
     ('/api/accounting/data',          'accounting', 'read'),
+    # Referral commissions (gonorarlar)
+    ('/api/referrals/pay',            'accounting', 'write'),
+    ('/api/referrals',                'accounting', 'read'),
     # One patient's invoices with their lines and payments (read-only view).
     ('/api/accounting/patient-invoices', 'accounting', 'read'),
     ('/api/accounting/medicine-usage', 'accounting', 'read'),
@@ -289,6 +293,7 @@ API_READ_EXEMPT = {
     '/api/staff',
     '/api/doctors',
     '/api/duty-schedule',
+    '/api/referrals/doctors',
 }
 # /api/hr/data was on this list, so every signed-in member of staff could read
 # all salaries and the attendance sheet. Only the HR page uses it; it now needs

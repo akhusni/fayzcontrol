@@ -785,6 +785,7 @@ from db import (
     admit_patient,
     transfer_patient_bed,
     discharge_patient,
+    find_booking_conflict,
     list_room_availability,
     ensure_patient_columns,
     ensure_ward_round_schema,
@@ -2332,6 +2333,65 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
+            # 7e. GET /api/referrals/doctors -> List of 34 referral doctors merged with staff data
+            elif path == '/api/referrals/doctors':
+                cur.execute("""
+                    SELECT rd.id, rd.name, rd.staff_id, rd.phone, rd.is_active,
+                           s.full_name AS staff_full_name, s.role AS staff_role, s.specialty AS staff_specialty,
+                           s.salary_base AS staff_salary_base
+                    FROM referral_doctors rd
+                    LEFT JOIN staff s ON rd.staff_id = s.id
+                    WHERE rd.is_active = 1
+                    ORDER BY rd.id
+                """)
+                docs = [dict(r) for r in cur.fetchall()]
+                for d in docs:
+                    d['is_staff'] = bool(d.get('staff_id'))
+                    if d.get('staff_full_name'):
+                        d['display_name'] = f"{d['name']} ({d['staff_full_name']})"
+                    else:
+                        d['display_name'] = d['name']
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(docs, ensure_ascii=False).encode('utf-8'))
+
+            # 7f. GET /api/referrals -> List all referral commissions & totals
+            elif path == '/api/referrals':
+                month = (query.get('month', [''])[0] or '').strip()
+                status = (query.get('status', [''])[0] or '').strip()
+                sql = """
+                    SELECT pr.*, 
+                           COALESCE(inv.total_paid, 0) AS invoice_total_paid,
+                           COALESCE(inv.net_amount, 0) AS invoice_net_amount,
+                           COALESCE(inv.balance_due, 0) AS invoice_balance_due,
+                           COALESCE(inv.payment_status, 'unpaid') AS invoice_payment_status,
+                           rd.staff_id
+                    FROM patient_referrals pr
+                    LEFT JOIN referral_doctors rd ON pr.doctor_referral_id = rd.id
+                    LEFT JOIN invoices inv ON pr.invoice_id = inv.id
+                    WHERE 1=1
+                """
+                params = []
+                if month:
+                    sql += " AND pr.created_at LIKE ? "
+                    params.append(f"{month}%")
+                if status:
+                    sql += " AND pr.status = ? "
+                    params.append(status)
+                sql += " ORDER BY pr.created_at DESC"
+                cur.execute(sql, tuple(params))
+                referrals = [dict(r) for r in cur.fetchall()]
+                
+                # Format amounts
+                for r in referrals:
+                    r['calculated_amount'] = float(r.get('calculated_amount') or 0)
+                    r['fixed_amount'] = float(r.get('fixed_amount') or 0)
+                    r['base_total_billed'] = float(r.get('base_total_billed') or 0)
+                    r['created_at'] = str(r['created_at']) if r.get('created_at') else ''
+                    r['paid_at'] = str(r['paid_at']) if r.get('paid_at') else ''
+
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(referrals, ensure_ascii=False).encode('utf-8'))
+
             # 8. /api/hr/data -> 100% Dynamic MySQL-Powered HR Dataset
             # 8a. GET /api/hr/payroll?month=YYYY-MM -> pay counted from the
             # saved duty roster (see payroll.py for why it left the browser).
@@ -2345,9 +2405,23 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 staff_rows = [dict(r) for r in cur.fetchall()]
                 roster = read_json_file(os.path.join(BASE_DIR, 'data', 'duty_schedule.json'), default=None)
                 shifts = roster.get('shifts') if isinstance(roster, dict) else None
+
+                # Calculate unpaid referral bonuses linked to staff members for this month
+                cur.execute("""
+                    SELECT rd.staff_id, SUM(pr.calculated_amount) AS bonus_sum
+                    FROM patient_referrals pr
+                    JOIN referral_doctors rd ON pr.doctor_referral_id = rd.id
+                    WHERE rd.staff_id IS NOT NULL 
+                      AND pr.status = 'pending'
+                      AND pr.created_at LIKE ?
+                    GROUP BY rd.staff_id
+                """, (f"{month}%",))
+                bonus_map = {str(r['staff_id']): float(r['bonus_sum'] or 0) for r in cur.fetchall()}
+
                 result = payroll.build_payroll(month, staff_rows,
                                                shifts if isinstance(shifts, list) else [],
-                                               load_pricing()['duty_tariffs'])
+                                               load_pricing()['duty_tariffs'],
+                                               bonuses=bonus_map)
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
 
@@ -3356,6 +3430,43 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             pass
                         advance_payment_id = None
 
+                # If referred by a doctor/staff, record referral commission (gonorar)
+                ref_doctor_id = str(body.get('referral_doctor_id') or '').strip()
+                if body.get('referral_source') == 'doctor_referral' and ref_doctor_id:
+                    cur.execute("SELECT id, name FROM referral_doctors WHERE id = ?", (ref_doctor_id,))
+                    _rd = cur.fetchone()
+                    if _rd:
+                        ref_fee_type = body.get('referral_fee_type') or 'percent_10'
+                        ref_fixed_amt = float(body.get('referral_fixed_amount') or 0.0)
+                        
+                        # Total net/billed for calculating 10%
+                        _inv_net = 0.0
+                        if res_data.get('invoice_id'):
+                            cur.execute("SELECT net_amount, total_billed FROM invoices WHERE id = ?", (res_data.get('invoice_id'),))
+                            _inv_r = cur.fetchone()
+                            if _inv_r:
+                                _inv_net = float(_inv_r.get('net_amount') or _inv_r.get('total_billed') or 0.0)
+
+                        if ref_fee_type == 'fixed':
+                            calc_amt = ref_fixed_amt
+                        else:
+                            calc_amt = round(_inv_net * 0.10, 2)
+
+                        ref_rec_id = new_record_id(cur, 'patient_referrals', 'REF-2026')
+                        pt_name = body.get('patient_name') or 'Bemor'
+                        cur.execute("""
+                            INSERT INTO patient_referrals (
+                                id, patient_id, admission_id, invoice_id, patient_name,
+                                doctor_referral_id, doctor_name, fee_type, fixed_amount,
+                                base_total_billed, calculated_amount, status
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                        """, (
+                            ref_rec_id, patient_id, res_data.get('admission_id'), res_data.get('invoice_id'),
+                            pt_name, _rd['id'], _rd['name'], ref_fee_type, ref_fixed_amt,
+                            _inv_net, calc_amt
+                        ))
+                        conn.commit()
+
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({
                     'advance_payment_id': advance_payment_id,
@@ -3610,6 +3721,16 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         date_str,
                         _staff_ref
                     ))
+                # If salary is being paid for a staff member, also mark their pending referrals for that month as paid
+                if category == 'salary' and _staff_ref and payroll_month:
+                    now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cur.execute("""
+                        UPDATE patient_referrals pr
+                        JOIN referral_doctors rd ON pr.doctor_referral_id = rd.id
+                        SET pr.status = 'paid', pr.paid_at = ?, pr.paid_by = ?, pr.payment_transaction_id = ?
+                        WHERE rd.staff_id = ? AND pr.status = 'pending' AND pr.created_at LIKE ?
+                    """, (now_str, self._actor_staff_id(body, 'recorded_by_staff_id'), trx_id, _staff_ref, f"{payroll_month}%"))
+
                 conn.commit()
                 if telegram_service:
                     try:
@@ -3628,6 +3749,65 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.close()
                 self._set_json_headers(201)
                 self.wfile.write(json.dumps({'message': 'Transaction saved', 'id': trx_id}, ensure_ascii=False).encode('utf-8'))
+
+            # 3a-ref. POST /api/referrals/pay -> Payout a referral commission
+            elif path == '/api/referrals/pay':
+                ref_id = str(body.get('referral_id') or '').strip()
+                if not ref_id:
+                    self._send_validation_error("Yo'llanma ID tanlanmagan.", 'referral_id')
+                    return
+                cur.execute("""
+                    SELECT pr.*, rd.name as doc_name, rd.staff_id
+                    FROM patient_referrals pr
+                    LEFT JOIN referral_doctors rd ON pr.doctor_referral_id = rd.id
+                    WHERE pr.id = ?
+                """, (ref_id,))
+                ref = cur.fetchone()
+                if not ref:
+                    self._send_validation_error(f"Yo'llanma topilmadi ({ref_id}).", 'referral_id')
+                    return
+                if ref['status'] == 'paid':
+                    self._send_validation_error("Ushbu gonorar allaqachon to'langan.", 'referral_id')
+                    return
+
+                pay_amt = float(ref.get('calculated_amount') or 0.0)
+                if pay_amt <= 0:
+                    self._send_validation_error("To'lanadigan gonorar summasi 0 bo'lishi mumkin emas.", 'amount')
+                    return
+
+                method = normalize_payment_method(body.get('payment_method', 'cash'))
+                acc_src = account_source_for(method)
+                today_str = datetime.date.today().isoformat()
+                now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                trx_id = new_record_id(cur, 'accounting_transactions', 'TRX-2026')
+                desc = f"Shifokor gonorari to'lovi \u2014 {ref['doctor_name']} (Bemor: {ref['patient_name']})"
+                actor_id = self._actor_staff_id(body, 'recorded_by_staff_id')
+                _staff_ref = ref.get('staff_id')
+
+                # Create accounting expense transaction
+                cur.execute("""
+                    INSERT INTO accounting_transactions (
+                        id, transaction_type, category, amount, payment_method,
+                        account_source, description, transaction_date, related_staff_id
+                    ) VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, ?)
+                """, (trx_id, pay_amt, method, acc_src, desc, today_str, _staff_ref))
+
+                # Mark referral as paid
+                cur.execute("""
+                    UPDATE patient_referrals
+                    SET status = 'paid', payment_transaction_id = ?, paid_at = ?, paid_by = ?
+                    WHERE id = ?
+                """, (trx_id, now_str, actor_id or 'Buxgalter', ref_id))
+                conn.commit()
+                conn.close()
+
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'message': "Gonorar muvaffaqiyatli to'landi",
+                    'referral_id': ref_id,
+                    'transaction_id': trx_id,
+                    'amount': pay_amt
+                }, ensure_ascii=False).encode('utf-8'))
 
             # 3b. POST /api/accounting/invoice-items -- add a service or a
             # medicine from stock to a patient's bill.
@@ -3752,6 +3932,130 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'id': item_id, 'invoice_id': invoice_id, 'service_name': item_name,
                     'quantity': qty, 'unit_price': unit_price, 'total': unit_price * qty,
                     'item_type': item_type, 'invoice': totals,
+                }, ensure_ascii=False).encode('utf-8'))
+
+            # 3bb. POST /api/accounting/duration -- adjust stay duration (extend or shorten)
+            elif path == '/api/accounting/duration':
+                invoice_id = str(body.get('invoice_id') or '').strip()
+                adm_id = str(body.get('admission_id') or '').strip()
+                try:
+                    new_total_days = int(body.get('new_total_days') or 0)
+                except (TypeError, ValueError):
+                    new_total_days = 0
+                notes = str(body.get('notes') or '').strip()[:255]
+
+                if not invoice_id and not adm_id:
+                    self._send_validation_error("Hisob yoki yotqizish tanlanmagan.", 'invoice_id')
+                    return
+                if new_total_days < 1 or new_total_days > 180:
+                    self._send_validation_error("Davomiylik 1 dan 180 kungacha bo'lishi kerak.", 'new_total_days')
+                    return
+
+                if invoice_id:
+                    cur.execute("""
+                        SELECT inv.id AS invoice_id, inv.payment_status, inv.admission_id,
+                               a.id AS adm_id, a.patient_id, a.bed_id, a.program_type,
+                               a.start_date, a.planned_end_date, a.actual_end_date,
+                               a.daily_price, a.status AS admission_status, a.admission_notes
+                        FROM invoices inv
+                        JOIN admissions a ON a.id = inv.admission_id
+                        WHERE inv.id = ?
+                    """, (invoice_id,))
+                else:
+                    cur.execute("""
+                        SELECT inv.id AS invoice_id, inv.payment_status, inv.admission_id,
+                               a.id AS adm_id, a.patient_id, a.bed_id, a.program_type,
+                               a.start_date, a.planned_end_date, a.actual_end_date,
+                               a.daily_price, a.status AS admission_status, a.admission_notes
+                        FROM admissions a
+                        JOIN invoices inv ON inv.admission_id = a.id
+                        WHERE a.id = ?
+                    """, (adm_id,))
+                rec = cur.fetchone()
+                if not rec:
+                    self._send_validation_error("Statsionar yotqizish hisobi topilmadi.", 'invoice_id')
+                    return
+
+                if rec['payment_status'] in ('refund_due', 'refunded'):
+                    self._send_validation_error("Qaytarish holatidagi hisob muddatini o'zgartirib bo'lmaydi.", 'invoice_id')
+                    return
+
+                start_d = datetime.datetime.strptime(str(rec['start_date'])[:10], '%Y-%m-%d').date()
+                old_planned_end = datetime.datetime.strptime(str(rec['planned_end_date'])[:10], '%Y-%m-%d').date()
+                new_planned_end = start_d + datetime.timedelta(days=new_total_days)
+
+                # Check conflict if extending
+                if new_planned_end > old_planned_end:
+                    conflict = find_booking_conflict(cur, rec['bed_id'], rec['start_date'], new_planned_end,
+                                                     program_type=rec['program_type'],
+                                                     exclude_admission_id=rec['adm_id'])
+                    if conflict:
+                        self._send_validation_error(conflict, 'new_total_days')
+                        return
+
+                new_planned_end_str = new_planned_end.isoformat()
+                adm_notes = rec.get('admission_notes') or ''
+                if notes:
+                    timestamp_now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
+                    adm_notes = (adm_notes + f"\n[{timestamp_now}] Muddat o'zgartirildi ({new_total_days} kun): {notes}").strip()
+
+                cur.execute("""
+                    UPDATE admissions 
+                    SET planned_end_date = ?, admission_notes = ?, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                """, (new_planned_end_str, adm_notes, rec['adm_id']))
+
+                # Update invoice_items bed_stay segment(s)
+                cur.execute("""
+                    SELECT id, service_name, quantity, unit_price, total_amount, service_start_date, service_end_date
+                    FROM invoice_items
+                    WHERE invoice_id = ? AND item_type = 'bed_stay'
+                    ORDER BY id ASC
+                """, (rec['invoice_id'],))
+                stay_segments = [dict(r) for r in cur.fetchall()]
+
+                if stay_segments:
+                    if len(stay_segments) == 1:
+                        seg = stay_segments[0]
+                        cur.execute("""
+                            UPDATE invoice_items
+                            SET quantity = ?, service_end_date = ?
+                            WHERE id = ?
+                        """, (new_total_days, new_planned_end_str, seg['id']))
+                    else:
+                        prior_days = sum(float(s['quantity'] or 0) for s in stay_segments[:-1])
+                        last_seg_days = max(1, new_total_days - prior_days)
+                        last_seg = stay_segments[-1]
+                        cur.execute("""
+                            UPDATE invoice_items
+                            SET quantity = ?, service_end_date = ?
+                            WHERE id = ?
+                        """, (last_seg_days, new_planned_end_str, last_seg['id']))
+                else:
+                    cur.execute("""
+                        INSERT INTO invoice_items (
+                            invoice_id, service_name, quantity, unit_price, item_type,
+                            service_start_date, service_end_date, bed_id
+                        ) VALUES (?, ?, ?, ?, 'bed_stay', ?, ?, ?)
+                    """, (rec['invoice_id'], f"Statsionar yotoq ({rec['bed_id']})",
+                          new_total_days, rec['daily_price'], rec['start_date'], new_planned_end_str, rec['bed_id']))
+
+                conn.commit()
+
+                cur.execute("""
+                    SELECT total_billed, discount_amount, net_amount, total_paid, balance_due, payment_status
+                    FROM invoices WHERE id = ?
+                """, (rec['invoice_id'],))
+                updated_inv = dict(cur.fetchone() or {})
+
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'message': "Davolanish muddati muvaffaqiyatli o'zgartirildi",
+                    'invoice_id': rec['invoice_id'],
+                    'admission_id': rec['adm_id'],
+                    'new_total_days': new_total_days,
+                    'new_planned_end_date': new_planned_end_str,
+                    'totals': updated_inv
                 }, ensure_ascii=False).encode('utf-8'))
 
             # 3a. POST /api/accounting/medication-purchases (Record Medication Purchase Expense & Restock)
@@ -4700,6 +5004,34 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         VALUES (?, ?, ?, ?, ?, ?)
                     """, (invoice_id, visit_line['service_name'], visit_line['quantity'],
                           visit_line['unit_price'], visit_line['item_type'], date_str))
+
+                # If referred by a doctor/staff, record referral commission (gonorar)
+                ref_doctor_id = str(body.get('referral_doctor_id') or '').strip()
+                if body.get('referral_source') == 'doctor_referral' and ref_doctor_id:
+                    cur.execute("SELECT id, name FROM referral_doctors WHERE id = ?", (ref_doctor_id,))
+                    _rd = cur.fetchone()
+                    if _rd:
+                        ref_fee_type = body.get('referral_fee_type') or 'percent_10'
+                        ref_fixed_amt = float(body.get('referral_fixed_amount') or 0.0)
+                        _base_billed = float(visit_line['quantity'] * visit_line['unit_price']) if visit_line else 0.0
+                        if ref_fee_type == 'fixed':
+                            calc_amt = ref_fixed_amt
+                        else:
+                            calc_amt = round(_base_billed * 0.10, 2)
+
+                        ref_rec_id = new_record_id(cur, 'patient_referrals', 'REF-2026')
+                        cur.execute("""
+                            INSERT INTO patient_referrals (
+                                id, patient_id, appointment_id, invoice_id, patient_name,
+                                doctor_referral_id, doctor_name, fee_type, fixed_amount,
+                                base_total_billed, calculated_amount, status
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                        """, (
+                            ref_rec_id, patient_id, apt_id, invoice_id,
+                            patient_name, _rd['id'], _rd['name'], ref_fee_type, ref_fixed_amt,
+                            _base_billed, calc_amt
+                        ))
+
                 conn.commit()
                 conn.close()
                 self._set_json_headers(201)

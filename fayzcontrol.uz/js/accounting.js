@@ -366,6 +366,7 @@
               // today and a 10-day stay, so a bill missing them showed (and
               // printed) a stay nobody had. Missing stays missing ("—").
               bed_id: row.bed_id || null,
+              admission_id: row.admission_id || null,
               bed_name: row.room_number ? `${row.room_number}-xona (${row.bed_code || ''})` : (row.bed_code || 'Ambulator'),
               patient_name: row.patient_name || 'Bemor',
               patient_phone: row.patient_phone || '',
@@ -475,6 +476,7 @@
       base_salary: Number(l.base_salary) || 0,
       duty_shifts: Number(l.duty_shifts) || 0,
       duty_pay: Number(l.duty_pay) || 0,
+      bonus: Number(l.bonus) || 0,
       gross: Number(l.gross) || 0,
       income_tax: Number(l.income_tax) || 0,
       pension: Number(l.pension) || 0,
@@ -965,6 +967,10 @@
             <div class="doc-stat-item">
               <div class="label">Navbatchilik (${doc.duty_shifts} smena)</div>
               <div class="val" style="color: var(--emerald);">+${formatShortUZS(doc.duty_pay)}</div>
+            </div>
+            <div class="doc-stat-item">
+              <div class="label">Gonorarlar</div>
+              <div class="val" style="color: #38bdf8;">+${formatShortUZS(doc.bonus || 0)}</div>
             </div>
             <div class="doc-stat-item">
               <div class="label">Hisoblangan (brutto)</div>
@@ -1484,9 +1490,13 @@
   // OFFICIAL INVOICE & RECEIPT (MODAL & PRINT)
   // ==========================================================================
 
+  let activeReceiptBill = null;
+
   function openInvoiceReceipt(billId) {
     const bill = accountingData.patients_billing.find(b => b.id === billId);
     if (!bill) return;
+
+    activeReceiptBill = bill;
 
     const modal = document.getElementById('invoice-receipt-modal');
     const content = document.getElementById('invoice-receipt-content');
@@ -1524,6 +1534,26 @@
     }
 
     content.innerHTML = `
+      <style>
+        .invoice-preview-container { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0f172a; padding: 1.5rem; max-width: 800px; margin: 0 auto; line-height: 1.4; background: #ffffff; }
+        .invoice-header-row { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 1.25rem; margin-bottom: 1.25rem; }
+        .inv-brand-name { font-size: 1.5rem; font-weight: 800; color: #0284c7; }
+        .inv-brand-details { font-size: 0.8rem; color: #475569; margin-top: 4px; line-height: 1.4; }
+        .inv-title-badge { text-align: right; }
+        .inv-doc-title { font-size: 1.25rem; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; }
+        .inv-doc-num { font-size: 1.1rem; font-family: monospace; font-weight: 700; color: #0284c7; }
+        .inv-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .inv-meta-col .title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700; margin-bottom: 4px; }
+        .inv-meta-col .name { font-size: 1.05rem; font-weight: 700; color: #0f172a; }
+        .inv-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+        .inv-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 8px 12px; font-size: 0.8rem; text-transform: uppercase; }
+        .inv-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem; color: #1e293b; }
+        .inv-total-box { margin-left: auto; width: 340px; margin-bottom: 1.5rem; }
+        .inv-total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.85rem; color: #475569; }
+        .inv-total-row.grand-total { border-top: 2px solid #0f172a; margin-top: 6px; padding-top: 6px; font-weight: 800; font-size: 1.1rem; color: #0f172a; }
+        .inv-footer-stamps { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px dashed #cbd5e1; font-size: 0.8rem; color: #334155; }
+        .inv-stamp-mockup { border: 2px solid #0284c7; color: #0284c7; padding: 6px 14px; border-radius: 6px; font-weight: 800; text-align: center; }
+      </style>
       <div class="invoice-preview-container">
         <div class="invoice-header-row">
           <div>
@@ -1619,6 +1649,33 @@
     `;
 
     modal.classList.add('active');
+  }
+
+  function printPatientReceiptDirect() {
+    if (activeReceiptBill && window.FMH_Print && window.FMH_Print.patientReceipt) {
+      const p = {
+        full_name: activeReceiptBill.patient_name,
+        patient_code: activeReceiptBill.patient_id || activeReceiptBill.id,
+        is_anonymous: false
+      };
+      const inv = {
+        id: activeReceiptBill.id,
+        total_amount: activeReceiptBill.total_due,
+        paid_amount: activeReceiptBill.total_paid,
+        gross_amount: activeReceiptBill.gross_due,
+        discount_amount: activeReceiptBill.discount_amount
+      };
+      const pay = {
+        id: `CHK-${activeReceiptBill.id}`,
+        amount: activeReceiptBill.total_paid || activeReceiptBill.total_due,
+        payment_method: activeReceiptBill.paid_terminal > 0 ? 'card' : 'cash',
+        notes: `${activeReceiptBill.program || 'Tibbiy xizmatlar'} (${activeReceiptBill.bed_name || ''})`,
+        created_at: new Date()
+      };
+      window.FMH_Print.patientReceipt(p, inv, pay);
+    } else {
+      printInvoice();
+    }
   }
 
   function printTxnReceipt(txnId) {
@@ -1804,20 +1861,71 @@
   // ADD EXTRA MEDICATION / SERVICE TO PATIENT BILL & DEDUCT PHARMACY STOCK
   // ==========================================================================
 
+  let currentAddServiceBill = null;
+
   function openAddServiceModal(billId) {
     const bill = accountingData.patients_billing.find(b => b.id === billId);
     if (!bill) return;
 
+    currentAddServiceBill = bill;
+
     const modal = document.getElementById('add-service-modal');
     if (!modal) return;
 
-    document.getElementById('addsvc-bill-id').value = bill.id;
-    document.getElementById('addsvc-patient-name').value = `${bill.patient_name} (${bill.bed_name})`;
-    document.getElementById('addsvc-qty-input').value = 1;
-    document.getElementById('addsvc-notes-input').value = '';
+    const billIdInput = document.getElementById('addsvc-bill-id');
+    if (billIdInput) billIdInput.value = bill.id;
+
+    const nameEl = document.getElementById('addsvc-patient-name');
+    if (nameEl) {
+      nameEl.textContent = bill.patient_name;
+      if ('value' in nameEl) nameEl.value = bill.patient_name;
+    }
+
+    const bedBadge = document.getElementById('addsvc-bed-badge');
+    if (bedBadge) {
+      bedBadge.textContent = bill.bed_name || (bill.is_visit ? 'Ambulator' : 'Statsionar');
+    }
+
+    const qtyInput = document.getElementById('addsvc-qty-input');
+    if (qtyInput) qtyInput.value = 1;
+
+    const notesInput = document.getElementById('addsvc-notes-input');
+    if (notesInput) notesInput.value = '';
 
     fillAddServiceOptions();
     updateAddServiceCalculation();
+
+    // Prepare Tab 2 (Duration)
+    const nonInpatientNotice = document.getElementById('addsvc-duration-non-inpatient');
+    const inpatientContainer = document.getElementById('addsvc-duration-inpatient');
+    const isInpatient = !bill.is_visit && bill.admission_id && bill.days_count;
+
+    if (!isInpatient) {
+      if (nonInpatientNotice) nonInpatientNotice.style.display = 'block';
+      if (inpatientContainer) inpatientContainer.style.display = 'none';
+    } else {
+      if (nonInpatientNotice) nonInpatientNotice.style.display = 'none';
+      if (inpatientContainer) inpatientContainer.style.display = 'block';
+
+      const durDates = document.getElementById('dur-dates-disp');
+      if (durDates) durDates.textContent = `${bill.start_date || '—'} — ${bill.end_date || '—'}`;
+
+      const durDays = document.getElementById('dur-current-days-disp');
+      if (durDays) durDays.textContent = `${bill.days_count} kun`;
+
+      const durRate = document.getElementById('dur-daily-rate-disp');
+      if (durRate) durRate.textContent = formatUZS(bill.daily_rate);
+
+      const daysInput = document.getElementById('adj-new-total-days');
+      if (daysInput) daysInput.value = bill.days_count;
+
+      const durNotes = document.getElementById('adj-notes-input');
+      if (durNotes) durNotes.value = '';
+
+      onDurationInputChanged();
+    }
+
+    switchAddServiceTab('items');
     modal.classList.add('active');
   }
 
@@ -1918,6 +2026,148 @@
       showToast("Server bilan aloqa yo'q — xizmat qo'shilmadi.", 'danger');
     } finally {
       if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  function switchAddServiceTab(tab) {
+    const btnItems = document.getElementById('tab-btn-addsvc-items');
+    const btnDur = document.getElementById('tab-btn-addsvc-duration');
+    const tabItems = document.getElementById('addsvc-tab-items-content');
+    const tabDur = document.getElementById('addsvc-tab-duration-content');
+    if (!btnItems || !btnDur || !tabItems || !tabDur) return;
+
+    if (tab === 'duration') {
+      btnItems.className = 'btn-portal btn-outline-portal';
+      btnDur.className = 'btn-portal btn-primary-portal';
+      tabItems.style.display = 'none';
+      tabDur.style.display = 'block';
+    } else {
+      btnItems.className = 'btn-portal btn-primary-portal';
+      btnDur.className = 'btn-portal btn-outline-portal';
+      tabItems.style.display = 'block';
+      tabDur.style.display = 'none';
+    }
+  }
+
+  function adjustDurationDelta(delta) {
+    const input = document.getElementById('adj-new-total-days');
+    if (!input || !currentAddServiceBill) return;
+    const currentDays = Number(currentAddServiceBill.days_count) || 1;
+    let val = Number(input.value) || currentDays;
+    val = Math.max(1, Math.min(180, val + delta));
+    input.value = val;
+    onDurationInputChanged();
+  }
+
+  function onDurationInputChanged() {
+    if (!currentAddServiceBill) return;
+    const currentDays = Number(currentAddServiceBill.days_count) || 0;
+    const dailyRate = Number(currentAddServiceBill.daily_rate) || 0;
+    const input = document.getElementById('adj-new-total-days');
+    const endDisp = document.getElementById('adj-new-end-date');
+    const diffDisp = document.getElementById('adj-diff-disp');
+    const totalCostDisp = document.getElementById('adj-new-total-cost');
+    if (!input) return;
+
+    let newDays = parseInt(input.value, 10);
+    if (isNaN(newDays) || newDays < 1) newDays = 1;
+    if (newDays > 180) newDays = 180;
+
+    const diffDays = newDays - currentDays;
+    const diffAmount = diffDays * dailyRate;
+    const newTotalCost = newDays * dailyRate;
+
+    // Calculate new end date based on bill.start_date
+    let newEndDateStr = '—';
+    if (currentAddServiceBill.start_date) {
+      try {
+        const parts = currentAddServiceBill.start_date.split('-');
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          d.setDate(d.getDate() + newDays);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          newEndDateStr = `${y}-${m}-${day}`;
+        }
+      } catch (e) {
+        console.warn('Date calculation error:', e);
+      }
+    }
+
+    if (endDisp) endDisp.textContent = newEndDateStr;
+
+    if (diffDisp) {
+      if (diffDays > 0) {
+        diffDisp.innerHTML = `<span style="color:#38bdf8; font-weight:800;">+${diffDays} kun</span> (+${formatUZS(diffAmount)})`;
+      } else if (diffDays < 0) {
+        diffDisp.innerHTML = `<span style="color:#f87171; font-weight:800;">${diffDays} kun</span> (${formatUZS(diffAmount)})`;
+      } else {
+        diffDisp.innerHTML = `0 kun (O'zgarishsiz)`;
+      }
+    }
+
+    if (totalCostDisp) {
+      totalCostDisp.textContent = formatUZS(newTotalCost);
+    }
+  }
+
+  async function handleAdjustDurationSubmit(btn) {
+    if (!currentAddServiceBill) return;
+    const input = document.getElementById('adj-new-total-days');
+    const notesInput = document.getElementById('adj-notes-input');
+    const newDays = parseInt(input?.value, 10);
+    const notes = notesInput?.value.trim() || '';
+
+    if (isNaN(newDays) || newDays < 1 || newDays > 180) {
+      showToast("Davomiylik 1 dan 180 kungacha bo'lishi kerak.", 'warning');
+      return;
+    }
+
+    if (newDays === Number(currentAddServiceBill.days_count)) {
+      showToast("Davomiylik o'zgarishsiz qoldirildi.", 'info');
+      closeAllModals();
+      return;
+    }
+
+    const currentDays = Number(currentAddServiceBill.days_count) || 0;
+    const diff = newDays - currentDays;
+    const diffTxt = diff > 0 ? `+${diff} kun` : `${diff} kun`;
+
+    const confirmed = await fmhConfirm({
+      title: "Davolanish Muddatini O'zgartirish",
+      message: `<strong>${esc(currentAddServiceBill.patient_name)}</strong> uchun davolanish muddatini <strong>${currentDays} kundan ${newDays} kunga (${diffTxt})</strong> o'zgartirishni tasdiqlaysizmi?<br><small style="color:var(--text-secondary);">(Bemor hisob-kitobi va kassa kvitansiyasi avtomatik ravishda qayta hisoblanadi)</small>`,
+      confirmText: "Tasdiqlash & Saqlash",
+      cancelText: "Bekor qilish",
+      type: 'primary'
+    });
+    if (!confirmed) return;
+
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/accounting/duration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_id: currentAddServiceBill.id,
+          admission_id: currentAddServiceBill.admission_id,
+          new_total_days: newDays,
+          notes: notes
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Xatolik yuz berdi (${res.status})`, 'danger');
+        return;
+      }
+      closeAllModals();
+      await syncWithLedgerAndBackend(false);
+      renderAll();
+      showToast(`✓ Davolanish muddati <strong>${newDays} kunga</strong> o'zgartirildi va hisob-kitob qayta yangilandi!`, 'success');
+    } catch (err) {
+      showToast("Server bilan aloqa yo'q — muddat o'zgartirilmadi.", 'danger');
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -2146,11 +2396,78 @@
   // NEW EXPENSE / INCOME TRANSACTION MODAL
   // ==========================================================================
 
+  const TXN_CATEGORIES = {
+    income: [
+      { value: 'patient_inpatient', label: "Bemor to'lovi (Statsionar yotoq)" },
+      { value: 'patient_outpatient', label: "Bemor to'lovi (Ambulator / Muolaja)" },
+      { value: 'consultation', label: "Shifokor Konsultatsiyasi" },
+      { value: 'emergency_call', label: "24/7 Tezkor Uyga Chaqiruv (Narkolog)" },
+      { value: 'procedure', label: "Qo'shimcha Muolajalar (Plazmaferez, Blokada)" },
+      { value: 'lab_test', label: "Laboratoriya & Diagnostika Tahlillari" },
+      { value: 'other_income', label: "Boshqa Kirimlar / Homiy tushumlari" }
+    ],
+    expense: [
+      { value: 'salary', label: "Oylik Maosh & Smena To'lovlari" },
+      { value: 'pharmacy_restock', label: "Dorilar, Reaktivlar va Sarf Materiallari" },
+      { value: 'nutrition', label: "Bemorlar 4-mahal Parhez Taomi (Oziq-ovqat)" },
+      { value: 'utilities', label: "Kommunal, Elektr, Gaz va Aloqa Xarajatlari" },
+      { value: 'maintenance', label: "Xo'jalik, Ta'mirlash va Sanitariya" },
+      { value: 'rent', label: "Bino va Xonalar Ijarasi" },
+      { value: 'equipment', label: "Tibbiy Uskunalar va Asbob-anjomlar" },
+      { value: 'marketing', label: "Reklama va Internet Marketing" },
+      { value: 'refund', label: "Bemorga Qaytarilgan Pul (Refund)" },
+      { value: 'other', label: "Boshqa Operatsion Chiqimlar" }
+    ]
+  };
+
+  function updateTxnCategoryOptions(type) {
+    const catSelect = document.getElementById('txn-category-select');
+    if (!catSelect) return;
+    const list = TXN_CATEGORIES[type] || TXN_CATEGORIES.income;
+    catSelect.innerHTML = list.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+  }
+
+  function updateTxnModalUI(type) {
+    const modalTitle = document.getElementById('new-txn-modal-title');
+    const submitBtn = document.getElementById('txn-submit-btn');
+    const titleInput = document.getElementById('txn-title-input');
+
+    updateTxnCategoryOptions(type);
+
+    if (type === 'income') {
+      if (modalTitle) {
+        modalTitle.innerHTML = '<i class="fas fa-arrow-circle-down" style="color: #10b981;"></i> Yangi Kassa Kirimi (Tushum)';
+      }
+      if (submitBtn) {
+        submitBtn.className = 'btn-portal btn-primary-portal';
+        submitBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Kirimni Qayd Qilish';
+      }
+      if (titleInput && (!titleInput.value || titleInput.value.includes('uchun to\'lov') || titleInput.value.includes('xaridi'))) {
+        titleInput.placeholder = 'Masalan: Bemor F.I.Sh. to\'lovi yoki ambulator xizmat';
+      }
+    } else {
+      if (modalTitle) {
+        modalTitle.innerHTML = '<i class="fas fa-arrow-circle-up" style="color: #ef4444;"></i> Yangi Kassa Chiqimi (Xarajat)';
+      }
+      if (submitBtn) {
+        submitBtn.className = 'btn-portal btn-danger-portal';
+        submitBtn.innerHTML = '<i class="fas fa-minus-circle"></i> Chiqimni Qayd Qilish';
+      }
+      if (titleInput && (!titleInput.value || titleInput.value.includes('Bemor F.I.Sh.'))) {
+        titleInput.placeholder = 'Masalan: Dori vositalari partiyasi, oziq-ovqat yoki kommunal to\'lov';
+      }
+    }
+  }
+
   function openNewTxnModal(type = 'income') {
     const modal = document.getElementById('new-transaction-modal');
     if (!modal) return;
 
-    document.getElementById('txn-type-select').value = type;
+    const typeSelect = document.getElementById('txn-type-select');
+    if (typeSelect) typeSelect.value = type;
+
+    updateTxnModalUI(type);
+
     document.getElementById('txn-title-input').value = '';
     document.getElementById('txn-amount-input').value = '';
     document.getElementById('txn-notes-input').value = '';
@@ -2376,7 +2693,7 @@
       date: getTodayISO(),
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
       cashier: '',
-      notes: `${doc.name}: asosiy ${formatUZS(doc.base_salary)} + navbatchilik ${formatUZS(doc.duty_pay)} = ${formatUZS(doc.gross)}; ushlab qolindi ${formatUZS(doc.deductions)}; qo'lga ${formatUZS(amount)}`
+      notes: `${doc.name}: asosiy ${formatUZS(doc.base_salary)} + navbatchilik ${formatUZS(doc.duty_pay)}${doc.bonus > 0 ? ` + gonorar ${formatUZS(doc.bonus)}` : ''} = ${formatUZS(doc.gross)}; ushlab qolindi ${formatUZS(doc.deductions)}; qo'lga ${formatUZS(amount)}`
     };
 
     const savedId = await postTransaction(newTxn);
@@ -3070,6 +3387,8 @@
     } else if (tabId === 'doctors') {
       // HR may have saved roster days or salaries since the page opened.
       loadPayroll().then(renderDoctorsPayroll);
+    } else if (tabId === 'referrals') {
+      loadReferrals();
     } else if (tabId === 'pharmacy') {
       renderMedicationPurchases();
       renderPharmacyInventory();
@@ -3179,6 +3498,13 @@
 
     const txnForm = document.getElementById('new-transaction-form');
     if (txnForm) txnForm.addEventListener('submit', handleTxnSubmit);
+
+    const txnTypeSelect = document.getElementById('txn-type-select');
+    if (txnTypeSelect) {
+      txnTypeSelect.addEventListener('change', (e) => {
+        updateTxnModalUI(e.target.value);
+      });
+    }
 
     const newBillForm = document.getElementById('new-bill-form');
     if (newBillForm) newBillForm.addEventListener('submit', handleNewBillSubmit);
@@ -3471,6 +3797,7 @@
     renderDoctorsPayroll();
     renderMedicationPurchases();
     renderPharmacyInventory();
+    if (typeof renderReferrals === 'function') renderReferrals();
     if (currentTab === 'analytics') renderAnalytics();
   }
 
@@ -3542,28 +3869,278 @@
     }
   }
 
-  function printZReportFromModal() {
-    const content = document.getElementById('z-report-content')?.innerHTML || '<h3>Z-HISOBOT</h3>';
-    if (window.FMH_Print) {
-      window.FMH_Print.printDocument(`
-        <div class="fmh-doc-header">
-          <div class="fmh-brand-left">
-            <div class="fmh-crest-icon"><i class="fas fa-cash-register"></i></div>
-            <div class="fmh-brand-text">
-              <h1>FAYZ MEDICAL HOUSE</h1>
-              <div class="fmh-tagline">KASSA Z-HISOBOTI VA SUTKALIK YOPILISH</div>
-            </div>
-          </div>
-          <div class="fmh-header-badge-box">
-            <div class="fmh-doc-badge">KASSA Z-REPORT</div>
-            <div class="fmh-doc-id-pill">KASSA №1</div>
-          </div>
-        </div>
-        ${content}
-      `, 'Kassa_Z_Hisoboti');
-    } else {
-      window.print();
+  // ==========================================================================
+  // GONORARLAR & REFERRALS LOGIC (34 Mutaxassislar yo'llanmalari)
+  // ==========================================================================
+
+  let referralsData = [];
+  let referralDoctorsList = [];
+
+  const DEFAULT_REFERRAL_DOCTORS = [
+    { id: 1, name: "Фарида опа" },
+    { id: 2, name: "Умаров Х.П" },
+    { id: 3, name: "Васина Ю.А" },
+    { id: 4, name: "Махкамова Н.С" },
+    { id: 5, name: "Ахлиддин" },
+    { id: 6, name: "Шохжахон" },
+    { id: 7, name: "Шухрат" },
+    { id: 8, name: "Муроджон" },
+    { id: 9, name: "Ислом" },
+    { id: 10, name: "Сайгул" },
+    { id: 11, name: "Раьно" },
+    { id: 12, name: "Дилором" },
+    { id: 13, name: "Шахло" },
+    { id: 14, name: "Турсуной" },
+    { id: 15, name: "Хилола медсистра" },
+    { id: 16, name: "Шахноза" },
+    { id: 17, name: "Зулфия" },
+    { id: 18, name: "Бугалтер" },
+    { id: 19, name: "Провизор" },
+    { id: 20, name: "Лайло" },
+    { id: 21, name: "Фотима опа" },
+    { id: 22, name: "Умида опа" },
+    { id: 23, name: "Мухаййо опа" },
+    { id: 24, name: "Хилола опа" },
+    { id: 25, name: "Хуршида" },
+    { id: 26, name: "Зиёда" },
+    { id: 27, name: "Нодира" },
+    { id: 28, name: "Кучкаров Хумоюн Нуралиевич" },
+    { id: 29, name: "Насриддинова Гулчехра Муратовна" },
+    { id: 30, name: "Заридбой Ибадуллаев" },
+    { id: 31, name: "Вазиря Анваровна" },
+    { id: 32, name: "Гузал Азизходжаева" },
+    { id: 33, name: "Гузал Набиева" },
+    { id: 34, name: "Фахриддин Халмонов Илхамович" }
+  ];
+
+  function currentReferralMonth() {
+    const input = document.getElementById('referrals-filter-month');
+    return (input && input.value) ? input.value : currentPayrollMonth();
+  }
+
+  async function loadReferrals() {
+    const m = currentReferralMonth();
+    try {
+      const [refRes, docRes] = await Promise.all([
+        fetch('/api/referrals?month=' + encodeURIComponent(m)),
+        fetch('/api/referrals/doctors')
+      ]);
+      if (refRes.ok) referralsData = await refRes.json();
+      if (docRes.ok) referralDoctorsList = await docRes.json();
+      if (!Array.isArray(referralDoctorsList) || !referralDoctorsList.length) {
+        referralDoctorsList = DEFAULT_REFERRAL_DOCTORS;
+      }
+    } catch (e) {
+      console.warn('loadReferrals error:', e);
+      if (!referralsData.length) referralsData = [];
+      if (!referralDoctorsList.length) referralDoctorsList = DEFAULT_REFERRAL_DOCTORS;
     }
+    renderReferrals();
+  }
+
+  function renderReferrals() {
+    const filterStatus = document.getElementById('referrals-filter-status')?.value || 'all';
+    let filtered = [...referralsData];
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(r => r.status === filterStatus);
+    }
+
+    // Update KPI cards
+    const totalCount = referralsData.length;
+    const totalCalc = referralsData.reduce((s, r) => s + (Number(r.calculated_amount) || 0), 0);
+    const pendingSum = referralsData.filter(r => r.status === 'pending').reduce((s, r) => s + (Number(r.calculated_amount) || 0), 0);
+    const paidSum = referralsData.filter(r => r.status === 'paid').reduce((s, r) => s + (Number(r.calculated_amount) || 0), 0);
+
+    const elCount = document.getElementById('ref-kpi-count');
+    const elCalc = document.getElementById('ref-kpi-total-calc');
+    const elPending = document.getElementById('ref-kpi-pending');
+    const elPaid = document.getElementById('ref-kpi-paid');
+    const elBadge = document.getElementById('badge-referrals-count');
+
+    if (elCount) elCount.textContent = totalCount;
+    if (elCalc) elCalc.textContent = formatUZS(totalCalc);
+    if (elPending) elPending.textContent = formatUZS(pendingSum);
+    if (elPaid) elPaid.textContent = formatUZS(paidSum);
+    if (elBadge) elBadge.textContent = referralsData.filter(r => r.status === 'pending').length;
+
+    // 1. Summary by Doctor (All 34 Doctors shown)
+    const summaryTbody = document.getElementById('referrals-summary-tbody');
+    if (summaryTbody) {
+      const byDoc = {};
+      const docsSource = (referralDoctorsList && referralDoctorsList.length) ? referralDoctorsList : DEFAULT_REFERRAL_DOCTORS;
+      
+      docsSource.forEach(d => {
+        byDoc[d.id] = {
+          id: d.id,
+          name: d.name,
+          isStaff: !!(d.staff_id || d.is_staff),
+          staffFullName: d.staff_full_name || '',
+          staffRole: d.staff_role || '',
+          staffSpecialty: d.staff_specialty || '',
+          count: 0,
+          totalCalc: 0,
+          paid: 0,
+          pending: 0
+        };
+      });
+
+      referralsData.forEach(r => {
+        const dId = r.doctor_referral_id || r.doctor_name;
+        if (!byDoc[dId]) {
+          byDoc[dId] = {
+            id: r.doctor_referral_id,
+            name: r.doctor_name,
+            isStaff: !!r.staff_id,
+            count: 0,
+            totalCalc: 0,
+            paid: 0,
+            pending: 0
+          };
+        }
+        byDoc[dId].count += 1;
+        const amt = Number(r.calculated_amount) || 0;
+        byDoc[dId].totalCalc += amt;
+        if (r.status === 'paid') byDoc[dId].paid += amt;
+        else byDoc[dId].pending += amt;
+      });
+
+      const docRows = Object.values(byDoc);
+      if (!docRows.length) {
+        summaryTbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Bu davrda yo\'llanmalar qayd etilmagan</td></tr>';
+      } else {
+        summaryTbody.innerHTML = docRows.map(d => {
+          const staffDetail = (d.isStaff && d.staffFullName) ? `<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;"><i class="fas fa-id-badge" style="color:#38bdf8;"></i> ${esc(d.staffFullName)} ${d.staffRole ? `(${esc(d.staffRole)})` : ''}</div>` : '';
+          return `
+          <tr>
+            <td>
+              <strong>${esc(d.name)}</strong>
+              ${d.isStaff ? '<span class="badge-status badge-paid" style="margin-left:6px;font-size:0.7rem;"><i class="fas fa-hospital-user"></i> Klinika xodimi</span>' : '<span class="badge-status" style="margin-left:6px;font-size:0.7rem;background:rgba(255,255,255,0.08);">Tashqi shifokor</span>'}
+              ${staffDetail}
+            </td>
+            <td>
+              ${d.isStaff ? '<strong style="color:#10b981;">Ichki xodim</strong>' : '<span style="color:var(--text-muted);">Tashqi hamkor</span>'}
+            </td>
+            <td style="font-weight: 700;">${d.count} ta bemor</td>
+            <td style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">${formatUZS(d.totalCalc)}</td>
+            <td style="font-family: var(--font-mono); color: var(--emerald);">${formatUZS(d.paid)}</td>
+            <td style="font-family: var(--font-mono); font-weight: 800; color: ${d.pending > 0 ? '#fbbf24' : 'var(--text-muted)'};">${formatUZS(d.pending)}</td>
+            <td style="text-align: center;">
+              <span class="badge-status ${d.pending === 0 ? 'badge-paid' : 'badge-partial'}">
+                ${d.pending === 0 ? "To'liq to'langan" : "Qarzdorlik bor"}
+              </span>
+            </td>
+          </tr>
+        `;
+        }).join('');
+      }
+    }
+
+    // 2. Detail Table (Per Patient)
+    const detailTbody = document.getElementById('referrals-detail-tbody');
+    if (detailTbody) {
+      if (!filtered.length) {
+        detailTbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Yo\'llanmalar topilmadi</td></tr>';
+      } else {
+        detailTbody.innerHTML = filtered.map(r => {
+          const isPaid = r.status === 'paid';
+          const feeTypeLabel = r.fee_type === 'fixed' ? 'Belgilangan summa' : '10% ulush';
+          const dateStr = String(r.created_at || '').slice(0, 10);
+          return `
+            <tr>
+              <td class="mono-val" style="font-size: 0.8rem; color: var(--text-muted);">${esc(r.id)}</td>
+              <td class="mono-val" style="font-size: 0.82rem;">${esc(dateStr)}</td>
+              <td><strong>${esc(r.doctor_name)}</strong></td>
+              <td>${esc(r.patient_name)}</td>
+              <td><span style="font-size: 0.78rem; color: #94a3b8;">${feeTypeLabel}</span></td>
+              <td class="mono-val">${formatUZS(r.base_total_billed)}</td>
+              <td class="mono-val" style="font-weight: 800; color: #38bdf8; font-size: 0.95rem;">${formatUZS(r.calculated_amount)}</td>
+              <td>
+                <span class="badge-status ${isPaid ? 'badge-paid' : 'badge-partial'}">
+                  ${isPaid ? "To'langan" : "Kutilmoqda"}
+                </span>
+                ${isPaid && r.paid_at ? `<br><small style="color:var(--text-muted);font-size:0.7rem;">${esc(String(r.paid_at).slice(0, 16))}</small>` : ''}
+              </td>
+              <td style="text-align: center;">
+                ${isPaid ? `
+                  <button class="btn-portal btn-outline-portal" style="padding: 3px 8px; font-size: 0.75rem; color: var(--emerald); border-color: rgba(16, 185, 129, 0.4);" disabled>
+                    <i class="fas fa-check-double"></i> To'langan
+                  </button>
+                ` : `
+                  <button class="btn-portal btn-success-portal" style="padding: 4px 10px; font-size: 0.78rem;" onclick="window.FMH_Accounting.payoutReferral('${esc(r.id)}')">
+                    <i class="fas fa-money-bill-wave"></i> To'lab yuborish
+                  </button>
+                `}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+  }
+
+  async function payoutReferral(refId) {
+    const ref = referralsData.find(r => r.id === refId);
+    if (!ref) return;
+    if (ref.status === 'paid') {
+      showToast("Bu gonorar allaqachon to'langan.", 'warning');
+      return;
+    }
+
+    const amt = Number(ref.calculated_amount) || 0;
+    const confirmed = await fmhConfirm({
+      title: "Gonorar To'lovini Tasdiqlash",
+      message: `<strong>${esc(ref.doctor_name)}</strong> ga <strong>${formatUZS(amt)}</strong> gonorar to'lab yuborilsinmi?<br><small style="color:var(--text-secondary);">(Bemor: ${esc(ref.patient_name)})</small>`,
+      confirmText: "To'lab yuborish",
+      cancelText: "Bekor qilish",
+      type: 'primary'
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch('/api/referrals/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referral_id: refId,
+          payment_method: 'cash'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'Xatolik yuz berdi', 'danger');
+        return;
+      }
+      showToast(`✓ ${esc(ref.doctor_name)} ga ${formatUZS(amt)} gonorar muvaffaqiyatli to'landi va kassadan chiqim qilindi!`, 'success');
+      await syncWithLedgerAndBackend(false);
+      await loadReferrals();
+      renderAll();
+    } catch (e) {
+      showToast('Server bilan aloqa yo\'q', 'danger');
+    }
+  }
+
+  function exportReferralsToExcel() {
+    if (typeof XLSX === 'undefined') {
+      showToast("Excel kutubxonasi mavjud emas", 'danger');
+      return;
+    }
+    const m = currentReferralMonth();
+    const rows = referralsData.map(r => ({
+      "ID": r.id,
+      "Sana": String(r.created_at || '').slice(0, 10),
+      "Yo'llanma Bergan Shifokor": r.doctor_name,
+      "Bemor": r.patient_name,
+      "Gonorar Turi": r.fee_type === 'fixed' ? 'Belgilangan summa' : '10% ulush',
+      "Bemor Hisobi": Number(r.base_total_billed) || 0,
+      "Gonorar Summasi": Number(r.calculated_amount) || 0,
+      "Holat": r.status === 'paid' ? "To'langan" : "Kutilmoqda",
+      "To'langan Sana": r.paid_at || ""
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Gonorarlar");
+    XLSX.writeFile(wb, `FMH_Gonorarlar_${m}.xlsx`);
+    showToast("Gonorarlar ro'yxati Excelga muvaffaqiyatli yuklandi!", 'success');
   }
 
   window.FMH_Accounting = {
@@ -3579,10 +4156,15 @@
     resetDateRange,
     openInvoiceReceipt,
     printInvoice,
+    printPatientReceiptDirect,
     printZReport,
     printTxnReceipt,
     openPaymentModal,
     openAddServiceModal,
+    switchAddServiceTab,
+    adjustDurationDelta,
+    onDurationInputChanged,
+    handleAdjustDurationSubmit,
     openIncassoModal,
     openNewTxnModal,
     openNewBillModal,
@@ -3601,6 +4183,11 @@
     exportTransactionsToExcel,
     exportDoctorsToExcel,
     exportPharmacyToExcel,
+    loadReferrals,
+    renderReferrals,
+    payoutReferral,
+    payReferral: payoutReferral,
+    exportReferralsToExcel,
     openZReportModal,
     closeAllModals,
     editBillModal: (billId) => {

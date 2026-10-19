@@ -450,6 +450,29 @@
                     <label class="form-label">Qanday Topdi?</label>
                     <select id="intake-referral-select" class="form-select"></select>
                   </div>
+                  <!-- Dynamic Doctor Referral Section (Only visible when 'Shifokor tavsiyasi' is chosen) -->
+                  <div id="intake-doctor-referral-group" class="form-group full-width" style="display: none; background: rgba(56, 189, 248, 0.05); border: 1px dashed rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; color: #38bdf8; font-size: 0.88rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                      <i class="fas fa-user-md"></i> Yo'llanma Beruvchi Shifokor & Gonorar Sozlamasi
+                    </div>
+                    <div class="form-grid-2">
+                      <div class="form-group">
+                        <label class="form-label">Yo'llanma Bergan Shifokor / Xodim <span class="req">*</span></label>
+                        <select id="intake-referral-doctor-select" class="form-select"></select>
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">Gonorar Turi</label>
+                        <select id="intake-referral-fee-type" class="form-select" onchange="window.FMH_Reception && window.FMH_Reception.toggleReferralFeeType && window.FMH_Reception.toggleReferralFeeType()">
+                          <option value="percent_10">Umumiy chek / hisobdan 10% ulush</option>
+                          <option value="fixed">Belgilangan aniq summa (so'm)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div id="intake-referral-fixed-amt-box" class="form-group" style="display: none; margin-top: 8px;">
+                      <label class="form-label">Belgilangan Gonorar Summasi (so'm)</label>
+                      <input type="number" id="intake-referral-fixed-amount" class="form-input" placeholder="Masalan: 200 000" min="0" step="5000">
+                    </div>
+                  </div>
                   <div class="form-group">
                     <label class="form-label">To'lov Usuli</label>
                     <select id="intake-pay-method" class="form-select">

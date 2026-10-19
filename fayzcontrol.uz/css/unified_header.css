@@ -560,6 +560,36 @@ body.night-mode .super-topbar {
   box-shadow: 0 6px 18px rgba(2, 132, 199, 0.5) !important;
 }
 
+.btn-header-danger {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 14px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, #e11d48, #f43f5e) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+  border: 1px solid rgba(244, 63, 94, 0.35) !important;
+  cursor: pointer !important;
+  box-shadow: 0 3px 12px rgba(225, 29, 72, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  white-space: nowrap !important;
+  height: 34px !important;
+  box-sizing: border-box !important;
+}
+
+[data-theme="day"] .btn-header-danger, body.day-mode .btn-header-danger {
+  background: linear-gradient(135deg, #e11d48, #f43f5e) !important;
+  border: none !important;
+  box-shadow: 0 3px 12px rgba(225, 29, 72, 0.25) !important;
+}
+
+.btn-header-danger:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.5) !important;
+}
+
 .btn-header-outline {
   display: inline-flex !important;
   align-items: center !important;

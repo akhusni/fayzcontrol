@@ -49,19 +49,17 @@ def same_person(staff_name, roster_name):
     return a == b or a.startswith(b) or b.startswith(a)
 
 
-def build_payroll(month, staff_rows, shifts, tariffs):
+def build_payroll(month, staff_rows, shifts, tariffs, bonuses=None):
     """
     Payroll for one month ('YYYY-MM').
 
     staff_rows: dicts with id, full_name, role, salary_base, is_active.
     shifts: roster days (only saved days; the file holds nothing else).
     tariffs: {'doctor_night': n, 'nurse_24h': n, 'sanitar_24h': n}.
-
-    A shift that names an id missing from the staff list, or a name that does
-    not match the staff record behind its id, is reported rather than paid to
-    whoever holds that id: the roster file and the staff table were filled
-    separately and do not always agree.
+    bonuses: dict of {staff_id: bonus_amount} for referral commissions.
     """
+    if bonuses is None:
+        bonuses = {}
     year, mon = int(month[:4]), int(month[5:7])
     month_shifts = [s for s in shifts
                     if isinstance(s, dict) and str(s.get('date') or '').startswith(month + '-')]
@@ -89,16 +87,17 @@ def build_payroll(month, staff_rows, shifts, tariffs):
             per[tariff_key] = per.get(tariff_key, 0) + 1
 
     lines = []
-    totals = {'base': 0.0, 'duty': 0.0, 'gross': 0.0, 'deductions': 0.0, 'net': 0.0}
+    totals = {'base': 0.0, 'duty': 0.0, 'bonus': 0.0, 'gross': 0.0, 'deductions': 0.0, 'net': 0.0}
     for row in staff_rows:
         sid = str(row['id'])
         duty_counts = counts.get(sid, {})
+        bonus = float(bonuses.get(sid) or 0.0)
         active = bool(int(row.get('is_active') if row.get('is_active') is not None else 1))
-        if not active and not duty_counts:
+        if not active and not duty_counts and not bonus:
             continue
         base = float(row.get('salary_base') or 0)
         duty_pay = sum(float(tariffs.get(k) or 0) * n for k, n in duty_counts.items())
-        gross = base + duty_pay
+        gross = base + duty_pay + bonus
         income_tax = round(gross * INCOME_TAX_RATE)
         pension = round(gross * PENSION_RATE)
         net = gross - income_tax - pension
@@ -111,6 +110,7 @@ def build_payroll(month, staff_rows, shifts, tariffs):
             'duty_counts': duty_counts,
             'duty_shifts': sum(duty_counts.values()),
             'duty_pay': duty_pay,
+            'bonus': bonus,
             'gross': gross,
             'income_tax': income_tax,
             'pension': pension,
@@ -119,6 +119,7 @@ def build_payroll(month, staff_rows, shifts, tariffs):
         })
         totals['base'] += base
         totals['duty'] += duty_pay
+        totals['bonus'] += bonus
         totals['gross'] += gross
         totals['deductions'] += income_tax + pension
         totals['net'] += net

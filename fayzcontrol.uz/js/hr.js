@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'FMH_HR_DATABASE_V4';
+  const STORAGE_KEY = 'FMH_HR_DATABASE_V5';
 
   // Duty tariffs used to be typed here (and again in a dozen labels), so a
   // price-list change left HR showing and paying the old rates. They now come
@@ -109,6 +109,8 @@
     // The day the attendance sheet shows and records (YYYY-MM-DD, clinic time).
     attendanceDate: todayIso(),
     rosterSeq: 0,
+    currentUser: null,
+    isSuperadmin: false,
     activeTab: 'staff',
     staffFilterDept: 'all',
     staffFilterStatus: 'all',
@@ -134,6 +136,10 @@
 
   async function initDatabase() {
     // Dynamic date presets setup
+    try {
+      localStorage.removeItem('FMH_HR_DATABASE_V4');
+    } catch (e) {}
+
     const now = new Date();
     const btnToday = document.getElementById('hr-btn-today');
     if (btnToday) {
@@ -151,20 +157,41 @@
     if (inpStart) inpStart.value = `${firstDay.getFullYear()}-${pad(firstDay.getMonth() + 1)}-${pad(firstDay.getDate())}`;
     if (inpEnd) inpEnd.value = `${lastDay.getFullYear()}-${pad(lastDay.getMonth() + 1)}-${pad(lastDay.getDate())}`;
 
+    try {
+      const sessRes = await fetch('/api/auth/session').catch(() => null);
+      if (sessRes && sessRes.ok) {
+        const sessData = await sessRes.json();
+        if (sessData && sessData.authenticated && sessData.user) {
+          State.currentUser = sessData.user;
+          State.isSuperadmin = (sessData.user.role === 'superadmin' || sessData.user.username === 'superadmin');
+        }
+      }
+    } catch (e) {
+      console.warn('Could not check user session:', e);
+    }
+
     let hrLoaded = false;
     try {
       let res = await fetch('/api/hr/data').catch(() => null);
-      if (!res || !res.ok) {
-        res = await fetch('data/hr_db.json').catch(() => null);
-      }
       if (res && res.ok) {
         const data = await res.json();
         populateState(data);
         saveToLocalStorage();
         hrLoaded = true;
+      } else {
+        // Fallback: /api/staff is accessible to all authenticated roles
+        const staffRes = await fetch('/api/staff').catch(() => null);
+        if (staffRes && staffRes.ok) {
+          const staffList = await staffRes.json();
+          if (Array.isArray(staffList) && staffList.length > 0) {
+            populateState({ staff: staffList });
+            saveToLocalStorage();
+            hrLoaded = true;
+          }
+        }
       }
     } catch (e) {
-      console.warn('API and static fetch failed, checking local storage...', e);
+      console.warn('API and staff fetch failed, checking local storage...', e);
     }
 
     if (!hrLoaded) {
@@ -1937,6 +1964,43 @@
         </div>
       </div>
 
+      <!-- SUPERADMIN ONLY: DIRECT SALARY & DUTY TARIFF FIXING BOX -->
+      ${State.isSuperadmin ? `
+      <div style="margin-top: 1.25rem; padding: 1.2rem; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">
+          <div style="font-weight: 800; color: #818cf8; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-user-shield" style="color: #fbbf24;"></i> Superadmin Boshqaruvi: Maosh & Navbatchilik Narxlarini O'rnatish
+          </div>
+          <span style="font-size: 0.72rem; background: #4f46e5; color: #fff; padding: 2px 8px; border-radius: 6px; font-weight: 700;">Mutlaq Vakolat</span>
+        </div>
+        <form onsubmit="window.FMH_HR.handleSuperadminProfileSave(event, ${jsArg(staff.id)})">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" style="color: #cbd5e1;">Xodimning Asosiy Oylik Okladi (so'm) *</label>
+              <input type="number" id="super-profile-salary" class="form-input" style="font-family: var(--font-mono); font-weight: 700;" value="${Number(staff.base_salary) || 0}" step="100000" min="0" required>
+            </div>
+            ${dutyKey ? `
+            <div class="form-group">
+              <label class="form-label" style="color: #cbd5e1;">Navbatchilik Narxi: ${esc(dutyKey === 'doctor_night' ? 'Tungi Shifokor' : (dutyKey === 'nurse_24h' ? 'Hamshira 24s' : 'Sanitarka 24s'))} (so'm) *</label>
+              <input type="number" id="super-profile-duty-tariff" class="form-input" style="font-family: var(--font-mono); font-weight: 700;" value="${tariff(dutyKey)}" step="10000" min="0" required>
+              <small style="color: var(--text-muted); font-size: 0.72rem;">Barcha tegishli xodimlar navbatchiligi uchun yangilanadi</small>
+            </div>
+            ` : `
+            <div class="form-group">
+              <label class="form-label" style="color: #cbd5e1;">Navbatchilik Tarifi</label>
+              <div style="font-size: 0.85rem; color: var(--text-muted); padding: 8px 0;">Ushbu lavozim uchun navbatchilik tarifi qo'llanilmaydi</div>
+            </div>
+            `}
+          </div>
+          <div style="display: flex; justify-content: flex-end; margin-top: 0.85rem;">
+            <button type="submit" class="btn-portal btn-primary-portal" style="background: #4f46e5; border-color: #6366f1; padding: 7px 18px; font-size: 0.85rem;">
+              <i class="fas fa-save"></i> Yangi Narx va Maoshni Saqlash
+            </button>
+          </div>
+        </form>
+      </div>
+      ` : ''}
+
       <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         ${staff.status === 'inactive' ? `
         <button class="btn-portal btn-success-portal" style="padding: 6px 14px; font-size: 0.82rem;" onclick="window.FMH_HR.reactivateStaff(${jsArg(staff.id)})">
@@ -2030,6 +2094,90 @@
     setStaffActive(staffId, true);
     closeAllModals();
     showToast(`${staffName} qayta faollashtirildi.`, 'success');
+  }
+
+  // Superadmin fixes salary and duty tariff directly inside employee profile
+  async function handleSuperadminProfileSave(e, staffId) {
+    if (e && e.preventDefault) e.preventDefault();
+    const staff = State.staff.find(s => s.id === staffId);
+    if (!staff) {
+      showToast("Xodim topilmadi.", "error");
+      return;
+    }
+
+    const salInput = document.getElementById('super-profile-salary');
+    const tariffInput = document.getElementById('super-profile-duty-tariff');
+
+    const newSalary = salInput ? parseFloat(salInput.value) : null;
+    const dutyKey = dutyKeyFor(staff);
+    const newTariff = (tariffInput && dutyKey) ? parseFloat(tariffInput.value) : null;
+
+    let hasUpdates = false;
+
+    // 1. Update Staff Salary via POST /api/staff
+    if (newSalary !== null && !isNaN(newSalary) && newSalary >= 0) {
+      try {
+        const staffPayload = {
+          ...staff,
+          base_salary: newSalary,
+          salary_base: newSalary
+        };
+        const staffRes = await fetch('/api/staff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(staffPayload)
+        });
+        if (!staffRes.ok) {
+          const err = await staffRes.json().catch(() => ({}));
+          showToast(err.error || "Oylik maoshni saqlab bo'lmadi.", "error");
+          return;
+        }
+        staff.base_salary = newSalary;
+        staff.salary_base = newSalary;
+        hasUpdates = true;
+      } catch (err) {
+        showToast("Server bilan aloqa uzildi. Oklad saqlanmadi.", "error");
+        return;
+      }
+    }
+
+    // 2. Update Duty Tariff via POST /api/settings/pricing if applicable
+    if (newTariff !== null && !isNaN(newTariff) && newTariff >= 0 && dutyKey) {
+      try {
+        const pricingRes = await fetch('/api/settings/pricing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            duty_tariffs: {
+              [dutyKey]: newTariff
+            }
+          })
+        });
+        if (!pricingRes.ok) {
+          const err = await pricingRes.json().catch(() => ({}));
+          showToast(err.error || "Navbatchilik tarifini saqlab bo'lmadi.", "error");
+          return;
+        }
+        if (!State.dutyTariffs) State.dutyTariffs = {};
+        State.dutyTariffs[dutyKey] = newTariff;
+        if (window.FMH_Pricing && typeof window.FMH_Pricing.reload === 'function') {
+          await window.FMH_Pricing.reload();
+        }
+        hasUpdates = true;
+      } catch (err) {
+        showToast("Navbatchilik tarifi serverga saqlanmadi.", "error");
+        return;
+      }
+    }
+
+    if (hasUpdates) {
+      saveToLocalStorage();
+      recalculateStaffDutyCounts();
+      renderAll();
+      loadPayroll();
+      openStaffDossier(staffId);
+      showToast(`${staff.full_name} maoshi va navbatchilik narxi muvaffaqiyatli belgilandi!`, 'success');
+    }
   }
 
   // ==========================================================================
@@ -2890,6 +3038,7 @@
     changeRosterMonth,
     goToCurrentMonth,
     editStaff: (id) => openEditStaffModal(id),
+    handleSuperadminProfileSave,
     printPayslip,
     toggleTheme: () => window.FMH_Theme ? window.FMH_Theme.toggle() : null,
     applyTheme: (t) => window.FMH_Theme ? window.FMH_Theme.set(t) : null
