@@ -682,28 +682,74 @@ body.doctor-portal {
 
 .new-prescription-box {
   background: var(--bg-surface);
-  border: 1.5px dashed var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 1.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 14px);
+  padding: 1.25rem 1.4rem;
   margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
 }
 
 .rx-form-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
-@media (max-width: 900px) {
-  .rx-form-row {
+.rx-form-main-row {
+  grid-template-columns: 2.2fr 1fr 1.3fr 1.3fr;
+  align-items: flex-start;
+}
+
+.rx-search-hint-pill {
+  font-size: 0.72rem;
+  color: var(--doctor-cyan-light);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(13, 148, 136, 0.08);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.rx-drug-input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  position: relative;
+}
+
+.rx-drug-name-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rx-quick-select {
+  flex: 0 0 160px;
+  max-width: 170px;
+  background-color: var(--bg-surface-elevated, var(--bg-input));
+  border-color: rgba(13, 148, 136, 0.35);
+  font-weight: 600;
+}
+
+@media (max-width: 1100px) {
+  .rx-form-main-row {
     grid-template-columns: 1fr 1fr;
   }
 }
 
-@media (max-width: 600px) {
-  .rx-form-row {
-    grid-template-columns: 1fr;
+@media (max-width: 680px) {
+  .rx-form-row,
+  .rx-form-main-row,
+  .rx-stock-row {
+    grid-template-columns: 1fr !important;
+  }
+  .rx-drug-input-wrap {
+    flex-direction: column;
+  }
+  .rx-quick-select {
+    max-width: 100%;
   }
 }
 

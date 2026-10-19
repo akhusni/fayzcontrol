@@ -1740,27 +1740,46 @@
     };
 
     async function initBlankMedsEngine() {
+      let loaded = false;
       try {
-        const res = await fetch('./data/fayz_house_meds.json');
+        const res = await fetch('/api/medications');
         if (res.ok) {
           const data = await res.json();
-          blankMedsState.medications = data.medications || [];
-          console.log(`[BlankMeds] Loaded ${blankMedsState.medications.length} official clinic formulary medications.`);
-        } else {
-          throw new Error(`HTTP ${res.status}`);
+          if (data && Array.isArray(data.medications) && data.medications.length > 0) {
+            blankMedsState.medications = data.medications.filter(m => m.fayz_house_list === true || m.fayz_house_num);
+            if (!blankMedsState.medications.length) blankMedsState.medications = data.medications;
+            loaded = true;
+            console.log(`[BlankMeds] Loaded ${blankMedsState.medications.length} official clinic formulary medications from /api/medications.`);
+          }
         }
-      } catch (err) {
-        console.warn("[BlankMeds] Failed to fetch fayz_house_meds.json, checking PharmacologyDB / pharmacology_db.json", err);
-        if (window.PharmacologyDB && window.PharmacologyDB.isLoaded) {
-          blankMedsState.medications = window.PharmacologyDB.getClinicFormulary();
-        } else {
-          try {
-            const res2 = await fetch('./data/pharmacology_db.json');
-            const data2 = await res2.json();
-            const all = data2.medications || [];
-            blankMedsState.medications = all.filter(m => m.fayz_house_list === true);
-          } catch (err2) {
-            console.warn("[BlankMeds] Could not fetch pharmacology_db.json, using fallback", err2);
+      } catch (e) {
+        console.warn("[BlankMeds] /api/medications unavailable, falling back to static JSON", e);
+      }
+
+      if (!loaded) {
+        try {
+          const res = await fetch('./data/fayz_house_meds.json');
+          if (res.ok) {
+            const data = await res.json();
+            blankMedsState.medications = data.medications || [];
+            loaded = true;
+            console.log(`[BlankMeds] Loaded ${blankMedsState.medications.length} official clinic formulary medications.`);
+          }
+        } catch (err) {
+          console.warn("[BlankMeds] Failed to fetch fayz_house_meds.json, checking PharmacologyDB / pharmacology_db.json", err);
+          if (window.PharmacologyDB && window.PharmacologyDB.isLoaded) {
+            blankMedsState.medications = window.PharmacologyDB.getClinicFormulary();
+            loaded = true;
+          } else {
+            try {
+              const res2 = await fetch('./data/pharmacology_db.json');
+              const data2 = await res2.json();
+              const all = data2.medications || [];
+              blankMedsState.medications = all.filter(m => m.fayz_house_list === true);
+              loaded = true;
+            } catch (err2) {
+              console.warn("[BlankMeds] Could not fetch pharmacology_db.json, using fallback", err2);
+            }
           }
         }
       }

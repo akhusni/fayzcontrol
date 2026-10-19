@@ -294,6 +294,7 @@ API_READ_EXEMPT = {
     '/api/doctors',
     '/api/duty-schedule',
     '/api/referrals/doctors',
+    '/api/medications',
 }
 # /api/hr/data was on this list, so every signed-in member of staff could read
 # all salaries and the attendance sheet. Only the HR page uses it; it now needs

@@ -2354,6 +2354,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(docs, ensure_ascii=False).encode('utf-8'))
 
+            # 7e2. GET /api/medications -> Official clinic medications formulary & catalog
+            elif path == '/api/medications':
+                meds_path = os.path.join(BASE_DIR, 'data', 'fayz_house_meds.json')
+                db_path = os.path.join(BASE_DIR, 'data', 'pharmacology_db.json')
+                meds_data = None
+                if os.path.exists(meds_path):
+                    try:
+                        with open(meds_path, 'r', encoding='utf-8') as f:
+                            meds_data = json.load(f)
+                    except Exception:
+                        pass
+                if not meds_data and os.path.exists(db_path):
+                    try:
+                        with open(db_path, 'r', encoding='utf-8') as f:
+                            meds_data = json.load(f)
+                    except Exception:
+                        pass
+                if not meds_data:
+                    meds_data = {"medications": []}
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(meds_data, ensure_ascii=False).encode('utf-8'))
+
             # 7f. GET /api/referrals -> List all referral commissions & totals
             elif path == '/api/referrals':
                 month = (query.get('month', [''])[0] or '').strip()

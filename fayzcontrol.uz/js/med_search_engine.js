@@ -659,7 +659,7 @@
       }
       .fmh-med-clear-btn {
         position: absolute;
-        right: 130px;
+        right: 12px;
         top: 50%;
         transform: translateY(-50%);
         width: 22px;
@@ -682,7 +682,7 @@
       }
       .fmh-med-script-badge {
         position: absolute;
-        right: 8px;
+        right: 38px;
         top: 50%;
         transform: translateY(-50%);
         font-size: 0.68rem;
@@ -711,8 +711,9 @@
         position: absolute;
         top: calc(100% + 4px);
         left: 0;
-        right: 0;
-        max-height: 380px;
+        width: max(100%, 380px);
+        max-width: 520px;
+        max-height: 400px;
         overflow-y: auto;
         background: var(--card-bg, #ffffff);
         border: 1px solid var(--border-color, #cbd5e1);

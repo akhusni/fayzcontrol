@@ -620,27 +620,29 @@
                 </div>
               </div>
 
-              <div class="rx-form-row">
-                <div class="clinical-form-group" style="position: relative;">
+              <div class="rx-form-row rx-form-main-row">
+                <div class="clinical-form-group rx-drug-name-group" style="position: relative;">
                   <label class="clinical-label" style="display: flex; justify-content: space-between; align-items: center;">
                     <span><i class="fas fa-pills" style="color: var(--doctor-cyan-light);"></i> Dori Vositasining Nomi *</span>
-                    <span style="font-size: 0.7rem; color: var(--doctor-cyan-light); font-weight: 600;"><i class="fas fa-language"></i> Lotin yoki Кирилл</span>
+                    <span class="rx-search-hint-pill"><i class="fas fa-keyboard"></i> Lotin yoki Кирилл (№ raqami / MNN)</span>
                   </label>
-                  <input type="text" id="rx-drug-name" class="clinical-input" placeholder="Dori nomini yozing (masalan: Verzepam, Димедрол, 18, Mexidol, Sibazon)..." autocomplete="off" onchange="window.FMH_Doctor.onDrugNameChange(this.value)">
-                  <datalist id="rx-medications-datalist"></datalist>
-                  <div class="quick-pill-row" style="margin-top: 6px; overflow-x: auto; padding-bottom: 2px;">
-                    <span class="quick-pill-hint"><i class="fas fa-bolt"></i> Tezkor:</span>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Natriy oksibutirat')">№1 Oksibutirat</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Verzepam')">№2 Verzepam</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Sibazon')">№3 Sibazon</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Siklodol')">№4 Siklodol</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Reosorbilakt')">№21 Reosorbilakt</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Analgin')">№24 Analgin</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Mexidol')">Mexidol</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Dimedrol')">Dimedrol</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Ketanov')">Ketanov</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.quickSelectMed('Magniy sulfat')">Magniy sulfat</button>
+                  <div class="rx-drug-input-wrap">
+                    <input type="text" id="rx-drug-name" class="clinical-input rx-drug-name-input" placeholder="Dori nomini yozing (masalan: Verzepam, Mexidol, Sibazon, №2)..." autocomplete="off" onchange="window.FMH_Doctor.onDrugNameChange(this.value)">
+                    <select class="clinical-select rx-quick-select" onchange="if(this.value){window.FMH_Doctor.quickSelectMed(this.value); this.value='';}">
+                      <option value="">⚡ Tezkor dori...</option>
+                      <option value="Natriy oksibutirat">№1 Oksibutirat</option>
+                      <option value="Verzepam">№2 Verzepam</option>
+                      <option value="Sibazon">№3 Sibazon</option>
+                      <option value="Siklodol">№4 Siklodol</option>
+                      <option value="Reosorbilakt">№21 Reosorbilakt</option>
+                      <option value="Analgin">№24 Analgin</option>
+                      <option value="Mexidol">Mexidol</option>
+                      <option value="Dimedrol">Dimedrol</option>
+                      <option value="Ketanov">Ketanov</option>
+                      <option value="Magniy sulfat">Magniy sulfat</option>
+                    </select>
                   </div>
+                  <datalist id="rx-medications-datalist"></datalist>
                 </div>
                 <div class="clinical-form-group">
                   <label class="clinical-label">Chiqarilish Shakli</label>
@@ -654,15 +656,19 @@
                 </div>
                 <div class="clinical-form-group">
                   <label class="clinical-label">Bir Martalik Dozasi *</label>
-                  <input type="text" id="rx-dosage" class="clinical-input" value="" placeholder="400 ml, 500 mg, 2 ml...">
-                  <div class="quick-pill-row">
-                    <span class="quick-pill-hint">Doza:</span>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '100 ml')">100 ml</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '200 ml')">200 ml</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '400 ml')">400 ml</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '1 ampula (2 ml)')">1 amp</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '2 ampula (4 ml)')">2 amp</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('dosage', '1 tabletka')">1 tab</button>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" id="rx-dosage" class="clinical-input" value="" placeholder="400 ml, 500 mg, 2 ml..." style="flex: 1;">
+                    <select class="clinical-select" style="max-width: 140px;" onchange="if(this.value){window.FMH_Doctor.setRxField('dosage', this.value); this.value='';}">
+                      <option value="">Doza...</option>
+                      <option value="100 ml">100 ml</option>
+                      <option value="200 ml">200 ml</option>
+                      <option value="400 ml">400 ml</option>
+                      <option value="1 ampula (2 ml)">1 amp (2 ml)</option>
+                      <option value="2 ampula (4 ml)">2 amp (4 ml)</option>
+                      <option value="1 tabletka">1 tabletka</option>
+                      <option value="2 tabletka">2 tabletka</option>
+                      <option value="500 mg">500 mg</option>
+                    </select>
                   </div>
                 </div>
                 <div class="clinical-form-group">
@@ -674,12 +680,6 @@
                     <option value="Ichishga (Per os)">Ichishga (Per os)</option>
                     <option value="Sublingual">Sublingual (til ostiga)</option>
                   </select>
-                  <div class="quick-pill-row">
-                    <span class="quick-pill-hint">Yo'li:</span>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('route', 'V/I tomchilab (kapelnitsa)')">V/I kapelnitsa</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('route', 'V/M inyeksiya')">V/M</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('route', 'Ichishga (Per os)')">Per os</button>
-                  </div>
                 </div>
               </div>
 
@@ -692,21 +692,19 @@
                     <option value="Kuniga 3 mahal">Kuniga 3 mahal</option>
                     <option value="Zarurat tug'ilganda">Zarurat tug'ilganda (PRN)</option>
                   </select>
-                  <div class="quick-pill-row">
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 1 mahal')">1 mahal</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 2 mahal')">2 mahal</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 3 mahal')">3 mahal</button>
-                  </div>
                 </div>
                 <div class="clinical-form-group">
                   <label class="clinical-label">Davomiyligi (kun)</label>
-                  <input type="number" id="rx-duration" class="clinical-input" value="5" min="1" max="60">
-                  <div class="quick-pill-row">
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '3')">3 kun</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '5')">5 kun</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '7')">7 kun</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '10')">10 kun</button>
-                    <button type="button" class="quick-pill-btn" onclick="window.FMH_Doctor.setRxField('duration', '14')">14 kun</button>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="number" id="rx-duration" class="clinical-input" value="5" min="1" max="60" style="flex: 1;">
+                    <select class="clinical-select" style="max-width: 100px;" onchange="if(this.value){window.FMH_Doctor.setRxField('duration', this.value); this.value='';}">
+                      <option value="">Kun...</option>
+                      <option value="3">3 kun</option>
+                      <option value="5">5 kun</option>
+                      <option value="7">7 kun</option>
+                      <option value="10">10 kun</option>
+                      <option value="14">14 kun</option>
+                    </select>
                   </div>
                 </div>
                 <div class="clinical-form-group">
@@ -1407,7 +1405,7 @@
   <!-- JavaScript Engines -->
   <script src="js/unified_print_engine.js?v=6.2"></script>
   <script src="js/med_search_engine.js?v=4.0"></script>
-  <script src="js/doctor.js?v=13.3"></script>
+  <script src="js/doctor.js?v=13.5"></script>
   <div id="print-area"></div>
 </body>
 </html>

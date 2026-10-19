@@ -212,28 +212,55 @@
   }
 
   async function loadPharmacologyDatabase() {
+    let loaded = false;
+    // 1. Try dedicated REST API endpoint
     try {
-      const res = await fetch('./data/pharmacology_db.json');
-      const data = await res.json();
-      state.pharmacology = data.medications || [];
-      // Normalize
-      state.pharmacology.forEach(m => {
-        if (!m.name) m.name = m.trade_name_uz || m.trade_name || m.inn || 'Dori';
-        if (!m.form) m.form = m.dosage_form || 'Tabletkalar';
-      });
-      populateDrugDataList();
-      console.log(`[DoctorWorkstation] Loaded ${state.pharmacology.length} medications into prescription engine.`);
-    } catch (err) {
-      console.warn("Could not load pharmacology_db.json via fetch, trying fayz_house_meds.json", err);
+      const res = await fetch('/api/medications');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.medications) && data.medications.length > 0) {
+          state.pharmacology = data.medications;
+          loaded = true;
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Could not load /api/medications, trying fallback", apiErr);
+    }
+
+    // 2. Fallback to static JSON if needed
+    if (!loaded) {
+      try {
+        const res = await fetch('./data/pharmacology_db.json');
+        if (res.ok) {
+          const data = await res.json();
+          state.pharmacology = data.medications || [];
+          loaded = true;
+        }
+      } catch (err) {
+        console.warn("Could not load pharmacology_db.json via fetch, trying fayz_house_meds.json", err);
+      }
+    }
+
+    if (!loaded) {
       try {
         const res2 = await fetch('./data/fayz_house_meds.json');
-        const data2 = await res2.json();
-        state.pharmacology = data2.medications || [];
-        populateDrugDataList();
+        if (res2.ok) {
+          const data2 = await res2.json();
+          state.pharmacology = data2.medications || [];
+          loaded = true;
+        }
       } catch (err2) {
         console.warn("Fallback medications used", err2);
       }
     }
+
+    // Normalize
+    state.pharmacology.forEach(m => {
+      if (!m.name) m.name = m.trade_name_uz || m.trade_name || m.inn || 'Dori';
+      if (!m.form) m.form = m.dosage_form || 'Tabletkalar';
+    });
+    populateDrugDataList();
+    console.log(`[DoctorWorkstation] Loaded ${state.pharmacology.length} medications into prescription engine.`);
   }
 
   function populateDrugDataList() {
