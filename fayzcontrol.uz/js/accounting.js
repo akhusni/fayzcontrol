@@ -1160,7 +1160,7 @@
 
     const kpiExpenseSub = document.getElementById('pharm-expense-sub');
     if (kpiExpenseSub) {
-      kpiExpenseSub.textContent = dateRangePreset === 'all' ? "Barcha davrlar bo'yicha jami xarajat" : "Tanlangan oraliq bo'yicha dori xarajatlari";
+      kpiExpenseSub.textContent = dateRangeMode === 'all' ? "Barcha davrlar bo'yicha jami xarajat" : "Tanlangan oraliq bo'yicha dori xarajatlari";
     }
 
     const badgeCount = document.getElementById('badge-pharmacy-count');
@@ -4145,7 +4145,6 @@
 
   window.FMH_Accounting = {
     printInvoiceFromModal,
-    printZReportFromModal,
     init,
     applyTheme,
     toggleTheme,
@@ -4195,9 +4194,15 @@
     }
   };
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function start() {
     const saved = localStorage.getItem('fmh_theme') || 'night';
     applyTheme(saved);
     init();
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
 })();

@@ -691,14 +691,15 @@ body.doctor-portal {
 
 .rx-form-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.1rem;
+  margin-bottom: 1.15rem;
 }
 
 .rx-form-main-row {
-  grid-template-columns: 2.2fr 1fr 1.3fr 1.3fr;
+  grid-template-columns: 2.2fr 1fr 1.25fr 1.25fr;
   align-items: flex-start;
+  gap: 1.1rem;
 }
 
 .rx-search-hint-pill {
@@ -707,39 +708,57 @@ body.doctor-portal {
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: rgba(13, 148, 136, 0.08);
-  padding: 2px 8px;
+  gap: 5px;
+  background: rgba(13, 148, 136, 0.12);
+  padding: 3px 10px;
   border-radius: 6px;
+  border: 1px solid rgba(13, 148, 136, 0.2);
 }
 
 .rx-drug-input-wrap {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: stretch;
   position: relative;
+  width: 100%;
+}
+
+.rx-drug-name-group .fmh-med-search-wrapper {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Hide duplicate badge inside input since label already has the clear pill */
+.rx-drug-name-group .fmh-med-script-badge {
+  display: none !important;
 }
 
 .rx-drug-name-input {
+  width: 100%;
   flex: 1;
   min-width: 0;
+  padding-right: 36px !important; /* reserve room cleanly for clear button */
 }
 
 .rx-quick-select {
-  flex: 0 0 160px;
-  max-width: 170px;
+  flex: 0 0 165px;
+  max-width: 175px;
   background-color: var(--bg-surface-elevated, var(--bg-input));
   border-color: rgba(13, 148, 136, 0.35);
   font-weight: 600;
+  cursor: pointer;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .rx-form-main-row {
     grid-template-columns: 1fr 1fr;
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 720px) {
   .rx-form-row,
   .rx-form-main-row,
   .rx-stock-row {
@@ -750,6 +769,7 @@ body.doctor-portal {
   }
   .rx-quick-select {
     max-width: 100%;
+    flex: 1 1 auto;
   }
 }
 

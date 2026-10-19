@@ -3283,8 +3283,15 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
     def handle_api_post(self, path, body):
         conn = None
         try:
-            conn = get_db()
-            cur = conn.cursor()
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+            except Exception as _db_err:
+                if path.startswith('/api/auth/'):
+                    conn = None
+                    cur = None
+                else:
+                    raise _db_err
 
             # Warehouse writes: one request is one transaction (warehouse_api.handle
             # commits on success and rolls back on any failure).
@@ -6185,9 +6192,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 locked = auth.lockout_remaining(username, ip)
                 if locked:
                     minutes = max(1, locked // 60)
-                    audit.record(conn, 'auth', audit_login, 'LOGIN_FAILED',
-                                 new_data={'reason': 'locked_out', 'seconds_remaining': locked},
-                                 ip_address=ip)
+                    if conn:
+                        try:
+                            audit.record(conn, 'auth', audit_login, 'LOGIN_FAILED',
+                                         new_data={'reason': 'locked_out', 'seconds_remaining': locked},
+                                         ip_address=ip)
+                        except Exception:
+                            pass
                     self._set_json_headers(429)
                     self.wfile.write(json.dumps({
                         'error': "Juda ko'p urinish",
@@ -6207,9 +6218,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     user_info = auth.sanitize_user(found)
                     needs_change = auth.must_change_password(found)
                     is_https = self.headers.get('X-Forwarded-Proto') == 'https'
-                    audit.ensure_schema(conn)
-                    audit.record(conn, 'auth', username, 'LOGIN', user=found,
-                                 new_data={'role': found.get('role')}, ip_address=ip)
+                    if conn:
+                        try:
+                            audit.ensure_schema(conn)
+                            audit.record(conn, 'auth', username, 'LOGIN', user=found,
+                                         new_data={'role': found.get('role')}, ip_address=ip)
+                        except Exception:
+                            pass
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json; charset=utf-8')
                     self.send_header('Set-Cookie', auth.build_session_cookie(
@@ -6228,9 +6243,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     remaining = auth.note_login_failure(username, ip)
                     print(f"[auth] login failed for {audit_login!r} from {ip} "
                           f"({remaining} attempt(s) before lockout)")
-                    audit.ensure_schema(conn)
-                    audit.record(conn, 'auth', audit_login, 'LOGIN_FAILED',
-                                 new_data={'attempts_remaining': remaining}, ip_address=ip)
+                    if conn:
+                        try:
+                            audit.ensure_schema(conn)
+                            audit.record(conn, 'auth', audit_login, 'LOGIN_FAILED',
+                                         new_data={'attempts_remaining': remaining}, ip_address=ip)
+                        except Exception:
+                            pass
                     self._set_json_headers(401)
                     # The message never distinguishes a wrong username from a
                     # wrong password, so the endpoint cannot be used to find
@@ -6245,10 +6264,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             elif path == '/api/auth/logout':
                 token = auth.token_from_cookie_header(self.headers.get('Cookie'))
                 sess = auth.get_session(token)
-                if sess:
-                    audit.ensure_schema(conn)
-                    audit.record(conn, 'auth', sess['user'].get('username', '-'),
-                                 'LOGOUT', user=sess['user'], ip_address=self.client_ip())
+                if sess and conn:
+                    try:
+                        audit.ensure_schema(conn)
+                        audit.record(conn, 'auth', sess['user'].get('username', '-'),
+                                     'LOGOUT', user=sess['user'], ip_address=self.client_ip())
+                    except Exception:
+                        pass
                 auth.destroy_session(token)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
