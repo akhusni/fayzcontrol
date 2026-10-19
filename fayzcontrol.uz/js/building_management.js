@@ -214,9 +214,23 @@
 
   async function init() {
     try {
-      const response = await fetch('./data/clinic_rooms.json');
-      clinicData = await response.json();
-      floors = clinicData.floors || [];
+      try {
+        const response = await fetch('/api/facility/rooms');
+        if (response.ok) {
+          clinicData = await response.json();
+        }
+      } catch (e) {}
+
+      if (!clinicData || !clinicData.floors) {
+        try {
+          const fallbackResp = await fetch('./data/clinic_rooms.json');
+          if (fallbackResp.ok) {
+            clinicData = await fallbackResp.json();
+          }
+        } catch (e) {}
+      }
+
+      floors = (clinicData && clinicData.floors) || [];
 
       // Fetch live beds and admissions from REST API as single source of truth
       await fetchLiveBedsAndAdmissions();
@@ -1979,9 +1993,15 @@
     exportBedsToExcel
   };
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function start() {
     const saved = localStorage.getItem('fmh_theme') || 'night';
     applyTheme(saved);
     init();
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
 })();

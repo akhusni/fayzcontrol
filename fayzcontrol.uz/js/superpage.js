@@ -353,8 +353,20 @@
 
   async function loadMasterDatabases() {
     try {
-      const resRooms = await fetch('./data/clinic_rooms.json');
-      clinicRoomsData = await resRooms.json();
+      try {
+        const resRooms = await fetch('/api/facility/rooms');
+        if (resRooms.ok) {
+          clinicRoomsData = await resRooms.json();
+        }
+      } catch (e) {}
+
+      if (!clinicRoomsData || !clinicRoomsData.floors) {
+        try {
+          const fallbackRooms = await fetch('./data/clinic_rooms.json');
+          if (fallbackRooms.ok) clinicRoomsData = await fallbackRooms.json();
+        } catch (e) {}
+      }
+      if (!clinicRoomsData) clinicRoomsData = { floors: [] };
 
       const savedBookings = localStorage.getItem(STORAGE_KEYS.BEDS);
       if (savedBookings) {
