@@ -323,11 +323,12 @@
 
     // Auto-refresh every 4s
     setInterval(async () => {
+    if (document.hidden) return;
       try {
         await loadMasterDatabases();
         renderActiveDepartment();
       } catch (err) {}
-    }, 4000);
+    }, 12000);
 
     window.addEventListener('storage', (e) => {
       if (e.key === STORAGE_KEYS.BEDS || e.key === STORAGE_KEYS.ACCOUNTING) {
@@ -469,12 +470,24 @@
     if (!clinicRoomsData || !clinicRoomsData.floors) return beds;
 
     clinicRoomsData.floors.forEach(floor => {
-      if (floorFilter && floorFilter !== 'all' && floor.floor_number.toString() !== floorFilter.toString()) return;
-
       floor.rooms.forEach(r => {
+        const bldg = r.building_number || (r.room_number && ['1', '2', '3', '4', '5'].includes(String(r.room_number)) && r.beds && r.beds[0] && r.beds[0].bed_id.includes('B2') ? 2 : 1);
+        if (floorFilter && floorFilter !== 'all') {
+          const ff = floorFilter.toString();
+          if (ff === '1' && String(floor.floor_number) !== '1') return;
+          if (ff === '2' && String(floor.floor_number) !== '2') return;
+          if (ff === 'b1' && bldg !== 1) return;
+          if (ff === 'b2' && bldg !== 2) return;
+          if (ff === 'b1-f1' && (bldg !== 1 || String(floor.floor_number) !== '1')) return;
+          if (ff === 'b1-f2' && (bldg !== 1 || String(floor.floor_number) !== '2')) return;
+          if (ff === 'b2-f1' && (bldg !== 2 || String(floor.floor_number) !== '1')) return;
+          if (ff === 'b2-f2' && (bldg !== 2 || String(floor.floor_number) !== '2')) return;
+        }
+
         if (r.has_beds && r.beds) {
           r.beds.forEach(b => {
             b.floor_num = floor.floor_number;
+            b.building_number = bldg;
             b.room_number = r.room_number;
             b.simple_name = `${r.room_number}-xona ${b.bed_number} karavot`;
             beds.push(b);
@@ -652,7 +665,9 @@
     if (!grid) return;
 
     const allBeds = getAllBeds(currentFacilityFloor);
-    grid.innerHTML = allBeds.map(bed => {
+    const getBldg = b => b.building_number || (b.bed_id && b.bed_id.includes('B2') ? 2 : 1);
+
+    const renderBedCardHTML = (bed) => {
       const p = bed.current_patient;
       let pName = p ? p.patient_name : "Bo'sh (Qabulga Tayyor)";
       let pProg = p ? p.program : (bed.next_reserved_date ? `Bo'sh (${bed.next_reserved_date} gacha)` : '10 kunlik standart kurs');
@@ -673,7 +688,54 @@
           <div style="font-size: 0.76rem; color: var(--text-muted);">${bed.simple_name} • ${pProg}</div>
         </div>
       `;
-    }).join('');
+    };
+
+    const sections = [
+      { id: 'b1-f1', bldg: 1, floor: 1, title: "1-BINO \u2022 1-ETAJ (11, 12-XONALAR \u2022 4 O'RIN)", icon: 'fa-hospital', color: '#38bdf8' },
+      { id: 'b1-f2', bldg: 1, floor: 2, title: "1-BINO \u2022 2-ETAJ (21-25 XONALAR \u2022 10 O'RIN)", icon: 'fa-building', color: '#38bdf8' },
+      { id: 'b2-f1', bldg: 2, floor: 1, title: "2-BINO \u2022 1-ETAJ (4, 5-XONALAR \u2022 5 O'RIN)", icon: 'fa-hotel', color: '#38bdf8' },
+      { id: 'b2-f2', bldg: 2, floor: 2, title: "2-BINO \u2022 2-ETAJ (1-VIP, 2, 3-XONALAR \u2022 5 O'RIN)", icon: 'fa-crown', color: '#c084fc' }
+    ];
+
+    let html = '';
+    sections.forEach(sec => {
+      const secBeds = allBeds.filter(b => getBldg(b) === sec.bldg && b.floor_num === sec.floor);
+      if (secBeds.length === 0) return;
+
+      if (sec.id === 'b1-f2') {
+        const row1Beds = secBeds.filter(b => ['21', '22', '23'].includes(String(b.room_number)));
+        const row2Beds = secBeds.filter(b => ['24', '25'].includes(String(b.room_number)));
+
+        html += `
+          <div style="grid-column: 1 / -1; margin-top: 1.25rem; margin-bottom: 0.35rem;">
+            <div style="font-size: 0.84rem; font-weight: 800; color: ${sec.color}; letter-spacing: 0.5px; padding: 7px 12px; background: rgba(56, 189, 248, 0.12); border-left: 3.5px solid ${sec.color}; border-radius: 6px; display: flex; align-items: center; gap: 8px;">
+              <i class="fas ${sec.icon}"></i> ${sec.title}
+            </div>
+          </div>
+          <div style="grid-column: 1 / -1; font-size: 0.74rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.4px; margin: 0.3rem 0 0.1rem 0.2rem; display: flex; align-items: center; gap: 5px;">
+            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #38bdf8;"></span>
+            1-QATOR &bull; 21, 22, 23-XONALAR (6 O'RIN)
+          </div>
+          ${row1Beds.map(renderBedCardHTML).join('')}
+          <div style="grid-column: 1 / -1; font-size: 0.74rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.4px; margin: 0.6rem 0 0.1rem 0.2rem; display: flex; align-items: center; gap: 5px;">
+            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #38bdf8;"></span>
+            2-QATOR &bull; 24, 25-XONALAR (4 O'RIN)
+          </div>
+          ${row2Beds.map(renderBedCardHTML).join('')}
+        `;
+      } else {
+        html += `
+          <div style="grid-column: 1 / -1; margin-top: 1.25rem; margin-bottom: 0.35rem;">
+            <div style="font-size: 0.84rem; font-weight: 800; color: ${sec.color}; letter-spacing: 0.5px; padding: 7px 12px; background: rgba(255, 255, 255, 0.05); border-left: 3.5px solid ${sec.color}; border-radius: 6px; display: flex; align-items: center; gap: 8px;">
+              <i class="fas ${sec.icon}"></i> ${sec.title}
+            </div>
+          </div>
+          ${secBeds.map(renderBedCardHTML).join('')}
+        `;
+      }
+    });
+
+    grid.innerHTML = html || '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">Karavotlar topilmadi</div>';
   }
 
   function switchFacilityFloor(fl, btn) {
@@ -1171,6 +1233,10 @@
 
   function handleBookingSubmit(e) {
     e.preventDefault();
+    closeModal();
+    window.FMH_Toast ? window.FMH_Toast("Bemor joylashtirish Bino boshqaruvi bo'limida amalga oshiriladi. Yo'naltirilmoqda...", 'info') : alert("Bino boshqaruviga o'tilmoqda...");
+    setTimeout(() => { window.location.href = '/building_management.html'; }, 1000);
+    return;
 
     const bookingId = document.getElementById('modal-booking-id').value;
     const patientName = document.getElementById('modal-patient-name').value.trim();
@@ -1268,6 +1334,10 @@
 
   function handlePaymentSubmit(e) {
     e.preventDefault();
+    closePaymentModal();
+    window.FMH_Toast ? window.FMH_Toast("To'lov qabul qilish Buxgalteriya bo'limida amalga oshiriladi. Yo'naltirilmoqda...", 'info') : alert("Buxgalteriyaga o'tilmoqda...");
+    setTimeout(() => { window.location.href = '/accounting.html'; }, 1000);
+    return;
 
     const type = document.getElementById('payment-type').value;
     const category = document.getElementById('payment-category').value;
@@ -1333,6 +1403,10 @@
 
   function handleVitalsSubmit(e) {
     e.preventDefault();
+    closeVitalsModal();
+    window.FMH_Toast ? window.FMH_Toast("Vital ko'rsatkichlarni kiritish Hamshira postida amalga oshiriladi. Yo'naltirilmoqda...", 'info') : alert("Hamshira postiga o'tilmoqda...");
+    setTimeout(() => { window.location.href = '/nurse.html'; }, 1000);
+    return;
 
     const bed = document.getElementById('vitals-bed-select').value;
     const bp = document.getElementById('vitals-bp').value.trim();

@@ -1,3 +1,10 @@
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 /**
  * FAYZ MEDICAL HOUSE — 24/7 DUTY SCHEDULE & SANITARKA CONTROLLER
  * Full Day/Night Theme Reactive, Multi-View, Month Navigator & Interactive Swap Engine

@@ -53,6 +53,7 @@ _INCOME_CATEGORY = {
 }
 _EXPENSE_CATEGORY = {
     'salary': 'salary',
+    'referral_bonus': 'salary',
     'medication_purchase': 'medicine',
     'pharmacy_restock': 'medicine',
     'nutrition': 'food',
@@ -205,8 +206,16 @@ def summary(conn, start, end):
                 parts = shares.get(r['related_invoice_id']) or {'patient_other': 1.0}
             else:
                 parts = {_INCOME_CATEGORY.get(r['category'], 'other_income'): 1.0}
-            for group, share in parts.items():
-                part = round(amount * share, 2)
+            
+            # Avoid penny rounding drift by calculating the last share as remainder
+            items_list = list(parts.items())
+            allocated = 0.0
+            for idx, (group, share) in enumerate(items_list):
+                if idx == len(items_list) - 1:
+                    part = round(amount - allocated, 2)
+                else:
+                    part = round(amount * share, 2)
+                    allocated += part
                 income_groups[group]['amount'] += part
                 income_groups[group]['count'] += 1
                 entries.append(dict(base, type='income', group=group, amount=part))

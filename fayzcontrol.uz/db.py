@@ -190,7 +190,12 @@ class MySQLConnectionWrapper:
         self._conn.rollback()
 
     def close(self):
-        self._conn.close()
+        if self._conn:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
     def executescript(self, sql_script):
         # Execute multiple statements
@@ -298,7 +303,15 @@ from datetime import datetime, date, timedelta
 # Programmes sold as exclusive use of the whole room. The tariff (1.1M/day
 # against 720k for a shared bed) is the price of the second bed staying empty,
 # so the partner bed must be held even though nobody is lying in it.
-FULL_ROOM_PROGRAMS = ('statsionar_full_room',)
+FULL_ROOM_PROGRAMS = (
+    'statsionar_full_room',
+    'statsionar_full_room_1100k',
+    'statsionar_full_room_1200k',
+    'statsionar_full_room_1300k',
+    'statsionar_full_room_1600k',
+    'statsionar_vip_1',
+    'statsionar_vip_1000k',
+)
 
 
 def _row_get(row, key, index):
@@ -309,7 +322,12 @@ def _row_get(row, key, index):
 
 
 def is_full_room_program(program_type):
-    return str(program_type or '').strip().lower() in FULL_ROOM_PROGRAMS
+    p = str(program_type or '').strip().lower()
+    return (p in FULL_ROOM_PROGRAMS or 
+            'full_room' in p or 
+            'butun xona' in p or 
+            'vip solo' in p or 
+            'solo' in p)
 
 
 def find_booking_conflict(cur, bed_id, start_date, end_date, program_type=None,
@@ -1205,7 +1223,103 @@ def ensure_patient_dossiers_table(conn):
         print(f"[!] Could not create patient_dossiers table: {e}")
 
 
-def list_patient_dossiers(conn, patient_id=None):
+
+_building_2_rooms_checked = False
+
+def ensure_building_2_rooms(conn):
+    """
+    Ensure the 5 new rooms and 10 beds for Building 2 exist in the database.
+    Safe and idempotent.
+    """
+    global _building_2_rooms_checked
+    if _building_2_rooms_checked:
+        return
+    try:
+        cur = conn.cursor()
+        # 1. Ensure building_number column on rooms table
+        cur.execute("""
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'rooms' AND COLUMN_NAME = 'building_number'
+        """)
+        if not cur.fetchone():
+            try:
+                cur.execute("ALTER TABLE rooms ADD COLUMN building_number INT NOT NULL DEFAULT 1 AFTER id")
+                conn.commit()
+                print("[✓] rooms.building_number column added.")
+            except Exception as e_col:
+                print(f"[!] Note adding rooms.building_number: {e_col}")
+
+        # 2. Seed Building 2 rooms (5 rooms)
+        b2_rooms = [
+            ('ROOM-B2-04', 2, 1, '4', '2-Bino 4-Xona (2 o\'\'rinli)', 'standard_ward', 2),
+            ('ROOM-B2-05', 2, 1, '5', '2-Bino 5-Xona (3 o\'\'rinli)', 'standard_ward', 3),
+            ('ROOM-B2-01', 2, 2, '1', '2-Bino 1-Xona (VIP 1 o\'\'rinli)', 'vip_ward', 1),
+            ('ROOM-B2-02', 2, 2, '2', '2-Bino 2-Xona (2 o\'\'rinli)', 'standard_ward', 2),
+            ('ROOM-B2-03', 2, 2, '3', '2-Bino 3-Xona (2 o\'\'rinli)', 'standard_ward', 2),
+        ]
+        for rid, bldg, fl, rnum, rname, rtype, cap in b2_rooms:
+            cur.execute("""
+                INSERT INTO rooms (id, building_number, floor_number, room_number, room_name_uz, room_type, total_capacity, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE building_number = VALUES(building_number), floor_number = VALUES(floor_number),
+                                        room_name_uz = VALUES(room_name_uz), total_capacity = VALUES(total_capacity)
+            """, (rid, bldg, fl, rnum, rname, rtype, cap))
+
+        # 3. Seed Building 2 beds (10 beds)
+        b2_beds = [
+            ('BED-B2-4A', 'ROOM-B2-04', 'B2-4A', 'standard', 720000.0),
+            ('BED-B2-4B', 'ROOM-B2-04', 'B2-4B', 'standard', 720000.0),
+            ('BED-B2-5A', 'ROOM-B2-05', 'B2-5A', 'standard', 800000.0),
+            ('BED-B2-5B', 'ROOM-B2-05', 'B2-5B', 'standard', 800000.0),
+            ('BED-B2-5C', 'ROOM-B2-05', 'B2-5C', 'standard', 800000.0),
+            ('BED-B2-1',  'ROOM-B2-01', 'B2-1',  'vip',     1000000.0),
+            ('BED-B2-2A', 'ROOM-B2-02', 'B2-2A', 'standard', 720000.0),
+            ('BED-B2-2B', 'ROOM-B2-02', 'B2-2B', 'standard', 720000.0),
+            ('BED-B2-3A', 'ROOM-B2-03', 'B2-3A', 'standard', 800000.0),
+            ('BED-B2-3B', 'ROOM-B2-03', 'B2-3B', 'standard', 800000.0),
+        ]
+        for bid, rid, bcode, btype, rate in b2_beds:
+            cur.execute("""
+                INSERT INTO beds (id, room_id, bed_code, bed_type, default_daily_rate, status)
+                VALUES (?, ?, ?, ?, ?, 'operational')
+                ON DUPLICATE KEY UPDATE default_daily_rate = VALUES(default_daily_rate)
+            """, (bid, rid, bcode, btype, rate))
+
+        conn.commit()
+        _building_2_rooms_checked = True
+    except Exception as e:
+        print(f"[!] ensure_building_2_rooms notice: {e}")
+
+
+_prescription_diluent_checked = False
+
+def ensure_prescription_diluent_column(conn):
+    """
+    Ensure prescriptions table has the diluent column (fiz rastvor / erituvchi).
+    Safe and idempotent.
+    """
+    global _prescription_diluent_checked
+    if _prescription_diluent_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'prescriptions' AND COLUMN_NAME = 'diluent'
+        """)
+        if not cur.fetchone():
+            try:
+                cur.execute("ALTER TABLE prescriptions ADD COLUMN diluent VARCHAR(255) NULL AFTER dosage")
+                conn.commit()
+                print("[+] prescriptions.diluent column added.")
+            except Exception as e_col:
+                print(f"[!] Note adding prescriptions.diluent: {e_col}")
+        _prescription_diluent_checked = True
+    except Exception as e:
+        print(f"[!] ensure_prescription_diluent_column notice: {e}")
+
+
+def list_patient_dossiers(conn, patient_id=None, limit=200):
     """
     List patient dossiers, optionally filtered by patient_id.
     """
@@ -1315,14 +1429,15 @@ def list_room_availability(conn, start_date, end_date):
         we = (datetime.strptime(ws, '%Y-%m-%d').date() + timedelta(days=1)).isoformat()
 
     cur.execute("""
-        SELECT r.id AS room_id, r.floor_number, r.room_number, r.room_name_uz,
+        SELECT r.id AS room_id, COALESCE(r.building_number, 1) AS building_number,
+               r.floor_number, r.room_number, r.room_name_uz,
                r.room_type, r.total_capacity,
                b.id AS bed_id, b.bed_code, b.bed_type, b.default_daily_rate,
                b.status AS physical_status
         FROM rooms r
         JOIN beds b ON b.room_id = r.id
         WHERE r.is_active = 1
-        ORDER BY r.floor_number, r.room_number, b.bed_code
+        ORDER BY r.building_number, r.floor_number, r.room_number, b.bed_code
     """)
     bed_rows = [dict(r) for r in cur.fetchall()]
 
@@ -1364,6 +1479,7 @@ def list_room_availability(conn, start_date, end_date):
         if room is None:
             room = rooms[room_id] = {
                 'room_id': room_id,
+                'building_number': row.get('building_number', 1),
                 'floor_number': row['floor_number'],
                 'room_number': row['room_number'],
                 'room_name_uz': row['room_name_uz'],
@@ -1401,6 +1517,8 @@ def list_room_availability(conn, start_date, end_date):
                 'default_daily_rate': float(bed['default_daily_rate'] or 0),
                 'physical_status': physical,
                 'room_id': room['room_id'],
+                'building_number': room.get('building_number', 1),
+                'building': room.get('building_number', 1),
                 'room_number': room['room_number'],
                 'room_name_uz': room['room_name_uz'],
                 'floor_number': room['floor_number'],
@@ -1468,20 +1586,30 @@ def _stay_brief(stay):
 def discharge_patient(conn, admission_id, actual_end_date, discharge_summary=None):
     """
     Atomic patient discharge:
-    1. Sets admission status to 'discharged' and records actual_end_date.
-    2. Prunes or deletes any future bed segments to prevent check constraint collisions on backdated discharges.
-    3. Clamps active stay segment safely.
-    4. Transitions bed hardware state to 'cleaning' for mandatory clinical sanitation.
-    5. Updates patient status to 'discharged'.
+    1. Validates admission is 'active' and discharge date >= start_date.
+    2. Sets admission status to 'discharged' and records actual_end_date.
+    3. Prunes or deletes any future bed segments to prevent check constraint collisions on backdated discharges.
+    4. Clamps active stay segment safely.
+    5. Transitions bed hardware state to 'cleaning' for mandatory clinical sanitation.
+    6. Updates patient status to 'discharged' only if they have no other active admissions.
     """
     try:
         cur = conn.cursor()
         d_discharge = datetime.strptime(str(actual_end_date), '%Y-%m-%d').date()
 
-        cur.execute("SELECT patient_id, bed_id FROM admissions WHERE id = ?", (admission_id,))
+        cur.execute("SELECT patient_id, bed_id, status, start_date FROM admissions WHERE id = ?", (admission_id,))
         adm = cur.fetchone()
         if not adm:
-            return False, f"Admission {admission_id} not found."
+            return False, f"Qabul (ID: {admission_id}) topilmadi."
+
+        curr_status = adm['status'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[2]
+        if curr_status != 'active':
+            return False, f"Ushbu qabul allaqachon yakunlangan yoki faol emas (holati: {curr_status})."
+
+        raw_adm_start = adm['start_date'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[3]
+        d_adm_start = datetime.strptime(str(raw_adm_start)[:10], '%Y-%m-%d').date()
+        if d_discharge < d_adm_start:
+            return False, f"Chiqarish sanasi ({d_discharge}) yotqizish sanasidan ({d_adm_start}) oldin bo'lishi mumkin emas."
 
         patient_id = adm['patient_id'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[0]
         bed_id = adm['bed_id'] if isinstance(adm, dict) or hasattr(adm, 'keys') else adm[1]
@@ -1533,8 +1661,12 @@ def discharge_patient(conn, admission_id, actual_end_date, discharge_summary=Non
         # 4. Mandatory Clinical Sanitation: transition bed hardware status to 'cleaning'
         cur.execute("UPDATE beds SET status = 'cleaning', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (bed_id,))
 
-        # 5. Update patient master status
-        cur.execute("UPDATE patients SET status = 'discharged', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (patient_id,))
+        # 5. Update patient master status only if no other active admissions exist
+        cur.execute("SELECT COUNT(*) AS active_count FROM admissions WHERE patient_id = ? AND status = 'active' AND id != ?", (patient_id, admission_id))
+        _act_row = cur.fetchone()
+        _remaining_active = (_act_row['active_count'] if isinstance(_act_row, dict) else _act_row[0]) if _act_row else 0
+        if _remaining_active == 0:
+            cur.execute("UPDATE patients SET status = 'discharged', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (patient_id,))
 
         conn.commit()
         return True, {"admission_id": admission_id, "actual_end_date": str(actual_end_date), "bed_status": "cleaning"}
@@ -1542,3 +1674,53 @@ def discharge_patient(conn, admission_id, actual_end_date, discharge_summary=Non
         conn.rollback()
         return False, str(e)
 
+
+
+_referrals_table_checked = False
+
+def ensure_referrals_schema(conn):
+    global _referrals_table_checked
+    if _referrals_table_checked:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS referral_doctors (
+                id VARCHAR(64) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                staff_id VARCHAR(64) DEFAULT NULL,
+                phone VARCHAR(64) DEFAULT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT '1',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ref_doc_staff (staff_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS patient_referrals (
+                id VARCHAR(64) PRIMARY KEY,
+                patient_id VARCHAR(64) DEFAULT NULL,
+                admission_id VARCHAR(64) DEFAULT NULL,
+                appointment_id VARCHAR(64) DEFAULT NULL,
+                invoice_id VARCHAR(64) DEFAULT NULL,
+                patient_name VARCHAR(255) NOT NULL,
+                doctor_referral_id VARCHAR(64) NOT NULL,
+                doctor_name VARCHAR(255) NOT NULL,
+                fee_type VARCHAR(32) NOT NULL DEFAULT 'percent_10',
+                fixed_amount DECIMAL(14,2) NOT NULL DEFAULT '0.00',
+                base_total_billed DECIMAL(14,2) NOT NULL DEFAULT '0.00',
+                calculated_amount DECIMAL(14,2) NOT NULL DEFAULT '0.00',
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                payment_transaction_id VARCHAR(64) DEFAULT NULL,
+                paid_at DATETIME DEFAULT NULL,
+                paid_by VARCHAR(64) DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                INDEX idx_ref_patient (patient_id),
+                INDEX idx_ref_doctor (doctor_referral_id),
+                INDEX idx_ref_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        _referrals_table_checked = True
+    except Exception as e:
+        print(f"[!] Could not ensure referrals schema: {e}")

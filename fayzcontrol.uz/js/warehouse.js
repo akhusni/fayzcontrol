@@ -1828,8 +1828,9 @@
         : '<div class="wh-newitem"><div class="wh-hint" style="margin-bottom:10px">Katalogda yo\'q mahsulot: hujjat tasdiqlanganda yangi mahsulot sifatida yaratiladi.</div>' +
           itemFieldsHtml(L.ni || { item_type: 'medicine', base_unit: 'dona', track_expiry: 1 }, { compact: true, creating: true }) + '</div>') +
       '<div class="wh-line-grid" style="margin-top:10px">' +
-        field('Qadoq soni <span data-pkg-label></span>', '<input class="wh-input" data-f="packages" inputmode="decimal" autocomplete="off" value="' + esc(L.packages) + '">', { req: true }) +
-        field('Qadoq narxi (so\'m)', '<input class="wh-input" data-f="price" inputmode="decimal" autocomplete="off" value="' + esc(L.price) + '">', { req: true }) +
+        field('Dori miqdori (dona / qadoq) <span data-pkg-label></span>', '<input class="wh-input" data-f="packages" inputmode="decimal" autocomplete="off" placeholder="Masalan: 100" value="' + esc(L.packages) + '">', { req: true }) +
+        field('1 dona / qadoq narxi (so\'m)', '<input class="wh-input" data-f="price" inputmode="decimal" autocomplete="off" placeholder="Masalan: 472" value="' + esc(L.price) + '">', { req: true }) +
+        field('Jami xarid summasi (so\'m)', '<input class="wh-input" data-f="lineTotal" inputmode="decimal" autocomplete="off" placeholder="Masalan: 47200" value="' + esc(L.lineTotal || '') + '">') +
         field('Partiya raqami', '<input class="wh-input" data-f="batch" maxlength="64" autocomplete="off" value="' + esc(L.batch) + '">') +
         field('Yaroqlilik muddati <span data-exp-req></span>', '<input class="wh-input" type="date" data-f="expiry" value="' + esc(L.expiry) + '" min="' + todayISO() + '">') +
       '</div>' +
@@ -1907,7 +1908,24 @@
     if (!card) return;
     const L = RC.form.lines.find((x) => x.key === Number(card.dataset.key));
     if (!L) return;
-    if (e.target.dataset && e.target.dataset.f) L[e.target.dataset.f] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    const fld = e.target.dataset ? e.target.dataset.f : null;
+    if (fld) {
+      L[fld] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      const pk = parseFloat(L.packages) || 0;
+      if (fld === 'lineTotal' && pk > 0) {
+        const tot = parseFloat(L.lineTotal) || 0;
+        const uPr = tot > 0 ? (tot / pk) : 0;
+        L.price = uPr > 0 ? (Math.round(uPr * 100) / 100).toString() : '';
+        const pInp = card.querySelector('[data-f="price"]');
+        if (pInp) pInp.value = L.price;
+      } else if ((fld === 'price' || fld === 'packages') && pk > 0) {
+        const pr = parseFloat(L.price) || 0;
+        const tot = pk * pr;
+        L.lineTotal = tot > 0 ? (Math.round(tot * 100) / 100).toString() : '';
+        const tInp = card.querySelector('[data-f="lineTotal"]');
+        if (tInp) tInp.value = L.lineTotal;
+      }
+    }
     card.classList.remove('has-error');
     const er = $('[data-lerr]', card);
     if (er) er.hidden = true;

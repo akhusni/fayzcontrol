@@ -89,7 +89,12 @@
 
   const OFFICIAL_RATES = {
     "statsionar_shared": { name: "Statsionar (1 karavot / 720 ming)", get rate() { return listedRate('statsionar_shared'); }, desc: "2 kishilik xonada 1 ta o'rin" },
-    "statsionar_full_room": { name: "Statsionar Butun Xona (1 kishi / VIP Solo)", get rate() { return listedRate('statsionar_full_room'); }, desc: "Butun xona 1 kishi uchun (2-o'rin berilmaydi)" },
+    "statsionar_full_room": { name: "Statsionar Butun Xona (1 kishi / VIP Solo)", get rate() { return listedRate('statsionar_full_room'); }, desc: "Butun xona 1 kishi uchun (sherik o'rin berilmaydi)" },
+    "statsionar_vip_1": { name: "Statsionar 2-Bino VIP (1-xona, 1 kishilik)", get rate() { return listedRate('statsionar_vip_1'); }, desc: "2-Bino 1-xona VIP lyuks palata" },
+    "statsionar_shared_800k": { name: "Statsionar 2-Bino (3/5-xona kishi boshiga)", get rate() { return listedRate('statsionar_shared_800k'); }, desc: "2-Bino 3-xona yoki 5-xona kishi boshiga" },
+    "statsionar_full_room_1200k": { name: "Statsionar 2-Bino 3-xona Butun Xona", get rate() { return listedRate('statsionar_full_room_1200k'); }, desc: "2-Bino 3-xona to'liq bron" },
+    "statsionar_full_room_1300k": { name: "Statsionar 2-Bino 5-xona 2 kishilik to'liq bron", get rate() { return listedRate('statsionar_full_room_1300k'); }, desc: "2-Bino 5-xona (2 kishi uchun to'liq)" },
+    "statsionar_full_room_1600k": { name: "Statsionar 2-Bino 5-xona 1 kishilik to'liq bron (Solo)", get rate() { return listedRate('statsionar_full_room_1600k'); }, desc: "2-Bino 5-xona (1 kishi uchun to'liq solo)" },
     "kunlik_statsionar": { name: "Kunlik Statsionar (Kunduzgi o'rin)", get rate() { return listedRate('kunlik_statsionar'); }, desc: "Faqat kunduzgi vaqtda muolaja olish" },
     "ambulator_1": { name: "Ambulator (Kuniga 1 mahal muolaja)", get rate() { return listedRate('ambulator_1'); }, desc: "Kuniga 1 mahal qatnab muolaja" },
     "ambulator_2": { name: "Ambulator (Kuniga 2 mahal muolaja)", get rate() { return listedRate('ambulator_2'); }, desc: "Kuniga 2 mahal qatnab muolaja" }
@@ -265,11 +270,12 @@
 
       // Real-time periodic refresh every 4s
       setInterval(async () => {
+    if (document.hidden) return;
         try {
           await syncWithLedgerAndBackend(false);
           renderAll();
         } catch (e) {}
-      }, 4000);
+      }, 12000);
 
       window.addEventListener('storage', (e) => {
         if (e.key === BEDS_STORAGE_KEY || e.key === STORAGE_KEY) {
@@ -1492,163 +1498,346 @@
 
   let activeReceiptBill = null;
 
-  function openInvoiceReceipt(billId) {
-    const bill = accountingData.patients_billing.find(b => b.id === billId);
-    if (!bill) return;
-
-    activeReceiptBill = bill;
-
+  async function openInvoiceReceipt(billId) {
     const modal = document.getElementById('invoice-receipt-modal');
     const content = document.getElementById('invoice-receipt-content');
     if (!modal || !content) return;
 
-    const clinic = accountingData.clinic_info;
-    const now = new Date();
-    const dateFormatted = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
-
-    // Itemized table rows. Only a stay has a bed-days line; a desk visit
-    // (consultation, outpatient course) is just its own bill line below.
-    const hasStayRow = !bill.is_visit && bill.days_count;
-    let itemRows = hasStayRow ? `
-      <tr>
-        <td>1</td>
-        <td><strong>${esc(bill.program)}</strong><br><small style="color: #64748b;">${esc(bill.bed_name)} • Shifokor nazorati, muolajalar va parhez taomnoma</small></td>
-        <td style="text-align: center; font-weight: 700;">${bill.days_count} kun</td>
-        <td style="text-align: right;">${formatUZS(bill.daily_rate)}</td>
-        <td style="text-align: right; font-weight: 700;">${formatUZS(bill.days_count * bill.daily_rate)}</td>
-      </tr>
-    ` : '';
-
-    if (bill.extra_services && bill.extra_services.length > 0) {
-      bill.extra_services.forEach((s, i) => {
-        itemRows += `
-          <tr>
-            <td>${i + (hasStayRow ? 2 : 1)}</td>
-            <td><strong>${esc(s.name)}</strong><br><small style="color: #64748b;">Qo'shimcha tayinlangan muolaja / dori (${esc(s.notes || 'Shifokor ko\'rsatmasi')})</small></td>
-            <td style="text-align: center; font-weight: 700;">${s.qty} ta</td>
-            <td style="text-align: right;">${formatUZS(s.unit_price)}</td>
-            <td style="text-align: right; font-weight: 700; color: #a855f7;">${formatUZS(s.total)}</td>
-          </tr>
-        `;
-      });
-    }
+    let bill = (accountingData.patients_billing || []).find(b => b.id === billId);
+    activeReceiptBill = bill;
 
     content.innerHTML = `
-      <style>
-        .invoice-preview-container { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0f172a; padding: 1.5rem; max-width: 800px; margin: 0 auto; line-height: 1.4; background: #ffffff; }
-        .invoice-header-row { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 1.25rem; margin-bottom: 1.25rem; }
-        .inv-brand-name { font-size: 1.5rem; font-weight: 800; color: #0284c7; }
-        .inv-brand-details { font-size: 0.8rem; color: #475569; margin-top: 4px; line-height: 1.4; }
-        .inv-title-badge { text-align: right; }
-        .inv-doc-title { font-size: 1.25rem; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; }
-        .inv-doc-num { font-size: 1.1rem; font-family: monospace; font-weight: 700; color: #0284c7; }
-        .inv-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0; }
-        .inv-meta-col .title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700; margin-bottom: 4px; }
-        .inv-meta-col .name { font-size: 1.05rem; font-weight: 700; color: #0f172a; }
-        .inv-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
-        .inv-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 8px 12px; font-size: 0.8rem; text-transform: uppercase; }
-        .inv-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem; color: #1e293b; }
-        .inv-total-box { margin-left: auto; width: 340px; margin-bottom: 1.5rem; }
-        .inv-total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.85rem; color: #475569; }
-        .inv-total-row.grand-total { border-top: 2px solid #0f172a; margin-top: 6px; padding-top: 6px; font-weight: 800; font-size: 1.1rem; color: #0f172a; }
-        .inv-footer-stamps { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px dashed #cbd5e1; font-size: 0.8rem; color: #334155; }
-        .inv-stamp-mockup { border: 2px solid #0284c7; color: #0284c7; padding: 6px 14px; border-radius: 6px; font-weight: 800; text-align: center; }
-      </style>
-      <div class="invoice-preview-container">
-        <div class="invoice-header-row">
-          <div>
-            <div class="inv-brand-name">${clinic.name}</div>
-            <div class="inv-brand-details">
-              <strong>${clinic.legal_name}</strong><br>
-              STIR (INN): ${clinic.inn} • MFO: ${clinic.mfo}<br>
-              H/R: ${clinic.bank_account}<br>
-              ${clinic.bank_name}<br>
-              Tel: ${clinic.phones.join(', ')}<br>
-              Manzil: ${clinic.address}
-            </div>
-          </div>
-          <div class="inv-title-badge">
-            <div class="inv-doc-title">TO'LOV KVITANSIYASI</div>
-            <div class="inv-doc-num">№ ${bill.id}</div>
-            <div style="font-size: 0.78rem; color: #64748b; margin-top: 4px;">Sana: ${dateFormatted}</div>
-          </div>
-        </div>
-
-        <div class="inv-meta-grid">
-          <div class="inv-meta-col">
-            <div class="title">Bemor Ma'lumotlari:</div>
-            <div class="name">${esc(bill.patient_name)}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Tel: ${esc(bill.patient_phone || '—')}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Manzil: ${bill.patient_city || '—'}</div>
-          </div>
-          <div class="inv-meta-col">
-            <div class="title">Muolaja / Tarif Paketi:</div>
-            <div style="font-weight: 700; color: #0f172a;">${esc(bill.program)}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Joy: ${esc(bill.bed_name || 'Ambulator')}</div>
-            <div style="font-size: 0.8rem; color: #475569;">${bill.is_visit
-              ? `Sana: ${esc(bill.start_date || '—')}`
-              : `Davomiyligi: ${bill.days_count ? bill.days_count + ' kun' : '—'} (${esc(bill.start_date || '—')} — ${esc(bill.end_date || '—')})`}</div>
-            <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${esc(bill.doctor || '—')}</div>
-          </div>
-        </div>
-
-        <table class="inv-table">
-          <thead>
-            <tr>
-              <th>№</th>
-              <th>Xizmat / Muolaja / Dori Ta'rifi</th>
-              <th style="text-align: center;">Miqdori</th>
-              <th style="text-align: right;">Birlik Narxi (UZS)</th>
-              <th style="text-align: right;">Jami (UZS)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemRows}
-          </tbody>
-        </table>
-
-        <div class="inv-total-box">
-          ${Number(bill.discount_amount) > 0 ? `
-          <div class="inv-total-row">
-            <span>Hisoblangan Summa (chegirmagacha):</span>
-            <span style="font-weight: 700;">${formatUZS(bill.gross_due || bill.total_due)}</span>
-          </div>
-          <div class="inv-total-row">
-            <span>Chegirma${bill.gross_due ? ` (${Math.round(bill.discount_amount / bill.gross_due * 100)}%)` : ''}:</span>
-            <span style="font-weight: 700; color: #dc2626;">-${formatUZS(bill.discount_amount)}</span>
-          </div>` : ''}
-          <div class="inv-total-row">
-            <span>${Number(bill.discount_amount) > 0 ? "To'lanishi kerak (chegirmadan keyin):" : 'Hisoblangan Jami Summa:'}</span>
-            <span style="font-weight: 700;">${formatUZS(bill.total_due)}</span>
-          </div>
-          <div class="inv-total-row">
-            <span>To'langan Summa (Fakt):</span>
-            <span style="font-weight: 700; color: #059669;">${formatUZS(bill.total_paid)}</span>
-          </div>
-          <div class="inv-total-row grand-total">
-            <span>Qoldiq Qarzdorlik:</span>
-            <span>${formatUZS(bill.debt_remaining)}</span>
-          </div>
-        </div>
-
-        <div class="inv-footer-stamps">
-          <div class="inv-stamp-mockup">
-            <i class="fas fa-stamp" style="font-size: 1.8rem;"></i>
-            <div>
-              <div>FAYZ MEDICAL HOUSE</div>
-              <div style="font-size: 0.65rem; color: #0369a1;">TO'LOV QABUL QILINDI • M.O'.</div>
-            </div>
-          </div>
-
-          <div style="text-align: right;">
-            <div>Kassir-Buxgalter: ____________________</div>
-            <div style="margin-top: 6px;">Bemor (Vakil): ____________________ / ${bill.patient_name.split(' ')[0]}</div>
-          </div>
-        </div>
+      <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: #38bdf8; margin-bottom: 0.5rem; display: block;"></i>
+        Real vaqtdagi hisob-kitoblar yuklanmoqda...
       </div>
     `;
-
     modal.classList.add('active');
+
+    let liveData = null;
+    try {
+      const res = await fetch(`/api/accounting/invoice-items?invoice_id=${encodeURIComponent(billId)}`);
+      if (res.ok) {
+        liveData = await res.json();
+      }
+    } catch (e) {
+      console.warn("Live invoice fetch error:", e);
+    }
+
+    try {
+      if (!bill && liveData?.invoice) {
+        const invRow = liveData.invoice;
+        bill = {
+          id: invRow.invoice_id,
+          patient_name: invRow.patient_name || 'Bemor',
+          patient_phone: invRow.patient_phone || '',
+          patient_id: invRow.patient_id || '',
+          bed_name: invRow.room_number ? `${invRow.room_number}-xona (${invRow.bed_code || ''})` : (invRow.bed_code || 'Ambulator'),
+          program: invRow.program_type || 'Tibbiy xizmatlar',
+          doctor: invRow.doctor_name || 'Shifokor biriktirilmagan',
+          start_date: invRow.start_date || '',
+          end_date: invRow.end_date || '',
+          days_count: invRow.total_days || null,
+          is_visit: !invRow.admission_id
+        };
+      }
+
+      const clinic = (accountingData && accountingData.clinic_info) || {};
+      const clinicName = clinic.name || "FAYZ MEDICAL HOUSE";
+      const legalNameDisplay = clinic.legal_name || clinicName;
+      const innDisplay = clinic.inn || "309812456";
+      const mfoDisplay = clinic.mfo || "00444";
+      const bankAccDisplay = clinic.bank_account || "20208000900123456001";
+      const addressDisplay = clinic.address || "Toshkent sh., Chilonzor tumani, Muqimiy ko'chasi 44-uy";
+      const phoneDisplay = Array.isArray(clinic.phones)
+        ? clinic.phones.join(', ')
+        : (clinic.phone || "+998 71 200-44-00");
+
+      const now = new Date();
+      const dateFormatted = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
+      const timeFormatted = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+      // Prefer live invoice totals
+      const inv = liveData?.invoice || bill || {};
+      const totalDue = Number(inv.net_amount !== undefined ? inv.net_amount : (bill?.total_due || 0));
+      const grossDue = Number(inv.total_billed !== undefined ? inv.total_billed : (bill?.gross_due || totalDue));
+      const discountAmt = Number(inv.discount_amount || bill?.discount_amount || 0);
+      const totalPaid = Number(inv.total_paid !== undefined ? inv.total_paid : (bill?.total_paid || 0));
+      const debtRemaining = Number(inv.balance_due !== undefined ? inv.balance_due : (bill?.debt_remaining || (totalDue - totalPaid)));
+      const paymentStatus = inv.payment_status || bill?.status || 'unpaid';
+
+      // Status badge info
+      let statusBadge = '';
+      if (paymentStatus === 'paid' || (debtRemaining <= 0 && totalPaid > 0)) {
+        statusBadge = `<span style="background: rgba(16, 185, 129, 0.15); color: #059669; border: 1px solid rgba(16, 185, 129, 0.4); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fas fa-check-circle"></i> TO'LIQ TO'LANGAN</span>`;
+      } else if (totalPaid > 0) {
+        statusBadge = `<span style="background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.4); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fas fa-clock"></i> QISMAN TO'LANGAN</span>`;
+      } else {
+        statusBadge = `<span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.4); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fas fa-exclamation-circle"></i> TO'LANMAGAN</span>`;
+      }
+
+      // Build items table rows
+      let itemRows = '';
+      let rowIdx = 1;
+      if (liveData?.items && liveData.items.length > 0) {
+        liveData.items.forEach(it => {
+          const isBedStay = it.item_type === 'bed_stay';
+          const typeLabel = isBedStay ? "O'rin-kun (Statsionar)" : (it.item_type === 'medication' ? "Dori vositasi" : (it.item_type === 'lab_test' ? "Laboratoriya" : "Tibbiy xizmat"));
+          itemRows += `
+            <tr>
+              <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${rowIdx++}</td>
+              <td>
+                <strong>${esc(it.service_name)}</strong>
+                <div style="font-size: 0.72rem; color: #64748b;">${typeLabel} ${it.service_start_date ? '• ' + it.service_start_date : ''}</div>
+              </td>
+              <td style="text-align: center; font-weight: 700;">${it.quantity} ${isBedStay ? 'kun' : 'ta'}</td>
+              <td style="text-align: right; font-family: monospace;">${formatUZS(it.unit_price)}</td>
+              <td style="text-align: right; font-weight: 700; font-family: monospace; color: #0f172a;">${formatUZS(it.total_amount)}</td>
+            </tr>
+          `;
+        });
+      } else if (bill) {
+        const hasStayRow = !bill.is_visit && bill.days_count;
+        if (hasStayRow) {
+          itemRows += `
+            <tr>
+              <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${rowIdx++}</td>
+              <td><strong>${esc(bill.program)}</strong><br><small style="color: #64748b;">${esc(bill.bed_name)} • Shifokor nazorati va parhez</small></td>
+              <td style="text-align: center; font-weight: 700;">${bill.days_count} kun</td>
+              <td style="text-align: right; font-family: monospace;">${formatUZS(bill.daily_rate)}</td>
+              <td style="text-align: right; font-weight: 700; font-family: monospace;">${formatUZS(bill.days_count * bill.daily_rate)}</td>
+            </tr>
+          `;
+        }
+        if (bill.extra_services && bill.extra_services.length > 0) {
+          bill.extra_services.forEach(s => {
+            itemRows += `
+              <tr>
+                <td style="text-align: center; color: #64748b; font-size: 0.8rem;">${rowIdx++}</td>
+                <td><strong>${esc(s.name)}</strong><br><small style="color: #64748b;">Qo'shimcha muolaja / dori</small></td>
+                <td style="text-align: center; font-weight: 700;">${s.qty} ta</td>
+                <td style="text-align: right; font-family: monospace;">${formatUZS(s.unit_price)}</td>
+                <td style="text-align: right; font-weight: 700; font-family: monospace; color: #a855f7;">${formatUZS(s.total)}</td>
+              </tr>
+            `;
+          });
+        }
+      }
+
+      // Build payments journal rows if any payments exist
+      let paymentsHtml = '';
+      const paymentsList = liveData?.payments || [];
+      if (paymentsList.length > 0) {
+        let pRows = '';
+        paymentsList.forEach((pm, pidx) => {
+          const methodTitle = pm.payment_method === 'cash' ? "Naqd pul" : (pm.payment_method === 'terminal' ? "Terminal / Karta" : (pm.payment_method === 'payme_click' ? "Click / Payme" : (pm.payment_method === 'bank_wire' ? "Bank o'tkazmasi" : (pm.payment_method || "To'lov"))));
+          pRows += `
+            <tr style="font-size: 0.8rem;">
+              <td style="text-align: center; color: #64748b;">${pidx + 1}</td>
+              <td>${pm.payment_date || (pm.created_at ? String(pm.created_at).slice(0, 10) : '—')}</td>
+              <td>${pm.id || '—'}</td>
+              <td><span style="font-weight: 600;">${methodTitle}</span> ${pm.notes ? `<small style="color: #64748b;">(${esc(pm.notes)})</small>` : ''}</td>
+              <td style="text-align: right; font-weight: 700; font-family: monospace; color: #059669;">+${formatUZS(pm.amount)}</td>
+            </tr>
+          `;
+        });
+        paymentsHtml = `
+          <div style="margin-top: 1.25rem;">
+            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; margin-bottom: 6px;">
+              <i class="fas fa-history" style="color: #0284c7;"></i> Qabul Qilingan To'lovlar Tarixi (Jurnal):
+            </div>
+            <table class="inv-table" style="margin-bottom: 0.5rem;">
+              <thead>
+                <tr style="background: #f8fafc;">
+                  <th style="width: 32px; text-align: center;">№</th>
+                  <th>Sana</th>
+                  <th>Kvitansiya Kodi</th>
+                  <th>To'lov Usuli</th>
+                  <th style="text-align: right;">To'langan Summa</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pRows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      // Update activeReceiptBill with newest figures for direct printing
+      activeReceiptBill = Object.assign({}, bill, {
+        total_due: totalDue,
+        gross_due: grossDue,
+        discount_amount: discountAmt,
+        total_paid: totalPaid,
+        debt_remaining: debtRemaining,
+        status: paymentStatus
+      });
+
+      content.innerHTML = `
+        <style>
+          .invoice-preview-container { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0f172a; padding: 1.25rem; max-width: 800px; margin: 0 auto; line-height: 1.4; background: #ffffff; border-radius: 8px; }
+          .invoice-header-row { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0284c7; padding-bottom: 1rem; margin-bottom: 1rem; }
+          .inv-brand-name { font-size: 1.45rem; font-weight: 800; color: #0284c7; letter-spacing: -0.02em; }
+          .inv-brand-details { font-size: 0.78rem; color: #475569; margin-top: 4px; line-height: 1.4; }
+          .inv-title-badge { text-align: right; }
+          .inv-doc-title { font-size: 1.15rem; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; }
+          .inv-doc-num { font-size: 1.1rem; font-family: monospace; font-weight: 700; color: #0284c7; }
+          
+          .inv-summary-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 1.25rem; }
+          .inv-hero-card { display: flex; flex-direction: column; }
+          .inv-hero-card .label { font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: 0.04em; margin-bottom: 2px; }
+          .inv-hero-card .value { font-size: 1.25rem; font-weight: 800; font-family: monospace; }
+          
+          .inv-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; background: #f8fafc; padding: 10px 14px; border-radius: 8px; border: 1px solid #e2e8f0; }
+          .inv-meta-col .title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700; margin-bottom: 4px; }
+          .inv-meta-col .name { font-size: 1rem; font-weight: 700; color: #0f172a; }
+          
+          .inv-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+          .inv-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 7px 10px; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; }
+          .inv-table td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.82rem; color: #1e293b; }
+          
+          .inv-total-box { margin-left: auto; width: 360px; margin-bottom: 1.25rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; }
+          .inv-total-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.84rem; color: #475569; }
+          .inv-total-row.grand-total { border-top: 2px solid #0f172a; margin-top: 6px; padding-top: 6px; font-weight: 800; font-size: 1.05rem; }
+          
+          .inv-footer-stamps { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px dashed #cbd5e1; font-size: 0.78rem; color: #334155; }
+          .inv-stamp-mockup { border: 2px solid #0284c7; color: #0284c7; padding: 6px 12px; border-radius: 6px; font-weight: 800; text-align: center; }
+
+          @media print {
+            body * { visibility: hidden; }
+            .invoice-preview-container, .invoice-preview-container * { visibility: visible; }
+            .invoice-preview-container { position: absolute; left: 0; top: 0; width: 100%; max-width: 100%; padding: 0; margin: 0; box-shadow: none; border: none; }
+            .no-print { display: none !important; }
+          }
+        </style>
+
+        <div class="invoice-preview-container">
+          <!-- HEADER -->
+          <div class="invoice-header-row">
+            <div>
+              <div class="inv-brand-name">${clinicName}</div>
+              <div class="inv-brand-details">
+                <strong>${legalNameDisplay}</strong><br>
+                STIR (INN): ${innDisplay} • MFO: ${mfoDisplay} • H/R: ${bankAccDisplay}<br>
+                Tel: ${phoneDisplay} • Manzil: ${addressDisplay}
+              </div>
+            </div>
+            <div class="inv-title-badge">
+              <div class="inv-doc-title">TO'LOV CHEKI & KVITANSIYA</div>
+              <div class="inv-doc-num">№ ${bill?.id || '—'}</div>
+              <div style="font-size: 0.78rem; color: #64748b; margin-top: 3px;">Sana: ${dateFormatted} ${timeFormatted}</div>
+              <div style="margin-top: 6px;">${statusBadge}</div>
+            </div>
+          </div>
+
+          <!-- REAL-TIME HIGHLIGHT CARDS (QANCHA TO'LOV KERAK, QANCHASI TO'LANDI, QOLDIQ QARZ) -->
+          <div class="inv-summary-hero">
+            <div class="inv-hero-card" style="border-left: 3px solid #0284c7; padding-left: 8px;">
+              <span class="label">💳 Jami To'lov Kerak</span>
+              <span class="value" style="color: #0284c7;">${formatUZS(totalDue)}</span>
+              ${discountAmt > 0 ? `<span style="font-size: 0.7rem; color: #64748b;">(Chegirma: -${formatUZS(discountAmt)})</span>` : ''}
+            </div>
+            <div class="inv-hero-card" style="border-left: 3px solid #059669; padding-left: 8px;">
+              <span class="label">💰 Qanchasi To'landi</span>
+              <span class="value" style="color: #059669;">${formatUZS(totalPaid)}</span>
+              <span style="font-size: 0.7rem; color: #64748b;">Fakt tushum</span>
+            </div>
+            <div class="inv-hero-card" style="border-left: 3px solid ${debtRemaining > 0 ? '#dc2626' : '#10b981'}; padding-left: 8px;">
+              <span class="label">⚖️ Qoldiq Qarzdorlik</span>
+              <span class="value" style="color: ${debtRemaining > 0 ? '#dc2626' : '#10b981'};">
+                ${debtRemaining > 0 ? formatUZS(debtRemaining) : "0 so'm (To'liq)"}
+              </span>
+              <span style="font-size: 0.7rem; color: ${debtRemaining > 0 ? '#dc2626' : '#10b981'}; font-weight: 600;">
+                ${debtRemaining > 0 ? "Qarzdorlik mavjud" : "Qarzdorlik yo'q ✓"}
+              </span>
+            </div>
+          </div>
+
+          <!-- META GRID -->
+          <div class="inv-meta-grid">
+            <div class="inv-meta-col">
+              <div class="title">Bemor Ma'lumotlari:</div>
+              <div class="name">${esc(bill?.patient_name || 'Bemor')}</div>
+              <div style="font-size: 0.8rem; color: #475569;">Tel: ${esc(bill?.patient_phone || '—')}</div>
+              <div style="font-size: 0.8rem; color: #475569;">Bemor ID: ${esc(bill?.patient_id || '—')}</div>
+            </div>
+            <div class="inv-meta-col">
+              <div class="title">Muolaja / Tarif Paketi:</div>
+              <div style="font-weight: 700; color: #0f172a;">${esc(bill?.program || 'Tibbiy xizmatlar')}</div>
+              <div style="font-size: 0.8rem; color: #475569;">Joy: ${esc(bill?.bed_name || 'Ambulator')}</div>
+              <div style="font-size: 0.8rem; color: #475569;">${bill?.is_visit
+                ? `Tashrif sanasi: ${esc(bill?.start_date || '—')}`
+                : `Muddat: ${bill?.days_count ? bill.days_count + ' kun' : '—'} (${esc(bill?.start_date || '—')} — ${esc(bill?.end_date || '—')})`}</div>
+              <div style="font-size: 0.8rem; color: #475569;">Mas'ul shifokor: ${esc(bill?.doctor || '—')}</div>
+            </div>
+          </div>
+
+          <!-- SERVICES TABLE -->
+          <table class="inv-table">
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">№</th>
+                <th>Xizmat / Muolaja / Dori Ta'rifi</th>
+                <th style="text-align: center; width: 80px;">Miqdori</th>
+                <th style="text-align: right; width: 130px;">Birlik Narxi</th>
+                <th style="text-align: right; width: 130px;">Jami</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemRows || '<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 1.5rem;">Xizmatlar kiritilmagan</td></tr>'}
+            </tbody>
+          </table>
+
+          <!-- PAYMENTS JOURNAL (IF ANY) -->
+          ${paymentsHtml}
+
+          <!-- TOTALS BREAKDOWN BOX -->
+          <div class="inv-total-box">
+            ${discountAmt > 0 ? `
+            <div class="inv-total-row">
+              <span>Hisoblangan summa:</span>
+              <span style="font-weight: 700; font-family: monospace;">${formatUZS(grossDue)}</span>
+            </div>
+            <div class="inv-total-row">
+              <span>Chegirma:</span>
+              <span style="font-weight: 700; font-family: monospace; color: #dc2626;">-${formatUZS(discountAmt)}</span>
+            </div>` : ''}
+            <div class="inv-total-row">
+              <span>${discountAmt > 0 ? "Jami to'lov (chegirmadan so'ng):" : "Hisoblangan jami summa:"}</span>
+              <span style="font-weight: 700; font-family: monospace; color: #0284c7;">${formatUZS(totalDue)}</span>
+            </div>
+            <div class="inv-total-row">
+              <span>Haqiqatda to'landi (Kassa):</span>
+              <span style="font-weight: 700; font-family: monospace; color: #059669;">${formatUZS(totalPaid)}</span>
+            </div>
+            <div class="inv-total-row grand-total" style="color: ${debtRemaining > 0 ? '#b91c1c' : '#059669'};">
+              <span>Qoldiq Qarzdorlik:</span>
+              <span style="font-family: monospace;">${formatUZS(debtRemaining)}</span>
+            </div>
+          </div>
+
+          <!-- STAMPS & SIGNATURES -->
+          <div class="inv-footer-stamps">
+            <div class="inv-stamp-mockup">
+              <i class="fas fa-stamp" style="font-size: 1.5rem;"></i>
+              <div>
+                <div style="font-size: 0.85rem;">FAYZ MEDICAL HOUSE</div>
+                <div style="font-size: 0.65rem; color: #0369a1;">TO'LOV QABUL QILINDI • M.O'.</div>
+              </div>
+            </div>
+
+            <div style="text-align: right; line-height: 1.7;">
+              <div>Kassir-Buxgalter: ____________________ / ${esc(clinic.cashier || 'Kassa')}</div>
+              <div>Bemor (To'lovchi): ____________________ / ${esc((bill?.patient_name || 'Bemor').split(' ')[0])}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (renderErr) {
+      console.error("Receipt render error:", renderErr);
+      content.innerHTML = `<div style="text-align: center; padding: 2rem; color: #f87171;">Kvitansiyani ko'rsatishda xatolik yuz berdi: ${esc(renderErr.message)}</div>`;
+    }
   }
 
   function printPatientReceiptDirect() {
@@ -1862,8 +2051,10 @@
   // ==========================================================================
 
   let currentAddServiceBill = null;
+  let currentInvoiceItems = [];
+  let currentAddServiceMode = 'catalog';
 
-  function openAddServiceModal(billId) {
+  async function openAddServiceModal(billId) {
     const bill = accountingData.patients_billing.find(b => b.id === billId);
     if (!bill) return;
 
@@ -1876,15 +2067,12 @@
     if (billIdInput) billIdInput.value = bill.id;
 
     const nameEl = document.getElementById('addsvc-patient-name');
-    if (nameEl) {
-      nameEl.textContent = bill.patient_name;
-      if ('value' in nameEl) nameEl.value = bill.patient_name;
-    }
+    if (nameEl) nameEl.textContent = bill.patient_name;
 
     const bedBadge = document.getElementById('addsvc-bed-badge');
-    if (bedBadge) {
-      bedBadge.textContent = bill.bed_name || (bill.is_visit ? 'Ambulator' : 'Statsionar');
-    }
+    if (bedBadge) bedBadge.textContent = bill.bed_name || (bill.is_visit ? 'Ambulator' : 'Statsionar');
+
+    updateAddServiceHeaderTotals(bill.total_due, bill.total_paid, bill.debt_remaining);
 
     const qtyInput = document.getElementById('addsvc-qty-input');
     if (qtyInput) qtyInput.value = 1;
@@ -1892,10 +2080,17 @@
     const notesInput = document.getElementById('addsvc-notes-input');
     if (notesInput) notesInput.value = '';
 
-    fillAddServiceOptions();
-    updateAddServiceCalculation();
+    const customName = document.getElementById('addsvc-custom-name');
+    if (customName) customName.value = '';
 
-    // Prepare Tab 2 (Duration)
+    const customPrice = document.getElementById('addsvc-custom-price');
+    if (customPrice) customPrice.value = '';
+
+    toggleAddServiceMode('catalog');
+    fillAddServiceOptions();
+    cancelEditItem();
+
+    // Prepare Tab 3 (Duration)
     const nonInpatientNotice = document.getElementById('addsvc-duration-non-inpatient');
     const inpatientContainer = document.getElementById('addsvc-duration-inpatient');
     const isInpatient = !bill.is_visit && bill.admission_id && bill.days_count;
@@ -1925,13 +2120,323 @@
       onDurationInputChanged();
     }
 
-    switchAddServiceTab('items');
     modal.classList.add('active');
+    await loadInvoiceItemsForModal(bill.id);
   }
 
-  // The choice list used to be 8 fixed demo medicines (ids no stock item
-  // has) and 5 services at prices typed into the page. It is now the real
-  // stock with its prices, and the services from the one price list.
+  async function loadInvoiceItemsForModal(invoiceId) {
+    const container = document.getElementById('addsvc-items-table-container');
+    const countEl = document.getElementById('addsvc-items-count');
+    if (!container) return;
+
+    container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Xizmatlar ro'yxati yuklanmoqda...</div>`;
+
+    try {
+      const res = await fetch(`/api/accounting/invoice-items?invoice_id=${encodeURIComponent(invoiceId)}`);
+      if (!res.ok) {
+        container.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: #f87171;">Xizmatlarni yuklab bo'lmadi.</div>`;
+        return;
+      }
+      const data = await res.json();
+      currentInvoiceItems = (data.items || []).filter(it => it.item_type !== 'bed_stay');
+
+      if (data.invoice) {
+        const net = Number(data.invoice.net_amount || 0);
+        const paid = Number(data.invoice.total_paid || 0);
+        const balance = Number(data.invoice.balance_due || 0);
+        updateAddServiceHeaderTotals(net, paid, balance);
+        if (currentAddServiceBill) {
+          currentAddServiceBill.total_due = net;
+          currentAddServiceBill.total_paid = paid;
+          currentAddServiceBill.debt_remaining = balance;
+        }
+      }
+
+      if (countEl) countEl.textContent = currentInvoiceItems.length;
+      renderInvoiceItemsTable();
+
+      if (currentInvoiceItems.length === 0) {
+        switchAddServiceTab('items');
+      } else {
+        switchAddServiceTab('list');
+      }
+    } catch (err) {
+      container.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: #f87171;">Server bilan aloqa uzildi.</div>`;
+    }
+  }
+
+  function updateAddServiceHeaderTotals(total, paid, debt) {
+    const tEl = document.getElementById('addsvc-header-total');
+    const pEl = document.getElementById('addsvc-header-paid');
+    const dEl = document.getElementById('addsvc-header-debt');
+    if (tEl) tEl.textContent = formatUZS(total);
+    if (pEl) pEl.textContent = formatUZS(paid);
+    if (dEl) {
+      dEl.textContent = formatUZS(debt);
+      dEl.style.color = Number(debt) > 0 ? '#f87171' : 'var(--emerald)';
+    }
+  }
+
+  function renderInvoiceItemsTable() {
+    const container = document.getElementById('addsvc-items-table-container');
+    if (!container) return;
+
+    if (!currentInvoiceItems || currentInvoiceItems.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2.5rem 1rem; background: var(--bg-hover); border-radius: 8px; border: 1px dashed var(--border-color);">
+          <i class="fas fa-notes-medical" style="font-size: 2.5rem; color: #a855f7; margin-bottom: 0.75rem; display: block; opacity: 0.7;"></i>
+          <h4 style="margin-bottom: 0.35rem; color: var(--text-primary);">Hozircha qo'shimcha xizmatlar yoki dorilar yo'q</h4>
+          <p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 1rem;">Ushbu hisobga hali dorilar, laboratoriya tahlillari yoki qo'shimcha muolajalar kiritilmagan.</p>
+          <button type="button" class="btn-portal btn-primary-portal" style="padding: 6px 16px; font-size: 0.85rem;" onclick="window.FMH_Accounting.switchAddServiceTab('items')">
+            <i class="fas fa-plus-circle"></i> Yangi Xizmat / Dori Qo'shish
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    let rowsHtml = '';
+    currentInvoiceItems.forEach((it, idx) => {
+      const typeBadge = it.item_type === 'medication'
+        ? `<span class="badge-status" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.7rem;">💊 Dori</span>`
+        : (it.item_type === 'lab_test'
+          ? `<span class="badge-status" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.7rem;">🔬 Tahlil</span>`
+          : `<span class="badge-status" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.7rem;">🩺 Muolaja</span>`);
+
+      rowsHtml += `
+        <tr style="border-bottom: 1px solid var(--border-color);">
+          <td style="text-align: center; color: var(--text-muted); font-size: 0.8rem; width: 32px;">${idx + 1}</td>
+          <td>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 0.88rem;">${esc(it.service_name)}</div>
+            <div style="display: flex; gap: 6px; align-items: center; margin-top: 3px;">
+              ${typeBadge}
+              <span style="font-size: 0.72rem; color: var(--text-muted);">${it.service_start_date || ''}</span>
+            </div>
+          </td>
+          <td style="text-align: right; font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem;">
+            ${formatUZS(it.unit_price)}
+          </td>
+          <td style="text-align: center;">
+            <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.25); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border-color);">
+              <button type="button" class="btn-portal btn-outline-portal" style="padding: 1px 7px; font-size: 0.75rem; line-height: 1.2; font-weight: 800;" onclick="window.FMH_Accounting.decreaseItemQty(${it.id})" title="Miqdorni kamaytirish">-</button>
+              <span style="font-family: var(--font-mono); font-weight: 800; font-size: 0.9rem; min-width: 24px; text-align: center; color: #38bdf8;">${it.quantity}</span>
+              <button type="button" class="btn-portal btn-outline-portal" style="padding: 1px 7px; font-size: 0.75rem; line-height: 1.2; font-weight: 800;" onclick="window.FMH_Accounting.increaseItemQty(${it.id})" title="Miqdorni oshirish">+</button>
+            </div>
+          </td>
+          <td style="text-align: right; font-family: var(--font-mono); font-weight: 800; font-size: 0.92rem; color: #a855f7;">
+            ${formatUZS(it.total_amount)}
+          </td>
+          <td style="text-align: center; width: 140px;">
+            <div style="display: inline-flex; gap: 4px;">
+              <button type="button" class="btn-portal btn-outline-portal" style="padding: 3px 8px; font-size: 0.75rem; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" onclick="window.FMH_Accounting.startEditItem(${it.id})" title="Nomi va narxini tahrirlash">
+                <i class="fas fa-pencil-alt"></i> Tahrirlash
+              </button>
+              <button type="button" class="btn-portal btn-danger-portal" style="padding: 3px 8px; font-size: 0.75rem; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);" onclick="window.FMH_Accounting.deleteItem(${it.id})" title="O'chirish">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    container.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Jami qo'shimcha xizmatlar: <strong>${currentInvoiceItems.length} ta</strong></span>
+        <button type="button" class="btn-portal btn-primary-portal" style="padding: 4px 12px; font-size: 0.78rem; background: linear-gradient(135deg, #a855f7, #7e22ce);" onclick="window.FMH_Accounting.switchAddServiceTab('items')">
+          <i class="fas fa-plus"></i> Yangi Xizmat Qo'shish
+        </button>
+      </div>
+      <div style="overflow-x: auto; max-height: 380px;">
+        <table class="table-portal" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+          <thead>
+            <tr style="background: rgba(0,0,0,0.3); border-bottom: 2px solid var(--border-color);">
+              <th style="padding: 8px 6px; text-align: center;">№</th>
+              <th style="padding: 8px 10px; text-align: left;">Xizmat / Dori Nomi</th>
+              <th style="padding: 8px 10px; text-align: right;">Birlik Narxi</th>
+              <th style="padding: 8px 10px; text-align: center;">Soni</th>
+              <th style="padding: 8px 10px; text-align: right;">Jami</th>
+              <th style="padding: 8px 10px; text-align: center;">Amallar</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function increaseItemQty(itemId) {
+    const item = currentInvoiceItems.find(it => it.id === itemId);
+    if (!item) return;
+    const newQty = (Number(item.quantity) || 1) + 1;
+    await updateInvoiceItemApi(itemId, { quantity: newQty });
+  }
+
+  async function decreaseItemQty(itemId) {
+    const item = currentInvoiceItems.find(it => it.id === itemId);
+    if (!item) return;
+    const currentQty = Number(item.quantity) || 1;
+    if (currentQty <= 1) {
+      if (confirm(`"${item.service_name}" xizmatini hisobdan butunlay o'chirmoqchimisiz?`)) {
+        await deleteItem(itemId);
+      }
+      return;
+    }
+    await updateInvoiceItemApi(itemId, { quantity: currentQty - 1 });
+  }
+
+  function startEditItem(itemId) {
+    const item = currentInvoiceItems.find(it => it.id === itemId);
+    if (!item) return;
+
+    const panel = document.getElementById('addsvc-edit-item-panel');
+    const idInput = document.getElementById('edit-item-id');
+    const nameInput = document.getElementById('edit-item-name');
+    const priceInput = document.getElementById('edit-item-price');
+    const qtyInput = document.getElementById('edit-item-qty');
+
+    if (!panel || !idInput || !nameInput || !priceInput || !qtyInput) return;
+
+    idInput.value = item.id;
+    nameInput.value = item.service_name;
+    priceInput.value = item.unit_price;
+    qtyInput.value = item.quantity;
+
+    panel.style.display = 'block';
+    nameInput.focus();
+  }
+
+  function cancelEditItem() {
+    const panel = document.getElementById('addsvc-edit-item-panel');
+    if (panel) panel.style.display = 'none';
+  }
+
+  async function saveEditedItem() {
+    const idInput = document.getElementById('edit-item-id');
+    const nameInput = document.getElementById('edit-item-name');
+    const priceInput = document.getElementById('edit-item-price');
+    const qtyInput = document.getElementById('edit-item-qty');
+
+    if (!idInput || !nameInput || !priceInput || !qtyInput) return;
+    const itemId = idInput.value;
+    const newName = nameInput.value.trim();
+    const newPrice = Number(priceInput.value);
+    const newQty = Number(qtyInput.value);
+
+    if (!newName) {
+      showToast("Xizmat nomini kiriting.", "danger");
+      return;
+    }
+    if (isNaN(newPrice) || newPrice < 0) {
+      showToast("Narx noto'g'ri kiritildi.", "danger");
+      return;
+    }
+    if (isNaN(newQty) || newQty <= 0) {
+      showToast("Miqdor 1 dan katta bo'lishi kerak.", "danger");
+      return;
+    }
+
+    await updateInvoiceItemApi(itemId, {
+      service_name: newName,
+      unit_price: newPrice,
+      quantity: newQty
+    });
+    cancelEditItem();
+  }
+
+  async function updateInvoiceItemApi(itemId, payload) {
+    try {
+      const res = await fetch(`/api/accounting/invoice-items/${itemId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "O'zgartirish saqlanmadi.", "danger");
+        return;
+      }
+      showToast(data.message || "Xizmat yangilandi.");
+      if (currentAddServiceBill) {
+        await loadInvoiceItemsForModal(currentAddServiceBill.id);
+        await syncWithLedgerAndBackend(false);
+        renderPatientsBillingTable();
+      }
+    } catch (err) {
+      showToast("Server bilan aloqa uzildi.", "danger");
+    }
+  }
+
+  async function deleteItem(itemId) {
+    const item = currentInvoiceItems.find(it => it.id === itemId);
+    const itemName = item ? item.service_name : 'Xizmat';
+    if (!confirm(`Haqiqatan ham "${itemName}" xizmatini hisobdan o'chirmoqchimisiz?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/accounting/invoice-items/${itemId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Xizmatni o'chirib bo'lmadi.", "danger");
+        return;
+      }
+      showToast(data.message || "Xizmat o'chirildi.");
+      cancelEditItem();
+      if (currentAddServiceBill) {
+        await loadInvoiceItemsForModal(currentAddServiceBill.id);
+        await syncWithLedgerAndBackend(false);
+        renderPatientsBillingTable();
+      }
+    } catch (err) {
+      showToast("Server bilan aloqa uzildi.", "danger");
+    }
+  }
+
+  function toggleAddServiceMode(mode) {
+    currentAddServiceMode = mode;
+    const secCatalog = document.getElementById('addsvc-section-catalog');
+    const secCustom = document.getElementById('addsvc-section-custom');
+    const lblCatalog = document.getElementById('label-mode-catalog');
+    const lblCustom = document.getElementById('label-mode-custom');
+    const rdoCatalog = document.getElementById('addsvc-mode-catalog');
+    const rdoCustom = document.getElementById('addsvc-mode-custom');
+
+    if (mode === 'custom') {
+      if (secCatalog) secCatalog.style.display = 'none';
+      if (secCustom) secCustom.style.display = 'block';
+      if (rdoCustom) rdoCustom.checked = true;
+      if (lblCustom) {
+        lblCustom.style.background = 'rgba(168, 85, 247, 0.2)';
+        lblCustom.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+        lblCustom.style.color = '#fff';
+      }
+      if (lblCatalog) {
+        lblCatalog.style.background = 'transparent';
+        lblCatalog.style.borderColor = 'transparent';
+        lblCatalog.style.color = 'var(--text-muted)';
+      }
+    } else {
+      if (secCatalog) secCatalog.style.display = 'block';
+      if (secCustom) secCustom.style.display = 'none';
+      if (rdoCatalog) rdoCatalog.checked = true;
+      if (lblCatalog) {
+        lblCatalog.style.background = 'rgba(168, 85, 247, 0.2)';
+        lblCatalog.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+        lblCatalog.style.color = '#fff';
+      }
+      if (lblCustom) {
+        lblCustom.style.background = 'transparent';
+        lblCustom.style.borderColor = 'transparent';
+        lblCustom.style.color = 'var(--text-muted)';
+      }
+    }
+    updateAddServiceCalculation();
+  }
+
   let addSvcPricing = null;
   function fillAddServiceOptions() {
     const select = document.getElementById('addsvc-item-select');
@@ -1947,10 +2452,10 @@
         (meds.length ? meds.map(m =>
           `<option value="MED:${esc(m.id)}" data-price="${Number(m.unit_price) || 0}" data-type="pharmacy"${billableQty(m) > 0 ? '' : ' disabled'}>` +
           `💊 ${esc(m.name)}${m.form ? ' (' + esc(m.form) + ')' : ''} — ${formatUZS(Number(m.unit_price) || 0)} · qoldiq ${fmtQty(billableQty(m))}</option>`
-        ).join('') : '<option value="" disabled>Ombor ma\'lumoti yuklanmagan</option>') +
+        ).join('') : `<option value="" disabled>Ombor ma'lumoti yuklanmagan</option>`) +
         '</optgroup>');
       if (svcs) {
-        parts.push('<optgroup data-group="services" label="Qo\'shimcha Tibbiy Muolajalar & Tekshiruvlar">' +
+        parts.push(`<optgroup data-group="services" label="Qo'shimcha Tibbiy Muolajalar & Tekshiruvlar">` +
           svcs.map(s => `<option value="${esc(s.id)}" data-price="${Number(s.price) || 0}" data-type="procedure">` +
             `${esc(s.name)} — ${formatUZS(Number(s.price) || 0)}</option>`).join('') +
           '</optgroup>');
@@ -1973,80 +2478,112 @@
   }
 
   function updateAddServiceCalculation() {
-    const select = document.getElementById('addsvc-item-select');
-    const qty = Number(document.getElementById('addsvc-qty-input').value) || 1;
-    if (!select) return;
+    const qty = Number(document.getElementById('addsvc-qty-input')?.value) || 1;
+    let unitPrice = 0;
 
-    const opt = select.selectedOptions[0];
-    if (!opt) return;
-    const unitPrice = Number(opt.dataset.price) || 0;
+    if (currentAddServiceMode === 'custom') {
+      unitPrice = Number(document.getElementById('addsvc-custom-price')?.value) || 0;
+    } else {
+      const select = document.getElementById('addsvc-item-select');
+      if (select && select.selectedOptions[0]) {
+        unitPrice = Number(select.selectedOptions[0].dataset.price) || 0;
+      }
+    }
+
     const total = unitPrice * qty;
-
     const preview = document.getElementById('addsvc-total-preview');
     if (preview) {
       preview.textContent = formatUZS(total);
     }
   }
 
-  // The bill line is saved on the server, which sets the price (price list
-  // or stock) and takes medicine off the shelf. The line used to live only
-  // in this page's copy of the bill and vanished on the next 4-second sync.
   async function handleAddServiceSubmit(e) {
     e.preventDefault();
-    const billId = document.getElementById('addsvc-bill-id').value;
-    const select = document.getElementById('addsvc-item-select');
-    const qty = Number(document.getElementById('addsvc-qty-input').value) || 1;
-    const notes = document.getElementById('addsvc-notes-input').value.trim();
+    const billId = document.getElementById('addsvc-bill-id')?.value;
+    const qty = Number(document.getElementById('addsvc-qty-input')?.value) || 1;
+    const notes = (document.getElementById('addsvc-notes-input')?.value || '').trim();
 
-    if (!billId || !select || !select.value) return;
+    if (!billId) return;
 
-    const bill = accountingData.patients_billing.find(b => b.id === billId);
-    if (!bill) return;
+    let payload = { invoice_id: billId, quantity: qty, notes: notes };
 
-    const opt = select.selectedOptions[0];
-    const rawName = opt.textContent.split('—')[0].trim();
+    if (currentAddServiceMode === 'custom') {
+      const customName = (document.getElementById('addsvc-custom-name')?.value || '').trim();
+      const customPrice = Number(document.getElementById('addsvc-custom-price')?.value);
+      const customType = document.getElementById('addsvc-custom-type')?.value || 'procedure';
+
+      if (!customName) {
+        showToast("Xizmat nomini kiriting.", "danger");
+        return;
+      }
+      if (isNaN(customPrice) || customPrice < 0) {
+        showToast("Xizmat narxini to'g'ri kiriting.", "danger");
+        return;
+      }
+      payload.service_code = 'CUSTOM';
+      payload.custom_name = customName;
+      payload.unit_price = customPrice;
+      payload.item_type = customType;
+    } else {
+      const select = document.getElementById('addsvc-item-select');
+      if (!select || !select.value) {
+        showToast("Xizmat yoki dorini tanlang.", "danger");
+        return;
+      }
+      payload.service_code = select.value;
+    }
+
     const submitBtn = e.submitter || null;
     if (submitBtn) submitBtn.disabled = true;
+
     try {
       const res = await fetch('/api/accounting/invoice-items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoice_id: bill.id, service_code: select.value, quantity: qty, notes: notes })
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         showToast(data.error || `Xizmat qo'shilmadi (${res.status})`, 'danger');
         return;
       }
-      closeAllModals();
+
+      showToast(`✨ <strong>${esc(data.service_name || 'Xizmat')}</strong> (${qty}x) hisobga muvaffaqiyatli qo'shildi.`);
+
+      const notesEl = document.getElementById('addsvc-notes-input');
+      if (notesEl) notesEl.value = '';
+      const cNameEl = document.getElementById('addsvc-custom-name');
+      if (cNameEl) cNameEl.value = '';
+      const cPriceEl = document.getElementById('addsvc-custom-price');
+      if (cPriceEl) cPriceEl.value = '';
+
+      await loadInvoiceItemsForModal(billId);
+      switchAddServiceTab('list');
       await syncWithLedgerAndBackend(false);
-      renderAll();
-      showToast(`💊 <strong>${esc(data.service_name || rawName)}</strong> (${qty}x) ${esc(bill.patient_name)} hisobiga qo'shildi.`);
+      renderPatientsBillingTable();
     } catch (err) {
-      showToast("Server bilan aloqa yo'q — xizmat qo'shilmadi.", 'danger');
+      showToast("Server bilan aloqa uzildi — xizmat qo'shilmadi.", 'danger');
     } finally {
       if (submitBtn) submitBtn.disabled = false;
     }
   }
 
   function switchAddServiceTab(tab) {
+    const btnList = document.getElementById('tab-btn-addsvc-list');
     const btnItems = document.getElementById('tab-btn-addsvc-items');
     const btnDur = document.getElementById('tab-btn-addsvc-duration');
+
+    const tabList = document.getElementById('addsvc-tab-list-content');
     const tabItems = document.getElementById('addsvc-tab-items-content');
     const tabDur = document.getElementById('addsvc-tab-duration-content');
-    if (!btnItems || !btnDur || !tabItems || !tabDur) return;
 
-    if (tab === 'duration') {
-      btnItems.className = 'btn-portal btn-outline-portal';
-      btnDur.className = 'btn-portal btn-primary-portal';
-      tabItems.style.display = 'none';
-      tabDur.style.display = 'block';
-    } else {
-      btnItems.className = 'btn-portal btn-primary-portal';
-      btnDur.className = 'btn-portal btn-outline-portal';
-      tabItems.style.display = 'block';
-      tabDur.style.display = 'none';
-    }
+    if (btnList) btnList.className = (tab === 'list') ? 'btn-portal btn-primary-portal' : 'btn-portal btn-outline-portal';
+    if (btnItems) btnItems.className = (tab === 'items') ? 'btn-portal btn-primary-portal' : 'btn-portal btn-outline-portal';
+    if (btnDur) btnDur.className = (tab === 'duration') ? 'btn-portal btn-primary-portal' : 'btn-portal btn-outline-portal';
+
+    if (tabList) tabList.style.display = (tab === 'list') ? 'block' : 'none';
+    if (tabItems) tabItems.style.display = (tab === 'items') ? 'block' : 'none';
+    if (tabDur) tabDur.style.display = (tab === 'duration') ? 'block' : 'none';
   }
 
   function adjustDurationDelta(delta) {
@@ -2787,15 +3324,16 @@
         <input type="text" class="form-input medpur-item-cat" placeholder="Guruhi" style="font-size: 0.82rem;" value="${initialData ? esc(initialData.group || initialData.category || '') : ''}">
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-qty" min="1" step="1" required placeholder="Soni (dona)" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
+        <input type="number" class="form-input medpur-item-qty" min="1" step="any" required placeholder="Soni (dona)" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="1">
         <div class="medpur-item-qty-unit" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">dona</div>
       </td>
       <td style="padding: 6px 8px;">
-        <input type="number" class="form-input medpur-item-price" min="0" step="500" required placeholder="1 dona narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="">
+        <input type="number" class="form-input medpur-item-price" min="0" step="any" required placeholder="1 dona narxi" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" value="">
         <div class="medpur-item-price-unit" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">1 dona narxi</div>
       </td>
-      <td style="padding: 6px 8px;" class="mono-val medpur-item-total" style="font-weight: 700; color: var(--rose);">
-        0 so'm
+      <td style="padding: 6px 8px;">
+        <input type="number" class="form-input medpur-item-linetotal" min="0" step="any" placeholder="Jami summa (so'm)" style="font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;" title="Umumiy summa (masalan: 47200)">
+        <div class="mono-val medpur-item-total" style="font-size: 0.72rem; font-weight: 700; color: var(--rose); margin-top: 2px;">0 so'm</div>
       </td>
       <td style="padding: 6px 4px; text-align: center;">
         <button type="button" class="btn-portal btn-outline-portal btn-remove-medpur-row" style="padding: 2px 6px; font-size: 0.75rem; color: var(--rose); border-color: rgba(244,63,94,0.3);" title="Qatorni o'chirish">
@@ -2825,8 +3363,38 @@
       updateMedPurchaseTotals();
     });
 
-    qtyInput.addEventListener('input', updateMedPurchaseTotals);
-    priceInput.addEventListener('input', updateMedPurchaseTotals);
+    const lineTotalInput = tr.querySelector('.medpur-item-linetotal');
+    if (lineTotalInput) {
+      lineTotalInput.addEventListener('input', () => {
+        const qty = parseFloat(qtyInput.value) || 0;
+        const tot = parseFloat(lineTotalInput.value) || 0;
+        if (qty > 0) {
+          priceInput.value = tot > 0 ? (Math.round((tot / qty) * 100) / 100) : '';
+        }
+        updateMedPurchaseTotals();
+      });
+    }
+
+    priceInput.addEventListener('input', () => {
+      const qty = parseFloat(qtyInput.value) || 0;
+      const pr = parseFloat(priceInput.value) || 0;
+      if (qty > 0 && lineTotalInput) {
+        lineTotalInput.value = pr > 0 ? Math.round(qty * pr) : '';
+      }
+      updateMedPurchaseTotals();
+    });
+
+    qtyInput.addEventListener('input', () => {
+      const qty = parseFloat(qtyInput.value) || 0;
+      const pr = parseFloat(priceInput.value) || 0;
+      const tot = lineTotalInput ? (parseFloat(lineTotalInput.value) || 0) : 0;
+      if (qty > 0 && pr > 0 && lineTotalInput) {
+        lineTotalInput.value = Math.round(qty * pr);
+      } else if (qty > 0 && tot > 0) {
+        priceInput.value = Math.round((tot / qty) * 100) / 100;
+      }
+      updateMedPurchaseTotals();
+    });
     tr.querySelector('.medpur-item-upp').addEventListener('input', updateMedPurchaseTotals);
 
     removeBtn.addEventListener('click', () => {
@@ -3527,6 +4095,9 @@
     const addSvcQtyInput = document.getElementById('addsvc-qty-input');
     if (addSvcQtyInput) addSvcQtyInput.addEventListener('input', updateAddServiceCalculation);
 
+    const addSvcCustomPrice = document.getElementById('addsvc-custom-price');
+    if (addSvcCustomPrice) addSvcCustomPrice.addEventListener('input', updateAddServiceCalculation);
+
     // Incasso Form Listener
     const incassoForm = document.getElementById('incasso-form');
     if (incassoForm) incassoForm.addEventListener('submit', handleIncassoSubmit);
@@ -4161,6 +4732,13 @@
     openPaymentModal,
     openAddServiceModal,
     switchAddServiceTab,
+    toggleAddServiceMode,
+    increaseItemQty,
+    decreaseItemQty,
+    startEditItem,
+    cancelEditItem,
+    saveEditedItem,
+    deleteItem,
     adjustDurationDelta,
     onDurationInputChanged,
     handleAdjustDurationSubmit,

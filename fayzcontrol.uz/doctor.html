@@ -150,7 +150,7 @@
                 <span class="fmh-dept-item-icon"><i class="fas fa-bed"></i></span>
                 <span class="fmh-dept-item-content">
                   <span class="fmh-dept-item-title">Palatalar Xaritasi</span>
-                  <span class="fmh-dept-item-desc">14 karavot CAD, bandlik va joylashtirish</span>
+                  <span class="fmh-dept-item-desc">24 karavot CAD, bandlik va joylashtirish</span>
                 </span>
               </a>
               <a href="duty_schedule.html" class="fmh-dept-item" role="menuitem">
@@ -592,162 +592,302 @@
             <!-- Quick Protocols (Presets) -->
             <div class="preset-protocols-bar">
               <span class="preset-protocols-label">
-                <i class="fas fa-magic"></i> Tayyor Klinik Protokollar:
+                <i class="fas fa-magic"></i> <span>Tayyor Klinik Protokollar:</span>
               </span>
-              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('detox')">
-                <i class="fas fa-tint" style="color: var(--doctor-cyan-light);"></i> Standart Detoks (4 Dori)
+              <button type="button" class="preset-btn preset-btn-cyan" onclick="window.FMH_Doctor.applyPresetProtocol('detox')" title="Standart dezintoksikatsiya terapiyasi">
+                <i class="fas fa-tint"></i> <span>Standart Detoks (4 dori)</span>
               </button>
-              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('alcohol_abstinence')">
-                <i class="fas fa-wine-bottle" style="color: var(--rose);"></i> Alkogolli Abstinensiya (3 Dori)
+              <button type="button" class="preset-btn preset-btn-rose" onclick="window.FMH_Doctor.applyPresetProtocol('alcohol_abstinence')" title="Alkogolli sindrom va abstinensiya bosqichi">
+                <i class="fas fa-wine-bottle"></i> <span>Alkogolli Abstinensiya (3 dori)</span>
               </button>
-              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('hepato_neuro')">
-                <i class="fas fa-shield-virus" style="color: var(--emerald);"></i> Gepatoprotektor & Antioksidant
+              <button type="button" class="preset-btn preset-btn-emerald" onclick="window.FMH_Doctor.applyPresetProtocol('hepato_neuro')" title="Jigar va nerv tizimi himoyasi">
+                <i class="fas fa-shield-virus"></i> <span>Gepatoprotektor & Antioksidant</span>
               </button>
-              <button class="preset-btn" onclick="window.FMH_Doctor.applyPresetProtocol('psychiatry')">
-                <i class="fas fa-brain" style="color: var(--purple);"></i> Psixofarmakoterapiya & Sedatsiya
+              <button type="button" class="preset-btn preset-btn-purple" onclick="window.FMH_Doctor.applyPresetProtocol('psychiatry')" title="Tinchlantiruvchi va psixotrop muolaja">
+                <i class="fas fa-brain"></i> <span>Psixofarmakoterapiya & Sedatsiya</span>
               </button>
             </div>
 
             <!-- New Prescription Form connected to Live Pharmacology Database & 88 Clinic Drugs -->
             <div class="new-prescription-box">
               <div class="rx-box-header">
-                <span><i class="fas fa-plus-circle icon-cyan"></i> Yangi Dori / Muolaja Tayinlash (Klinika Bazasidan)</span>
+                <div class="rx-box-title-cluster">
+                  <div class="rx-box-title-icon"><i class="fas fa-plus-circle"></i></div>
+                  <div>
+                    <span class="rx-box-main-title">Yangi Dori / Muolaja Tayinlash</span>
+                    <span class="rx-box-sub-title">Klinika farmakologiya bazasi va statsionar retseptura</span>
+                  </div>
+                </div>
                 <div class="rx-box-actions">
                   <button type="button" class="btn-doc-primary btn-doc-sm btn-clinic-meds" onclick="window.FMH_Doctor.openClinicMedsModal()">
                     <i class="fas fa-pills"></i> <span>🏥 Klinika Dorilari (88 Dori)</span>
                   </button>
-                  <span class="rx-live-label">Jonli Baza</span>
+                  <span class="rx-live-label"><i class="fas fa-bolt"></i> Jonli Baza</span>
                 </div>
               </div>
 
-              <div class="rx-form-row rx-form-main-row">
-                <div class="clinical-form-group rx-drug-name-group" style="position: relative;">
+              <!-- BLOK 1: Dori vositasi va Dozasi -->
+              <div class="rx-card-section">
+                <div class="rx-card-section-header">
+                  <span class="rx-card-badge"><i class="fas fa-pills"></i> 1. Dori vositasi va dozalash</span>
+                </div>
+                <div class="rx-grid-step1">
+                  <!-- Dori nomi -->
+                  <div class="clinical-form-group rx-drug-name-group" style="position: relative;">
+                    <label class="clinical-label" style="display: flex; justify-content: space-between; align-items: center;">
+                      <span><i class="fas fa-pills icon-cyan"></i> Dori Vositasining Nomi *</span>
+                      <span class="rx-search-hint-pill"><i class="fas fa-keyboard"></i> Lotin yoki Кирилл (№ raqami / MNN)</span>
+                    </label>
+                    <div class="rx-drug-input-wrap">
+                      <input type="text" id="rx-drug-name" class="clinical-input rx-drug-name-input" placeholder="Dori nomi yoki № raqamini yozing (masalan: Verzepam, Mexidol, Sibazon, №2)..." autocomplete="off" onchange="window.FMH_Doctor.onDrugNameChange(this.value)">
+                    </div>
+                    <div class="rx-chip-group">
+                      <span class="rx-chip-label"><i class="fas fa-bolt"></i> Tezkor:</span>
+                      <button type="button" class="rx-chip rx-chip-cyan" onclick="window.FMH_Doctor.quickSelectMed('Natriy oksibutirat')">№1 Oksibutirat</button>
+                      <button type="button" class="rx-chip rx-chip-cyan" onclick="window.FMH_Doctor.quickSelectMed('Verzepam')">№2 Verzepam</button>
+                      <button type="button" class="rx-chip rx-chip-cyan" onclick="window.FMH_Doctor.quickSelectMed('Sibazon')">№3 Sibazon</button>
+                      <button type="button" class="rx-chip rx-chip-cyan" onclick="window.FMH_Doctor.quickSelectMed('Reosorbilakt')">№21 Reosorbilakt</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.quickSelectMed('Mexidol')">Mexidol</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.quickSelectMed('Dimedrol')">Dimedrol</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.quickSelectMed('Ketanov')">Ketanov</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.quickSelectMed('Magniy sulfat')">Magniy sulfat</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.quickSelectMed('Analgin')">Analgin</button>
+                    </div>
+                    <datalist id="rx-medications-datalist"></datalist>
+                  </div>
+
+                  <!-- Chiqarilish shakli -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label">
+                      <span><i class="fas fa-box-tissue icon-cyan"></i> Chiqarilish Shakli</span>
+                      <span class="rx-field-sub">Ko'rinishi</span>
+                    </label>
+                    <select id="rx-form" class="clinical-select">
+                      <option value="Ampula">💉 Ampula (Inyeksiya / Ukol)</option>
+                      <option value="Infuzion flakon">💧 Infuzion flakon (Quyma / Kapelnitsa)</option>
+                      <option value="Tabletkalar">💊 Tabletkalar (Ichishga / Per os)</option>
+                      <option value="Kapsulalar">💊 Kapsulalar (Ichishga)</option>
+                      <option value="Kukun / Eritma">🧪 Kukun / Eritma (Tayyorlanadigan)</option>
+                      <option value="Tomchilar / Sirop">💧 Tomchilar / Sirop</option>
+                    </select>
+                  </div>
+
+                  <!-- Bir martalik dozasi -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label">
+                      <span><i class="fas fa-weight-hanging icon-cyan"></i> Bir Martalik Dozasi *</span>
+                      <span class="rx-field-sub">1 martalik miqdor</span>
+                    </label>
+                    <input type="text" id="rx-dosage" class="clinical-input" value="" placeholder="Masalan: 400 ml, 500 mg, 2 ml...">
+                    <div class="rx-chip-group">
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '100 ml')">100 ml</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '200 ml')">200 ml</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '400 ml')">400 ml</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '1 amp (2 ml)')">1 amp (2 ml)</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '2 amp (4 ml)')">2 amp (4 ml)</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '1 tabletka')">1 tab</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('dosage', '500 mg')">500 mg</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BLOK 2: Yuborish usuli va Erituvchi (Fiz rastvor) -->
+              <div class="rx-card-section">
+                <div class="rx-card-section-header">
+                  <span class="rx-card-badge rx-badge-blue"><i class="fas fa-flask"></i> 2. Yuborish usuli va Erituvchi (Fiz rastvor / Quyma)</span>
+                </div>
+                <div class="rx-grid-step2">
+                  <!-- Yuborish Yo'li -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label">
+                      <span><i class="fas fa-syringe icon-cyan"></i> Yuborish Yo'li (Usuli) *</span>
+                      <span class="rx-field-sub">Qanday kiritiladi?</span>
+                    </label>
+                    <select id="rx-route" class="clinical-select">
+                      <option value="V/I tomchilab (kapelnitsa)">💧 V/I tomchilab — Kapelnitsa (Vena ichiga sekin quyish)</option>
+                      <option value="V/I oqimli">💉 V/I oqimli — Struyno (Vena ichiga sekin shpritsda)</option>
+                      <option value="V/M inyeksiya">💉 V/M inyeksiya — Mushak ichiga (Ukol)</option>
+                      <option value="Ichishga (Per os)">💊 Ichishga — Per os (Og'iz orqali qabul qilish)</option>
+                      <option value="Sublingual">👅 Til ostiga — Sublingual (So'rish uchun)</option>
+                      <option value="P/K inyeksiya">🧴 Teri ostiga — P/K (Inyeksiya)</option>
+                      <option value="Mahalliy / Ingalyatsiya">🌬️ Mahalliy / Ingalyatsiya</option>
+                    </select>
+                    <div class="rx-chip-group">
+                      <span class="rx-chip-label">Tezkor:</span>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('route', 'V/I tomchilab (kapelnitsa)')">💧 Kapelnitsa (V/I)</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('route', 'V/M inyeksiya')">💉 Mushakka (V/M)</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('route', 'V/I oqimli')">💉 Venaga (struyno)</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('route', 'Ichishga (Per os)')">💊 Ichishga (Per os)</button>
+                    </div>
+                  </div>
+
+                  <!-- Erituvchi / Fiz rastvor -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label" style="display: flex; justify-content: space-between; align-items: center;">
+                      <span><i class="fas fa-flask icon-cyan"></i> Erituvchi / Fiz. rastvor (ixtiyoriy)</span>
+                      <span class="rx-field-sub" style="color: #0284c7; font-weight: 600;"><i class="fas fa-info-circle"></i> Quyma & ukol eritmasi</span>
+                    </label>
+                    <input type="text" id="rx-diluent" list="rx-diluents-datalist" class="clinical-input" placeholder="Fiz rastvor nomi (masalan: Natriy xlorid 0.9% 200 ml)..." autocomplete="off">
+                    <datalist id="rx-diluents-datalist">
+                      <option value="Natriy xlorid 0.9% 200 ml">Natriy xlorid 0.9% 200 ml (Standart fiz rastvor)</option>
+                      <option value="Natriy xlorid 0.9% 100 ml">Natriy xlorid 0.9% 100 ml (Kichik quyma)</option>
+                      <option value="Natriy xlorid 0.9% 250 ml">Natriy xlorid 0.9% 250 ml</option>
+                      <option value="Natriy xlorid 0.9% 400 ml">Natriy xlorid 0.9% 400 ml (Katta quyma)</option>
+                      <option value="Natriy xlorid 0.9% 10 ml">Natriy xlorid 0.9% 10 ml (Inyeksiya uchun)</option>
+                      <option value="Glyukoza 5% 200 ml">Glyukoza 5% 200 ml (Detoks infuziya)</option>
+                      <option value="Glyukoza 5% 400 ml">Glyukoza 5% 400 ml (Katta infuziya)</option>
+                      <option value="Novokain 0.5% 5 ml">Novokain 0.5% 5 ml (Og'riqsizlantirish / Ukol)</option>
+                      <option value="In'eksiya uchun suv 5 ml">In'eksiya uchun steril suv 5 ml (Ampula eritish)</option>
+                      <option value="In'eksiya uchun suv 10 ml">In'eksiya uchun steril suv 10 ml</option>
+                      <option value="Ringer eritmasi 200 ml">Ringer eritmasi 200 ml (Poliiyonli)</option>
+                      <option value="Reosorbilakt 200 ml">Reosorbilakt 200 ml (Reologik detoks)</option>
+                    </datalist>
+                    <!-- Quick Diluent Chips -->
+                    <div class="rx-chip-group">
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'Natriy xlorid 0.9% 200 ml')">0.9% NaCl 200ml</button>
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'Natriy xlorid 0.9% 100 ml')">0.9% NaCl 100ml</button>
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'Glyukoza 5% 200 ml')">Glyukoza 5% 200ml</button>
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'Novokain 0.5% 5 ml')">Novokain 5ml</button>
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'In'eksiya uchun suv 5 ml')">In'eksiya suvi</button>
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'Ringer eritmasi 200 ml')">Ringer 200ml</button>
+                      <button type="button" class="rx-chip rx-chip-blue" onclick="window.FMH_Doctor.setRxField('diluent', 'Reosorbilakt 200 ml')">Reosorbilakt 200ml</button>
+                      <button type="button" class="rx-chip" style="color: #64748b;" onclick="window.FMH_Doctor.setRxField('diluent', '')">✕ Sof holda (yo'q)</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BLOK 3: Qabul Tartibi, Vaqti va Davomiyligi -->
+              <div class="rx-card-section">
+                <div class="rx-card-section-header">
+                  <span class="rx-card-badge rx-badge-amber"><i class="fas fa-clock"></i> 3. Qabul tartibi, vaqti va davomiyligi</span>
+                </div>
+                <div class="rx-grid-step3">
+                  <!-- Davriylik -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label">
+                      <span><i class="fas fa-redo-alt icon-cyan"></i> Qabul Davriyligi</span>
+                      <span class="rx-field-sub">Bir kunda</span>
+                    </label>
+                    <select id="rx-frequency" class="clinical-select">
+                      <option value="Kuniga 1 mahal">Kuniga 1 mahal (Bir martalik)</option>
+                      <option value="Kuniga 2 mahal">Kuniga 2 mahal (Ertalab va kechqurun / har 12 soatda)</option>
+                      <option value="Kuniga 3 mahal">Kuniga 3 mahal (Ertalab, tushlik, kechki / har 8 soatda)</option>
+                      <option value="Zarurat tug'ilganda">Zarurat tug'ilganda (PRN — og'riq yoki bezovtalikda)</option>
+                      <option value="Faqat bir marta">Faqat bir marta (Bir martalik muolaja)</option>
+                    </select>
+                    <div class="rx-chip-group">
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 1 mahal')">1 mahal</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 2 mahal')">2 mahal</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('frequency', 'Kuniga 3 mahal')">3 mahal</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('frequency', 'Zarurat tug'ilganda')">PRN (zaruratda)</button>
+                    </div>
+                  </div>
+
+                  <!-- Qabul Vaqti -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label">
+                      <span><i class="fas fa-business-time icon-cyan"></i> Qabul Vaqti</span>
+                      <span class="rx-field-sub">Kunning qaysi vaqtida?</span>
+                    </label>
+                    <select id="rx-timing" class="clinical-select">
+                      <option value="Ertalab 09:30">🌅 Ertalab 09:30 (Nonushtadan keyin)</option>
+                      <option value="Tushlik 13:30">☀️ Tushlik 13:30 (Tushlikdan keyin)</option>
+                      <option value="Kechki 18:30">🌇 Kechki 18:30 (Kechki ovqatdan keyin)</option>
+                      <option value="Uyqudan oldin 21:30">🌙 Uyqudan oldin 21:30 (Tungi sedatsiya)</option>
+                      <option value="Ertalab & Kechqurun">🔄 Ertalab & Kechqurun (2 mahal)</option>
+                      <option value="Har 8 soatda">⏱️ Har 8 soatda (Kun davomida)</option>
+                      <option value="Zudlik bilan (Cito)">⚡ Zudlik bilan (Cito / Hozir)</option>
+                    </select>
+                    <div class="rx-chip-group">
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('timing', 'Ertalab 09:30')">🌅 09:30</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('timing', 'Tushlik 13:30')">☀️ 13:30</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('timing', 'Kechki 18:30')">🌇 18:30</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('timing', 'Uyqudan oldin 21:30')">🌙 21:30</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('timing', 'Ertalab & Kechqurun')">🔄 2 mahal</button>
+                    </div>
+                  </div>
+
+                  <!-- Davomiyligi -->
+                  <div class="clinical-form-group">
+                    <label class="clinical-label">
+                      <span><i class="fas fa-calendar-day icon-cyan"></i> Davomiyligi (kun)</span>
+                      <span class="rx-field-sub">Muolaja kursi</span>
+                    </label>
+                    <input type="number" id="rx-duration" class="clinical-input" value="5" min="1" max="60" placeholder="5">
+                    <div class="rx-chip-group">
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('duration', '3')">3 kun</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('duration', '5')">5 kun</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('duration', '7')">7 kun</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('duration', '10')">10 kun</button>
+                      <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('duration', '14')">14 kun</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BLOK 4: Shifokor Ko'rsatmasi va Tayinlash Tugmasi -->
+              <div class="rx-card-section rx-card-submit-section">
+                <div class="clinical-form-group" style="margin: 0;">
                   <label class="clinical-label" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span><i class="fas fa-pills" style="color: var(--doctor-cyan-light);"></i> Dori Vositasining Nomi *</span>
-                    <span class="rx-search-hint-pill"><i class="fas fa-keyboard"></i> Lotin yoki Кирилл (№ raqami / MNN)</span>
+                    <span><i class="fas fa-comment-medical icon-cyan"></i> Shifokor Maxsus Ko'rsatmasi & Eslatma (Hamshira uchun)</span>
+                    <span class="rx-field-sub">Yuborish tezligi, ehtiyot choralari yoki tavsiyalar</span>
                   </label>
-                  <div class="rx-drug-input-wrap">
-                    <input type="text" id="rx-drug-name" class="clinical-input rx-drug-name-input" placeholder="Dori nomini yozing (masalan: Verzepam, Mexidol, Sibazon, №2)..." autocomplete="off" onchange="window.FMH_Doctor.onDrugNameChange(this.value)">
-                    <select class="clinical-select rx-quick-select" onchange="if(this.value){window.FMH_Doctor.quickSelectMed(this.value); this.value='';}">
-                      <option value="">⚡ Tezkor dori...</option>
-                      <option value="Natriy oksibutirat">№1 Oksibutirat</option>
-                      <option value="Verzepam">№2 Verzepam</option>
-                      <option value="Sibazon">№3 Sibazon</option>
-                      <option value="Siklodol">№4 Siklodol</option>
-                      <option value="Reosorbilakt">№21 Reosorbilakt</option>
-                      <option value="Analgin">№24 Analgin</option>
-                      <option value="Mexidol">Mexidol</option>
-                      <option value="Dimedrol">Dimedrol</option>
-                      <option value="Ketanov">Ketanov</option>
-                      <option value="Magniy sulfat">Magniy sulfat</option>
-                    </select>
-                  </div>
-                  <datalist id="rx-medications-datalist"></datalist>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Chiqarilish Shakli</label>
-                  <select id="rx-form" class="clinical-select">
-                    <option value="Infuzion flakon">Infuzion flakon</option>
-                    <option value="Ampula">Ampula (Inyeksiya)</option>
-                    <option value="Tabletkalar">Tabletkalar (Per os)</option>
-                    <option value="Kapsulalar">Kapsulalar</option>
-                    <option value="Kukun / Eritma">Kukun / Eritma</option>
-                  </select>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Bir Martalik Dozasi *</label>
-                  <div style="display: flex; gap: 6px;">
-                    <input type="text" id="rx-dosage" class="clinical-input" value="" placeholder="400 ml, 500 mg, 2 ml..." style="flex: 1;">
-                    <select class="clinical-select" style="max-width: 140px;" onchange="if(this.value){window.FMH_Doctor.setRxField('dosage', this.value); this.value='';}">
-                      <option value="">Doza...</option>
-                      <option value="100 ml">100 ml</option>
-                      <option value="200 ml">200 ml</option>
-                      <option value="400 ml">400 ml</option>
-                      <option value="1 ampula (2 ml)">1 amp (2 ml)</option>
-                      <option value="2 ampula (4 ml)">2 amp (4 ml)</option>
-                      <option value="1 tabletka">1 tabletka</option>
-                      <option value="2 tabletka">2 tabletka</option>
-                      <option value="500 mg">500 mg</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Yuborish Yo'li *</label>
-                  <select id="rx-route" class="clinical-select">
-                    <option value="V/I tomchilab (kapelnitsa)">V/I tomchilab (kapelnitsa)</option>
-                    <option value="V/I oqimli">V/I oqimli (struyno)</option>
-                    <option value="V/M inyeksiya">V/M inyeksiya (mushak ichiga)</option>
-                    <option value="Ichishga (Per os)">Ichishga (Per os)</option>
-                    <option value="Sublingual">Sublingual (til ostiga)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="rx-form-row" style="grid-template-columns: 1.2fr 1fr 1fr 2fr;">
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Qabul Davriyligi</label>
-                  <select id="rx-frequency" class="clinical-select">
-                    <option value="Kuniga 1 mahal">Kuniga 1 mahal</option>
-                    <option value="Kuniga 2 mahal">Kuniga 2 mahal</option>
-                    <option value="Kuniga 3 mahal">Kuniga 3 mahal</option>
-                    <option value="Zarurat tug'ilganda">Zarurat tug'ilganda (PRN)</option>
-                  </select>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Davomiyligi (kun)</label>
-                  <div style="display: flex; gap: 6px;">
-                    <input type="number" id="rx-duration" class="clinical-input" value="5" min="1" max="60" style="flex: 1;">
-                    <select class="clinical-select" style="max-width: 100px;" onchange="if(this.value){window.FMH_Doctor.setRxField('duration', this.value); this.value='';}">
-                      <option value="">Kun...</option>
-                      <option value="3">3 kun</option>
-                      <option value="5">5 kun</option>
-                      <option value="7">7 kun</option>
-                      <option value="10">10 kun</option>
-                      <option value="14">14 kun</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Qabul Vaqti</label>
-                  <select id="rx-timing" class="clinical-select">
-                    <option value="Ertalab 09:30">Ertalab 09:30</option>
-                    <option value="Tushlik 13:30">Tushlik 13:30</option>
-                    <option value="Kechki 18:30">Kechki 18:30</option>
-                    <option value="Uyqudan oldin 21:30">Uyqudan oldin 21:30</option>
-                    <option value="Ertalab & Kechqurun">Ertalab & Kechqurun</option>
-                  </select>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Maxsus Shifokor Ko'rsatmasi</label>
-                  <div style="display: flex; gap: 8px;">
-                    <input type="text" id="rx-instructions" class="clinical-input" placeholder="Sekin tomchilatib yuborilsin (40-60 tomchi/min)..." style="flex: 1;">
-                    <button class="btn-doc-primary" onclick="window.FMH_Doctor.addPrescription()">
-                      <i class="fas fa-plus"></i> <span>Tayinlash</span>
+                  <div class="rx-instructions-row">
+                    <input type="text" id="rx-instructions" class="clinical-input rx-instructions-input" placeholder="Masalan: Sekin tomchilatib yuborilsin (40-60 tomchi/min), arterial bosim nazorat qilinsin..." autocomplete="off">
+                    <button type="button" class="btn-rx-main-submit" onclick="window.FMH_Doctor.addPrescription()">
+                      <i class="fas fa-plus-circle"></i> <span>Tayinlash</span>
                     </button>
                   </div>
+                  <!-- Quick Instruction Chips -->
+                  <div class="rx-chip-group">
+                    <span class="rx-chip-label">Tezkor ko'rsatmalar:</span>
+                    <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('instructions', 'Sekin tomchilatib yuborilsin (40-60 tomchi/min)')">Sekin tomchilatilsin (40-60 t/min)</button>
+                    <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('instructions', 'Ovqatdan so'ng qabul qilinsin')">Ovqatdan so'ng</button>
+                    <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('instructions', 'Ovqatdan 30 daqiqa oldin ichilsin')">Ovqatdan 30 daqiqa oldin</button>
+                    <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('instructions', 'Arterial bosim va puls nazoratida yuborilsin')">Bosim & puls nazorati</button>
+                    <button type="button" class="rx-chip" onclick="window.FMH_Doctor.setRxField('instructions', 'Og'riq yoki kuchli bezovtalik bo'lganda')">Og'riq / bezovtalik paytida</button>
+                  </div>
                 </div>
               </div>
-              <!-- Warehouse link (optional): stock item, total prescribed quantity and live availability.
-                   Prescribing never takes anything off the shelf; stock leaves only when it is handed out. -->
-              <div class="rx-form-row rx-stock-row" style="grid-template-columns: 2fr 1fr 1fr 2fr;">
-                <div class="clinical-form-group">
-                  <label class="clinical-label"><i class="fas fa-warehouse" style="color: var(--doctor-cyan-light);"></i> Ombordagi dori (ixtiyoriy)</label>
-                  <input type="text" id="rx-wh-search" class="clinical-input" placeholder="Ombordan qidirish: nom yoki MNN..." autocomplete="off">
-                  <div id="rx-wh-results" class="rx-wh-results"></div>
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Miqdor (jami)</label>
-                  <input type="number" id="rx-qty" class="clinical-input" min="0" step="any" placeholder="masalan: 30">
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Birlik</label>
-                  <input type="text" id="rx-qty-unit" class="clinical-input" readonly tabindex="-1" placeholder="—">
-                </div>
-                <div class="clinical-form-group">
-                  <label class="clinical-label">Ombor holati</label>
-                  <div id="rx-wh-status" class="rx-wh-status" aria-live="polite">Ombor dorisi tanlanmagan.</div>
+
+              <!-- BLOK 5: Ombor bilan bog'lash (Ixtiyoriy) -->
+              <div class="rx-wh-accordion">
+                <button type="button" class="rx-wh-toggle-btn" onclick="window.FMH_Doctor.toggleWarehouseLink()">
+                  <div class="rx-wh-toggle-left">
+                    <i class="fas fa-warehouse" style="color: var(--doctor-cyan-light);"></i>
+                    <strong>Klinika omboridagi mahsulotga bog'lash</strong>
+                    <span class="rx-wh-badge">Ixtiyoriy — ombor hisobidan chiqarish uchun</span>
+                  </div>
+                  <div class="rx-wh-toggle-right">
+                    <span id="rx-wh-summary-text" style="font-size: 0.76rem; color: #94a3b8;">Bog'lanmagan</span>
+                    <i class="fas fa-chevron-down rx-wh-chevron" id="rx-wh-chevron-icon"></i>
+                  </div>
+                </button>
+                <div class="rx-wh-content" id="rx-wh-content-box" style="display: none;">
+                  <div class="rx-form-row rx-stock-row" style="grid-template-columns: 2fr 1fr 1fr 2fr; margin-bottom: 0;">
+                    <div class="clinical-form-group">
+                      <label class="clinical-label"><i class="fas fa-search" style="color: var(--doctor-cyan-light);"></i> Ombordan qidirish (nom yoki MNN)</label>
+                      <input type="text" id="rx-wh-search" class="clinical-input" placeholder="Ombordan qidirish: nom yoki MNN..." autocomplete="off">
+                      <div id="rx-wh-results" class="rx-wh-results"></div>
+                    </div>
+                    <div class="clinical-form-group">
+                      <label class="clinical-label">Miqdor (jami)</label>
+                      <input type="number" id="rx-qty" class="clinical-input" min="0" step="any" placeholder="masalan: 30">
+                    </div>
+                    <div class="clinical-form-group">
+                      <label class="clinical-label">Birlik</label>
+                      <input type="text" id="rx-qty-unit" class="clinical-input" readonly tabindex="-1" placeholder="—">
+                    </div>
+                    <div class="clinical-form-group">
+                      <label class="clinical-label">Ombor holati</label>
+                      <div id="rx-wh-status" class="rx-wh-status" aria-live="polite">Ombor dorisi tanlanmagan.</div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
               <!-- Selected Medication Clinical & Safety Card -->
               <div id="rx-active-drug-card" style="display: none; margin-top: 10px; padding: 10px 14px; border-radius: 10px; background: rgba(13, 148, 136, 0.08); border: 1px solid rgba(13, 148, 136, 0.25);"></div>
             </div>
@@ -1261,7 +1401,7 @@
 
             <!-- Medication Add Row -->
             <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 1rem;">
-              <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.2fr auto; gap: 8px; align-items: flex-end;">
+              <div style="display: grid; grid-template-columns: 2fr 1fr 1.2fr; gap: 8px; align-items: flex-end; margin-bottom: 8px;">
                 <div>
                   <label class="clinical-label">Dori Nomi (Formulary / 88 ta dori) *</label>
                   <input type="text" id="modal-rx-drug-name" class="clinical-input" placeholder="Dori nomini yozing...">
@@ -1273,21 +1413,27 @@
                 <div>
                   <label class="clinical-label">Yuborish Usuli</label>
                   <select id="modal-rx-route" class="clinical-select">
-                    <option value="v/i tomchilab">v/i tomchilab (k/k)</option>
-                    <option value="v/m inyeksiya">v/m inyeksiya</option>
-                    <option value="per os">per os (ichishga)</option>
-                    <option value="v/i oqim bilan">v/i oqim bilan</option>
-                    <option value="til osti">til osti (sublingual)</option>
+                    <option value="v/i tomchilab">💧 V/I tomchilab (Kapelnitsa / Infuziya)</option>
+                    <option value="v/m inyeksiya">💉 V/M inyeksiya (Mushak ichiga ukol)</option>
+                    <option value="per os">💊 Per os (Og'iz orqali ichishga)</option>
+                    <option value="v/i oqim bilan">💉 V/I oqimli (Vena ichiga sekin / Struyno)</option>
+                    <option value="til osti">👅 Til ostiga (Sublingual so'rish)</option>
                   </select>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 2fr 1.2fr 0.8fr 1.5fr auto; gap: 8px; align-items: flex-end;">
+                <div>
+                  <label class="clinical-label"><i class="fas fa-flask" style="color: var(--doctor-cyan-light);"></i> Erituvchi / Fiz. rastvor (ixtiyoriy)</label>
+                  <input type="text" id="modal-rx-diluent" list="rx-diluents-datalist" class="clinical-input" placeholder="Masalan: Natriy xlorid 0.9% 100 ml...">
                 </div>
                 <div>
                   <label class="clinical-label">Qabul Davriyligi *</label>
                   <select id="modal-rx-frequency" class="clinical-select">
-                    <option value="Kuniga 1 mahal">Kuniga 1 mahal</option>
-                    <option value="Kuniga 2 mahal" selected>Kuniga 2 mahal</option>
-                    <option value="Kuniga 3 mahal">Kuniga 3 mahal</option>
-                    <option value="Kuniga 4 mahal">Kuniga 4 mahal</option>
-                    <option value="Zarurat tug'ilganda (PRN)">Zarurat tug'ilganda</option>
+                    <option value="Kuniga 1 mahal">Kuniga 1 mahal (Bir martalik)</option>
+                    <option value="Kuniga 2 mahal" selected>Kuniga 2 mahal (Ertalab & Kechqurun)</option>
+                    <option value="Kuniga 3 mahal">Kuniga 3 mahal (Har 8 soatda)</option>
+                    <option value="Kuniga 4 mahal">Kuniga 4 mahal (Har 6 soatda)</option>
+                    <option value="Zarurat tug'ilganda (PRN)">Zarurat tug'ilganda (PRN)</option>
                   </select>
                 </div>
                 <div>

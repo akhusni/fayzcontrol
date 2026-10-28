@@ -1,3 +1,10 @@
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 /**
  * Fayz Medical House — Qabulxona & Bemorlarni Ro'yxatga Olish Portali
  * reception.js — Tab Manager, Patient Intake, Appointments, Call Log, Directory, Print, Excel
@@ -215,6 +222,11 @@ window.FMH_Reception = (function () {
       { id: 'statsionar_shared', name_uz: "Statsionar (1 karavot / 2 kishilik xona)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
       { id: 'statsionar_full_room', name_uz: "Statsionar Butun Xona — VIP Solo (1 kishi)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
       { id: 'kunlik_statsionar', name_uz: "Kunlik Statsionar (Kunduzgi o'rin)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'statsionar_vip_1', name_uz: "Statsionar 2-Bino VIP (1-xona, 1 kishilik)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'statsionar_shared_800k', name_uz: "Statsionar 2-Bino (3/5-xona kishi boshiga)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'statsionar_full_room_1200k', name_uz: "Statsionar 2-Bino 3-xona Butun Xona", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'statsionar_full_room_1300k', name_uz: "Statsionar 2-Bino 5-xona 2 kishilik to'liq bron", default_days: 10, default_rate: 0, package_type: 'inpatient' },
+      { id: 'statsionar_full_room_1600k', name_uz: "Statsionar 2-Bino 5-xona 1 kishilik to'liq bron (Solo)", default_days: 10, default_rate: 0, package_type: 'inpatient' },
       { id: 'ambulator_1', name_uz: "Ambulator — Kuniga 1 mahal muolaja", default_days: 10, default_rate: 0, package_type: 'outpatient' },
       { id: 'ambulator_2', name_uz: "Ambulator — Kuniga 2 mahal muolaja", default_days: 10, default_rate: 0, package_type: 'outpatient' }
     ],
@@ -279,7 +291,7 @@ window.FMH_Reception = (function () {
     }
 
     // 4. Periodic Real-Time Refresh (Every 4s)
-    setInterval(refreshLiveDataSilently, 4000);
+    setInterval(refreshLiveDataSilently, 12000);
 
     // Website enquiries: keep the tab badge current without opening it.
     refreshRequestBadge();
@@ -796,28 +808,55 @@ window.FMH_Reception = (function () {
       dateDisplay.innerHTML = `<span style="color:#10b981;">${formatDate(startDate)}</span> &nbsp;→&nbsp; <span style="color:#38bdf8;">${formatDate(endDate)}</span> &nbsp;(${days} kunlik davolanish)`;
     }
 
-    let beds = State.beds || [];
-    const floor = State.intake.selectedFloor;
-    if (floor !== 'all') beds = beds.filter(b => String(b.floor_number) === String(floor));
+    const allBeds = State.beds || [];
+    const getBldg = b => b.building_number || (b.bed_id && b.bed_id.includes('B2') ? 2 : 1);
+    const isAvailBed = b => (b.system_bed_status || b.status) === 'available';
+
+    // Update floor tab counts
+    const countAvail = list => list.filter(isAvailBed).length;
+    const b1Beds = allBeds.filter(b => getBldg(b) === 1);
+    const b1f1Beds = b1Beds.filter(b => b.floor_number === 1);
+    const b1f2Beds = b1Beds.filter(b => b.floor_number === 2);
+    const b2Beds = allBeds.filter(b => getBldg(b) === 2);
+    const b2f1Beds = b2Beds.filter(b => b.floor_number === 1);
+    const b2f2Beds = b2Beds.filter(b => b.floor_number === 2);
+
+    const updateTab = (sel, html) => {
+      const el = document.querySelector(sel);
+      if (el) el.innerHTML = html;
+    };
+    updateTab('.floor-tab[data-floor="all"]', `<i class="fas fa-th-large"></i> Barchasi (${countAvail(allBeds)} bo'sh)`);
+    updateTab('.floor-tab[data-floor="b1"]', `<i class="fas fa-hospital"></i> 1-Bino (${countAvail(b1Beds)} bo'sh)`);
+    updateTab('.floor-tab[data-floor="b1-f1"]', `1-Bino: 1-Etaj (${countAvail(b1f1Beds)})`);
+    updateTab('.floor-tab[data-floor="b1-f2"]', `1-Bino: 2-Etaj (${countAvail(b1f2Beds)})`);
+    updateTab('.floor-tab[data-floor="b2"]', `<i class="fas fa-hotel"></i> 2-Bino (${countAvail(b2Beds)} bo'sh)`);
+    updateTab('.floor-tab[data-floor="b2-f1"]', `2-Bino: 1-Etaj (${countAvail(b2f1Beds)})`);
+    updateTab('.floor-tab[data-floor="b2-f2"]', `2-Bino: 2-Etaj (${countAvail(b2f2Beds)})`);
+
+    let beds = allBeds;
+    const floor = State.intake.selectedFloor || 'all';
+    if (floor !== 'all') {
+      beds = beds.filter(b => {
+        const bldg = getBldg(b);
+        const fl = b.floor_number;
+        if (floor === 'b1') return bldg === 1;
+        if (floor === 'b2') return bldg === 2;
+        if (floor === 'b1-f1') return bldg === 1 && fl === 1;
+        if (floor === 'b1-f2') return bldg === 1 && fl === 2;
+        if (floor === 'b2-f1') return bldg === 2 && fl === 1;
+        if (floor === 'b2-f2') return bldg === 2 && fl === 2;
+        if (floor === '1') return fl === 1;
+        if (floor === '2') return fl === 2;
+        return true;
+      });
+    }
 
     if (!beds || !beds.length) {
       grid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Karavot ma\'lumotlari yuklanmoqda...</p></div>';
       return;
     }
 
-    // Update floor tab counts
-    const allBeds = State.beds || [];
-    const f1 = allBeds.filter(b => b.floor_number === 1);
-    const f2 = allBeds.filter(b => b.floor_number === 2);
-    const availAll = allBeds.filter(b => b.system_bed_status === 'available' || b.status === 'available').length;
-    const el1 = document.querySelector('.floor-tab[data-floor="1"]');
-    const el2 = document.querySelector('.floor-tab[data-floor="2"]');
-    const elAll = document.querySelector('.floor-tab[data-floor="all"]');
-    if (elAll) elAll.textContent = `Barchasi (${availAll} bo'sh)`;
-    if (el1) el1.innerHTML = `<i class="fas fa-layer-group"></i> 1-Qavat (${f1.filter(b => (b.system_bed_status||b.status) === 'available').length} bo'sh)`;
-    if (el2) el2.innerHTML = `<i class="fas fa-building"></i> 2-Qavat (${f2.filter(b => (b.system_bed_status||b.status) === 'available').length} bo'sh)`;
-
-    grid.innerHTML = beds.map(b => {
+    const renderBedSlotHTML = (b) => {
       const status = b.system_bed_status || b.status || 'available';
       const isSelected = State.intake.selectedBed === b.bed_id;
       const isAvail = status === 'available';
@@ -882,7 +921,72 @@ window.FMH_Reception = (function () {
           <span class="bed-type">${statusLabel}</span>
           <span class="bed-sub">${subLabel}</span>
         </div>`;
-    }).join('');
+    };
+
+        const sections = [
+      { id: 'b1-f1', bldg: 1, floor: 1, title: '1-BINO \u2022 1-ETAJ (11, 12-XONALAR \u2022 4 TA KARAVOT)', icon: 'fa-hospital', color: '#38bdf8' },
+      { id: 'b1-f2', bldg: 1, floor: 2, title: '1-BINO \u2022 2-ETAJ (21-25 XONALAR \u2022 10 TA KARAVOT)', icon: 'fa-building', color: '#38bdf8' },
+      { id: 'b2-f1', bldg: 2, floor: 1, title: '2-BINO \u2022 1-ETAJ (4, 5-XONALAR \u2022 5 TA KARAVOT)', icon: 'fa-hotel', color: '#38bdf8' },
+      { id: 'b2-f2', bldg: 2, floor: 2, title: '2-BINO \u2022 2-ETAJ (1-VIP, 2, 3-XONALAR \u2022 5 TA KARAVOT)', icon: 'fa-crown', color: '#c084fc' }
+    ];
+
+    let pickerHTML = '';
+    sections.forEach(sec => {
+      const secBeds = beds.filter(b => getBldg(b) === sec.bldg && b.floor_number === sec.floor);
+      if (secBeds.length === 0) return;
+
+      if (sec.id === 'b1-f2') {
+        // Divide 1-Bino 2-Etaj into 2 rows:
+        // Row 1: 21, 22, 23-Xonalar (6 beds)
+        // Row 2: 24, 25-Xonalar (4 beds)
+        const row1Beds = secBeds.filter(b => ['21', '22', '23'].includes(String(b.room_number)));
+        const row2Beds = secBeds.filter(b => ['24', '25'].includes(String(b.room_number)));
+
+        pickerHTML += `
+          <div class="bed-picker-section-block">
+            <div class="bed-picker-section-header" style="color: ${sec.color}; background: rgba(56, 189, 248, 0.12); border-left: 3.5px solid ${sec.color};">
+              <i class="fas ${sec.icon}"></i> ${sec.title}
+            </div>
+
+            <!-- 1-Qator: 21, 22, 23-Xonalar -->
+            <div style="margin-bottom: 1rem;">
+              <div class="bed-row-subtitle">
+                <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #38bdf8;"></span>
+                1-QATOR &bull; 21, 22, 23-XONALAR (6 TA KARAVOT)
+              </div>
+              <div class="bed-slots-row">
+                ${row1Beds.map(renderBedSlotHTML).join('')}
+              </div>
+            </div>
+
+            <!-- 2-Qator: 24, 25-Xonalar -->
+            <div>
+              <div class="bed-row-subtitle">
+                <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #38bdf8;"></span>
+                2-QATOR &bull; 24, 25-XONALAR (4 TA KARAVOT)
+              </div>
+              <div class="bed-slots-row">
+                ${row2Beds.map(renderBedSlotHTML).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        const bgHeader = sec.id === 'b2-f2' ? 'rgba(168, 85, 247, 0.14)' : 'rgba(56, 189, 248, 0.12)';
+        pickerHTML += `
+          <div class="bed-picker-section-block">
+            <div class="bed-picker-section-header" style="color: ${sec.color}; background: ${bgHeader}; border-left: 3.5px solid ${sec.color};">
+              <i class="fas ${sec.icon}"></i> ${sec.title}
+            </div>
+            <div class="bed-slots-row">
+              ${secBeds.map(renderBedSlotHTML).join('')}
+            </div>
+          </div>
+        `;
+      }
+    });
+
+    grid.innerHTML = pickerHTML;
   }
 
   function notifyBedConflict(bedId, status, occupant) {
@@ -1288,23 +1392,21 @@ window.FMH_Reception = (function () {
     State.intake.selectedBed = bedId;
     const rateInput = document.getElementById('intake-daily-rate');
     const sel = document.getElementById('intake-program-select');
-    const isLux = sel?.value === 'statsionar_full_room';
+    const isLux = sel?.value && (sel.value.includes('full_room') || sel.value.includes('vip'));
 
     if (rateInput) {
-      // Only a shared-room stay is priced by the bed. Every other programme
-      // keeps its own listed rate: picking a bed used to replace the
-      // day-care rate (630 000) with the bed's 720 000, so the desk billed a
-      // day-care patient at the overnight price without noticing.
       const program = sel?.value || 'statsionar_shared';
-      rateInput.value = program === 'statsionar_shared'
-        ? (rate || listedRate('statsionar_shared'))
-        : listedRate(program);
+      if (program === 'statsionar_shared' || program === 'statsionar_shared_800k') {
+        rateInput.value = rate || listedRate(program);
+      } else {
+        rateInput.value = listedRate(program) || rate || 720000;
+      }
     }
     // Set bed type label
     const bedTypeEl = document.getElementById('intake-bed-type-label');
     if (bedTypeEl) {
       bedTypeEl.innerHTML = isLux 
-        ? `<span style="color: #a855f7; font-weight: 700;">👑 Lyuks (Butun xona 1 kishi): Tanlangan karavot: ${bedId}, xonadagi ikkinchi karavot avtomatik bloklanadi.</span>`
+        ? `<span style="color: #a855f7; font-weight: 700;">👑 Butun xona / VIP: Tanlangan karavot: ${bedId}, xonadagi sherik karavotlar avtomatik bloklanadi.</span>`
         : `<span style="color: #10b981; font-weight: 700;">🟢 Tanlangan karavot: ${bedId}</span>`;
     }
     renderBedPicker();
@@ -1507,17 +1609,17 @@ window.FMH_Reception = (function () {
         icon: '<i class="fas fa-bed"></i>',
         iconBg: 'rgba(16, 185, 129, 0.2)',
         iconColor: '#10b981',
-        group: "🏨 STATSIONAR BO'LIMI"
+        group: "🏨 STATSIONAR BO'LIMI (1-BINO)"
       },
       {
         value: 'statsionar_full_room',
         title: "Statsionar Butun Xona — VIP Solo (1 kishi)",
-        desc: "100% maxfiy, xonada yolg'iz, 2-karavot avtomatik bloklanadi",
+        desc: "100% maxfiy, xonada yolg'iz, sherik karavot avtomatik bloklanadi",
         priceTag: priceTag('statsionar_full_room'),
         icon: '<i class="fas fa-crown"></i>',
         iconBg: 'rgba(168, 85, 247, 0.2)',
         iconColor: '#c084fc',
-        group: "🏨 STATSIONAR BO'LIMI"
+        group: "🏨 STATSIONAR BO'LIMI (1-BINO)"
       },
       {
         value: 'kunlik_statsionar',
@@ -1527,7 +1629,57 @@ window.FMH_Reception = (function () {
         icon: '<i class="fas fa-sun"></i>',
         iconBg: 'rgba(245, 158, 11, 0.2)',
         iconColor: '#fbbf24',
-        group: "🏨 STATSIONAR BO'LIMI"
+        group: "🏨 STATSIONAR BO'LIMI (1-BINO)"
+      },
+      {
+        value: 'statsionar_vip_1',
+        title: "2-Bino 1-XONA VIP (Lyuks 1 kishilik)",
+        desc: "2-Bino VIP palatasi, alohida qulaylik va dabdabali xona",
+        priceTag: priceTag('statsionar_vip_1'),
+        icon: '<i class="fas fa-gem"></i>',
+        iconBg: 'rgba(168, 85, 247, 0.25)',
+        iconColor: '#a855f7',
+        group: "🏨 STATSIONAR BO'LIMI (2-BINO)"
+      },
+      {
+        value: 'statsionar_shared_800k',
+        title: "2-Bino Standart (3 va 5-xona kishi boshiga)",
+        desc: "2-bino 3-xona (2 kishilik) yoki 5-xona (3 kishilik) 1 ta karavot",
+        priceTag: priceTag('statsionar_shared_800k'),
+        icon: '<i class="fas fa-bed"></i>',
+        iconBg: 'rgba(14, 165, 233, 0.2)',
+        iconColor: '#0ea5e9',
+        group: "🏨 STATSIONAR BO'LIMI (2-BINO)"
+      },
+      {
+        value: 'statsionar_full_room_1200k',
+        title: "2-Bino 3-XONA Butun Xona Bron (Solo)",
+        desc: "2-Bino 3-xonani butunlay bron qilish, ikkinchi karavot qulflanadi",
+        priceTag: priceTag('statsionar_full_room_1200k'),
+        icon: '<i class="fas fa-lock"></i>',
+        iconBg: 'rgba(236, 72, 153, 0.2)',
+        iconColor: '#ec4899',
+        group: "🏨 STATSIONAR BO'LIMI (2-BINO)"
+      },
+      {
+        value: 'statsionar_full_room_1300k',
+        title: "2-Bino 5-XONA 2 kishilik to'liq bron",
+        desc: "5-xonada 2 kishi bo'lib butun xonani band qilish (3-karavot qulflanadi)",
+        priceTag: priceTag('statsionar_full_room_1300k'),
+        icon: '<i class="fas fa-users-slash"></i>',
+        iconBg: 'rgba(249, 115, 22, 0.2)',
+        iconColor: '#f97316',
+        group: "🏨 STATSIONAR BO'LIMI (2-BINO)"
+      },
+      {
+        value: 'statsionar_full_room_1600k',
+        title: "2-Bino 5-XONA 1 kishilik to'liq bron (Solo)",
+        desc: "3 kishilik xonada yolg'iz (solo), barcha karavotlar qulflanadi",
+        priceTag: priceTag('statsionar_full_room_1600k'),
+        icon: '<i class="fas fa-user-shield"></i>',
+        iconBg: 'rgba(168, 85, 247, 0.2)',
+        iconColor: '#c084fc',
+        group: "🏨 STATSIONAR BO'LIMI (2-BINO)"
       },
       {
         value: 'ambulator_1',
@@ -1575,7 +1727,7 @@ window.FMH_Reception = (function () {
         document.querySelectorAll('.service-type-card').forEach(c => {
           c.classList.toggle('selected', c.dataset.service === 'outpatient');
         });
-      } else if (val === 'statsionar_full_room' || val === 'statsionar_shared' || val === 'kunlik_statsionar') {
+      } else if (val.startsWith('statsionar_') || val === 'kunlik_statsionar') {
         State.intake.serviceType = 'inpatient';
         document.querySelectorAll('.service-type-card').forEach(c => {
           c.classList.toggle('selected', c.dataset.service === 'inpatient');

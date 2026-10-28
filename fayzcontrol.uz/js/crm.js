@@ -1,7 +1,13 @@
 /**
- * FAYZ MEDICAL HOUSE — PATIENT CRM & MEDICAL DOSSIER CLIENT ENGINE
- * Fully integrated with MySQL REST API & local resilient fallback store.
+ * Fayz Medical House — CRM Portal Script
  */
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 
 (function () {
   'use strict';
@@ -96,7 +102,7 @@
   function renderStats() {
     const total = state.patients.length;
     const activeInpatient = state.patients.filter(p => p.status === 'active' || p.active_admission).length;
-    const outpatient = state.patients.filter(p => p.status === 'outpatient').length;
+    const outpatient = state.patients.filter(p => (!p.active_admission && p.status === 'active') || p.service_type === 'outpatient').length;
     const discharged = state.patients.filter(p => p.status === 'discharged').length;
     const withDebt = state.patients.filter(p => (p.balance_due || 0) > 0).length;
     const totalDebtAmount = state.patients.reduce((sum, p) => sum + (p.balance_due || 0), 0);
@@ -125,7 +131,7 @@
     if (state.currentFilter === 'active') {
       result = result.filter(p => p.status === 'active' || p.active_admission);
     } else if (state.currentFilter === 'outpatient') {
-      result = result.filter(p => p.status === 'outpatient');
+      result = result.filter(p => (!p.active_admission && p.status === 'active') || p.service_type === 'outpatient');
     } else if (state.currentFilter === 'discharged') {
       result = result.filter(p => p.status === 'discharged');
     } else if (state.currentFilter === 'vip') {
@@ -200,28 +206,29 @@
     container.innerHTML = state.filteredPatients.map(p => {
       const initials = p.full_name.replace('Bemor ', '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'BM';
       const isStay = p.active_admission;
-      const stayLocation = isStay ? `${isStay.floor_number}-Qavat • ${isStay.room_number}-xona (${isStay.bed_code})` : (p.status === 'outpatient' ? 'Ambulator Rejim' : 'Klinikadan Chiqarilgan');
+      const isOutpatient = (!isStay && p.status === 'active') || p.service_type === 'outpatient';
+      const stayLocation = isStay ? `${isStay.floor_number}-Qavat • ${isStay.room_number}-xona (${isStay.bed_code})` : (isOutpatient ? 'Ambulator Rejim' : 'Klinikadan Chiqarilgan');
       const hasAllergy = p.medical_allergies && p.medical_allergies !== "Yo'q" && p.medical_allergies !== '-';
       const hasDebt = (p.balance_due || 0) > 0;
 
       let statusBadge = '';
       if (p.status === 'active' || isStay) {
         statusBadge = '<span class="badge-status status-active"><i class="fas fa-bed"></i> Statsionar</span>';
-      } else if (p.status === 'outpatient') {
+      } else if (isOutpatient) {
         statusBadge = '<span class="badge-status status-outpatient"><i class="fas fa-stethoscope"></i> Ambulator</span>';
       } else {
         statusBadge = '<span class="badge-status status-discharged"><i class="fas fa-check-double"></i> Tuzalgan</span>';
       }
 
       return `
-        <div class="crm-patient-card" data-patient-id="${p.id}">
+        <div class="crm-patient-card" data-patient-id="${esc(p.id)}">
           <div>
             <div class="patient-card-header">
               <div class="patient-identity">
                 <div class="patient-avatar">${initials}</div>
                 <div class="patient-name-block">
-                  <h3>${p.full_name}</h3>
-                  <span class="patient-code-tag"><i class="fas fa-id-badge"></i> ${p.patient_code}</span>
+                  <h3>${esc(p.full_name)}</h3>
+                  <span class="patient-code-tag"><i class="fas fa-id-badge"></i> ${esc(p.patient_code)}</span>
                 </div>
               </div>
               ${statusBadge}
@@ -296,15 +303,15 @@
 
       return `
         <tr>
-          <td><strong style="font-family: var(--font-mono); color: var(--primary);">${p.patient_code}</strong></td>
+          <td><strong style="font-family: var(--font-mono); color: var(--primary);">${esc(p.patient_code)}</strong></td>
           <td>
-            <div style="font-weight: 700; color: var(--text-primary);">${p.full_name}</div>
+            <div style="font-weight: 700; color: var(--text-primary);">${esc(p.full_name)}</div>
             <div style="font-size: 0.74rem; color: var(--text-muted);">${getAge(p.birth_year)} yosh, ${genderText(p.gender)}</div>
           </td>
-          <td><a href="tel:${p.phone}" style="color: var(--primary); text-decoration: none; font-family: var(--font-mono); font-weight: 700;">${p.phone || '-'}</a></td>
-          <td><span style="font-size: 0.8rem;">${stayLocation}</span></td>
+          <td><a href="tel:${esc(p.phone)}" style="color: var(--primary); text-decoration: none; font-family: var(--font-mono); font-weight: 700;">${esc(p.phone || '-')}</a></td>
+          <td><span style="font-size: 0.8rem;">${esc(stayLocation)}</span></td>
           <td>
-            ${p.medical_allergies && p.medical_allergies !== "Yo'q" ? `<span class="allergy-alert-chip">${p.medical_allergies}</span>` : '<span style="color: var(--text-muted);">Yo\'q</span>'}
+            ${p.medical_allergies && p.medical_allergies !== "Yo'q" ? `<span class="allergy-alert-chip">${esc(p.medical_allergies)}</span>` : '<span style="color: var(--text-muted);">Yo\'q</span>'}
           </td>
           <td style="font-family: var(--font-mono); font-weight: 700; color: var(--emerald);">${formatMoney(p.total_paid || 0)}</td>
           <td style="font-family: var(--font-mono); font-weight: 700; color: ${hasDebt ? 'var(--rose)' : 'var(--emerald)'};">
@@ -312,13 +319,13 @@
           </td>
           <td>
             <div style="display: flex; gap: 5px;">
-              <button class="btn-crm btn-crm-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_CRM.openDossier('${p.id}', 'bio')">
+              <button class="btn-crm btn-crm-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_CRM.openDossier('${esc(p.id)}', 'bio')">
                 <i class="fas fa-eye"></i>
               </button>
-              <button class="btn-crm btn-crm-primary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_CRM.openDossier('${p.id}', 'epicrisis')">
+              <button class="btn-crm btn-crm-primary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.FMH_CRM.openDossier('${esc(p.id)}', 'epicrisis')">
                 <i class="fas fa-print"></i>
               </button>
-              <button class="btn-crm btn-crm-outline" style="padding: 4px 8px; font-size: 0.75rem; color: var(--rose); border-color: rgba(244, 63, 94, 0.4);" onclick="window.FMH_CRM.deletePatient('${p.id}')" title="Bemorni o'chirish">
+              <button class="btn-crm btn-crm-outline" style="padding: 4px 8px; font-size: 0.75rem; color: var(--rose); border-color: rgba(244, 63, 94, 0.4);" onclick="window.FMH_CRM.deletePatient('${esc(p.id)}')" title="Bemorni o'chirish">
                 <i class="fas fa-trash-alt"></i>
               </button>
             </div>
@@ -394,19 +401,19 @@
       <div class="crm-form-grid">
         <div class="crm-form-group">
           <label class="crm-form-label">Klinik Kod</label>
-          <input type="text" class="crm-form-control" value="${p.patient_code}" readonly style="font-family: var(--font-mono); font-weight: 700;">
+          <input type="text" class="crm-form-control" value="${esc(p.patient_code)}" readonly style="font-family: var(--font-mono); font-weight: 700;">
         </div>
         <div class="crm-form-group">
           <label class="crm-form-label">To'liq Ism / Anonim Taxallus</label>
-          <input type="text" id="edit-patient-fullname" class="crm-form-control" value="${p.full_name}">
+          <input type="text" id="edit-patient-fullname" class="crm-form-control" value="${esc(p.full_name)}">
         </div>
         <div class="crm-form-group">
           <label class="crm-form-label">Asosiy Telefon Raqami</label>
-          <input type="text" id="edit-patient-phone" class="crm-form-control" value="${p.phone || ''}">
+          <input type="text" id="edit-patient-phone" class="crm-form-control" value="${esc(p.phone || '')}">
         </div>
         <div class="crm-form-group">
           <label class="crm-form-label">Yaqin Qarindoshi & Aloqa</label>
-          <input type="text" id="edit-patient-emergency" class="crm-form-control" value="${p.emergency_contact || ''}">
+          <input type="text" id="edit-patient-emergency" class="crm-form-control" value="${esc(p.emergency_contact || '')}">
         </div>
         <div class="crm-form-group">
           <label class="crm-form-label">Jinsi & Tug'ilgan Yili</label>
@@ -432,11 +439,11 @@
         </div>
         <div class="crm-form-group full-width">
           <label class="crm-form-label" style="color: var(--rose);"><i class="fas fa-exclamation-triangle"></i> Dori-Darmon Allergiyalari (Allergik Anamnez)</label>
-          <input type="text" id="edit-patient-allergies" class="crm-form-control" value="${p.medical_allergies || ''}" style="border-color: rgba(244, 63, 94, 0.4);">
+          <input type="text" id="edit-patient-allergies" class="crm-form-control" value="${esc(p.medical_allergies || '')}" style="border-color: rgba(244, 63, 94, 0.4);">
         </div>
         <div class="crm-form-group full-width">
           <label class="crm-form-label">Yondosh Surunkali Kasalliklar</label>
-          <textarea id="edit-patient-chronic" class="crm-form-control" rows="2">${p.chronic_conditions || ''}</textarea>
+          <textarea id="edit-patient-chronic" class="crm-form-control" rows="2">${esc(p.chronic_conditions || '')}</textarea>
         </div>
       </div>
       <div style="margin-top: 1.25rem; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
@@ -753,7 +760,7 @@
   // Delete Patient Entirely
   async function deletePatient(patientId) {
     const p = state.patients.find(pt => pt.id === patientId || pt.patient_code === patientId);
-    const pName = p ? p.full_name : patientId;
+    const pName = esc(p ? p.full_name : patientId);
 
     const confirmed = await fmhConfirm({
       title: "Bemorni O'chirish",
@@ -862,7 +869,7 @@
   function openPaymentModal(patientId) {
     const patient = state.patients.find(p => p.id === patientId);
     if (!patient) return;
-    showToast("To'lov bu yerda saqlanmaydi. To'lovni Buxgalteriya → bemor hisobi orqali qabul qiling.", 'warning');
+    window.location.href = `/accounting.html?patient_id=${encodeURIComponent(patient.id)}`;
   }
 
   // Export to Multi-Sheet Excel
@@ -1052,13 +1059,13 @@
       initTheme();
       initEvents();
       loadPatients();
-      setInterval(loadPatients, 4000);
+      setInterval(loadPatients, 12000);
     });
   } else {
     initTheme();
     initEvents();
     loadPatients();
-    setInterval(loadPatients, 4000);
+    setInterval(loadPatients, 12000);
   }
 
   window.addEventListener('storage', () => {

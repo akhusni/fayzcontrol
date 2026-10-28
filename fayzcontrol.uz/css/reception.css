@@ -792,21 +792,76 @@ body.day-mode .rich-opt-desc {
 
 /* Bed visual picker */
 .bed-picker-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1.25rem !important;
+  margin-top: 0.85rem;
+  width: 100%;
+}
+
+.bed-picker-section-block {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+[data-theme="day"] .bed-picker-section-block, body.day-mode .bed-picker-section-block {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05) !important;
+}
+
+.bed-picker-section-header {
+  font-size: 0.84rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  margin-bottom: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bed-row-subtitle {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-theme="day"] .bed-row-subtitle, body.day-mode .bed-row-subtitle {
+  color: #475569 !important;
+}
+
+.bed-slots-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 0.6rem;
-  margin-top: 0.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 0.75rem;
 }
 
 .bed-slot {
-  border-radius: var(--radius-md);
-  padding: 0.65rem 0.5rem;
+  border-radius: 10px;
+  padding: 0.75rem 0.6rem;
   text-align: center;
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: 2px solid transparent;
   font-size: 0.78rem;
   font-weight: 700;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .bed-slot .bed-code {
@@ -942,14 +997,15 @@ body.day-mode .rich-opt-desc {
 
 .floor-tabs {
   display: flex;
-  gap: 0.4rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 .floor-tab {
-  padding: 0.35rem 0.9rem;
-  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);

@@ -147,6 +147,18 @@ def _ensure_stock_columns(cur):
     # it buys, so the two rarely match letter for letter. Accounting links a
     # prescribed name to a stock item once; every later dose follows the link.
     cur.execute("""
+        SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'prescriptions'
+          AND COLUMN_NAME = 'diluent'
+    """)
+    if not cur.fetchone()['n']:
+        try:
+            cur.execute("ALTER TABLE prescriptions ADD COLUMN diluent VARCHAR(255) NULL AFTER dosage")
+        except Exception:
+            pass
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS medication_aliases (
             alias_key VARCHAR(255) PRIMARY KEY,
             medication_id VARCHAR(64) NOT NULL,
@@ -315,6 +327,7 @@ def _fetch_orders(conn, day):
             rx.medication_name,
             rx.form,
             rx.dosage,
+            rx.diluent,
             rx.route,
             rx.frequency,
             rx.duration_days,
@@ -339,9 +352,9 @@ def _fetch_orders(conn, day):
         LEFT JOIN staff s  ON s.id = rx.doctor_id
         WHERE rx.status = 'active'
           AND a.status = 'active'
-          AND ? BETWEEN a.start_date AND COALESCE(a.actual_end_date, a.planned_end_date)
+          AND (a.start_date <= ? AND ? < GREATEST(COALESCE(a.actual_end_date, a.planned_end_date), DATE_ADD(a.start_date, INTERVAL 1 DAY)))
         ORDER BY r.room_number, b.bed_code, p.full_name, rx.medication_name
-    """, (day.isoformat(),))
+    """, (day.isoformat(), day.isoformat()))
     return cur.fetchall()
 
 
@@ -394,7 +407,7 @@ def ward_round(conn, day):
         LEFT JOIN staff s ON a.attending_doctor_id = s.id
         WHERE a.status = 'active'
           AND a.start_date <= ?
-          AND COALESCE(a.actual_end_date, a.planned_end_date) >= ?
+          AND ? < GREATEST(COALESCE(a.actual_end_date, a.planned_end_date), DATE_ADD(a.start_date, INTERVAL 1 DAY))
         ORDER BY r.floor_number, r.room_number, b.bed_code
     """, (iso, iso))
     stays = [dict(r) for r in cur.fetchall()]
@@ -500,6 +513,7 @@ def build_round(conn, day):
             'medication_name': o['medication_name'],
             'form': o['form'],
             'dosage': o['dosage'],
+            'diluent': o.get('diluent'),
             'route': o['route'],
             'frequency': o['frequency'],
             'timing': o['timing'],
@@ -615,7 +629,7 @@ def _settle_dose_stock(conn, cur, rx, day, slot_index, actor, notes=None):
         return d['id'], 1, d['unit_cost']
     except inventory.InventoryError:
         icur.execute("ROLLBACK TO SAVEPOINT nurse_dose")
-        return None, 0, avg
+        return None, 0, None
 
 
 def _undo_dose_stock(conn, prev, patient_id, actor):
@@ -757,7 +771,7 @@ def medicine_usage(conn, start, end):
                mc.min_stock_level,
                COUNT(*) AS doses,
                COALESCE(SUM(ma.stock_units), 0) AS units_taken,
-               COALESCE(SUM(ma.stock_unit_cost), 0) AS cost
+               COALESCE(SUM(CASE WHEN ma.stock_units > 0 THEN ma.stock_units * ma.stock_unit_cost ELSE 0 END), 0) AS cost
         FROM medication_administrations ma
         JOIN medications_catalog mc ON mc.id = ma.stock_medication_id
         WHERE ma.status = 'given' AND ma.scheduled_date BETWEEN ? AND ?

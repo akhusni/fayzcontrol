@@ -653,53 +653,414 @@ body.doctor-portal {
   flex-wrap: wrap;
 }
 
+.preset-protocols-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+}
+
 .preset-btn {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 7px 14px;
+  border-radius: 9px;
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.15s ease);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.preset-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.preset-btn-cyan {
+  border-color: rgba(6, 182, 212, 0.35);
+  background: rgba(6, 182, 212, 0.06);
+  color: #0891b2;
+}
+.preset-btn-cyan:hover {
+  background: #0891b2;
+  color: #fff;
+}
+
+.preset-btn-rose {
+  border-color: rgba(244, 63, 94, 0.35);
+  background: rgba(244, 63, 94, 0.06);
+  color: #e11d48;
+}
+.preset-btn-rose:hover {
+  background: #e11d48;
+  color: #fff;
+}
+
+.preset-btn-emerald {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.06);
+  color: #059669;
+}
+.preset-btn-emerald:hover {
+  background: #059669;
+  color: #fff;
+}
+
+.preset-btn-purple {
+  border-color: rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.06);
+  color: #7c3aed;
+}
+.preset-btn-purple:hover {
+  background: #7c3aed;
+  color: #fff;
+}
+
+[data-theme="night"] .preset-btn-cyan { color: #38bdf8; }
+[data-theme="night"] .preset-btn-rose { color: #fb7185; }
+[data-theme="night"] .preset-btn-emerald { color: #34d399; }
+[data-theme="night"] .preset-btn-purple { color: #c084fc; }
+
+.new-prescription-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 16px);
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+.rx-box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1.2rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.rx-box-title-cluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rx-box-title-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--doctor-cyan, #06b6d4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+.rx-box-main-title {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--heading-color, var(--text-primary));
+}
+
+.rx-box-sub-title {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.rx-box-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Card Sections Inside Prescription Box */
+.rx-card-section {
+  background: rgba(241, 245, 249, 0.55);
+  border: 1px solid rgba(203, 213, 225, 0.65);
+  border-radius: 12px;
+  padding: 13px 15px;
+  margin-bottom: 12px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.rx-card-section:hover {
+  border-color: rgba(6, 182, 212, 0.35);
+  background: rgba(241, 245, 249, 0.85);
+}
+
+[data-theme="night"] .rx-card-section {
+  background: rgba(15, 27, 49, 0.6);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="night"] .rx-card-section:hover {
+  border-color: rgba(34, 211, 238, 0.3);
+  background: rgba(15, 27, 49, 0.85);
+}
+
+.rx-card-section-header {
+  margin-bottom: 10px;
+}
+
+.rx-card-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #0284c7;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.preset-btn:hover {
-  background: var(--doctor-cyan-bg);
-  border-color: var(--doctor-cyan);
-  color: var(--doctor-cyan-light);
+[data-theme="night"] .rx-card-badge { color: #38bdf8; }
+
+.rx-badge-blue { color: #0284c7; }
+[data-theme="night"] .rx-badge-blue { color: #38bdf8; }
+
+.rx-badge-amber { color: #b45309; }
+[data-theme="night"] .rx-badge-amber { color: #fbbf24; }
+
+.rx-field-sub {
+  font-size: 0.71rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.rx-grid-step1 {
+  display: grid;
+  grid-template-columns: 2.2fr 1.15fr 1.15fr;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.rx-grid-step2 {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.rx-grid-step3 {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 0.9fr;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.rx-card-submit-section {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.05), rgba(2, 132, 199, 0.08));
+  border-color: rgba(6, 182, 212, 0.28);
+}
+
+[data-theme="night"] .rx-card-submit-section {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(2, 132, 199, 0.12));
+  border-color: rgba(34, 211, 238, 0.25);
+}
+
+.rx-instructions-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.rx-instructions-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-rx-main-submit {
+  flex: 0 0 auto;
+  padding: 9px 24px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #0284c7, #06b6d4);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 3px 10px rgba(6, 182, 212, 0.3);
+  transition: all 0.15s ease;
+}
+
+.btn-rx-main-submit:hover {
+  background: linear-gradient(135deg, #0369a1, #0891b2);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(6, 182, 212, 0.45);
+}
+
+.btn-rx-main-submit:active {
+  transform: translateY(0);
+}
+
+/* Quick Chips (Preset Pills) */
+.rx-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.rx-chip-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.rx-chip {
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-color, #cbd5e1);
+  color: var(--text-secondary, #334155);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.3;
+}
+
+.rx-chip:hover {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
   transform: translateY(-1px);
 }
 
-[data-theme="day"] .preset-btn:hover {
-  background: #ecfeff;
-  color: #0891b2;
+[data-theme="night"] .rx-chip {
+  background: var(--bg-input, #081120);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary, #94a3b8);
 }
 
-.new-prescription-box {
+[data-theme="night"] .rx-chip:hover {
+  background: rgba(6, 182, 212, 0.18);
+  border-color: var(--doctor-cyan, #06b6d4);
+  color: #38bdf8;
+}
+
+.rx-chip-cyan {
+  background: rgba(13, 148, 136, 0.08);
+  border-color: rgba(13, 148, 136, 0.3);
+  color: #0f766e;
+}
+.rx-chip-cyan:hover {
+  background: #0d9488 !important;
+  color: #fff !important;
+  border-color: #0d9488 !important;
+}
+
+[data-theme="night"] .rx-chip-cyan {
+  background: rgba(13, 148, 136, 0.15);
+  border-color: rgba(13, 148, 136, 0.35);
+  color: #2dd4bf;
+}
+
+.rx-chip-blue {
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.28);
+  color: #0369a1;
+}
+.rx-chip-blue:hover {
+  background: #0284c7 !important;
+  color: #fff !important;
+  border-color: #0284c7 !important;
+}
+
+[data-theme="night"] .rx-chip-blue {
+  background: rgba(2, 132, 199, 0.15);
+  border-color: rgba(2, 132, 199, 0.35);
+  color: #38bdf8;
+}
+
+/* Warehouse Accordion (Collapsible) */
+.rx-wh-accordion {
+  margin-top: 10px;
+  border: 1px dashed var(--border-color, #cbd5e1);
+  border-radius: 11px;
+  background: rgba(248, 250, 252, 0.6);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.rx-wh-accordion:hover {
+  border-color: var(--doctor-cyan, #0284c7);
+}
+
+[data-theme="night"] .rx-wh-accordion {
+  background: rgba(15, 27, 49, 0.4);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.rx-wh-toggle-btn {
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--heading-color, var(--text-primary));
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.rx-wh-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rx-wh-badge {
+  font-size: 0.7rem;
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.rx-wh-toggle-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rx-wh-chevron {
+  transition: transform 0.2s ease;
+  color: #94a3b8;
+}
+
+.rx-wh-content {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border-color);
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 14px);
-  padding: 1.25rem 1.4rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-}
-
-.rx-form-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.1rem;
-  margin-bottom: 1.15rem;
-}
-
-.rx-form-main-row {
-  grid-template-columns: 2.2fr 1fr 1.25fr 1.25fr;
-  align-items: flex-start;
-  gap: 1.1rem;
 }
 
 .rx-search-hint-pill {
@@ -731,7 +1092,6 @@ body.doctor-portal {
   align-items: center;
 }
 
-/* Hide duplicate badge inside input since label already has the clear pill */
 .rx-drug-name-group .fmh-med-script-badge {
   display: none !important;
 }
@@ -740,36 +1100,27 @@ body.doctor-portal {
   width: 100%;
   flex: 1;
   min-width: 0;
-  padding-right: 36px !important; /* reserve room cleanly for clear button */
+  padding-right: 36px !important;
 }
 
-.rx-quick-select {
-  flex: 0 0 165px;
-  max-width: 175px;
-  background-color: var(--bg-surface-elevated, var(--bg-input));
-  border-color: rgba(13, 148, 136, 0.35);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-@media (max-width: 1200px) {
-  .rx-form-main-row {
+@media (max-width: 1100px) {
+  .rx-grid-step1,
+  .rx-grid-step2,
+  .rx-grid-step3 {
     grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 720px) {
+  .rx-grid-step1,
+  .rx-grid-step2,
+  .rx-grid-step3,
   .rx-form-row,
-  .rx-form-main-row,
   .rx-stock-row {
     grid-template-columns: 1fr !important;
   }
-  .rx-drug-input-wrap {
+  .rx-instructions-row {
     flex-direction: column;
-  }
-  .rx-quick-select {
-    max-width: 100%;
-    flex: 1 1 auto;
   }
 }
 
@@ -998,8 +1349,8 @@ body.doctor-portal {
 }
 
 .doc-modal-content {
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-card, #0f172a);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
   border-radius: 16px;
   width: 100%;
   max-width: 960px;
@@ -1015,7 +1366,7 @@ body.doctor-portal {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: #1e293b;
+  background: var(--bg-deep, #1e293b);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-wrap: wrap;
   gap: 12px;
@@ -2385,3 +2736,23 @@ body.night-mode .clinical-section-card {
 .dsp-reversed td { color: var(--text-muted); }
 .dsp-reversed .dsp-strike { text-decoration: line-through; }
 .dsp-note { display: block; font-size: 0.72rem; color: var(--rose); margin-top: 2px; }
+
+
+/* Day Mode Modals & Overrides for Doctor Portal */
+[data-theme="day"] .doc-modal-content, body.day-mode .doc-modal-content {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25) !important;
+}
+
+[data-theme="day"] .doc-modal-topbar, body.day-mode .doc-modal-topbar {
+  background: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+[data-theme="day"] .doc-blank-preview, body.day-mode .doc-blank-preview {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}

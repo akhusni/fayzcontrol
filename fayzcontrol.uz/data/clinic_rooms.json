@@ -5,10 +5,10 @@
     "name_en": "Fayz Medical House - Building 1 Facility Management",
     "building_number": 1,
     "total_floors": 2,
-    "total_inpatient_rooms": 9,
-    "total_inpatient_beds": 14,
-    "floor_1_beds": 4,
-    "floor_2_beds": 10,
+    "total_inpatient_rooms": 12,
+    "total_inpatient_beds": 24,
+    "floor_1_beds": 9,
+    "floor_2_beds": 15,
     "room_policy": "Barcha 7 ta palata 2 o'rinli standart palatalardir. Agar bemor Yakka (1 kishi butun xona) rejimini tanlasa (1,100,000 so'm/kun), xonadagi ikkinchi karavot avtomatik bloklanadi va hech kimga berilmaydi."
   },
   "floors": [
@@ -17,7 +17,7 @@
       "name_uz": "1-Qavat",
       "name_ru": "1-й Этаж",
       "name_en": "1st Floor",
-      "total_beds": 4,
+      "total_beds": 9,
       "rooms": [
         {
           "id": "ROOM-CONS-A",
@@ -31,7 +31,9 @@
             "2 ta konsultatsiya kreslosi",
             "Dori shkafi"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-CONS-B",
@@ -45,7 +47,9 @@
             "2 ta bemor kreslosi",
             "Dori shkafi"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-REG-HALL",
@@ -58,7 +62,9 @@
             "Resepshn peshtaxtasi",
             "Kutish divani"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-SANITARY-1",
@@ -73,7 +79,9 @@
             "Public WC",
             "Zinapoya"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-NURSERY",
@@ -86,7 +94,9 @@
             "Hamshira navbatchilik stoli",
             "Dori saqlash bo'limi"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-WARD-1",
@@ -132,7 +142,9 @@
                 "Stol"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-WARD-2",
@@ -176,29 +188,131 @@
                 "IV shtativ"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
         },
         {
-          "id": "ROOM-WARD-15",
+          "id": "ROOM-B2-04",
+          "building": 2,
           "floor": 1,
-          "room_number": "15",
-          "name_uz": "15-xona",
-          "name_ru": "15-палата",
-          "name_en": "Room 15",
+          "room_number": "4",
+          "name_uz": "2-Bino 4-xona",
+          "name_ru": "2-Корпус 4-палата",
+          "name_en": "Building 2 Room 4",
           "type": "stationary",
           "has_beds": true,
-          "beds": []
+          "capacity": 2,
+          "full_room_rate": 1100000,
+          "beds": [
+            {
+              "bed_id": "BED-B2-4A",
+              "building": 2,
+              "floor": 1,
+              "room_id": "ROOM-B2-04",
+              "room_number": "4",
+              "bed_number": "4A",
+              "full_label": "2-Bino 4-xona 4A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Konditsioner"
+              ]
+            },
+            {
+              "bed_id": "BED-B2-4B",
+              "building": 2,
+              "floor": 1,
+              "room_id": "ROOM-B2-04",
+              "room_number": "4",
+              "bed_number": "4B",
+              "full_label": "2-Bino 4-xona 4B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Konditsioner"
+              ]
+            }
+          ],
+          "building_number": 2
         },
         {
-          "id": "ROOM-WARD-15",
+          "id": "ROOM-B2-05",
+          "building": 2,
           "floor": 1,
-          "room_number": "15",
-          "name_uz": "15-xona",
-          "name_ru": "15-палата",
-          "name_en": "Room 15",
+          "room_number": "5",
+          "name_uz": "2-Bino 5-xona",
+          "name_ru": "2-Корпус 5-палата",
+          "name_en": "Building 2 Room 5",
           "type": "stationary",
           "has_beds": true,
-          "beds": []
+          "capacity": 3,
+          "full_room_rate": 1600000,
+          "beds": [
+            {
+              "bed_id": "BED-B2-5A",
+              "building": 2,
+              "floor": 1,
+              "room_id": "ROOM-B2-05",
+              "room_number": "5",
+              "bed_number": "5A",
+              "full_label": "2-Bino 5-xona 5A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 800000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Konditsioner"
+              ]
+            },
+            {
+              "bed_id": "BED-B2-5B",
+              "building": 2,
+              "floor": 1,
+              "room_id": "ROOM-B2-05",
+              "room_number": "5",
+              "bed_number": "5B",
+              "full_label": "2-Bino 5-xona 5B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 800000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Konditsioner"
+              ]
+            },
+            {
+              "bed_id": "BED-B2-5C",
+              "building": 2,
+              "floor": 1,
+              "room_id": "ROOM-B2-05",
+              "room_number": "5",
+              "bed_number": "5C",
+              "full_label": "2-Bino 5-xona 5C karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 800000,
+              "equipment": [
+                "Smart TV",
+                "EKG monitor",
+                "IV shtativ",
+                "Konditsioner"
+              ]
+            }
+          ],
+          "building_number": 2
         }
       ]
     },
@@ -207,7 +321,7 @@
       "name_uz": "2-Qavat",
       "name_ru": "2-й Этаж",
       "name_en": "2nd Floor",
-      "total_beds": 10,
+      "total_beds": 15,
       "rooms": [
         {
           "id": "ROOM-21",
@@ -253,7 +367,9 @@
                 "Stol"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-22",
@@ -297,7 +413,9 @@
                 "EKG monitor"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-KITCHEN",
@@ -312,7 +430,9 @@
             "Rakovina",
             "Parhez stoli"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-SANITARY-2",
@@ -326,7 +446,9 @@
             "Bathroom 2",
             "Zinapoya"
           ],
-          "has_beds": false
+          "has_beds": false,
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-23",
@@ -370,7 +492,9 @@
                 "EKG monitor"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-24",
@@ -414,7 +538,9 @@
                 "EKG monitor"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
         },
         {
           "id": "ROOM-25",
@@ -458,7 +584,150 @@
                 "EKG monitor"
               ]
             }
-          ]
+          ],
+          "building": 1,
+          "building_number": 1
+        },
+        {
+          "id": "ROOM-B2-01",
+          "building": 2,
+          "floor": 2,
+          "room_number": "1",
+          "name_uz": "2-Bino 1-xona (VIP)",
+          "name_ru": "2-Корпус 1-палата (VIP)",
+          "name_en": "Building 2 Room 1 (VIP)",
+          "type": "vip",
+          "has_beds": true,
+          "capacity": 1,
+          "full_room_rate": 1000000,
+          "beds": [
+            {
+              "bed_id": "BED-B2-1",
+              "building": 2,
+              "floor": 2,
+              "room_id": "ROOM-B2-01",
+              "room_number": "1",
+              "bed_number": "1",
+              "full_label": "2-Bino 1-xona VIP karavot",
+              "type": "vip",
+              "status": "available",
+              "daily_rate": 1000000,
+              "equipment": [
+                "Smart TV 65\"",
+                "Konditsioner",
+                "Muzlatgich",
+                "Dush & Sanuzel",
+                "EKG monitor",
+                "IV shtativ",
+                "VIP Lounge"
+              ]
+            }
+          ],
+          "building_number": 2
+        },
+        {
+          "id": "ROOM-B2-02",
+          "building": 2,
+          "floor": 2,
+          "room_number": "2",
+          "name_uz": "2-Bino 2-xona",
+          "name_ru": "2-Корпус 2-палата",
+          "name_en": "Building 2 Room 2",
+          "type": "stationary",
+          "has_beds": true,
+          "capacity": 2,
+          "full_room_rate": 1100000,
+          "beds": [
+            {
+              "bed_id": "BED-B2-2A",
+              "building": 2,
+              "floor": 2,
+              "room_id": "ROOM-B2-02",
+              "room_number": "2",
+              "bed_number": "2A",
+              "full_label": "2-Bino 2-xona 2A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor",
+                "Konditsioner"
+              ]
+            },
+            {
+              "bed_id": "BED-B2-2B",
+              "building": 2,
+              "floor": 2,
+              "room_id": "ROOM-B2-02",
+              "room_number": "2",
+              "bed_number": "2B",
+              "full_label": "2-Bino 2-xona 2B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 720000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor",
+                "Konditsioner"
+              ]
+            }
+          ],
+          "building_number": 2
+        },
+        {
+          "id": "ROOM-B2-03",
+          "building": 2,
+          "floor": 2,
+          "room_number": "3",
+          "name_uz": "2-Bino 3-xona",
+          "name_ru": "2-Корпус 3-палата",
+          "name_en": "Building 2 Room 3",
+          "type": "stationary",
+          "has_beds": true,
+          "capacity": 2,
+          "full_room_rate": 1200000,
+          "beds": [
+            {
+              "bed_id": "BED-B2-3A",
+              "building": 2,
+              "floor": 2,
+              "room_id": "ROOM-B2-03",
+              "room_number": "3",
+              "bed_number": "3A",
+              "full_label": "2-Bino 3-xona 3A karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 800000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor",
+                "Konditsioner"
+              ]
+            },
+            {
+              "bed_id": "BED-B2-3B",
+              "building": 2,
+              "floor": 2,
+              "room_id": "ROOM-B2-03",
+              "room_number": "3",
+              "bed_number": "3B",
+              "full_label": "2-Bino 3-xona 3B karavot",
+              "type": "standard",
+              "status": "available",
+              "daily_rate": 800000,
+              "equipment": [
+                "Smart TV",
+                "IV shtativ",
+                "EKG monitor",
+                "Konditsioner"
+              ]
+            }
+          ],
+          "building_number": 2
         }
       ]
     }

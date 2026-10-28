@@ -23,6 +23,26 @@
     "consultation": {
       "daily_rate": 250000,
       "name_uz": "Shifokor Konsultatsiyasi (Birlamchi ko'rik)"
+    },
+    "statsionar_vip_1": {
+      "daily_rate": 1000000,
+      "name_uz": "VIP 1 kishilik palata (2-bino 1-xona — 1 000 000 so'm)"
+    },
+    "statsionar_shared_800k": {
+      "daily_rate": 800000,
+      "name_uz": "Statsionar (1 karavot / 800 000 so'm)"
+    },
+    "statsionar_full_room_1200k": {
+      "daily_rate": 1200000,
+      "name_uz": "Statsionar Butun Xona (2-bino 3-xona — 1 200 000 so'm)"
+    },
+    "statsionar_full_room_1300k": {
+      "daily_rate": 1300000,
+      "name_uz": "Statsionar Butun Xona (2-bino 5-xona 3 kishilik — 1 300 000 so'm)"
+    },
+    "statsionar_full_room_1600k": {
+      "daily_rate": 1600000,
+      "name_uz": "Statsionar Butun Xona (2-bino 5-xona VIP Solo — 1 600 000 so'm)"
     }
   },
   "additional_services": [

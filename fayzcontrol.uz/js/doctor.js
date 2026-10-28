@@ -1,3 +1,10 @@
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 /**
  * FAYZ MEDICAL HOUSE — DOCTOR'S POST & CLINICAL EMR ENGINE
  * Full clinical patient history, 206-drug prescriber (List Naznacheniy),
@@ -1002,7 +1009,15 @@
 
       return `
         <tr>
-          <td><strong style="color: var(--heading-color); font-size: 0.92rem;">${rx.medication_name}</strong><div style="font-size: 0.74rem; color: var(--text-muted);">${rx.form || ''}</div></td>
+          <td>
+            <strong style="color: var(--heading-color); font-size: 0.92rem;">${escapeHtml(rx.medication_name)}</strong>
+            <div style="font-size: 0.74rem; color: var(--text-muted);">${escapeHtml(rx.form || '')}</div>
+            ${rx.diluent ? `
+              <div style="margin-top: 4px; font-size: 0.76rem; color: #38bdf8; display: inline-flex; align-items: center; gap: 4px; background: rgba(56, 189, 248, 0.1); padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.25);">
+                <i class="fas fa-flask"></i> <span>Erituvchi: <strong>${escapeHtml(rx.diluent)}</strong></span>
+              </div>
+            ` : ''}
+          </td>
           <td><strong style="font-family: var(--font-mono); color: var(--doctor-cyan-light);">${rx.dosage}</strong></td>
           <td><span class="status-pill status-completed">${rx.route}</span></td>
           <td>${rx.frequency}<div style="font-size: 0.74rem; color: var(--text-muted);">${rx.timing || ''}</div></td>
@@ -1191,6 +1206,12 @@
     const nameEl = document.getElementById('rx-drug-name');
     if (nameEl && !nameEl.value.trim()) nameEl.value = item.name || '';
     wh.linkedName = whNameKey(nameEl ? nameEl.value : item.name);
+    const sumEl = document.getElementById('rx-wh-summary-text');
+    if (sumEl) sumEl.textContent = `Bog'langan: ${item.name || ''}`;
+    const box = document.getElementById('rx-wh-content-box');
+    if (box && (box.style.display === 'none' || !box.style.display)) {
+      toggleWarehouseLink();
+    }
     renderWhResults();
     updateWhStatus();
   }
@@ -1200,6 +1221,8 @@
     wh.linkedName = '';
     const unitEl = document.getElementById('rx-qty-unit');
     if (unitEl) unitEl.value = '';
+    const sumEl = document.getElementById('rx-wh-summary-text');
+    if (sumEl) sumEl.textContent = "Bog'lanmagan";
     renderWhResults();
     updateWhStatus();
   }
@@ -1215,6 +1238,8 @@
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    const sumEl = document.getElementById('rx-wh-summary-text');
+    if (sumEl) sumEl.textContent = "Bog'lanmagan";
     renderWhResults();
     updateWhStatus();
   }
@@ -1347,8 +1372,29 @@
   function setRxField(field, value) {
     const el = document.getElementById(`rx-${field}`);
     if (el) {
-      el.value = value;
+      if (field === 'instructions' && el.value.trim()) {
+        if (!el.value.includes(value)) {
+          el.value = el.value.trim() + '; ' + value;
+        }
+      } else {
+        el.value = value;
+      }
       el.focus();
+      try {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch (_) {}
+    }
+  }
+
+  function toggleWarehouseLink() {
+    const box = document.getElementById('rx-wh-content-box');
+    const chevron = document.getElementById('rx-wh-chevron-icon');
+    if (!box) return;
+    const isHidden = box.style.display === 'none' || !box.style.display;
+    box.style.display = isHidden ? 'block' : 'none';
+    if (chevron) {
+      chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
     }
   }
 
@@ -1449,6 +1495,14 @@
       const el = document.getElementById('rx-instructions');
       if (el) el.value = med.instructions;
     }
+    const dilEl = document.getElementById('rx-diluent');
+    if (dilEl) {
+      if (med.default_diluent) {
+        dilEl.value = med.default_diluent;
+      } else if ((med.form || '').toLowerCase().includes('tablet') || (med.default_route || '').toLowerCase().includes('os')) {
+        dilEl.value = '';
+      }
+    }
 
     whOnDrugPicked(med);
     updateDrugDetailsBanner(med);
@@ -1518,6 +1572,19 @@
     const paperDisplay = med.paper_name && med.paper_name !== med.name ? `<span style="color:#0284c7; font-weight:600;">• Qog'ozda: ${escapeHtml(med.paper_name)}</span>` : '';
     const innDisplay = med.inn ? `<span style="color:#64748b;">• МНН: ${escapeHtml(med.inn)}</span>` : '';
 
+    const availQty = med.available_quantity !== undefined ? Number(med.available_quantity) : (med.stock_quantity !== undefined ? Number(med.stock_quantity) : null);
+    const unitStr = med.base_unit || (med.form ? (med.form.toLowerCase().includes('amp') ? 'ampula' : (med.form.toLowerCase().includes('tab') ? 'tabletka' : (med.form.toLowerCase().includes('flak') ? 'flakon' : 'dona'))) : 'dona');
+    let stockBadgeHTML = '';
+    if (availQty !== null && isFinite(availQty)) {
+      if (availQty <= 0) {
+        stockBadgeHTML = `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:5px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:800; font-size:0.75rem;"><i class="fas fa-boxes-stacked"></i> Omborda: Tugagan (0 ${unitStr})</span>`;
+      } else if (availQty < 10) {
+        stockBadgeHTML = `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:5px; background:#fffbeb; color:#d97706; border:1px solid #fde68a; font-weight:800; font-size:0.75rem;"><i class="fas fa-exclamation-triangle"></i> Omborda kam: ${availQty} ${unitStr}</span>`;
+      } else {
+        stockBadgeHTML = `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:5px; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; font-weight:800; font-size:0.75rem;"><i class="fas fa-boxes-stacked"></i> Omborda qoldiq: ${availQty} ${unitStr}</span>`;
+      }
+    }
+
     banner.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -1526,6 +1593,7 @@
           ${paperDisplay}
           ${innDisplay}
           ${badgeHTML}
+          ${stockBadgeHTML}
         </div>
         <button type="button" onclick="window.FMH_Doctor.clearDrugDetailsBanner()" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:0.85rem;" title="Yopish">
           <i class="fas fa-times"></i>
@@ -1813,7 +1881,20 @@
       const paperName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(m.paper_name || '', q) : (m.paper_name || '');
       const innName = window.FMH_MedSearch ? window.FMH_MedSearch.highlightMatched(m.inn || m.trade_name_uz || '', q) : (m.inn || m.trade_name_uz || '');
 
-      return `
+              const mAvail = m.available_quantity !== undefined ? Number(m.available_quantity) : (m.stock_quantity !== undefined ? Number(m.stock_quantity) : null);
+              const mUnit = m.base_unit || (m.form ? (m.form.toLowerCase().includes('amp') ? 'ampula' : (m.form.toLowerCase().includes('tab') ? 'tabletka' : (m.form.toLowerCase().includes('flak') ? 'flakon' : 'dona'))) : 'dona');
+              let cardStockHTML = '';
+              if (mAvail !== null && isFinite(mAvail)) {
+                if (mAvail <= 0) {
+                  cardStockHTML = `&nbsp;•&nbsp; <span style="color: #dc2626; font-weight: 700; background: #fef2f2; padding: 1px 6px; border-radius: 4px; border: 1px solid #fecaca;"><i class="fas fa-boxes-stacked"></i> Qoldiq: 0 (Tugagan)</span>`;
+                } else if (mAvail < 10) {
+                  cardStockHTML = `&nbsp;•&nbsp; <span style="color: #d97706; font-weight: 700; background: #fffbeb; padding: 1px 6px; border-radius: 4px; border: 1px solid #fde68a;"><i class="fas fa-exclamation-triangle"></i> Qoldiq: ${mAvail} ${mUnit} (kam)</span>`;
+                } else {
+                  cardStockHTML = `&nbsp;•&nbsp; <span style="color: #059669; font-weight: 700; background: #f0fdf4; padding: 1px 6px; border-radius: 4px; border: 1px solid #bbf7d0;"><i class="fas fa-boxes-stacked"></i> Qoldiq: ${mAvail} ${mUnit}</span>`;
+                }
+              }
+
+              return `
         <div class="clinic-med-card">
           <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
             <div style="width: 38px; height: 38px; border-radius: 8px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #0b3b60; font-size: 0.85rem; border: 1px solid #cbd5e1; flex-shrink: 0;">
@@ -1830,6 +1911,7 @@
                 <span style="color: #0284c7; font-weight: 600;">Qog'ozdagi yozilishi:</span> ${paperName} &nbsp;•&nbsp; 
                 <span style="color: #64748b;">МНН: ${innName}</span> &nbsp;•&nbsp;
                 <span style="color: #0d9488; font-weight: 600;">${m.form}</span>
+                ${cardStockHTML}
               </div>
               <div style="font-size: 0.74rem; color: #475569; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
                 <span><i class="fas fa-syringe" style="color: #94a3b8; font-size: 0.7rem;"></i> <b>Standart:</b> ${m.default_dosage} (${m.default_route})</span>
@@ -1904,6 +1986,7 @@
       medication_name: med.name,
       form: med.form || med.dosage_form || '',
       dosage: med.default_dosage || med.strength || '',
+      diluent: med.default_diluent || null,
       route: med.default_route || '',
       frequency: med.default_frequency || '',
       duration_days: med.default_duration || null,
@@ -1953,11 +2036,13 @@
       const matchedCanonical = findMedication(drugName);
       const canonicalName = matchedCanonical ? matchedCanonical.name : drugName;
 
+      const diluentVal = (document.getElementById('rx-diluent')?.value || '').trim();
       rxData = {
         id: 'RX-' + Math.floor(Math.random() * 90000 + 10000),
         medication_name: canonicalName,
         form: document.getElementById('rx-form').value,
         dosage: document.getElementById('rx-dosage').value,
+        diluent: diluentVal || null,
         route: document.getElementById('rx-route').value,
         frequency: document.getElementById('rx-frequency').value,
         duration_days: parseInt(document.getElementById('rx-duration').value) || null,
@@ -2041,6 +2126,8 @@
         if (clearBtn) clearBtn.style.display = 'none';
       }
       document.getElementById('rx-dosage').value = '';
+      const rxDil = document.getElementById('rx-diluent');
+      if (rxDil) rxDil.value = '';
       document.getElementById('rx-instructions').value = '';
       clearDrugDetailsBanner();
       resetWarehousePanel();
@@ -2061,21 +2148,21 @@
     let items = [];
     if (protocolType === 'detox') {
       items = [
-        { medication_name: 'Reamberin 1.5% 400ml', form: 'Infuzion flakon', dosage: '400 ml', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Ertalab 09:30', instructions: 'Sekin tomchilatib yuborilsin' },
-        { medication_name: 'Gepa-Merts (L-ornitin-L-aspartat)', form: 'Ampula 10ml', dosage: '10 ml', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Tushlik 13:30', instructions: '200ml fiziologik eritmada eritib' },
-        { medication_name: 'Meksidol (Etilmetilgidroksipiridin)', form: 'Ampula 5% 2ml', dosage: '4 ml', route: 'V/I oqimli', frequency: 'Kuniga 2 mahal', duration_days: 7, timing: 'Ertalab & Kechqurun', instructions: 'Sekin 3-5 daqiqa davomida' },
-        { medication_name: 'Tiamin xlorid (Vitamin B1)', form: 'Ampula 5% 1ml', dosage: '2 ml', route: 'V/M inyeksiya', frequency: 'Kuniga 1 mahal', duration_days: 10, timing: 'Ertalab 10:00', instructions: 'Mushak ichiga' }
+        { medication_name: 'Reamberin 1.5% 400ml', form: 'Infuzion flakon', dosage: '400 ml', diluent: null, route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Ertalab 09:30', instructions: 'Sekin tomchilatib yuborilsin' },
+        { medication_name: 'Gepa-Merts (L-ornitin-L-aspartat)', form: 'Ampula 10ml', dosage: '10 ml', diluent: 'Natriy xlorid 0.9% 200 ml', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Tushlik 13:30', instructions: '200ml fiziologik eritmada eritib' },
+        { medication_name: 'Meksidol (Etilmetilgidroksipiridin)', form: 'Ampula 5% 2ml', dosage: '4 ml', diluent: null, route: 'V/I oqimli', frequency: 'Kuniga 2 mahal', duration_days: 7, timing: 'Ertalab & Kechqurun', instructions: 'Sekin 3-5 daqiqa davomida' },
+        { medication_name: 'Tiamin xlorid (Vitamin B1)', form: 'Ampula 5% 1ml', dosage: '2 ml', diluent: null, route: 'V/M inyeksiya', frequency: 'Kuniga 1 mahal', duration_days: 10, timing: 'Ertalab 10:00', instructions: 'Mushak ichiga' }
       ];
     } else if (protocolType === 'alcohol_abstinence') {
       items = [
-        { medication_name: 'Magniy sulfat 25% 10ml', form: 'Ampula', dosage: '10 ml', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Ertalab 10:00', instructions: '200ml Glukoza 5% bilan' },
-        { medication_name: 'Piridoksin (Vitamin B6)', form: 'Ampula 5% 1ml', dosage: '2 ml', route: 'V/M inyeksiya', frequency: 'Kuniga 1 mahal', duration_days: 7, timing: 'Ertalab 11:00', instructions: 'Mushak ichiga' },
-        { medication_name: 'Fenazepam / Gidazepam', form: 'Tabletkalar', dosage: '0.05 g', route: 'Ichishga (Per os)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Uyqudan oldin 21:30', instructions: 'Sedatsiya va uyquni barqarorlashtirish' }
+        { medication_name: 'Magniy sulfat 25% 10ml', form: 'Ampula', dosage: '10 ml', diluent: 'Glyukoza 5% 200 ml', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Ertalab 10:00', instructions: '200ml Glukoza 5% bilan' },
+        { medication_name: 'Piridoksin (Vitamin B6)', form: 'Ampula 5% 1ml', dosage: '2 ml', diluent: null, route: 'V/M inyeksiya', frequency: 'Kuniga 1 mahal', duration_days: 7, timing: 'Ertalab 11:00', instructions: 'Mushak ichiga' },
+        { medication_name: 'Fenazepam / Gidazepam', form: 'Tabletkalar', dosage: '0.05 g', diluent: null, route: 'Ichishga (Per os)', frequency: 'Kuniga 1 mahal', duration_days: 5, timing: 'Uyqudan oldin 21:30', instructions: 'Sedatsiya va uyquni barqarorlashtirish' }
       ];
     } else if (protocolType === 'hepato_neuro') {
       items = [
-        { medication_name: 'Glutation (Tad 600)', form: 'Flakon 600mg', dosage: '600 mg', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 7, timing: 'Ertalab 09:30', instructions: 'VIP antioksidant' },
-        { medication_name: 'Serebrolizin (Cerebrolysin)', form: 'Ampula 5ml', dosage: '5 ml', route: 'V/I oqimli', frequency: 'Kuniga 1 mahal', duration_days: 10, timing: 'Ertalab 10:30', instructions: 'Miyaning neyrometabolik tiklanishi' }
+        { medication_name: 'Glutation (Tad 600)', form: 'Flakon 600mg', dosage: '600 mg', diluent: 'Natriy xlorid 0.9% 100 ml', route: 'V/I tomchilab (kapelnitsa)', frequency: 'Kuniga 1 mahal', duration_days: 7, timing: 'Ertalab 09:30', instructions: 'VIP antioksidant' },
+        { medication_name: 'Serebrolizin (Cerebrolysin)', form: 'Ampula 5ml', dosage: '5 ml', diluent: null, route: 'V/I oqimli', frequency: 'Kuniga 1 mahal', duration_days: 10, timing: 'Ertalab 10:30', instructions: 'Miyaning neyrometabolik tiklanishi' }
       ];
     } else if (protocolType === 'psychiatry') {
       items = [
@@ -2642,9 +2729,10 @@
       <table class="a4-table">
         <thead>
           <tr>
-            <th style="width: 30px;">№</th>
+            <th style="width: 25px;">№</th>
             <th>Dori vositasi & Shakli</th>
             <th>Doza</th>
+            <th style="color: #0284c7;"><i class="fas fa-flask"></i> Erituvchi (Fiz rastvor / Quyma)</th>
             <th>Yuborish Yo'li</th>
             <th>Qabul vaqti / Davriyligi</th>
             <th>Davomiyligi</th>
@@ -2655,16 +2743,30 @@
           ${rxList.length > 0 ? rxList.map((r, i) => `
             <tr>
               <td>${i + 1}</td>
-              <td><strong>${r.medication_name}</strong><br><small style="color: #64748b;">${r.form || ''}</small></td>
-              <td><strong>${r.dosage}</strong></td>
-              <td>${r.route}</td>
-              <td>${r.frequency}<br><small style="color: #64748b;">${r.timing || ''}</small></td>
-              <td>${r.duration_days} kun</td>
-              <td><span style="font-weight: 700; color: ${r.status === 'completed' ? '#10b981' : (r.status === 'cancelled' ? '#f43f5e' : '#0284c7')};">${r.status === 'completed' ? 'Bajarildi' : (r.status === 'cancelled' ? 'Bekor qilindi' : 'Bajarilmoqda')}</span></td>
+              <td><strong>${escapeHtml(r.medication_name)}</strong><br><small style="color: #64748b;">${escapeHtml(r.form || '')}</small></td>
+              <td><strong>${escapeHtml(r.dosage || '—')}</strong></td>
+              <td>
+                ${r.diluent ? `
+                  <div style="color: #0369a1; font-weight: 700; font-size: 11px;">
+                    <i class="fas fa-flask" style="color: #0284c7; margin-right: 3px;"></i>${escapeHtml(r.diluent)}
+                  </div>
+                  <small style="color: #0284c7; font-style: italic;">bilan aralashtirilsin</small>
+                ` : `<span style="color: #94a3b8; font-style: italic; font-size: 11px;">Sof holda (yo'q)</span>`}
+              </td>
+              <td>
+                <strong>${escapeHtml(r.route || '—')}</strong>
+                ${r.instructions ? `<br><small style="color: #475569; font-style: italic;">${escapeHtml(r.instructions)}</small>` : ''}
+              </td>
+              <td>${escapeHtml(r.frequency || '—')}<br><small style="color: #64748b;">${escapeHtml(r.timing || '')}</small></td>
+              <td>${r.duration_days ? `${escapeHtml(String(r.duration_days))} kun` : '—'}</td>
+              <td><span style="font-weight: 700; color: ${r.status === 'completed' ? '#10b981' : (r.status === 'cancelled' ? '#f43f5e' : '#0284c7')};">${r.status === 'completed' ? 'Bajarildi' : (r.status === 'cancelled' ? 'Bekor qilindi' : 'Faol')}</span></td>
             </tr>
-          `).join('') : '<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Tayinlangan dori-darmonlar yo\'q.</td></tr>'}
+          `).join('') : '<tr><td colspan="8" style="text-align: center; color: #94a3b8; padding: 1.5rem;">Tayinlangan dori-darmonlar yo\'q.</td></tr>'}
         </tbody>
       </table>
+      <div style="margin-top: 6px; font-size: 11px; color: #0369a1; font-style: italic;">
+        <strong>* Eslatma hamshiralar uchun:</strong> Erituvchi (fiz rastvor) ko'rsatilgan dori vositalari faqat belgilangan eritmada to'liq aralashtirilgan/suyultirilgan holda ko'rsatilgan usulda yuborilsin.
+      </div>
     `;
 
     // SECTION 2: ANAMNESIS HTML
@@ -3336,6 +3438,7 @@
     const freqSelect = document.getElementById('modal-rx-frequency');
     const daysInput = document.getElementById('modal-rx-days');
     const notesInput = document.getElementById('modal-rx-notes');
+    const diluentInput = document.getElementById('modal-rx-diluent');
 
     const drugName = (drugNameInput?.value || '').trim();
     if (!drugName) {
@@ -3376,6 +3479,7 @@
       medication_name: drugName,
       form: routeSelect?.value.includes('tomchi') ? 'Infuzion flakon' : (routeSelect?.value.includes('per os') ? 'Tabletkalar' : 'Ampula'),
       dosage: dosage,
+      diluent: (diluentInput?.value || '').trim() || null,
       route: routeSelect?.value || '',
       duration_days: durationDays,
       frequency: frequency,
@@ -3389,6 +3493,7 @@
 
     if (drugNameInput) drugNameInput.value = '';
     if (dosageInput) dosageInput.value = '';
+    if (diluentInput) diluentInput.value = '';
     if (notesInput) notesInput.value = '';
     showToast(`💊 "${item.medication_name}" tayinlovlar ro'yxatiga qo'shildi!`, "info");
   }
@@ -3419,8 +3524,11 @@
     tbody.innerHTML = state.newCase.prescriptions.map((rx, idx) => `
       <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
         <td style="padding: 8px 12px; font-weight: 700; color: #38bdf8;">${idx + 1}</td>
-        <td style="padding: 8px 12px;"><strong style="color: #f1f5f9;">${rx.medication_name}</strong></td>
-        <td style="padding: 8px 12px; color: #a5f3fc; font-family: monospace;">${rx.dosage}</td>
+        <td style="padding: 8px 12px;">
+          <strong style="color: #f1f5f9;">${escapeHtml(rx.medication_name)}</strong>
+          ${rx.diluent ? `<div style="font-size: 0.72rem; color: #38bdf8; margin-top: 2px;"><i class="fas fa-flask"></i> Erituvchi: <strong>${escapeHtml(rx.diluent)}</strong></div>` : ''}
+        </td>
+        <td style="padding: 8px 12px; color: #a5f3fc; font-family: monospace;">${escapeHtml(rx.dosage)}</td>
         <td style="padding: 8px 12px;"><span class="status-pill status-completed" style="font-size: 0.72rem;">${rx.route}</span></td>
         <td style="padding: 8px 12px; font-weight: 600;">${rx.duration_days} kun</td>
         <td style="padding: 8px 12px; color: #cbd5e1; font-size: 0.78rem;">${rx.frequency}</td>
@@ -3437,11 +3545,11 @@
     let presetItems = [];
     if (presetKey === 'detox') {
       presetItems = [
-        { medication_name: 'Reosorbilakt 400ml', form: 'Infuzion flakon', dosage: '400 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta ertalab, k/k sekin' },
-        { medication_name: 'Natriy Xlorid 0.9% 400ml', form: 'Infuzion flakon', dosage: '400 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta kunduzi, k/k' },
-        { medication_name: 'Magniy sulfat 25% 10ml', form: 'Ampula', dosage: '10 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta NaCl bilan birga' },
-        { medication_name: 'Askorbin kislotasi (Vit C) 5%', form: 'Ampula', dosage: '4 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta tomchilab' },
-        { medication_name: 'Piratsetam 20% 10ml', form: 'Ampula', dosage: '10 ml', route: 'v/i tomchilab', duration_days: 5, frequency: '1 marta ertalab' }
+        { medication_name: 'Reosorbilakt 400ml', form: 'Infuzion flakon', dosage: '400 ml', diluent: null, route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta ertalab, k/k sekin' },
+        { medication_name: 'Natriy Xlorid 0.9% 400ml', form: 'Infuzion flakon', dosage: '400 ml', diluent: null, route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta kunduzi, k/k' },
+        { medication_name: 'Magniy sulfat 25% 10ml', form: 'Ampula', dosage: '10 ml', diluent: 'Natriy xlorid 0.9% 100 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta NaCl bilan birga' },
+        { medication_name: 'Askorbin kislotasi (Vit C) 5%', form: 'Ampula', dosage: '4 ml', diluent: 'Natriy xlorid 0.9% 100 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta tomchilab' },
+        { medication_name: 'Piratsetam 20% 10ml', form: 'Ampula', dosage: '10 ml', diluent: 'Natriy xlorid 0.9% 100 ml', route: 'v/i tomchilab', duration_days: 5, frequency: '1 marta ertalab' }
       ];
     } else if (presetKey === 'abstinence_heavy') {
       presetItems = [
@@ -3459,9 +3567,9 @@
       ];
     } else if (presetKey === 'hepatoprotect') {
       presetItems = [
-        { medication_name: 'Essentiale Forte N 5ml', form: 'Ampula', dosage: '5 ml', route: 'v/i oqim bilan', duration_days: 5, frequency: '1 marta sekin v/i oqimli' },
-        { medication_name: 'Geptral (Ademetionin) 400mg', form: 'Flakon', dosage: '400 mg', route: 'v/i tomchilab', duration_days: 5, frequency: '1 marta fiziologik eritmada' },
-        { medication_name: 'Glukoza 5% 400ml + Insulin 4TB', form: 'Infuzion flakon', dosage: '400 ml', route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta tushlikda' }
+        { medication_name: 'Essentiale Forte N 5ml', form: 'Ampula', dosage: '5 ml', diluent: null, route: 'v/i oqim bilan', duration_days: 5, frequency: '1 marta sekin v/i oqimli' },
+        { medication_name: 'Geptral (Ademetionin) 400mg', form: 'Flakon', dosage: '400 mg', diluent: 'Natriy xlorid 0.9% 200 ml', route: 'v/i tomchilab', duration_days: 5, frequency: '1 marta fiziologik eritmada' },
+        { medication_name: 'Glukoza 5% 400ml + Insulin 4TB', form: 'Infuzion flakon', dosage: '400 ml', diluent: null, route: 'v/i tomchilab', duration_days: 3, frequency: '1 marta tushlikda' }
       ];
     }
 
@@ -3686,6 +3794,7 @@
     addPrescription,
     applyPresetProtocol,
     setRxField,
+    toggleWarehouseLink,
     filterRxTable,
     toggleRxStatus,
     deletePrescription,

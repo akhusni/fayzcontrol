@@ -150,7 +150,7 @@
                 <span class="fmh-dept-item-icon"><i class="fas fa-bed"></i></span>
                 <span class="fmh-dept-item-content">
                   <span class="fmh-dept-item-title">Palatalar Xaritasi</span>
-                  <span class="fmh-dept-item-desc">14 karavot CAD, bandlik va joylashtirish</span>
+                  <span class="fmh-dept-item-desc">24 karavot CAD, bandlik va joylashtirish</span>
                 </span>
               </a>
               <a href="duty_schedule.html" class="fmh-dept-item" role="menuitem">
@@ -283,8 +283,8 @@
 
         <li class="super-nav-item" data-dept-target="facility" onclick="window.FMH_Super.switchDepartment('facility')">
           <i class="fas fa-bed super-nav-icon"></i>
-          <span class="super-nav-text">2. Bino & 14 Karavot</span>
-          <span class="super-nav-badge badge-success">14 O'rin</span>
+          <span class="super-nav-text">2. Bino & 24 Karavot</span>
+          <span class="super-nav-badge badge-success">24 O'rin</span>
         </li>
 
         <li class="super-nav-item" data-dept-target="accounting" onclick="window.FMH_Super.switchDepartment('accounting')">
@@ -342,7 +342,7 @@
         <li class="super-nav-section-title" style="margin-top: 10px;">ALOHIDA TIZIMLARGA HAVOLALAR</li>
         <li style="padding: 0 0.65rem; display: flex; flex-direction: column; gap: 6px;">
           <a href="building_management.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
-            <i class="fas fa-bed" style="color: var(--primary);"></i> 🏨 Statsionar (14 Karavot)
+            <i class="fas fa-bed" style="color: var(--primary);"></i> 🏨 Statsionar (24 Karavot)
           </a>
           <a href="accounting.html" class="btn-super btn-super-outline" style="font-size: 0.75rem; justify-content: flex-start; text-decoration: none;">
             <i class="fas fa-coins" style="color: var(--emerald);"></i> 💳 Buxgalteriya & Kassa
@@ -545,7 +545,7 @@
               <div class="dept-hub-top">
                 <div>
                   <div class="dept-hub-title">🍲 8. Parhez & Oshxona</div>
-                  <div class="dept-hub-desc">Detoksikatsiya parhez taomnomasi va 14 karavotga 3 mahal ovqat</div>
+                  <div class="dept-hub-desc">Detoksikatsiya parhez taomnomasi va 24 karavotga 3 mahal ovqat</div>
                 </div>
                 <i class="fas fa-utensils" style="color: var(--warning); font-size: 1.4rem;"></i>
               </div>
@@ -605,18 +605,22 @@
         <section id="dept-facility" class="super-dept-section">
           <div class="super-card">
             <div class="super-card-header">
-              <div class="super-card-title"><i class="fas fa-bed" style="color: #38bdf8;"></i> 14 ta Statsionar Karavotlar Holati</div>
+              <div class="super-card-title"><i class="fas fa-bed" style="color: #38bdf8;"></i> 24 ta Statsionar Karavotlar Holati (1-Bino va 2-Bino)</div>
               <div style="display: flex; gap: 8px;">
                 <button class="btn-super btn-super-primary" onclick="window.FMH_Super.openBookingModal()"><i class="fas fa-plus"></i> Yangi Qabul</button>
                 <button class="btn-super btn-super-outline" onclick="window.FMH_Super.exportBedsToExcel()"><i class="fas fa-file-excel"></i> Excelga Yuklash</button>
                 <a href="building_management.html" class="btn-super btn-super-primary" style="background: linear-gradient(135deg, #0284c7, #0ea5e9);"><i class="fas fa-drafting-compass"></i> Alohida Bino CAD Portaliga O'tish &rarr;</a>
               </div>
             </div>
-            <!-- Floor Filter Bar -->
-            <div class="super-filter-bar" id="facility-floor-filters">
-              <button class="super-filter-btn active" onclick="window.FMH_Super.switchFacilityFloor('all', this)"><i class="fas fa-hotel"></i> Barchasi (14 O'rin)</button>
-              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('1', this)"><i class="fas fa-layer-group"></i> 1-Qavat (4 O'rin)</button>
-              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('2', this)"><i class="fas fa-building"></i> 2-Qavat (10 O'rin)</button>
+            <!-- Building & Floor Filter Bar -->
+            <div class="super-filter-bar" id="facility-floor-filters" style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button class="super-filter-btn active" onclick="window.FMH_Super.switchFacilityFloor('all', this)"><i class="fas fa-th-large"></i> Barchasi (24 O'rin)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('b1', this)"><i class="fas fa-hospital"></i> 1-Bino (14 O'rin)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('b1-f1', this)">1-Bino: 1-Etaj (4)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('b1-f2', this)">1-Bino: 2-Etaj (10)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('b2', this)"><i class="fas fa-hotel"></i> 2-Bino (10 O'rin)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('b2-f1', this)">2-Bino: 1-Etaj (5)</button>
+              <button class="super-filter-btn" onclick="window.FMH_Super.switchFacilityFloor('b2-f2', this)">2-Bino: 2-Etaj (5)</button>
             </div>
 
             <div class="charming-beds-grid" id="facility-beds-grid">
@@ -689,7 +693,7 @@
           <div class="super-card">
             <div class="super-card-header">
               <div class="super-card-title"><i class="fas fa-calculator" style="color: var(--primary);"></i> Statsionar Bemorlar Billing Hisob-Kitobi (Avtomat Kalkulyator)</div>
-              <span class="pill-status pill-available">14 Karavot Jonli Balansi</span>
+              <span class="pill-status pill-available">24 Karavot Jonli Balansi</span>
             </div>
             <div class="super-table-wrapper">
               <table class="super-table">

@@ -1231,45 +1231,77 @@ body.night-mode textarea:focus {
 [data-theme="day"] .modal-card,
 [data-theme="day"] .modal-content,
 [data-theme="day"] .modal-box,
+[data-theme="day"] .modal-dialog,
+[data-theme="day"] .crm-modal-dialog,
+[data-theme="day"] .doc-modal-content,
+[data-theme="day"] .doc-modal-window,
+[data-theme="day"] .duty-modal-card,
+[data-theme="day"] .reservation-modal,
 body.day-mode .modal-card,
 body.day-mode .modal-content,
-body.day-mode .modal-box {
+body.day-mode .modal-box,
+body.day-mode .modal-dialog,
+body.day-mode .crm-modal-dialog,
+body.day-mode .doc-modal-content,
+body.day-mode .doc-modal-window,
+body.day-mode .duty-modal-card,
+body.day-mode .reservation-modal {
   background-color: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
   color: #0f172a !important;
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25) !important;
 }
 [data-theme="day"] .modal-header,
-body.day-mode .modal-header {
+[data-theme="day"] .doc-modal-topbar,
+body.day-mode .modal-header,
+body.day-mode .doc-modal-topbar {
   border-bottom: 1px solid #e2e8f0 !important;
+  background-color: #f8fafc !important;
   color: #0f172a !important;
 }
 [data-theme="day"] .modal-footer,
 body.day-mode .modal-footer {
   border-top: 1px solid #e2e8f0 !important;
   background-color: #f8fafc !important;
+  color: #0f172a !important;
 }
 
 [data-theme="night"] .modal-card,
 [data-theme="night"] .modal-content,
 [data-theme="night"] .modal-box,
+[data-theme="night"] .modal-dialog,
+[data-theme="night"] .crm-modal-dialog,
+[data-theme="night"] .doc-modal-content,
+[data-theme="night"] .doc-modal-window,
+[data-theme="night"] .duty-modal-card,
+[data-theme="night"] .reservation-modal,
 body.night-mode .modal-card,
 body.night-mode .modal-content,
-body.night-mode .modal-box {
+body.night-mode .modal-box,
+body.night-mode .modal-dialog,
+body.night-mode .crm-modal-dialog,
+body.night-mode .doc-modal-content,
+body.night-mode .doc-modal-window,
+body.night-mode .duty-modal-card,
+body.night-mode .reservation-modal {
   background-color: #0a162d !important;
   border: 1px solid rgba(56, 189, 248, 0.25) !important;
   color: #f8fafc !important;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6) !important;
 }
 [data-theme="night"] .modal-header,
-body.night-mode .modal-header {
+[data-theme="night"] .doc-modal-topbar,
+body.night-mode .modal-header,
+body.night-mode .doc-modal-topbar {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: #0a162d !important;
   color: #f8fafc !important;
 }
 [data-theme="night"] .modal-footer,
 body.night-mode .modal-footer {
   border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
   background-color: #071022 !important;
+  color: #f8fafc !important;
 }
 
 /* Universal Button Portal Outline */

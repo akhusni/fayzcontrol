@@ -39,6 +39,11 @@
     packages: {
       statsionar_shared: { daily_rate: 720000, name_uz: 'Statsionar (1 karavot / 2 kishilik xona)' },
       statsionar_full_room: { daily_rate: 1100000, name_uz: 'Statsionar Butun Xona (VIP Solo)' },
+      statsionar_vip_1: { daily_rate: 1000000, name_uz: 'Statsionar 2-Bino VIP (1-xona, 1 kishilik)' },
+      statsionar_shared_800k: { daily_rate: 800000, name_uz: 'Statsionar 2-Bino (3/5-xona kishi boshiga)' },
+      statsionar_full_room_1200k: { daily_rate: 1200000, name_uz: 'Statsionar 2-Bino 3-xona Butun Xona' },
+      statsionar_full_room_1300k: { daily_rate: 1300000, name_uz: "Statsionar 2-Bino 5-xona 2 kishilik to'liq bron" },
+      statsionar_full_room_1600k: { daily_rate: 1600000, name_uz: "Statsionar 2-Bino 5-xona 1 kishilik to'liq bron (Solo)" },
       kunlik_statsionar: { daily_rate: 630000, name_uz: "Kunlik Statsionar (Kunduzgi o'rin)" },
       ambulator_1: { daily_rate: 310000, name_uz: 'Ambulator (1 mahal)' },
       ambulator_2: { daily_rate: 500000, name_uz: 'Ambulator (2 mahal)' },

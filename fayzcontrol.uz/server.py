@@ -205,6 +205,11 @@ DEFAULT_PRICING = {
     "packages": {
         "statsionar_shared": {"daily_rate": 720000, "name_uz": "Statsionar (1 karavot / 2 kishilik xona)"},
         "statsionar_full_room": {"daily_rate": 1100000, "name_uz": "Statsionar Butun Xona (VIP Solo)"},
+        "statsionar_vip_1": {"daily_rate": 1000000, "name_uz": "VIP 1 kishilik palata (2-bino 1-xona — 1 000 000 so'm)"},
+        "statsionar_shared_800k": {"daily_rate": 800000, "name_uz": "Statsionar (1 karavot / 800 000 so'm)"},
+        "statsionar_full_room_1200k": {"daily_rate": 1200000, "name_uz": "Statsionar Butun Xona (2-bino 3-xona — 1 200 000 so'm)"},
+        "statsionar_full_room_1300k": {"daily_rate": 1300000, "name_uz": "Statsionar Butun Xona (2-bino 5-xona 3 kishilik — 1 300 000 so'm)"},
+        "statsionar_full_room_1600k": {"daily_rate": 1600000, "name_uz": "Statsionar Butun Xona (2-bino 5-xona VIP Solo — 1 600 000 so'm)"},
         "kunlik_statsionar": {"daily_rate": 630000, "name_uz": "Kunlik Statsionar (Kunduzgi o'rin)"},
         "ambulator_1": {"daily_rate": 310000, "name_uz": "Ambulator (1 mahal)"},
         "ambulator_2": {"daily_rate": 500000, "name_uz": "Ambulator (2 mahal)"},
@@ -789,6 +794,7 @@ from db import (
     list_room_availability,
     ensure_patient_columns,
     ensure_ward_round_schema,
+    ensure_referrals_schema,
     ensure_appointment_requests,
     ensure_medication_purchases,
     ensure_appointment_service_types,
@@ -799,6 +805,8 @@ from db import (
     ensure_user_sessions,
     ensure_transaction_payroll_month,
     ensure_patient_dossiers_table,
+    ensure_building_2_rooms,
+    ensure_prescription_diluent_column,
     list_patient_dossiers,
     get_patient_dossier_by_id,
     create_patient_dossier_record,
@@ -1715,7 +1723,9 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                       AND DATE('now', 'localtime') <= DATE(COALESCE(actual_end_date, planned_end_date))
                 """)
                 real_occupied = cur.fetchone()[0] or 0
-                real_total = 14
+                cur.execute("SELECT COUNT(*) FROM beds WHERE status != 'out_of_service'")
+                _b_cnt = cur.fetchone()
+                real_total = (_b_cnt[0] if _b_cnt else 24) or 24
                 real_available = max(0, real_total - real_occupied)
 
                 summary = {
@@ -1781,64 +1791,101 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 """)
                 patients = [dict(r) for r in cur.fetchall()]
 
-                # Enrich with active admission and latest vitals
-                for pt in patients:
-                    cur.execute("""
-                        SELECT a.id AS admission_id, a.bed_id, b.bed_code, r.room_number, r.floor_number,
+                # Batch enrich to eliminate N+1 queries across patient list
+                p_ids = [pt['id'] for pt in patients if pt.get('id')]
+                active_adms_by_pid = {}
+                mh_by_pid = {}
+                apt_by_pid = {}
+                consult_by_pid = {}
+
+                if p_ids:
+                    _marks = ','.join(['?'] * len(p_ids))
+                    # 1. Batch active admissions
+                    cur.execute(f"""
+                        SELECT a.patient_id, a.id AS admission_id, a.bed_id, b.bed_code, r.room_number, r.floor_number,
                                a.start_date, a.planned_end_date, a.daily_price, a.program_type, a.status AS admission_status,
                                a.attending_doctor_id AS doctor_id, s.full_name AS doctor_name
                         FROM admissions a
                         JOIN beds b ON a.bed_id = b.id
                         JOIN rooms r ON b.room_id = r.id
                         LEFT JOIN staff s ON a.attending_doctor_id = s.id
-                        WHERE a.patient_id = ? AND a.status = 'active'
-                        LIMIT 1
-                    """, (pt['id'],))
-                    active_adm = cur.fetchone()
-                    pt['active_admission'] = dict(active_adm) if active_adm else None
+                        WHERE a.patient_id IN ({_marks}) AND a.status = 'active'
+                    """, tuple(p_ids))
+                    for _adm in cur.fetchall():
+                        _d = dict(_adm)
+                        active_adms_by_pid[_d['patient_id']] = _d
 
-                    # Also fetch consulting doctor from latest medical history
-                    cur.execute("""
-                        SELECT mh.doctor_id, s.full_name AS doctor_name, mh.diagnosis_primary, mh.icd10_code
+                    # 2. Batch latest medical histories
+                    cur.execute(f"""
+                        SELECT mh.patient_id, mh.doctor_id, s.full_name AS doctor_name, mh.diagnosis_primary, mh.icd10_code
                         FROM medical_histories mh
                         LEFT JOIN staff s ON mh.doctor_id = s.id
-                        WHERE mh.patient_id = ?
-                        ORDER BY mh.created_at DESC LIMIT 1
-                    """, (pt['id'],))
-                    doc_mh = cur.fetchone()
-                    if doc_mh:
-                        pt['consulting_doctor_id'] = doc_mh['doctor_id'] if isinstance(doc_mh, dict) else doc_mh[0]
-                        pt['consulting_doctor_name'] = doc_mh['doctor_name'] if isinstance(doc_mh, dict) else doc_mh[1]
-                        pt['diagnosis'] = pt.get('diagnosis') or (doc_mh['diagnosis_primary'] if isinstance(doc_mh, dict) else doc_mh[2])
-                        pt['icd10_code'] = pt.get('icd10_code') or (doc_mh['icd10_code'] if isinstance(doc_mh, dict) else doc_mh[3])
-                    else:
-                        pt['consulting_doctor_id'] = None
-                        pt['consulting_doctor_name'] = None
+                        WHERE mh.patient_id IN ({_marks})
+                        ORDER BY mh.created_at DESC
+                    """, tuple(p_ids))
+                    for _m in cur.fetchall():
+                        _d = dict(_m)
+                        if _d['patient_id'] not in mh_by_pid:
+                            mh_by_pid[_d['patient_id']] = _d
 
-                    # Also fetch latest appointment (e.g. reception consultation)
-                    cur.execute("""
-                        SELECT ap.id AS appointment_id, ap.doctor_id, s.full_name AS doctor_name,
+                    # 3. Batch latest appointments
+                    cur.execute(f"""
+                        SELECT ap.patient_id, ap.id AS appointment_id, ap.doctor_id, s.full_name AS doctor_name,
                                ap.service_type, ap.appointment_date, ap.appointment_time, ap.status AS appointment_status,
                                ap.notes AS appointment_notes
                         FROM appointments ap
                         LEFT JOIN staff s ON ap.doctor_id = s.id
-                        WHERE ap.patient_id = ?
-                        ORDER BY ap.appointment_date DESC, ap.created_at DESC LIMIT 1
-                    """, (pt['id'],))
-                    apt_row = cur.fetchone()
-                    pt['latest_appointment'] = dict(apt_row) if apt_row else None
+                        WHERE ap.patient_id IN ({_marks})
+                        ORDER BY ap.appointment_date DESC, ap.created_at DESC
+                    """, tuple(p_ids))
+                    for _a in cur.fetchall():
+                        _d = dict(_a)
+                        if _d['patient_id'] not in apt_by_pid:
+                            apt_by_pid[_d['patient_id']] = _d
 
-                    # Also fetch latest consultation
-                    cur.execute("""
-                        SELECT c.id AS consultation_id, c.doctor_id, s.full_name AS doctor_name,
+                    # 4. Batch latest consultations
+                    cur.execute(f"""
+                        SELECT c.patient_id, c.id AS consultation_id, c.doctor_id, s.full_name AS doctor_name,
                                c.primary_complaint, c.working_diagnosis, c.icd10_code, c.consultation_date
                         FROM consultations c
                         LEFT JOIN staff s ON c.doctor_id = s.id
-                        WHERE c.patient_id = ?
-                        ORDER BY c.consultation_date DESC LIMIT 1
-                    """, (pt['id'],))
-                    c_row = cur.fetchone()
-                    pt['latest_consultation'] = dict(c_row) if c_row else None
+                        WHERE c.patient_id IN ({_marks})
+                        ORDER BY c.consultation_date DESC
+                    """, tuple(p_ids))
+                    for _c in cur.fetchall():
+                        _d = dict(_c)
+                        if _d['patient_id'] not in consult_by_pid:
+                            consult_by_pid[_d['patient_id']] = _d
+
+                    # 5. Batch latest vitals (eliminates the remaining N+1 query)
+                    vitals_by_pid = {}
+                    cur.execute(f"""
+                        SELECT a.patient_id, dl.vital_bp_systolic, dl.vital_bp_diastolic, dl.vital_pulse, dl.vital_temp, dl.vital_spo2, dl.log_date, dl.nurse_notes
+                        FROM daily_logs dl
+                        JOIN admissions a ON dl.admission_id = a.id
+                        WHERE a.patient_id IN ({_marks})
+                        ORDER BY dl.log_date DESC, dl.id DESC
+                    """, tuple(p_ids))
+                    for _v in cur.fetchall():
+                        _vd = dict(_v)
+                        if _vd['patient_id'] not in vitals_by_pid:
+                            vitals_by_pid[_vd['patient_id']] = _vd
+
+                for pt in patients:
+                    pid = pt['id']
+                    pt['active_admission'] = active_adms_by_pid.get(pid)
+                    doc_mh = mh_by_pid.get(pid)
+                    if doc_mh:
+                        pt['consulting_doctor_id'] = doc_mh.get('doctor_id')
+                        pt['consulting_doctor_name'] = doc_mh.get('doctor_name')
+                        pt['diagnosis'] = pt.get('diagnosis') or doc_mh.get('diagnosis_primary')
+                        pt['icd10_code'] = pt.get('icd10_code') or doc_mh.get('icd10_code')
+                    else:
+                        pt['consulting_doctor_id'] = None
+                        pt['consulting_doctor_name'] = None
+
+                    pt['latest_appointment'] = apt_by_pid.get(pid)
+                    pt['latest_consultation'] = consult_by_pid.get(pid)
 
                     pt['doctor_id'] = (
                         (pt.get('active_admission') and pt['active_admission'].get('doctor_id'))
@@ -1867,16 +1914,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     else:
                         pt['service_type'] = 'consultation' if pt.get('referral_source') in ('reception', 'consultation') else 'outpatient'
 
-                    cur.execute("""
-                        SELECT dl.vital_bp_systolic, dl.vital_bp_diastolic, dl.vital_pulse, dl.vital_temp, dl.vital_spo2, dl.log_date, dl.nurse_notes
-                        FROM daily_logs dl
-                        JOIN admissions a ON dl.admission_id = a.id
-                        WHERE a.patient_id = ?
-                        ORDER BY dl.log_date DESC, dl.id DESC
-                        LIMIT 1
-                    """, (pt['id'],))
-                    vit = cur.fetchone()
-                    pt['latest_vitals'] = dict(vit) if vit else None
+                    pt['latest_vitals'] = vitals_by_pid.get(pid)
 
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(patients, ensure_ascii=False).encode('utf-8'))
@@ -2038,6 +2076,39 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'patient': patient, 'invoices': invoices,
                                              'totals': totals}, ensure_ascii=False).encode('utf-8'))
 
+            # 5b. GET /api/accounting/invoice-items?invoice_id=<id>
+            # Real-time items and payment ledger for a single invoice.
+            elif path == '/api/accounting/invoice-items':
+                inv_id = (query.get('invoice_id', [''])[0] or '').strip()
+                if not inv_id:
+                    self._send_validation_error("Hisob tanlanmagan.", 'invoice_id')
+                    return
+                cur.execute("SELECT * FROM v_financial_ledger WHERE invoice_id = ?", (inv_id,))
+                inv_row = cur.fetchone()
+                if not inv_row:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Hisob topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                cur.execute("""
+                    SELECT id, invoice_id, service_name, quantity, unit_price, total_amount,
+                           item_type, service_start_date, service_end_date, created_at
+                    FROM invoice_items WHERE invoice_id = ?
+                    ORDER BY created_at, id
+                """, (inv_id,))
+                items = [dict(r) for r in cur.fetchall()]
+                cur.execute("""
+                    SELECT id, invoice_id, amount, payment_method, payment_date, notes, created_at
+                    FROM payments WHERE invoice_id = ?
+                    ORDER BY payment_date, created_at
+                """, (inv_id,))
+                payments = [dict(r) for r in cur.fetchall()]
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'invoice': dict(inv_row),
+                    'items': items,
+                    'payments': payments
+                }, ensure_ascii=False).encode('utf-8'))
+
             # 6. /api/daily-logs/<admission_id>
             # 6a. Consultation intake & treatment plans
             #
@@ -2186,7 +2257,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # table is left in place.
 
                 # Pharmacy stock
-                cur.execute("SELECT id, name, category, form, standard_dosage, unit_price, stock_quantity, min_stock_level FROM medications_catalog WHERE is_active = 1")
+                cur.execute("SELECT id, name, category, form, base_unit, standard_dosage, unit_price, stock_quantity, min_stock_level FROM medications_catalog WHERE is_active = 1")
                 pharmacy_stock = [dict(r) for r in cur.fetchall()]
                 # What can really be given (non-expired lots) and the
                 # warehouse's own verdict (strictly below the threshold is
@@ -2333,12 +2404,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(rows, ensure_ascii=False).encode('utf-8'))
 
-            # 7e. GET /api/referrals/doctors -> List of 34 referral doctors merged with staff data
+            # 7e. GET /api/referrals/doctors -> List of referral doctors merged with staff data
             elif path == '/api/referrals/doctors':
                 cur.execute("""
                     SELECT rd.id, rd.name, rd.staff_id, rd.phone, rd.is_active,
-                           s.full_name AS staff_full_name, s.role AS staff_role, s.specialty AS staff_specialty,
-                           s.salary_base AS staff_salary_base
+                           s.full_name AS staff_full_name, s.role AS staff_role, s.specialty AS staff_specialty
                     FROM referral_doctors rd
                     LEFT JOIN staff s ON rd.staff_id = s.id
                     WHERE rd.is_active = 1
@@ -2354,7 +2424,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(docs, ensure_ascii=False).encode('utf-8'))
 
-            # 7e2. GET /api/medications -> Official clinic medications formulary & catalog
+            # 7e2. GET /api/medications -> Official clinic medications formulary & catalog with live warehouse stock
             elif path == '/api/medications':
                 meds_path = os.path.join(BASE_DIR, 'data', 'fayz_house_meds.json')
                 db_path = os.path.join(BASE_DIR, 'data', 'pharmacology_db.json')
@@ -2373,6 +2443,47 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         pass
                 if not meds_data:
                     meds_data = {"medications": []}
+
+                # Live warehouse stock enrichment
+                try:
+                    cur.execute("SELECT id, name, category, form, base_unit, stock_quantity, min_stock_level, is_active FROM medications_catalog WHERE is_active = 1")
+                    cat_rows = {r['id']: r for r in cur.fetchall()}
+                    cat_by_name = {r['name'].lower(): r for r in cat_rows.values()}
+                    avail_map = inventory.available_map(conn, list(cat_rows.keys()))
+                    seen_cat_ids = set()
+
+                    for m in meds_data.get('medications', []):
+                        mid = m.get('id')
+                        mname = (m.get('name') or '').lower()
+                        matched = cat_rows.get(mid) or cat_by_name.get(mname)
+                        if matched:
+                            seen_cat_ids.add(matched['id'])
+                            m['catalog_id'] = matched['id']
+                            m['base_unit'] = matched.get('base_unit') or m.get('base_unit') or 'dona'
+                            avail = float(avail_map.get(matched['id'], matched.get('stock_quantity') or 0))
+                            m['available_quantity'] = avail
+                            m['stock_quantity'] = avail
+                            m['stock_status'] = inventory.compute_status(avail, matched.get('min_stock_level') or 10)
+
+                    # Also include other active items from medications_catalog (e.g. Paracetamol)
+                    for cid, crow in cat_rows.items():
+                        if cid not in seen_cat_ids:
+                            avail = float(avail_map.get(cid, crow.get('stock_quantity') or 0))
+                            meds_data['medications'].append({
+                                'id': cid,
+                                'catalog_id': cid,
+                                'name': crow['name'],
+                                'category': crow.get('category') or 'Dori-darmon',
+                                'form': crow.get('form') or 'Tabletkalar',
+                                'base_unit': crow.get('base_unit') or 'dona',
+                                'available_quantity': avail,
+                                'stock_quantity': avail,
+                                'stock_status': inventory.compute_status(avail, crow.get('min_stock_level') or 10),
+                                'fayz_house_list': False
+                            })
+                except Exception as _e_med_stock:
+                    pass
+
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(meds_data, ensure_ascii=False).encode('utf-8'))
 
@@ -2528,7 +2639,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "facility_info": hr_data.get("facility_info", {
                         "name": "FAYZ MEDICAL HOUSE",
                         "total_floors": 2,
-                        "total_beds": 14,
+                        "total_beds": 24,
                         "operating_mode": "24/7 Statsionar & Poliklinika"
                     }),
                     # From the one price list, not the legacy hr_db.json.
@@ -3161,6 +3272,13 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         self.wfile.write(json.dumps({'error': 'PDF fayli server diskida topilmadi'}).encode('utf-8'))
                         return
 
+                # Prevent Path Traversal attacks
+                dossier_dir = os.path.realpath(os.path.join(BASE_DIR, 'data', 'patient_dossiers'))
+                if not os.path.realpath(fpath).startswith(dossier_dir + os.sep):
+                    self._set_json_headers(403)
+                    self.wfile.write(json.dumps({'error': 'Ruxsat etilmagan fayl manzili'}).encode('utf-8'))
+                    return
+
                 with open(fpath, 'rb') as f:
                     pdf_data = f.read()
 
@@ -3218,9 +3336,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 try:
                     pdf_result = generate_patient_dossier_pdf(real_pid, doc_type=doc_type)
-                except Exception as ex:
-                    self._set_json_headers(500)
-                    self.wfile.write(json.dumps({'error': f'PDF shakllantirishda xatolik: {str(ex)}'}).encode('utf-8'))
+                except Exception:
+                    self._send_server_error("PDF shakllantirishda xatolik yuz berdi.")
                     return
 
                 if not pdf_result or not pdf_result.get('pdf_bytes'):
@@ -3228,16 +3345,21 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': 'PDF shakllantirilmadi'}).encode('utf-8'))
                     return
 
+                sess = self.current_session()
+                curr_user = sess['user'] if sess else None
+
                 try:
                     create_patient_dossier_record(conn, data={
                         'patient_id': real_pid,
+                        'patient_code': patient.get('patient_code'),
+                        'patient_name': patient.get('full_name'),
                         'admission_id': pdf_result.get('admission_id'),
                         'file_name': pdf_result.get('file_name'),
                         'file_path': pdf_result.get('file_path'),
                         'file_size': pdf_result.get('file_size'),
                         'doc_type': doc_type,
                         'page_count': pdf_result.get('page_count', 1),
-                        'created_by': user.get('id') if user else None,
+                        'created_by': curr_user.get('id') if curr_user else None,
                         'notes': f"Klinik reestrdan {doc_type} yuklab olindi/ko'rildi"
                     })
                 except Exception:
@@ -3813,12 +3935,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 actor_id = self._actor_staff_id(body, 'recorded_by_staff_id')
                 _staff_ref = ref.get('staff_id')
 
-                # Create accounting expense transaction
+                # Create accounting expense transaction (category='referral_bonus' prevents monthly salary lockout)
                 cur.execute("""
                     INSERT INTO accounting_transactions (
                         id, transaction_type, category, amount, payment_method,
                         account_source, description, transaction_date, related_staff_id
-                    ) VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, 'expense', 'referral_bonus', ?, ?, ?, ?, ?, ?)
                 """, (trx_id, pay_amt, method, acc_src, desc, today_str, _staff_ref))
 
                 # Mark referral as paid
@@ -3907,9 +4029,24 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             "Bu dori uchun bemorga narx belgilanmagan. Avval narxni kiriting.", 'service_code')
                         return
                     item_type = 'medication'
+                elif code in ('CUSTOM', 'custom') or body.get('custom_name'):
+                    custom_name = str(body.get('custom_name') or body.get('service_name') or code).strip()
+                    if not custom_name or custom_name in ('CUSTOM', 'custom'):
+                        self._send_validation_error("Xizmat nomini kiriting.", 'custom_name')
+                        return
+                    unit_price, _perr = validate_amount(body.get('unit_price'))
+                    if _perr or unit_price < 0:
+                        self._send_validation_error("Xizmat narxi noto'g'ri.", 'unit_price')
+                        return
+                    item_name = custom_name
+                    _cat = str(body.get('category') or body.get('item_type') or 'procedure').lower()
+                    if _cat not in ('procedure', 'lab_test', 'consultation', 'other'):
+                        _cat = 'procedure'
+                    item_type = _cat
                 else:
                     pricing = load_pricing()
                     svc = next((s for s in (pricing.get('additional_services') or [])
+
                                 if isinstance(s, dict) and str(s.get('id')) == code), None)
                     if not svc:
                         self._send_validation_error("Xizmat narxlar ro'yxatida topilmadi.", 'service_code')
@@ -4068,6 +4205,19 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         ) VALUES (?, ?, ?, ?, 'bed_stay', ?, ?, ?)
                     """, (rec['invoice_id'], f"Statsionar yotoq ({rec['bed_id']})",
                           new_total_days, rec['daily_price'], rec['start_date'], new_planned_end_str, rec['bed_id']))
+
+                # Recalculate 10% referral commission if tied to this invoice/admission
+                cur.execute("""
+                    SELECT total_billed FROM invoices WHERE id = ?
+                """, (rec['invoice_id'],))
+                _bill_row = cur.fetchone()
+                if _bill_row:
+                    _tb = float(_bill_row.get('total_billed') or 0.0)
+                    cur.execute("""
+                        UPDATE patient_referrals
+                        SET base_total_billed = ?, calculated_amount = ROUND(? * 0.10, 2)
+                        WHERE (invoice_id = ? OR admission_id = ?) AND fee_type = 'percent_10' AND status = 'pending'
+                    """, (_tb, _tb, rec['invoice_id'], rec['adm_id']))
 
                 conn.commit()
 
@@ -5210,9 +5360,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_validation_error(_rx_err[0], _rx_err[1])
                     return
 
+                diluent = (body.get('diluent') or '').strip() or None
                 cur.execute("""
-                    INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, route, frequency, duration_days, timing, instructions, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, diluent, route, frequency, duration_days, timing, instructions, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     rx_id,
                     body.get('patient_id'),
@@ -5221,6 +5372,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     med,
                     (body.get('form') or '').strip() or None,
                     str(body.get('dosage')).strip(),
+                    diluent,
                     str(body.get('route')).strip(),
                     str(body.get('frequency')).strip(),
                     duration_days,
@@ -5639,9 +5791,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     timing = rx.get('timing') or None
                     instructions = rx.get('instructions') or ''
 
+                    diluent = (rx.get('diluent') or '').strip() or None
                     cur.execute("""
-                        INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, route, frequency, duration_days, timing, instructions, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                        INSERT INTO prescriptions (id, patient_id, admission_id, doctor_id, medication_name, form, dosage, diluent, route, frequency, duration_days, timing, instructions, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
                     """, (
                         rx_id,
                         patient_id,
@@ -5650,6 +5803,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         med_name,
                         form,
                         dosage,
+                        diluent,
                         route,
                         frequency,
                         duration,
@@ -6627,6 +6781,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         cur.execute("SELECT base_unit FROM medications_catalog WHERE id = ?",
                                     (rx_extra['medication_id'],))
                         rx_extra['quantity_unit'] = cur.fetchone()['base_unit']
+                if 'diluent' in body:
+                    rx_extra['diluent'] = (body.get('diluent') or '').strip() or None
                 clear_qty = 'quantity_prescribed' in body and body.get('quantity_prescribed') in (None, '')
                 if clear_qty:
                     rx_extra['quantity_prescribed'] = None
@@ -6646,6 +6802,83 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         reply['stock_warning'] = _w
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps(reply).encode('utf-8'))
+
+            # PUT /api/accounting/invoice-items/<id> -- update quantity, price, or name of a bill line
+            elif path.startswith('/api/accounting/invoice-items'):
+                parts = [p for p in path.split('/') if p]
+                item_id = parts[3] if len(parts) >= 4 else body.get('id')
+                if not item_id:
+                    self._send_validation_error("Xizmat tanlanmagan.", 'id')
+                    return
+                cur.execute("SELECT id, invoice_id, service_name, quantity, unit_price, item_type "
+                            "FROM invoice_items WHERE id = ?", (item_id,))
+                item = cur.fetchone()
+                if not item:
+                    self._set_json_headers(404)
+                    self.wfile.write(json.dumps({'error': 'Xizmat topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                    return
+                if item['item_type'] == 'bed_stay':
+                    self._send_validation_error("O'rin-kun muddatini davomiylik bo'limi orqali o'zgartiring.", 'id')
+                    return
+                cur.execute("SELECT id, payment_status FROM invoices WHERE id = ?", (item['invoice_id'],))
+                inv = cur.fetchone()
+                if inv and inv['payment_status'] in ('refund_due', 'refunded'):
+                    self._send_validation_error("Qaytarish jarayonidagi hisobni o'zgartirib bo'lmaydi.", 'id')
+                    return
+
+                new_qty = float(item['quantity'])
+                if 'quantity' in body and body['quantity'] is not None:
+                    try:
+                        new_qty = float(body['quantity'])
+                        if new_qty <= 0 or new_qty > 500:
+                            self._send_validation_error("Miqdor 1 dan 500 gacha bo'lishi kerak.", 'quantity')
+                            return
+                    except (TypeError, ValueError):
+                        self._send_validation_error("Miqdor noto'g'ri.", 'quantity')
+                        return
+                    if new_qty != float(item['quantity']):
+                        cur.execute("""
+                            SELECT id FROM inventory_dispensings
+                            WHERE client_request_id LIKE ? AND status = 'completed'
+                        """, (f"billing-{item_id}%",))
+                        if cur.fetchone():
+                            self._send_validation_error(
+                                "Ombordan hisobdan chiqarilgan dorining miqdorini to'g'ridan-to'g'ri o'zgartirib bo'lmaydi. Qatorni o'chirib qayta qo'shing.", 'quantity')
+                            return
+
+                new_price = float(item['unit_price'])
+                if 'unit_price' in body and body['unit_price'] is not None:
+                    parsed_price, _perr = validate_amount(body['unit_price'])
+                    if _perr or parsed_price < 0:
+                        self._send_validation_error("Narx noto'g'ri.", 'unit_price')
+                        return
+                    new_price = parsed_price
+
+                new_name = item['service_name']
+                if 'service_name' in body and str(body['service_name']).strip():
+                    new_name = str(body['service_name']).strip()[:255]
+
+                cur.execute("""
+                    UPDATE invoice_items
+                    SET quantity = ?, unit_price = ?, service_name = ?
+                    WHERE id = ?
+                """, (new_qty, new_price, new_name, item_id))
+                conn.commit()
+
+                cur.execute("SELECT total_billed, net_amount, total_paid, balance_due, payment_status "
+                            "FROM invoices WHERE id = ?", (item['invoice_id'],))
+                totals = dict(cur.fetchone() or {})
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    'message': "Xizmat muvaffaqiyatli yangilandi",
+                    'id': item_id,
+                    'invoice_id': item['invoice_id'],
+                    'service_name': new_name,
+                    'quantity': new_qty,
+                    'unit_price': new_price,
+                    'total': new_qty * new_price,
+                    'invoice': totals
+                }, ensure_ascii=False).encode('utf-8'))
 
             # PUT /api/reception/appointment/<id>/cancel
             #
@@ -6859,6 +7092,26 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 if updated:
                     write_json_atomic(rooms_file, r_data)
+                    # Also synchronize directly with MySQL beds table
+                    try:
+                        sql_sets = []
+                        sql_vals = []
+                        if 'daily_rate' in body:
+                            sql_sets.append("default_daily_rate = ?")
+                            sql_vals.append(float(body['daily_rate']))
+                        if 'type' in body:
+                            sql_sets.append("bed_type = ?")
+                            sql_vals.append(body['type'])
+                        if 'status' in body:
+                            sql_sets.append("status = ?")
+                            sql_vals.append(body['status'])
+                        if sql_sets:
+                            sql_vals.extend([bed_id, bed_id])
+                            cur.execute(f"UPDATE beds SET {', '.join(sql_sets)}, updated_at = CURRENT_TIMESTAMP WHERE id = ? OR bed_code = ?", tuple(sql_vals))
+                            conn.commit()
+                    except Exception as _e_bed:
+                        print(f"[!] Warning: could not sync bed to MySQL: {_e_bed}")
+
                     self._set_json_headers(200)
                     self.wfile.write(json.dumps({'message': f"{bed_id} karavot yangilandi"}).encode('utf-8'))
                 else:
@@ -6934,6 +7187,56 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             conn = get_db()
             cur = conn.cursor()
 
+            if path.startswith('/api/accounting/invoice-items/'):
+                parts = [p for p in path.split('/') if p]
+                if len(parts) >= 4:
+                    item_id = parts[3]
+                    cur.execute("SELECT id, invoice_id, item_type, service_name FROM invoice_items WHERE id = ?", (item_id,))
+                    item = cur.fetchone()
+                    if not item:
+                        self._set_json_headers(404)
+                        self.wfile.write(json.dumps({'error': 'Xizmat topilmadi.'}, ensure_ascii=False).encode('utf-8'))
+                        return
+                    if item['item_type'] == 'bed_stay':
+                        self._send_validation_error("O'rin-kun muddatini davomiylik bo'limi orqali o'zgartiring.", 'id')
+                        return
+                    cur.execute("SELECT id, payment_status FROM invoices WHERE id = ?", (item['invoice_id'],))
+                    inv = cur.fetchone()
+                    if inv and inv['payment_status'] in ('refund_due', 'refunded'):
+                        self._send_validation_error("Qaytarish jarayonidagi hisobdan xizmat o'chirib bo'lmaydi.", 'id')
+                        return
+
+                    # Check if this invoice item was linked to warehouse medication dispensing
+                    cur.execute("""
+                        SELECT id, status FROM inventory_dispensings
+                        WHERE client_request_id LIKE ? AND status = 'completed'
+                    """, (f"billing-{item_id}%",))
+                    disp_row = cur.fetchone()
+                    if disp_row:
+                        try:
+                            inventory.reverse_dispensing(
+                                conn, disp_row['id'],
+                                reason=f"Hisobdan o'chirildi (Qator: {item_id})",
+                                actor=self._stock_actor()
+                            )
+                        except Exception as e_rev:
+                            print(f"[!] Warning: could not reverse inventory dispensing for item {item_id}: {e_rev}")
+
+                    cur.execute("DELETE FROM invoice_items WHERE id = ?", (item_id,))
+                    conn.commit()
+
+                    cur.execute("SELECT total_billed, net_amount, total_paid, balance_due, payment_status "
+                                "FROM invoices WHERE id = ?", (item['invoice_id'],))
+                    totals = dict(cur.fetchone() or {})
+                    self._set_json_headers(200)
+                    self.wfile.write(json.dumps({
+                        'message': "Xizmat hisobdan o'chirildi",
+                        'id': item_id,
+                        'invoice_id': item['invoice_id'],
+                        'invoice': totals
+                    }, ensure_ascii=False).encode('utf-8'))
+                    return
+
             if path.startswith('/api/dossiers/'):
                 dossier_id = urllib.parse.unquote(path.replace('/api/dossiers/', '')).strip()
                 doc = get_patient_dossier_by_id(conn, dossier_id)
@@ -6942,7 +7245,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': 'Dossye topilmadi'}).encode('utf-8'))
                     return
                 fpath = doc.get('file_path')
-                if fpath and os.path.exists(fpath):
+                dossier_dir = os.path.realpath(os.path.join(BASE_DIR, 'data', 'patient_dossiers'))
+                if fpath and os.path.exists(fpath) and os.path.realpath(fpath).startswith(dossier_dir + os.sep):
                     try:
                         os.remove(fpath)
                     except Exception as _fe:
@@ -6961,91 +7265,110 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             elif path.startswith('/api/patients/') or path.startswith('/api/crm/patients/'):
                 pid = urllib.parse.unquote(path.replace('/api/patients/', '').replace('/api/crm/patients/', ''))
-                cur.execute("PRAGMA foreign_keys = OFF;")
-                # Never match on full_name: names are not unique, and the bed
-                # board once sent a name here, wiping every namesake's records.
-                cur.execute("SELECT id, full_name, patient_code FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
-                p_rows = cur.fetchall()
-                target_ids = [r[0] for r in p_rows] if p_rows else [pid]
+                cur.execute("SET FOREIGN_KEY_CHECKS = 0;")
+                try:
+                    # Never match on full_name: names are not unique, and the bed
+                    # board once sent a name here, wiping every namesake's records.
+                    cur.execute("SELECT id, full_name, patient_code FROM patients WHERE id = ? OR patient_code = ?", (pid, pid))
+                    p_rows = cur.fetchall()
+                    target_ids = [r[0] for r in p_rows] if p_rows else [pid]
+    
+                    for tid in target_ids:
+                        # Same two traps as the admission delete: cascades do not
+                        # fire while FOREIGN_KEY_CHECKS is off, and a subquery on
+                        # `invoices` collides with the triggers that write to it.
+                        # Visit invoices (consultation, outpatient) hang off the
+                        # patient's appointments rather than a stay.
+                        cur.execute("SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?) "
+                                    "OR appointment_id IN (SELECT id FROM appointments WHERE patient_id = ?)", (tid, tid))
+                        _inv_ids = [r['id'] for r in cur.fetchall()]
+                        if _inv_ids:
+                            _marks = ','.join(['?'] * len(_inv_ids))
+                            cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
+                            cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
+                            cur.execute(f"DELETE FROM invoices WHERE id IN ({_marks})", tuple(_inv_ids))
+                        cur.execute("DELETE FROM medication_administrations WHERE patient_id = ?", (tid,))
+                        # These key on the stay, not the patient, and with
+                        # FOREIGN_KEY_CHECKS off nothing cascades: a later stay
+                        # given the same id would inherit the deleted patient's
+                        # logs and bed moves. Same as the single-stay delete.
+                        cur.execute("SELECT id FROM admissions WHERE patient_id = ?", (tid,))
+                        _adm_ids = [r['id'] for r in cur.fetchall()]
+                        if _adm_ids:
+                            _am = ','.join(['?'] * len(_adm_ids))
+                            cur.execute(f"DELETE FROM daily_logs WHERE admission_id IN ({_am})", tuple(_adm_ids))
+                            cur.execute(f"DELETE FROM bed_transfers WHERE admission_id IN ({_am})", tuple(_adm_ids))
+                        # 'operational', not 'available': the latter is a value the
+                        # v_bed_live_status view derives, and beds.status rejects it.
+                        cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE patient_id = ?)", (tid,))
+                        cur.execute("DELETE FROM admissions WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM medical_histories WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM prescriptions WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM doctor_daily_notes WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM discharge_epicrises WHERE patient_id = ?", (tid,))
+                        # Remove physical PDF dossier files from disk
+                        cur.execute("SELECT file_path FROM patient_dossiers WHERE patient_id = ?", (tid,))
+                        for _pdf_row in cur.fetchall():
+                            _fp = _pdf_row.get('file_path') if isinstance(_pdf_row, dict) else _pdf_row[0]
+                            if _fp and os.path.exists(_fp):
+                                try:
+                                    os.remove(_fp)
+                                except Exception:
+                                    pass
+                        cur.execute("DELETE FROM consultations WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM treatment_plans WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM patient_referrals WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM appointments WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM patient_dossiers WHERE patient_id = ?", (tid,))
+                        cur.execute("DELETE FROM patients WHERE id = ?", (tid,))
+    
+                        conn.commit()
+                        self._set_json_headers(200)
+                        self.wfile.write(json.dumps({'message': 'Patient and all linked clinical & billing records deleted'}).encode('utf-8'))
+                finally:
+                    cur.execute("SET FOREIGN_KEY_CHECKS = 1;")
 
-                for tid in target_ids:
-                    # Same two traps as the admission delete: cascades do not
-                    # fire while FOREIGN_KEY_CHECKS is off, and a subquery on
-                    # `invoices` collides with the triggers that write to it.
-                    # Visit invoices (consultation, outpatient) hang off the
-                    # patient's appointments rather than a stay.
-                    cur.execute("SELECT id FROM invoices WHERE admission_id IN (SELECT id FROM admissions WHERE patient_id = ?) "
-                                "OR appointment_id IN (SELECT id FROM appointments WHERE patient_id = ?)", (tid, tid))
+            elif path.startswith('/api/admissions/'):
+                adm_id = urllib.parse.unquote(path.replace('/api/admissions/', ''))
+                cur.execute("SET FOREIGN_KEY_CHECKS = 0;")
+                try:
+                    # Reset beds to operational only if the admission was active
+                    cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE id = ? AND status = 'active')", (adm_id,))
+                    cur.execute("DELETE FROM consultations WHERE admission_id = ?", (adm_id,))
+                    cur.execute("DELETE FROM treatment_plans WHERE admission_id = ?", (adm_id,))
+                    cur.execute("DELETE FROM patient_referrals WHERE admission_id = ?", (adm_id,))
+                    # Children of the invoice are removed explicitly, and by literal
+                    # id rather than through a subquery on `invoices`.
+                    #
+                    # Two traps sit here. Their foreign keys are ON DELETE CASCADE,
+                    # but FOREIGN_KEY_CHECKS is disabled just above (a PRAGMA carried
+                    # over from the SQLite era) and MySQL skips cascades while checks
+                    # are off, so the rows were orphaned. And because an invoice id is
+                    # derived from its admission id, a later admission that reused the
+                    # id inherited those lines and billed a new patient for the
+                    # previous one's stay.
+                    #
+                    # The id list also cannot come from a subquery: triggers on
+                    # payments and invoice_items update `invoices`, and MySQL refuses
+                    # (error 1442) to let a trigger write to a table the invoking
+                    # statement already names.
+                    cur.execute("SELECT id FROM invoices WHERE admission_id = ?", (adm_id,))
                     _inv_ids = [r['id'] for r in cur.fetchall()]
                     if _inv_ids:
                         _marks = ','.join(['?'] * len(_inv_ids))
                         cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
                         cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
                         cur.execute(f"DELETE FROM invoices WHERE id IN ({_marks})", tuple(_inv_ids))
-                    cur.execute("DELETE FROM medication_administrations WHERE patient_id = ?", (tid,))
-                    # These key on the stay, not the patient, and with
-                    # FOREIGN_KEY_CHECKS off nothing cascades: a later stay
-                    # given the same id would inherit the deleted patient's
-                    # logs and bed moves. Same as the single-stay delete.
-                    cur.execute("SELECT id FROM admissions WHERE patient_id = ?", (tid,))
-                    _adm_ids = [r['id'] for r in cur.fetchall()]
-                    if _adm_ids:
-                        _am = ','.join(['?'] * len(_adm_ids))
-                        cur.execute(f"DELETE FROM daily_logs WHERE admission_id IN ({_am})", tuple(_adm_ids))
-                        cur.execute(f"DELETE FROM bed_transfers WHERE admission_id IN ({_am})", tuple(_adm_ids))
-                    # 'operational', not 'available': the latter is a value the
-                    # v_bed_live_status view derives, and beds.status rejects it.
-                    cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE patient_id = ?)", (tid,))
-                    cur.execute("DELETE FROM admissions WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM medical_histories WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM prescriptions WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM doctor_daily_notes WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM discharge_epicrises WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM appointments WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM patient_dossiers WHERE patient_id = ?", (tid,))
-                    cur.execute("DELETE FROM patients WHERE id = ?", (tid,))
-
-                cur.execute("PRAGMA foreign_keys = ON;")
-                conn.commit()
-                self._set_json_headers(200)
-                self.wfile.write(json.dumps({'message': 'Patient and all linked clinical & billing records deleted'}).encode('utf-8'))
-
-            elif path.startswith('/api/admissions/'):
-                adm_id = urllib.parse.unquote(path.replace('/api/admissions/', ''))
-                cur.execute("PRAGMA foreign_keys = OFF;")
-                # 'operational', not 'available' -- see above.
-                cur.execute("UPDATE beds SET status = 'operational' WHERE id IN (SELECT bed_id FROM admissions WHERE id = ?)", (adm_id,))
-                # Children of the invoice are removed explicitly, and by literal
-                # id rather than through a subquery on `invoices`.
-                #
-                # Two traps sit here. Their foreign keys are ON DELETE CASCADE,
-                # but FOREIGN_KEY_CHECKS is disabled just above (a PRAGMA carried
-                # over from the SQLite era) and MySQL skips cascades while checks
-                # are off, so the rows were orphaned. And because an invoice id is
-                # derived from its admission id, a later admission that reused the
-                # id inherited those lines and billed a new patient for the
-                # previous one's stay.
-                #
-                # The id list also cannot come from a subquery: triggers on
-                # payments and invoice_items update `invoices`, and MySQL refuses
-                # (error 1442) to let a trigger write to a table the invoking
-                # statement already names.
-                cur.execute("SELECT id FROM invoices WHERE admission_id = ?", (adm_id,))
-                _inv_ids = [r['id'] for r in cur.fetchall()]
-                if _inv_ids:
-                    _marks = ','.join(['?'] * len(_inv_ids))
-                    cur.execute(f"DELETE FROM payments WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
-                    cur.execute(f"DELETE FROM invoice_items WHERE invoice_id IN ({_marks})", tuple(_inv_ids))
-                    cur.execute(f"DELETE FROM invoices WHERE id IN ({_marks})", tuple(_inv_ids))
-                cur.execute("DELETE FROM medication_administrations WHERE admission_id = ?", (adm_id,))
-                cur.execute("DELETE FROM prescriptions WHERE admission_id = ?", (adm_id,))
-                cur.execute("DELETE FROM daily_logs WHERE admission_id = ?", (adm_id,))
-                cur.execute("DELETE FROM bed_transfers WHERE admission_id = ?", (adm_id,))
-                cur.execute("DELETE FROM admissions WHERE id = ?", (adm_id,))
-                cur.execute("PRAGMA foreign_keys = ON;")
-                conn.commit()
-                self._set_json_headers(200)
-                self.wfile.write(json.dumps({'message': 'Admission and linked records deleted'}).encode('utf-8'))
+                    cur.execute("DELETE FROM medication_administrations WHERE admission_id = ?", (adm_id,))
+                    cur.execute("DELETE FROM prescriptions WHERE admission_id = ?", (adm_id,))
+                    cur.execute("DELETE FROM daily_logs WHERE admission_id = ?", (adm_id,))
+                    cur.execute("DELETE FROM bed_transfers WHERE admission_id = ?", (adm_id,))
+                    cur.execute("DELETE FROM admissions WHERE id = ?", (adm_id,))
+                    conn.commit()
+                    self._set_json_headers(200)
+                    self.wfile.write(json.dumps({'message': 'Admission and linked records deleted'}).encode('utf-8'))
+                finally:
+                    cur.execute("SET FOREIGN_KEY_CHECKS = 1;")
 
             elif path.startswith('/api/staff/') or path.startswith('/api/hr/staff/'):
                 stf_id = urllib.parse.unquote(path.replace('/api/staff/', '').replace('/api/hr/staff/', ''))
@@ -7286,6 +7609,7 @@ def run_server():
         ('patients columns', ensure_patient_columns),
         # One ward-round note per stay per day.
         ('ward round schema', ensure_ward_round_schema),
+        ('referrals schema', ensure_referrals_schema),
         # Where the public website's enquiries land.
         ('appointment requests', ensure_appointment_requests),
         # Table for clinic medication purchases and restock expenses.
@@ -7306,6 +7630,8 @@ def run_server():
         # The month a salary payout pays for (one payout per month).
         ('salary payroll month', ensure_transaction_payroll_month),
         ('patient dossiers table', ensure_patient_dossiers_table),
+        ('building 2 rooms and beds', ensure_building_2_rooms),
+        ('prescription diluent column', ensure_prescription_diluent_column),
         ('user sessions', _sessions),
     )
     _c = None

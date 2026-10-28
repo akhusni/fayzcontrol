@@ -79,6 +79,46 @@
       "default_days": 10,
       "default_rate": 500000,
       "package_type": "outpatient"
+    },
+    {
+      "id": "statsionar_vip_1",
+      "name_uz": "VIP 1 kishilik palata (2-bino 1-xona — 1 000 000 so'm)",
+      "description": "Yangi 2-bino: VIP 1 kishilik palata (2-bino 1-xona — 1 000 000 so'm)",
+      "default_days": 10,
+      "default_rate": 1000000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "statsionar_shared_800k",
+      "name_uz": "Statsionar (1 karavot / 800 000 so'm)",
+      "description": "Yangi 2-bino: Statsionar (1 karavot / 800 000 so'm)",
+      "default_days": 10,
+      "default_rate": 800000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "statsionar_full_room_1200k",
+      "name_uz": "Statsionar Butun Xona (2-bino 3-xona — 1 200 000 so'm)",
+      "description": "Yangi 2-bino: Statsionar Butun Xona (2-bino 3-xona — 1 200 000 so'm)",
+      "default_days": 10,
+      "default_rate": 1200000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "statsionar_full_room_1300k",
+      "name_uz": "Statsionar Butun Xona (2-bino 5-xona 3 kishilik — 1 300 000 so'm)",
+      "description": "Yangi 2-bino: Statsionar Butun Xona (2-bino 5-xona 3 kishilik — 1 300 000 so'm)",
+      "default_days": 10,
+      "default_rate": 1300000,
+      "package_type": "inpatient"
+    },
+    {
+      "id": "statsionar_full_room_1600k",
+      "name_uz": "Statsionar Butun Xona (2-bino 5-xona VIP Solo — 1 600 000 so'm)",
+      "description": "Yangi 2-bino: Statsionar Butun Xona (2-bino 5-xona VIP Solo — 1 600 000 so'm)",
+      "default_days": 10,
+      "default_rate": 1600000,
+      "package_type": "inpatient"
     }
   ],
   "doctors": [

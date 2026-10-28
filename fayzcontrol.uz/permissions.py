@@ -246,7 +246,7 @@ API_RULES = [
     ('/api/warehouse',               'warehouse',  None),
     ('/api/accounting/medication-purchases', 'accounting', None),
     ('/api/accounting/transaction',   'accounting', None),
-    ('/api/accounting/invoice-items', 'accounting', 'write'),
+    ('/api/accounting/invoice-items', 'accounting', None),
     ('/api/accounting/duration',      'accounting', 'write'),
     ('/api/accounting/data',          'accounting', 'read'),
     # Referral commissions (gonorarlar)

@@ -86,6 +86,9 @@
       /[-–]/.test(String(dose.frequency || '')) ?
       `<div class="dose-note">Ruxsat etilgan: kuniga ${esc(dose.max_per_day)} martagacha</div>` : '';
 
+    const diluentHtml = dose.diluent ?
+      `<div class="dose-note" style="color: #0284c7; font-weight: 600; margin-top: 3px;"><i class="fas fa-flask"></i> Erituvchi (fiz rastvor): <strong>${esc(dose.diluent)}</strong> bilan aralashtirilsin</div>` : '';
+
     const recordedBy = dose.nurse_name
       ? `<div class="dose-note">${esc(dose.nurse_name)}${dose.administered_at ? ' · ' + esc(String(dose.administered_at).slice(11, 16)) : ''}${dose.notes ? ' · ' + esc(dose.notes) : ''}</div>`
       : (dose.notes ? `<div class="dose-note">${esc(dose.notes)}</div>` : '');
@@ -103,6 +106,7 @@
         <div class="dose-med">
           <div class="dose-med-name">${esc(dose.medication_name)}</div>
           <div class="dose-med-detail">${detail}</div>
+          ${diluentHtml}
           ${flexible}${recordedBy}
         </div>
         <div class="dose-state state-${esc(dose.state)}">
@@ -125,6 +129,7 @@
         <div class="dose-med">
           <div class="dose-med-name">${esc(order.medication_name)}</div>
           <div class="dose-med-detail">${detail}<span class="sep">·</span>${esc(order.frequency)}</div>
+          ${order.diluent ? `<div class="dose-note" style="color: #0284c7; font-weight: 600; margin-top: 3px;"><i class="fas fa-flask"></i> Erituvchi (fiz rastvor): <strong>${esc(order.diluent)}</strong> bilan aralashtirilsin</div>` : ''}
           ${order.instructions ? `<div class="dose-note">${esc(order.instructions)}</div>` : ''}
         </div>
         <div class="prn-count">${esc(log)}</div>

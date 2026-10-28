@@ -521,16 +521,22 @@ window.FMH_Print = (function() {
 
     let rowsHtml = "";
     if (!rxList || !rxList.length) {
-      rowsHtml = `<tr><td colspan="6" class="text-center" style="padding:15px; color:#64748b;">Hozircha faol dori-darmon tayinlovlari yo'q</td></tr>`;
+      rowsHtml = `<tr><td colspan="7" class="text-center" style="padding:15px; color:#64748b;">Hozircha faol dori-darmon tayinlovlari yo'q</td></tr>`;
     } else {
       rowsHtml = rxList.map((rx, idx) => `
         <tr>
           <td class="text-center font-mono">${idx + 1}</td>
-          <td><strong>${rx.medication_name || rx.name || 'Dori vositasi'}</strong></td>
-          <td class="text-center font-mono">${rx.dosage || rx.standard_dosage || '—'}</td>
+          <td>
+            <strong>${rx.medication_name || rx.name || 'Dori vositasi'}</strong>
+            ${rx.form ? `<br><small style="color:#64748b;">${rx.form}</small>` : ''}
+          </td>
+          <td class="text-center font-mono"><strong>${rx.dosage || rx.standard_dosage || '—'}</strong></td>
+          <td>
+            ${rx.diluent ? `<span style="color:#0369a1; font-weight:700;">${rx.diluent}</span><br><small style="color:#0284c7; font-style:italic;">bilan aralashtirilsin</small>` : `<span style="color:#94a3b8; font-style:italic; font-size:7.5pt;">Sof holda</span>`}
+          </td>
           <td class="text-center">${rx.route || '—'}</td>
-          <td class="text-center">${rx.frequency || '—'}</td>
-          <td style="font-size:7pt;">${rx.instructions || rx.notes || ''}</td>
+          <td class="text-center">${rx.frequency || '—'}${rx.timing ? `<br><small style="color:#64748b;">${rx.timing}</small>` : ''}</td>
+          <td style="font-size:7pt;">${rx.instructions || rx.notes || '—'}</td>
         </tr>`).join('');
     }
 
@@ -563,6 +569,7 @@ window.FMH_Print = (function() {
             <th class="text-center" style="width:30px;">№</th>
             <th>Dori Vositasining Nomi</th>
             <th class="text-center">Doza</th>
+            <th>Erituvchi (Fiz rastvor / Quyma)</th>
             <th class="text-center">Yuborish Usuli</th>
             <th class="text-center">Qabullar</th>
             <th>Maxsus Ko'rsatmalar</th>

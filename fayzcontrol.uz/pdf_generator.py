@@ -276,34 +276,50 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(Paragraph("<b>DORI-DARMON VA MUOLAJA TAYINLOVLARI (LIST NAZNACHENIY)</b>", section_heading))
         story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
 
-        rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Yuborish Yo'li", "Vaqti / Davriyligi", "Davomiyligi", "Holati"]
+        rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Erituvchi (Fiz rastvor / Quyma)", "Yuborish Yo'li", "Vaqti / Davriyligi", "Davomiyligi", "Holati"]
         rx_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in rx_headers]]
 
         if prescriptions:
             for idx, r in enumerate(prescriptions, 1):
                 status_color = "#10b981" if r.get('status') == 'completed' else ("#f43f5e" if r.get('status') == 'cancelled' else "#0284c7")
                 status_lbl = "Bajarildi" if r.get('status') == 'completed' else ("Bekor" if r.get('status') == 'cancelled' else "Faol")
+                med_desc = f"<b>{_x(r.get('medication_name', ''))}</b>"
+                if r.get('form'):
+                    med_desc += f"<br/><font color='#64748b' size='6.5'>{_x(r.get('form', ''))}</font>"
+                
+                diluent_cell = Paragraph(
+                    f"<font color='#0369a1'><b>{_x(r.get('diluent'))}</b></font><br/><font color='#0284c7' size='6.5'><i>bilan aralashtirilsin</i></font>",
+                    body_style
+                ) if r.get('diluent') else Paragraph("<font color='#94a3b8' size='7'><i>Sof holda</i></font>", body_style)
+
+                route_text = f"<b>{_x(r.get('route', ''))}</b>"
+                if r.get('instructions'):
+                    route_text += f"<br/><font color='#475569' size='6'><i>{_x(r.get('instructions'))}</i></font>"
+
                 rx_rows.append([
                     Paragraph(str(idx), body_style),
-                    Paragraph(f"<b>{_x(r.get('medication_name', ''))}</b><br/><font color='#64748b' size='7'>{_x(r.get('form', ''))}</font>", body_style),
+                    Paragraph(med_desc, body_style),
                     Paragraph(f"<b>{_x(r.get('dosage', ''))}</b>", body_style),
-                    Paragraph(_x(r.get('route', '')), body_style),
-                    Paragraph(f"{_x(r.get('frequency', ''))}<br/><font color='#64748b' size='7'>{_x(r.get('timing', ''))}</font>", body_style),
+                    diluent_cell,
+                    Paragraph(route_text, body_style),
+                    Paragraph(f"{_x(r.get('frequency', ''))}<br/><font color='#64748b' size='6.5'>{_x(r.get('timing', ''))}</font>", body_style),
                     Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
                     Paragraph(f"<font color='{status_color}'><b>{status_lbl}</b></font>", body_style)
                 ])
         else:
-            rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*6)
+            rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*7)
 
-        rx_table = Table(rx_rows, colWidths=[18, 142, 55, 110, 105, 45, 45])
+        rx_table = Table(rx_rows, colWidths=[18, 120, 45, 115, 85, 65, 36, 36])
         rx_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
             ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
-            ('PADDING', (0, 0), (-1, -1), 4),
+            ('PADDING', (0, 0), (-1, -1), 3.5),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         story.append(rx_table)
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 4))
+        story.append(Paragraph("<font size='7' color='#0369a1'><b>* Eslatma hamshiralar uchun:</b> Erituvchi (fiz rastvor) ko'rsatilgan dori vositalari faqat belgilangan eritmada to'liq aralashtirilgan/suyultirilgan holda ko'rsatilgan usulda yuborilsin.</font>", body_style))
+        story.append(Spacer(1, 8))
 
     # --- SECTION 3: DAILY PROGRESS NOTES (IF APPLICABLE) ---
     if doc_type in ['full_dossier'] and daily_notes:
@@ -540,17 +556,23 @@ def generate_round_pdf(day):
                  Paragraph("<b>Doza / yo'l</b>", body), Paragraph("<b>Holat</b>", body),
                  Paragraph("<b>Imzo</b>", body)]]
         for d in p['doses']:
+            d_med = f"<b>{_x(d['medication_name'] or '—')}</b>"
+            if d.get('diluent'):
+                d_med += f"<br/><font color='#0284c7' size='6.5'><b>+ Erituvchi:</b> {_x(d['diluent'])}</font>"
             rows.append([
                 Paragraph(_x(d['slot_label'] or '—'), body),
-                Paragraph(_x(d['medication_name'] or '—'), body),
+                Paragraph(d_med, body),
                 Paragraph(_x(f"{d.get('dosage') or ''} {d.get('route') or ''}".strip() or '—'), body),
                 Paragraph(_ROUND_STATE_UZ.get(d['state'], d['state']), body),
                 Paragraph('', body),
             ])
         for o in p.get('as_needed', []):
+            o_med = f"<b>{_x(o.get('medication_name') or '—')}</b>"
+            if o.get('diluent'):
+                o_med += f"<br/><font color='#0284c7' size='6.5'><b>+ Erituvchi:</b> {_x(o['diluent'])}</font>"
             rows.append([
                 Paragraph("<i>zarurat</i>", body),
-                Paragraph(_x(o.get('medication_name') or '—'), body),
+                Paragraph(o_med, body),
                 Paragraph(_x(f"{o.get('dosage') or ''} {o.get('route') or ''}".strip() or '—'), body),
                 Paragraph("Zaruratga ko'ra", body),
                 Paragraph('', body),
@@ -726,7 +748,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
 
     # 5. Fetch Medication Administrations (Nurse Log)
     cur.execute("""
-        SELECT ma.*, p.medication_name, p.form, p.dosage, s.full_name as nurse_name
+        SELECT ma.*, p.medication_name, p.form, p.dosage, p.diluent, s.full_name as nurse_name
         FROM medication_administrations ma
         LEFT JOIN prescriptions p ON ma.prescription_id = p.id
         LEFT JOIN staff s ON ma.administered_by_staff_id = s.id
@@ -963,25 +985,40 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     ]))
 
     # --- SECTION C DATA ---
-    rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Yuborish yo'li", "Qabul tartibi", "Davomiyligi", "Holati"]
+    rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Erituvchi (Fiz rastvor / Quyma)", "Yuborish yo'li", "Qabul tartibi", "Davomiyligi", "Holati"]
     rx_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in rx_headers]]
-    if prescriptions:
-        for idx, r in enumerate(prescriptions[:7], 1):
+    rx_subset = prescriptions if doc_type in ('section_c', 'section_dorilar', 'dorilar') else prescriptions[:7]
+    if rx_subset:
+        for idx, r in enumerate(rx_subset, 1):
             status_color = "#10b981" if r.get('status') == 'completed' else ("#f43f5e" if r.get('status') == 'cancelled' else "#0284c7")
             status_lbl = "Bajarildi" if r.get('status') == 'completed' else ("Bekor" if r.get('status') == 'cancelled' else "Faol")
+            med_desc = f"<b>{_x(r.get('medication_name', ''))}</b>"
+            if r.get('form'):
+                med_desc += f"<br/><font color='#64748b' size='6.5'>{_x(r.get('form', ''))}</font>"
+            
+            diluent_cell = Paragraph(
+                f"<font color='#0369a1'><b>{_x(r.get('diluent'))}</b></font><br/><font color='#0284c7' size='6'><i>bilan aralashtirilsin</i></font>",
+                body_style
+            ) if r.get('diluent') else Paragraph("<font color='#94a3b8' size='7'><i>Sof holda</i></font>", body_style)
+
+            route_text = f"<b>{_x(r.get('route', ''))}</b>"
+            if r.get('instructions'):
+                route_text += f"<br/><font color='#475569' size='6'><i>{_x(r.get('instructions'))}</i></font>"
+
             rx_rows.append([
                 Paragraph(str(idx), body_style),
-                Paragraph(f"<b>{_x(r.get('medication_name', ''))}</b><br/><font color='#64748b' size='6.5'>{_x(r.get('form', ''))}</font>", body_style),
+                Paragraph(med_desc, body_style),
                 Paragraph(f"<b>{_x(r.get('dosage', ''))}</b>", body_style),
-                Paragraph(_x(r.get('route', '')), body_style),
+                diluent_cell,
+                Paragraph(route_text, body_style),
                 Paragraph(f"{_x(r.get('frequency', ''))}<br/><font color='#64748b' size='6.5'>{_x(r.get('timing', ''))}</font>", body_style),
                 Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
                 Paragraph(f"<font color='{status_color}'><b>{status_lbl}</b></font>", body_style)
             ])
     else:
-        rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*6)
+        rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*7)
 
-    rx_table = Table(rx_rows, colWidths=[18, 145, 75, 85, 95, 55, 50])
+    rx_table = Table(rx_rows, colWidths=[18, 120, 45, 115, 85, 65, 40, 35])
     rx_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
@@ -995,10 +1032,13 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         for ma in administrations[:6]:
             status_clr = "#10b981" if ma.get('status') == 'given' else "#f43f5e"
             status_txt = "Qabul qilindi" if ma.get('status') == 'given' else "O'tkazildi"
+            ma_med = _x(ma.get('medication_name') or 'Dori')
+            if ma.get('diluent'):
+                ma_med += f"<br/><font color='#0284c7' size='6.5'>+ {_x(ma['diluent'])}</font>"
             adm_rows.append([
                 Paragraph(_x(ma.get('scheduled_date', '')), body_style),
                 Paragraph(_x(ma.get('slot_label', '')), body_style),
-                Paragraph(_x(ma.get('medication_name') or 'Dori'), body_style),
+                Paragraph(ma_med, body_style),
                 Paragraph(_x(ma.get('dosage') or '1 doza'), body_style),
                 Paragraph(_x(ma.get('nurse_name') or 'Navbatchi hamshira'), body_style),
                 Paragraph(f"<font color='{status_clr}'><b>{status_txt}</b></font>", body_style),
@@ -1348,9 +1388,12 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             for idx, r in enumerate(prescriptions[:6], 1):
                 status_color = "#10b981" if r.get('status') == 'completed' else "#0284c7"
                 status_lbl = "Bajarildi" if r.get('status') == 'completed' else "Faol"
+                med_desc = f"<b>{_x(r.get('medication_name', ''))}</b>"
+                if r.get('diluent'):
+                    med_desc += f"<br/><font color='#0284c7' size='6.5'><b>+ Erituvchi:</b> {_x(r.get('diluent'))}</font>"
                 rx_rows.append([
                     Paragraph(str(idx), body_style),
-                    Paragraph(f"<b>{_x(r.get('medication_name', ''))}</b>", body_style),
+                    Paragraph(med_desc, body_style),
                     Paragraph(_x(r.get('dosage', '')), body_style),
                     Paragraph(_x(r.get('route', '')), body_style),
                     Paragraph(f"{r.get('duration_days')} kun" if r.get('duration_days') else "—", body_style),
@@ -1375,10 +1418,13 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         adm_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in adm_headers]]
         if administrations:
             for ma in administrations[:4]:
+                ma_med = _x(ma.get('medication_name') or 'Dori')
+                if ma.get('diluent'):
+                    ma_med += f"<br/><font color='#0284c7' size='6.5'>+ {_x(ma['diluent'])}</font>"
                 adm_rows.append([
                     Paragraph(_x(ma.get('scheduled_date', '')), body_style),
                     Paragraph(_x(ma.get('slot_label', '')), body_style),
-                    Paragraph(_x(ma.get('medication_name') or 'Dori'), body_style),
+                    Paragraph(ma_med, body_style),
                     Paragraph(_x(ma.get('dosage') or '1 doza'), body_style),
                     Paragraph(_x(ma.get('nurse_name') or 'Hamshira'), body_style),
                     Paragraph("<font color='#10b981'><b>Qabul qilindi</b></font>", body_style)

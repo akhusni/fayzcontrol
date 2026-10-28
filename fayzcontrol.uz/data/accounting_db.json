@@ -61,6 +61,46 @@
         "standard_days": 10,
         "standard_total": 5000000,
         "description": "Klinikaga kuniga 2 mahal (ertalab va kechqurun) kelib intensiv muolaja olish"
+      },
+      "statsionar_vip_1": {
+        "id": "statsionar_vip_1",
+        "name_uz": "VIP 1 kishilik palata (2-bino 1-xona — 1 000 000 so'm)",
+        "daily_rate": 1000000,
+        "standard_days": 10,
+        "standard_total": 10000000,
+        "description": "Yangi 2-bino uchun 1000000 so'mlik statsionar tarif"
+      },
+      "statsionar_shared_800k": {
+        "id": "statsionar_shared_800k",
+        "name_uz": "Statsionar (1 karavot / 800 000 so'm)",
+        "daily_rate": 800000,
+        "standard_days": 10,
+        "standard_total": 8000000,
+        "description": "Yangi 2-bino uchun 800000 so'mlik statsionar tarif"
+      },
+      "statsionar_full_room_1200k": {
+        "id": "statsionar_full_room_1200k",
+        "name_uz": "Statsionar Butun Xona (2-bino 3-xona — 1 200 000 so'm)",
+        "daily_rate": 1200000,
+        "standard_days": 10,
+        "standard_total": 12000000,
+        "description": "Yangi 2-bino uchun 1200000 so'mlik statsionar tarif"
+      },
+      "statsionar_full_room_1300k": {
+        "id": "statsionar_full_room_1300k",
+        "name_uz": "Statsionar Butun Xona (2-bino 5-xona 3 kishilik — 1 300 000 so'm)",
+        "daily_rate": 1300000,
+        "standard_days": 10,
+        "standard_total": 13000000,
+        "description": "Yangi 2-bino uchun 1300000 so'mlik statsionar tarif"
+      },
+      "statsionar_full_room_1600k": {
+        "id": "statsionar_full_room_1600k",
+        "name_uz": "Statsionar Butun Xona (2-bino 5-xona VIP Solo — 1 600 000 so'm)",
+        "daily_rate": 1600000,
+        "standard_days": 10,
+        "standard_total": 16000000,
+        "description": "Yangi 2-bino uchun 1600000 so'mlik statsionar tarif"
       }
     }
   },

@@ -46,8 +46,8 @@
         <div class="fmh-confirm-icon-badge fmh-confirm-icon-${type}">
           <i class="fas ${iconClass}"></i>
         </div>
-        <div class="fmh-confirm-title" id="fmh-confirm-title">${title}</div>
-        <div class="fmh-confirm-message" id="fmh-confirm-message">${message}</div>
+        <div class="fmh-confirm-title" id="fmh-confirm-title">${String(title || '').replace(/</g, '&lt;')}</div>
+        <div class="fmh-confirm-message" id="fmh-confirm-message">${String(message || '').replace(/</g, '&lt;')}</div>
         <div class="fmh-confirm-actions">
           <button type="button" class="fmh-confirm-btn fmh-confirm-btn-cancel" id="fmh-confirm-btn-cancel">
             ${cancelText}
@@ -172,7 +172,17 @@
 
     const body = document.createElement('div');
     body.style.cssText = 'flex: 1 1 auto; min-width: 0;';
-    body.innerHTML = message;
+        // Sanitize message: escape all HTML except allowed safe styling <strong>...</strong>
+    const rawMsg = String(message || '');
+    const safeEscaped = rawMsg
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    body.innerHTML = safeEscaped
+      .replace(/&lt;strong&gt;/gi, '<strong>')
+      .replace(/&lt;\/strong&gt;/gi, '</strong>');
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -601,7 +611,7 @@
 
         const avatar = document.createElement('span');
         avatar.className = 'user-avatar-badge';
-        avatar.textContent = u.avatar || '👤';
+        avatar.textContent = '\uD83D\uDC64';
 
         const label = document.createElement('span');
         label.className = 'user-display-name';

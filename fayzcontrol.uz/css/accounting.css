@@ -753,7 +753,7 @@ body.accounting-portal {
 }
 
 .modal-dialog {
-  background: #0d162d;
+  background: var(--bg-card, #0d162d);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   width: 100%;
@@ -1421,6 +1421,37 @@ body.accounting-portal {
 
 [data-theme="day"] .chart-sub, body.day-mode .chart-sub {
   color: #334155;
+}
+
+[data-theme="day"] .modal-card, [data-theme="day"] .modal-dialog,
+body.day-mode .modal-card, body.day-mode .modal-dialog {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="day"] .modal-dialog table, body.day-mode .modal-dialog table {
+  color: #0f172a !important;
+}
+
+[data-theme="day"] .modal-dialog th, body.day-mode .modal-dialog th {
+  background: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="day"] .modal-dialog td, body.day-mode .modal-dialog td {
+  border-color: #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
+[data-theme="day"] .modal-close-btn, body.day-mode .modal-close-btn {
+  color: #64748b !important;
+}
+[data-theme="day"] .modal-close-btn:hover, body.day-mode .modal-close-btn:hover {
+  color: #0f172a !important;
+  background: #f1f5f9 !important;
 }
 
 [data-theme="day"] .modal-card, body.day-mode .modal-card {

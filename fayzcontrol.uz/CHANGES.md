@@ -465,6 +465,24 @@ Tekshirildi: `node --check` (doctor, crm, accounting); yangi funksiyalar soxta D
 
 Keyinga: yangi bemor konsultatsiyasi oynasidagi retseptlar (modal) hali ombor mahsuloti va miqdorini tanlamaydi; saqlangan retseptning ombor mahsuloti yoki miqdorini keyin o'zgartirish (`PUT /api/doctor/prescriptions/<id>`) hali formada yo'q.
 
+### 2026-10-23: Dorilar tayinlashda Fiz. Rastvor (Erituvchi) qo'shish va PDF Dossyeda aks ettirish
+
+Shifokor sahifasida (`doctor.html`, `js/doctor.js`) dorilar va inyeksiya/infuziyalar belgilanayotgan vaqtda aralashtiriladigan fiziologik eritmalar (masalan: Natriy xlorid 0.9% 100/200/250/400 ml, Glyukoza 5%, Novokain 0.5%, in'eksiya uchun suv, Ringer va h.k.) ko'rsatish imkoniyati yaratildi:
+1. **Shifokor sahifasi (`doctor.html`, `js/doctor.js`)**:
+   - Dori tayinlash panelida va Konsultatsiya oynasining 3-qadamida yangi "Erituvchi / Fiz. rastvor" maydoni (ixtiyoriy kiritish + tezkor tanlovlar ro'yxati).
+   - Retseptlar jadvalida va konsultatsiya qatorlarida tayinlangan dori ostida qaysi fiz rastvor bilan aralashtirilishi ko'k-havorang yorliqda yaqqol ko'rinadi.
+   - Klinik protokollar (Detoks, Abstinensiya, Gepatoprotektor) tayinlovlariga mos fiz rastvorlar avtomatik ulandi.
+2. **Hamshira posti (`nurse.html`, `js/nurse.js`)**:
+   - Hamshiraga qaysi ukolni nima bilan aralashtirgan holda qilish kerakligi har bir muolaja qatorida yaqqol ko'rinadigan "Erituvchi (fiz rastvor): [nomi] bilan aralashtirilsin" bloki orqali ko'rsatildi.
+   - Bosma hamshiralik varaqasida ham dori nomining ostida ushbu ma'lumot aks etadi (`unified_print_engine.js`).
+3. **PDF Dossye va rasmiy tibbiy hujjatlar (`pdf_generator.py`)**:
+   - 4 sahifali to'liq rasmiy tibbiy dossye, 2 sahifali qisqartirilgan kasallik tarixi va kunlik muolaja PDF varaqasida dori vositalari jadvalida va hamshira yuborish logida fiz rastvor ma'lumoti strukturalangan tarzda (`+ Erituvchi (fiz rastvor): [nomi]`) chiqarildi.
+4. **Baza va API (`schema.mysql.sql`, `db.py`, `server.py`, `nursery.py`, `inventory.py`)**:
+   - `prescriptions` jadvaliga `diluent VARCHAR(255) NULL` ustuni qo'shildi va avtomatik xavfsiz migratsiya ta'minlandi.
+   - `/api/doctor/prescriptions` va `/api/doctor/consultation-case` API lari `diluent` maydonini to'liq qabul qiladi va qaytaradi.
+
+---
+
 ### 2026-10-10: Ombor — tekshiruv tuzatishlari (sahifalar)
 
 Kod tekshiruvida topilgan kamchiliklar tuzatildi. Faqat sahifa kodi o'zgardi (`warehouse.js/html/css`, `doctor.js/html`, `accounting.js/html`); serverga tegilmadi. Server maydoni hali kelmagan bo'lsa, sahifa avvalgidek ishlayveradi.
@@ -788,3 +806,46 @@ Batafsil: `README.md`.
 
 > **Diqqat:** `db_config.json` bu arxivga **qo'shilmagan** — u parol
 > saqlaydi. `db_config.example.json` dan nusxa oling.
+
+---
+
+## 8. Dori tayinlovlarida Erituvchi (Fiz rastvor / Quyma) tizimi
+
+Shifokor sahifasida va rasmiy PDF blanklarda quyma (infuziya) va inyeksiyalar qaysi eritma (fiz rastvor) bilan aralashtirilishi aniq ko'rinishi ta'minlandi:
+
+1. **Ma'lumotlar bazasi va Backend:**
+   - `prescriptions` jadvaliga `diluent VARCHAR(255) NULL` ustuni qo'shildi (`ensure_prescription_diluent_column`).
+   - `server.py`, `inventory.py`, `nursery.py` API lari `diluent` maydonini to'liq qabul qiladi va qaytaradi.
+2. **Shifokor interfeysi (`doctor.html` / `js/doctor.js`):**
+   - Dori tayinlash formasiga "Erituvchi (fiz rastvor / quyma)" maydoni va tezkor tanlovlar (0.9% NaCl, 5% Glyukoza, Novokain, In'eksiya suvi, Ringer, Reosorbilakt) kiritildi.
+   - Tayyor klinik protokollarga (detoks, abstinensiya) tegishli erituvchilar avtomatik biriktirildi.
+3. **Retseptlar PDF va Dossye Generator (`pdf_generator.py`):**
+   - `generate_patient_pdf` (`doc_type='prescriptions'` - Rasmiy Muolaja Varaqasi / List Naznacheniy) jadvaliga alohida **"Erituvchi (Fiz rastvor / Quyma)"** ustuni qo'shildi. Dori va erituvchi aniq, ko'k rangda `+ [diluent] bilan aralashtirilsin` ko'rinishida chiqariladi.
+   - Hamshiralar uchun maxsus klinik eslatma bloki qo'shildi.
+   - Dossye PDF ning Dorilar varaqasi (Section C) va Hamshiralik muolaja varaqasida (`unified_print_engine.js`) ham xuddi shu tarzda alohida ustunda ko'rsatilishi joriy etildi.
+4. **Hamshira posti (`nurse.js`):**
+   - Hamshira dori berish vaqtida qaysi ukol yoki quymani qaysi fiz rastvor bilan aralashtirish kerakligini to'g'ridan-to'g'ri ko'radi.
+
+---
+
+## 9. Omborxona Kirim Tizimi, 88 ta Dori Sinxronizatsiyasi va Jonli Qoldiqlar
+
+Klinika omborxonasi, buxgalteriyasi va shifokor EMR tizimi o'rtasida to'liq sinxron qoldiq va kirim mexanizmi joriy etildi:
+
+1. **88 ta Rasmiy Klinika Dorilari Sinxronizatsiyasi:**
+   - `data/fayz_house_meds.json` dagi barcha 88 ta rasmiy dori (FMH-001 dan FMH-088 gacha) hamda Paratsetamol 500mg tabletka `medications_catalog` jadvaliga to'liq kiritildi va ochilish partiyalari (`inventory_batches`) bilan reconcil qilindi.
+   - Barcha dori vositalari o'zlarining to'g'ri o'lchov birliklari (`tabletka`, `ampula`, `flakon`, `kapsula`) bilan biriktirildi.
+
+2. **Omborxonada Dori Kirim Qilish Imkoniyati (`warehouse.html` / `js/warehouse.js`):**
+   - Kirim formasida (`wh-line-grid`) "Dori miqdori (dona/tabletka)", "1 dona narxi" va "Jami xarid summasi" o'rtasida ikki tomonlama aqlli kalkulyator joriy qilindi.
+   - Masalan: 100 dona kiritilib, jami summa 47 200 so'm deb yozilganda, tizim 1 dona narxini avtomatik 472 so'm qilib hisoblaydi va aksincha.
+   - Kirim tasdiqlanishi bilanoq ombor zaxirasiga partiya (FEFO) bo'lib qo'shiladi va kassa xarajatlariga o'tadi.
+
+3. **Buxgalteriya Integratsiyasi (`accounting.html` / `js/accounting.js`):**
+   - Buxgalteriya Dorixona & Omborxona bo'limida (Tab 5) ombordagi barcha 88+ ta dorining joriy qoldig'i, o'rtacha tannarxi va umumiy qiymati real vaqt rejimida aks etadi.
+   - "Yangi Dori Xaridi (Chiqim)" formasida miqdor va jami xarid summasini (masalan 100 ta paratsetamol, 47 200 so'm) kiritish va bir bosishda omborga kirim qilish hamda xarajatga yozish imkoniyati ta'minlandi.
+
+4. **Shifokor Postida Dori Yozish Vaqtida Jonli Qoldiq (`doctor.html` / `js/doctor.js`):**
+   - Shifokor dori tayinlayotganda dori tanlanishi bilanoq kartada katta va yorqin `📦 Omborda qoldiq: ...` indikatori ko'rsatiladi.
+   - "88 ta Klinika Dorilari Katalogi" modalida (`clinic-meds-modal`) har bir dori kartasida ombordagi jonli qoldiq (yashil `Omborda: 250 ampula` / sariq `Omborda kam` / qizil `Omborda: Tugagan`) chiqadi.
+   - Shifokor retsept yozishdan oldin dorining omborda bor-yo'qligini darhol ko'radi.

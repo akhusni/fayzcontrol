@@ -390,6 +390,44 @@ body.building-portal {
   margin-bottom: 2rem;
 }
 
+.smart-building-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.building-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+  border: 1.5px solid rgba(56, 189, 248, 0.35);
+  border-radius: 16px;
+  padding: 1.1rem 1.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.building-hero-header.bldg-2 {
+  border-color: rgba(168, 85, 247, 0.45);
+  background: linear-gradient(135deg, rgba(20, 15, 38, 0.95), rgba(42, 27, 68, 0.9));
+}
+
+.building-hero-title-main {
+  font-size: 1.22rem;
+  font-weight: 800;
+  color: var(--text-primary, #ffffff);
+  letter-spacing: 0.5px;
+}
+
+.building-hero-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+  margin-top: 3px;
+}
+
 .smart-floor-section {
   background: linear-gradient(145deg, rgba(8, 26, 54, 0.95), rgba(4, 16, 36, 0.98));
   border: 1px solid rgba(56, 189, 248, 0.25);
@@ -1754,6 +1792,25 @@ body.day-mode .form-input:focus, body.day-mode .form-select:focus {
 /* ==========================================================================
    DAY MODE OVERRIDES FOR SMART PALATA HUB
    ========================================================================== */
+[data-theme="day"] .building-hero-header, body.day-mode .building-hero-header {
+  background: linear-gradient(135deg, #f8fafc, #edf2f7) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-theme="day"] .building-hero-header.bldg-2, body.day-mode .building-hero-header.bldg-2 {
+  background: linear-gradient(135deg, #faf5ff, #f3e8ff) !important;
+  border-color: #d8b4fe !important;
+}
+
+[data-theme="day"] .building-hero-title-main, body.day-mode .building-hero-title-main {
+  color: #0f172a !important;
+}
+
+[data-theme="day"] .building-hero-subtitle, body.day-mode .building-hero-subtitle {
+  color: #475569 !important;
+}
+
 [data-theme="day"] .smart-floor-section, body.day-mode .smart-floor-section {
   background: #ffffff !important;
   border: 1px solid #cbd5e1 !important;

@@ -676,6 +676,9 @@ def ensure_schema(conn):
         if not _column_exists(cur, 'prescriptions', 'quantity_unit'):
             cur.execute("ALTER TABLE prescriptions ADD COLUMN quantity_unit VARCHAR(32) NULL")
             _commit()
+        if not _column_exists(cur, 'prescriptions', 'diluent'):
+            cur.execute("ALTER TABLE prescriptions ADD COLUMN diluent VARCHAR(255) NULL")
+            _commit()
     ok &= _step('prescriptions quantity columns', _rx_cols)
 
     # 6. Sensible starting values for the new columns of existing rows. Only
@@ -736,7 +739,7 @@ def ensure_schema(conn):
                         (r['id'], batch_id, qty, qty, "Ombor hisobi yuritila boshlagandagi qoldiq"))
         _commit()
         if rows:
-            print(f"[✓] Warehouse opening balance written for {len(rows)} item(s).")
+            print(f"[+] Warehouse opening balance written for {len(rows)} item(s).")
     ok &= _step('opening balances', _opening)
     # The tables, columns and opening lots are what the services need; a missing
     # trigger or view is logged but must not make every call re-run the migration.

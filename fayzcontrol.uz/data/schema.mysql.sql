@@ -16,6 +16,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 CREATE TABLE IF NOT EXISTS rooms (
     id VARCHAR(64) PRIMARY KEY,
+    building_number INT NOT NULL DEFAULT 1 CHECK(building_number IN (1, 2)),
     floor_number INT NOT NULL CHECK(floor_number IN (1, 2)),
     room_number VARCHAR(32) NOT NULL,
     room_name_uz VARCHAR(255) NOT NULL,
@@ -310,6 +311,7 @@ CREATE TABLE IF NOT EXISTS prescriptions (
     medication_name VARCHAR(255) NOT NULL,
     form VARCHAR(64),
     dosage VARCHAR(128) NOT NULL,
+    diluent VARCHAR(255) NULL, -- Solvent / carrier solution (fiz rastvor, e.g. Natriy xlorid 0.9% 100 ml, Novokain 0.5%)
     route VARCHAR(64) NOT NULL,
     frequency VARCHAR(64) NOT NULL,
     duration_days INT NOT NULL DEFAULT 5 CHECK(duration_days > 0),
@@ -726,7 +728,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     entity_name VARCHAR(64) NOT NULL,
     entity_id VARCHAR(64) NOT NULL,
     action_type VARCHAR(32) NOT NULL CHECK(action_type IN (
-        'CREATE', 'UPDATE', 'DELETE', 'CHECK_IN', 'CHECK_OUT', 'TRANSFER', 'PAYMENT_RECEIVED'
+        'ACCEPT', 'ACCESS_DENIED', 'CANCEL', 'CHECK_IN', 'CHECK_OUT', 'CREATE', 'DELETE', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'PASSWORD_CHANGED', 'PAYMENT_RECEIVED', 'POST_RECEIPT', 'RECORD_VITALS', 'REJECT', 'REVERSE', 'TRANSFER', 'UPDATE', 'WARD_ROUND'
     )),
     old_data_json JSON,
     new_data_json JSON,
@@ -1009,7 +1011,7 @@ WITH ranked_active_admissions AS (
     LEFT JOIN staff s ON a.attending_doctor_id = s.id
     WHERE a.status = 'active'
       AND (
-          CURDATE() BETWEEN a.start_date AND COALESCE(a.actual_end_date, a.planned_end_date)
+          (CURDATE() >= a.start_date AND CURDATE() < GREATEST(COALESCE(a.actual_end_date, a.planned_end_date), DATE_ADD(a.start_date, INTERVAL 1 DAY)))
           OR a.start_date > CURDATE()
       )
 )
@@ -1018,6 +1020,7 @@ SELECT
     b.bed_code,
     b.bed_type,
     b.default_daily_rate,
+    r.building_number,
     r.floor_number,
     r.room_number,
     r.room_name_uz,
@@ -1109,7 +1112,8 @@ SELECT
     inv.payment_status,
     COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('cash', 'cash_register')), 0.00) AS paid_cash,
     COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method = 'terminal'), 0.00) AS paid_terminal,
-    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('card_transfer', 'payme_click')), 0.00) AS paid_card_online,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method IN ('card_transfer', 'payme_click', 'bank_wire')), 0.00) AS paid_card_online,
+    COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id AND payment_method = 'bank_wire'), 0.00) AS paid_bank_wire,
     inv.created_at
 FROM invoices inv
 LEFT JOIN admissions a ON inv.admission_id = a.id
@@ -1156,10 +1160,10 @@ LEFT JOIN invoices inv ON a.id = inv.admission_id;
 CREATE OR REPLACE VIEW v_daily_hospital_kpi AS
 SELECT
     (SELECT COUNT(*) FROM beds) AS total_beds,
-    (SELECT COUNT(DISTINCT bed_id) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() <= COALESCE(actual_end_date, planned_end_date)) AS occupied_beds,
-    (SELECT COUNT(*) FROM beds) - (SELECT COUNT(DISTINCT bed_id) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() <= COALESCE(actual_end_date, planned_end_date)) AS available_beds,
-    ROUND((SELECT COUNT(DISTINCT bed_id) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() <= COALESCE(actual_end_date, planned_end_date)) / GREATEST(1, (SELECT COUNT(*) FROM beds)) * 100, 1) AS occupancy_rate_percent,
-    (SELECT COUNT(*) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() <= COALESCE(actual_end_date, planned_end_date)) AS active_inpatient_count,
+    (SELECT COUNT(DISTINCT bed_id) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() < GREATEST(COALESCE(actual_end_date, planned_end_date), DATE_ADD(start_date, INTERVAL 1 DAY))) AS occupied_beds,
+    (SELECT COUNT(*) FROM beds) - (SELECT COUNT(DISTINCT bed_id) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() < GREATEST(COALESCE(actual_end_date, planned_end_date), DATE_ADD(start_date, INTERVAL 1 DAY))) AS available_beds,
+    ROUND((SELECT COUNT(DISTINCT bed_id) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() < GREATEST(COALESCE(actual_end_date, planned_end_date), DATE_ADD(start_date, INTERVAL 1 DAY))) / GREATEST(1, (SELECT COUNT(*) FROM beds)) * 100, 1) AS occupancy_rate_percent,
+    (SELECT COUNT(*) FROM admissions WHERE status = 'active' AND CURDATE() >= start_date AND CURDATE() < GREATEST(COALESCE(actual_end_date, planned_end_date), DATE_ADD(start_date, INTERVAL 1 DAY))) AS active_inpatient_count,
     (SELECT COUNT(*) FROM patients WHERE status = 'active') AS active_patient_count,
     (SELECT COALESCE(SUM(total_billed), 0.00) FROM invoices) AS total_revenue_billed,
     (SELECT COALESCE(SUM(total_paid), 0.00) FROM invoices) AS total_revenue_collected,
@@ -1199,3 +1203,43 @@ WHERE (mc.stock_quantity - COALESCE(ex.expired_qty, 0)) < mc.min_stock_level AND
 ORDER BY ((mc.stock_quantity - COALESCE(ex.expired_qty, 0)) - mc.min_stock_level) ASC;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+
+-- -----------------------------------------------------------------------------
+-- REFERRAL DOCTORS & PATIENT REFERRALS
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS referral_doctors (
+    id VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    staff_id VARCHAR(64) DEFAULT NULL,
+    phone VARCHAR(64) DEFAULT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT '1',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_ref_doc_staff (staff_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS patient_referrals (
+    id VARCHAR(64) NOT NULL,
+    patient_id VARCHAR(64) DEFAULT NULL,
+    admission_id VARCHAR(64) DEFAULT NULL,
+    appointment_id VARCHAR(64) DEFAULT NULL,
+    invoice_id VARCHAR(64) DEFAULT NULL,
+    patient_name VARCHAR(255) NOT NULL,
+    doctor_referral_id VARCHAR(64) NOT NULL,
+    doctor_name VARCHAR(255) NOT NULL,
+    fee_type VARCHAR(32) NOT NULL DEFAULT 'percent_10',
+    fixed_amount DECIMAL(14,2) NOT NULL DEFAULT '0.00',
+    base_total_billed DECIMAL(14,2) NOT NULL DEFAULT '0.00',
+    calculated_amount DECIMAL(14,2) NOT NULL DEFAULT '0.00',
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    payment_transaction_id VARCHAR(64) DEFAULT NULL,
+    paid_at DATETIME DEFAULT NULL,
+    paid_by VARCHAR(64) DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    PRIMARY KEY (id),
+    INDEX idx_ref_patient (patient_id),
+    INDEX idx_ref_doctor (doctor_referral_id),
+    INDEX idx_ref_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

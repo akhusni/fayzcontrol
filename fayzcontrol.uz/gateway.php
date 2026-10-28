@@ -18,91 +18,84 @@ function is_server_alive($port) {
     return false;
 }
 
-if (isset($_GET['fmh_fix_referrals']) && $_GET['fmh_fix_referrals'] === 'fmh_fix_2026') {
-    $dir = __DIR__;
-    $out = shell_exec("cd " . escapeshellarg($dir) . " && python3 fix_referral_doctors.py 2>&1");
-    header('Content-Type: application/json');
-    echo json_encode(['fixed' => true, 'output' => $out]);
-    exit;
-}
-
-if (isset($_GET['fmh_inspect_referrals']) && $_GET['fmh_inspect_referrals'] === 'fmh_inspect_2026') {
-    $dir = __DIR__;
-    $out = shell_exec("cd " . escapeshellarg($dir) . " && python3 inspect_referrals.py 2>&1");
-    header('Content-Type: application/json');
-    echo json_encode(['inspected' => true, 'output' => $out]);
-    exit;
-}
-
-if (isset($_GET['fmh_purge_staff']) && $_GET['fmh_purge_staff'] === 'fmh_purge_2026') {
-    $dir = __DIR__;
-    $out = shell_exec("cd " . escapeshellarg($dir) . " && python3 purge_old_staff.py 2>&1");
-    header('Content-Type: application/json');
-    echo json_encode(['purged' => true, 'output' => $out]);
-    exit;
-}
-
-if (isset($_GET['fmh_sync_staff']) && $_GET['fmh_sync_staff'] === 'fmh_sync_2026') {
-    $dir = __DIR__;
-    $out = shell_exec("cd " . escapeshellarg($dir) . " && python3 run_remote_sync.py 2>&1");
-    header('Content-Type: application/json');
-    echo json_encode(['synced' => true, 'output' => $out]);
-    exit;
-}
-
-if (isset($_GET['fmh_restart_backend']) && $_GET['fmh_restart_backend'] === 'fmh_deploy_2026') {
-    putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
-    putenv('HOME=/var/www/s0377/data');
-    putenv('PM2_HOME=/var/www/s0377/data/.pm2');
-
-    $pm2 = '/var/www/s0377/data/node/bin/pm2';
-    $dir = __DIR__;
-
-    // Terminate existing server.py process
-    shell_exec("pkill -9 -f 'server.py 3000'");
-    if (file_exists($pm2)) {
-        shell_exec("cd " . escapeshellarg($dir) . " && $pm2 delete fayzcontrol > /dev/null 2>&1");
+// Authenticated backend restart via POST header check (X-Deploy-Token)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_DEPLOY_TOKEN'])) {
+    $deploy_secret = getenv('FMH_DEPLOY_TOKEN');
+    if (!$deploy_secret) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Server deploy token not configured']);
+        exit;
     }
-    usleep(500000);
+    if (hash_equals($deploy_secret, $_SERVER['HTTP_X_DEPLOY_TOKEN'])) {
+        putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
+        putenv('HOME=/var/www/s0377/data');
+        putenv('PM2_HOME=/var/www/s0377/data/.pm2');
 
-    // Start server.py freshly
-    if (file_exists($pm2)) {
-        shell_exec("cd " . escapeshellarg($dir) . " && $pm2 start server.py --name fayzcontrol --interpreter python3 -- 3000 > /dev/null 2>&1 &");
-    } else {
-        shell_exec("cd " . escapeshellarg($dir) . " && nohup python3 server.py 3000 > server.log 2>&1 &");
-    }
+        $pm2 = '/var/www/s0377/data/node/bin/pm2';
+        $dir = __DIR__;
 
-    $alive = false;
-    for ($i = 0; $i < 25; $i++) {
-        usleep(200000);
-        if (is_server_alive($port)) {
-            $alive = true;
-            break;
+        // Graceful termination first (SIGTERM), fallback to SIGKILL
+        shell_exec("pkill -15 -f 'server.py 3000'");
+        usleep(300000);
+        shell_exec("pkill -9 -f 'server.py 3000'");
+        if (file_exists($pm2)) {
+            shell_exec("cd " . escapeshellarg($dir) . " && $pm2 delete fayzcontrol > /dev/null 2>&1");
         }
-    }
+        usleep(500000);
 
-    header('Content-Type: application/json');
-    echo json_encode(['restarted' => true, 'alive' => $alive]);
-    exit;
+        // Start server.py freshly
+        if (file_exists($pm2)) {
+            shell_exec("cd " . escapeshellarg($dir) . " && $pm2 start server.py --name fayzcontrol --interpreter python3 -- 3000 > /dev/null 2>&1 &");
+        } else {
+            shell_exec("cd " . escapeshellarg($dir) . " && nohup python3 server.py 3000 > server.log 2>&1 &");
+        }
+
+        $alive = false;
+        for ($i = 0; $i < 25; $i++) {
+            usleep(200000);
+            if (is_server_alive($port)) {
+                $alive = true;
+                break;
+            }
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['restarted' => true, 'alive' => $alive]);
+        exit;
+    } else {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
 }
 
-// Watchdog: auto-start server.py if down
+// Watchdog: auto-start server.py if down with flock concurrency guard
 if (!is_server_alive($port)) {
-    putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
-    putenv('HOME=/var/www/s0377/data');
-    putenv('PM2_HOME=/var/www/s0377/data/.pm2');
+    $lock_file = sys_get_temp_dir() . '/fmh_start.lock';
+    $lock_fp = @fopen($lock_file, 'w');
+    if ($lock_fp && flock($lock_fp, LOCK_EX | LOCK_NB)) {
+        if (!is_server_alive($port)) {
+            putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
+            putenv('HOME=/var/www/s0377/data');
+            putenv('PM2_HOME=/var/www/s0377/data/.pm2');
 
-    $pm2 = '/var/www/s0377/data/node/bin/pm2';
-    $dir = __DIR__;
-    if (file_exists($pm2)) {
-        shell_exec("cd " . escapeshellarg($dir) . " && $pm2 start server.py --name fayzcontrol --interpreter python3 -- 3000 > /dev/null 2>&1 &");
-    } else {
-        shell_exec("cd " . escapeshellarg($dir) . " && nohup python3 server.py 3000 > server.log 2>&1 &");
-    }
+            $pm2 = '/var/www/s0377/data/node/bin/pm2';
+            $dir = __DIR__;
+            if (file_exists($pm2)) {
+                shell_exec("cd " . escapeshellarg($dir) . " && $pm2 start server.py --name fayzcontrol --interpreter python3 -- 3000 > /dev/null 2>&1 &");
+            } else {
+                shell_exec("cd " . escapeshellarg($dir) . " && nohup python3 server.py 3000 > server.log 2>&1 &");
+            }
 
-    for ($i = 0; $i < 20; $i++) {
-        usleep(150000);
-        if (is_server_alive($port)) break;
+            for ($i = 0; $i < 20; $i++) {
+                usleep(150000);
+                if (is_server_alive($port)) break;
+            }
+        }
+        flock($lock_fp, LOCK_UN);
+        fclose($lock_fp);
     }
 }
 

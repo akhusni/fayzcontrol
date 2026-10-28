@@ -32,6 +32,7 @@ import datetime as _dt
 CLINICAL_ACTIONS = {
     'CREATE', 'UPDATE', 'DELETE',
     'CHECK_IN', 'CHECK_OUT', 'TRANSFER', 'PAYMENT_RECEIVED',
+    'ACCEPT', 'REJECT', 'WARD_ROUND', 'RECORD_VITALS',
 }
 
 # Added by ensure_schema() so sign-ins and refusals can be recorded too.
@@ -76,7 +77,7 @@ def ensure_schema(conn):
                 target = (r['CONSTRAINT_NAME'] if hasattr(r, 'keys') else r[0], clause)
                 break
 
-        if target and all(a in target[1] for a in (AUTH_ACTIONS | WAREHOUSE_ACTIONS)):
+        if target and all(a in target[1] for a in ALL_ACTIONS):
             _schema_checked = True
             return
 
@@ -88,7 +89,7 @@ def ensure_schema(conn):
             f"CHECK (action_type IN ({allowed}))"
         )
         conn.commit()
-        print("[✓] audit_logs.action_type widened to include authentication events.")
+        print("[[+]] audit_logs.action_type widened to include authentication events.")
         _schema_checked = True
     except Exception as e:
         print(f"[!] Could not widen audit_logs.action_type ({e}). "
@@ -132,7 +133,7 @@ def ensure_index(conn):
         if not have:
             cur.execute("CREATE INDEX idx_audit_timestamp ON audit_logs (`timestamp`)")
             conn.commit()
-            print("[✓] audit_logs indexed by timestamp.")
+            print("[[+]] audit_logs indexed by timestamp.")
         _index_checked = True
     except Exception as e:
         print(f"[!] Could not index audit_logs by timestamp: {e}")

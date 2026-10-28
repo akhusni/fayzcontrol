@@ -170,15 +170,15 @@
         state.patients = data.patients || [];
         updateStats();
         applyFilterAndRender();
-        if (isManualRefresh && window.FMHDialogs) {
-          window.FMHDialogs.toast('Bemorlar reestri muvaffaqiyatli yangilandi', 'success');
+        if (isManualRefresh && window.FMH_Toast) {
+          window.FMH_Toast('Bemorlar reestri muvaffaqiyatli yangilandi', 'success');
         }
       })
       .catch(function (err) {
         console.error(err);
         renderError('Ma\'lumotlarni yuklab bo\'lmadi: ' + err.message);
-        if (window.FMHDialogs) {
-          window.FMHDialogs.toast('Xatolik: ' + err.message, 'error');
+        if (window.FMH_Toast) {
+          window.FMH_Toast('Xatolik: ' + err.message, 'danger');
         }
       })
       .finally(function () {
@@ -309,10 +309,10 @@
           <td class="col-section col-sec-a">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Kasallik tarixi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" data-action="download" data-section="a" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Kasallik tarixi va anamnezni ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="a" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Kasallik tarixi va anamnezni ko'chirish (PDF)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" data-action="preview" data-section="a" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Kasallik tarixini ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="a" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Kasallik tarixini ko'rish">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -322,10 +322,10 @@
           <td class="col-section col-sec-b">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Status va ko'rik shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" data-action="download" data-section="b" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Psixosomatik status va ko'rikni ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="b" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Psixosomatik status va ko'rikni ko'chirish (PDF)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" data-action="preview" data-section="b" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Status va ko'rikni ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="b" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Status va ko'rikni ko'rish">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -335,10 +335,10 @@
           <td class="col-section col-sec-c">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Dorilar varaqasi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" data-action="download" data-section="c" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Dorilar varaqasini ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="c" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Dorilar varaqasini ko'chirish (PDF)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" data-action="preview" data-section="c" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Dorilar varaqasini ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="c" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Dorilar varaqasini ko'rish">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -348,10 +348,10 @@
           <td class="col-section col-sec-d">
             <div class="section-action-cell">
               <i class="fas fa-check-circle file-status-indicator" title="Chiqarish epikrizi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" data-action="download" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'chirish (PDF)" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-download" data-action="download" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'chirish (PDF)">
                 <i class="fas fa-download"></i> <span>Ko'chirish</span>
               </button>
-              <button type="button" class="btn-sec-preview" data-action="preview" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-sec-preview" data-action="preview" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'rish">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -360,10 +360,10 @@
           <!-- Umumiy to'liq dossye -->
           <td class="col-general">
             <div class="full-action-cell">
-              <button type="button" class="btn-full-download" data-action="download" data-section="full" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="1 ta umumlashtirilgan to'liq rasmiy dossyeni ko'chirish" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-full-download" data-action="download" data-section="full" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="1 ta umumlashtirilgan to'liq rasmiy dossyeni ko'chirish">
                 <i class="fas fa-file-pdf"></i> <span>To'liq Dossye</span>
               </button>
-              <button type="button" class="btn-full-preview" data-action="preview" data-section="full" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="To'liq dossyeni ko'rish" onclick="window.FMHDossier.handleBtnClick(this, event)">
+              <button type="button" class="btn-full-preview" data-action="preview" data-section="full" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="To'liq dossyeni ko'rish">
                 <i class="fas fa-eye"></i>
               </button>
             </div>
@@ -442,8 +442,8 @@
     const secName = secNameMap[section] || 'Dossye';
     const finalFileName = getSafeFileName(patientName, patientCode, section);
 
-    if (window.FMHDialogs) {
-      window.FMHDialogs.toast(`${secName} shakllantirilmoqda va yuklab olinmoqda...`, 'info', 3000);
+    if (window.FMH_Toast) {
+      window.FMH_Toast(`${secName} shakllantirilmoqda va yuklab olinmoqda...`, 'info', { timeout: 3000 });
     }
 
     fetch(url)
@@ -464,9 +464,9 @@
           a.remove();
         }, 2000);
 
-        if (window.FMHDialogs) {
-          window.FMHDialogs.toast(`✅ ${finalFileName} muvaffaqiyatli yuklab olindi!`, 'success', 2500);
-        }
+        if (window.FMH_Toast) {
+      window.FMH_Toast(`✅ ${finalFileName} muvaffaqiyatli yuklab olindi!`, 'success', 2500);
+    }
       })
       .catch(function (err) {
         console.warn('Fetch blob download error, falling back to window.open', err);

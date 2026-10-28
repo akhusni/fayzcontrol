@@ -59,43 +59,64 @@
     return (startA < endB) && (endA > startB);
   }
 
-  // Detect whether a booking reserved the whole room (Butun Xona / Solo 1.1M)
+  // Detect whether a booking reserved the whole room (Butun Xona / Solo / VIP)
   function isFullRoomBooking(booking) {
     if (!booking) return false;
     if (booking.is_full_room === true) return true;
     const prog = String(booking.program || '').toLowerCase();
+    const pkg = String(booking.package_id || booking.package_type || '').toLowerCase();
     return prog.includes('butun xona') || 
            prog.includes('1.1 mln') || 
            prog.includes('solo') || 
            prog.includes('1 100 000') ||
-           prog.includes('full room');
+           prog.includes('1 200 000') ||
+           prog.includes('1 300 000') ||
+           prog.includes('1 600 000') ||
+           prog.includes('1 000 000') ||
+           prog.includes('vip') ||
+           prog.includes('full room') ||
+           prog.includes('statsionar_full_room') ||
+           prog.includes('statsionar_vip') ||
+           pkg.includes('full_room') ||
+           pkg.includes('vip');
   }
 
-  // Find partner bed in the same room (7 rooms x 2 beds = 14 beds)
-  function getPartnerBedId(bedId) {
-    if (!bedId) return null;
+  // Find partner beds in the same room (supports both 1-to-1 pairs and multi-bed rooms)
+  function getPartnerBedIds(bedId) {
+    if (!bedId) return [];
     const cleanId = String(bedId).toUpperCase().trim();
 
-    const PARTNER_MAP = {
-      "BED-1A": "BED-1B", "BED-1B": "BED-1A",
-      "BED-2A": "BED-2B", "BED-2B": "BED-2A",
-      "BED-21A": "BED-21B", "BED-21B": "BED-21A",
-      "BED-22A": "BED-22B", "BED-22B": "BED-22A",
-      "BED-23A": "BED-23B", "BED-23B": "BED-23A",
-      "BED-24A": "BED-24B", "BED-24B": "BED-24A",
-      "BED-25A": "BED-25B", "BED-25B": "BED-25A"
-    };
-
-    if (PARTNER_MAP.hasOwnProperty(cleanId)) return PARTNER_MAP[cleanId];
-
-    // Dynamic fallback
     const allBeds = getAllBeds();
     const currentBed = allBeds.find(b => b.bed_id && b.bed_id.toUpperCase() === cleanId);
     if (currentBed && currentBed.room_id) {
-      const partner = allBeds.find(b => b.room_id === currentBed.room_id && b.bed_id.toUpperCase() !== cleanId);
-      return partner ? partner.bed_id : null;
+      return allBeds
+        .filter(b => b.room_id === currentBed.room_id && b.bed_id && b.bed_id.toUpperCase() !== cleanId)
+        .map(b => b.bed_id);
     }
-    return null;
+
+    const PARTNER_MAP = {
+      "BED-1A": ["BED-1B"], "BED-1B": ["BED-1A"],
+      "BED-2A": ["BED-2B"], "BED-2B": ["BED-2A"],
+      "BED-21A": ["BED-21B"], "BED-21B": ["BED-21A"],
+      "BED-22A": ["BED-22B"], "BED-22B": ["BED-22A"],
+      "BED-23A": ["BED-23B"], "BED-23B": ["BED-23A"],
+      "BED-24A": ["BED-24B"], "BED-24B": ["BED-24A"],
+      "BED-25A": ["BED-25B"], "BED-25B": ["BED-25A"],
+      "BED-B2-4A": ["BED-B2-4B"], "BED-B2-4B": ["BED-B2-4A"],
+      "BED-B2-5A": ["BED-B2-5B", "BED-B2-5C"],
+      "BED-B2-5B": ["BED-B2-5A", "BED-B2-5C"],
+      "BED-B2-5C": ["BED-B2-5A", "BED-B2-5B"],
+      "BED-B2-1": [],
+      "BED-B2-2A": ["BED-B2-2B"], "BED-B2-2B": ["BED-B2-2A"],
+      "BED-B2-3A": ["BED-B2-3B"], "BED-B2-3B": ["BED-B2-3A"]
+    };
+
+    return PARTNER_MAP[cleanId] || [];
+  }
+
+  function getPartnerBedId(bedId) {
+    const list = getPartnerBedIds(bedId);
+    return list.length > 0 ? list[0] : null;
   }
 
   // Sanitize any existing illegal double-bookings where one was Full Room
@@ -107,18 +128,18 @@
         return;
       }
       const isFR = isFullRoomBooking(b);
-      const partnerId = getPartnerBedId(b.bed_id);
-      if (!isFR && partnerId) {
+      const partnerIds = getPartnerBedIds(b.bed_id);
+      if (!isFR && partnerIds.length > 0) {
         const hasFullRoomPartner = bookings.find(other => 
           other.id !== b.id &&
-          String(other.bed_id).toUpperCase() === String(partnerId).toUpperCase() &&
+          partnerIds.some(pid => String(other.bed_id).toUpperCase() === String(pid).toUpperCase()) &&
           isFullRoomBooking(other) &&
           other.status !== 'cancelled' &&
           other.status !== 'completed' &&
           datesOverlap(b.start_date, b.end_date, other.start_date, other.end_date)
         );
         if (hasFullRoomPartner) {
-          console.warn(`[Auto-Sanitized] Removed conflicted standard booking ${b.id} on ${b.bed_id} because ${partnerId} is Full Room Solo booked by ${hasFullRoomPartner.patient_name}`);
+          console.warn(`[Auto-Sanitized] Removed conflicted standard booking ${b.id} on ${b.bed_id} because sister bed is Full Room Solo booked by ${hasFullRoomPartner.patient_name}`);
           return;
         }
       }
@@ -243,12 +264,13 @@
 
       // Real-time periodic refresh every 4s
       setInterval(async () => {
+    if (document.hidden) return;
         try {
           await fetchLiveBedsAndAdmissions();
           refreshBedStatuses();
           renderDashboard();
         } catch (e) {}
-      }, 4000);
+      }, 12000);
 
       window.addEventListener('storage', (e) => {
         if (e.key === STORAGE_KEY) {
@@ -286,13 +308,13 @@
 
     getAllBeds().forEach(bed => {
       const bedIdClean = String(bed.bed_id).toUpperCase();
-      const partnerBedId = getPartnerBedId(bed.bed_id);
-      const partnerClean = partnerBedId ? String(partnerBedId).toUpperCase() : null;
+      const partnerBedIds = getPartnerBedIds(bed.bed_id);
+      const partnerCleans = partnerBedIds.map(p => String(p).toUpperCase());
       bed.under_repair = false;
 
       // 1. Partner full-room active booking TODAY (Takes absolute FIRST priority for twin locking!)
-      const partnerActiveFullRoom = partnerClean ? bookings.find(b =>
-        String(b.bed_id).toUpperCase() === partnerClean &&
+      const partnerActiveFullRoom = partnerCleans.length > 0 ? bookings.find(b =>
+        partnerCleans.includes(String(b.bed_id).toUpperCase()) &&
         isFullRoomBooking(b) &&
         b.status !== 'cancelled' && b.status !== 'completed' &&
         b.start_date <= todayStr &&
@@ -310,7 +332,7 @@
       // Collect ALL non-cancelled bookings for this bed or full-room partner lock
       const allUpcomingBookings = bookings.filter(b => 
         b.status !== 'cancelled' && b.status !== 'completed' &&
-        (String(b.bed_id).toUpperCase() === bedIdClean || (partnerClean && String(b.bed_id).toUpperCase() === partnerClean && isFullRoomBooking(b)))
+        (String(b.bed_id).toUpperCase() === bedIdClean || (partnerCleans.includes(String(b.bed_id).toUpperCase()) && isFullRoomBooking(b)))
       ).sort((a, b) => a.start_date.localeCompare(b.start_date));
 
       let nextFreeDate = todayStr;
@@ -329,8 +351,8 @@
         b.start_date > todayStr
       ).sort((a, b) => a.start_date.localeCompare(b.start_date)) : [];
 
-      const partnerFutureFullRooms = (!partnerActiveFullRoom && partnerClean) ? bookings.filter(b =>
-        String(b.bed_id).toUpperCase() === partnerClean &&
+      const partnerFutureFullRooms = (!partnerActiveFullRoom && partnerCleans.length > 0) ? bookings.filter(b =>
+        partnerCleans.includes(String(b.bed_id).toUpperCase()) &&
         isFullRoomBooking(b) &&
         b.status !== 'cancelled' && b.status !== 'completed' &&
         b.start_date > todayStr
@@ -423,13 +445,23 @@
   function getAllBeds(floorFilter = null) {
     const beds = [];
     floors.forEach(floor => {
-      if (floorFilter && floorFilter !== 'all' && floor.floor_number.toString() !== floorFilter.toString()) {
-        return;
-      }
       floor.rooms.forEach(r => {
+        const bldg = r.building_number || (r.room_number && ['1', '2', '3', '4', '5'].includes(String(r.room_number)) && r.beds && r.beds[0] && r.beds[0].bed_id.includes('B2') ? 2 : 1);
+        if (floorFilter && floorFilter !== 'all') {
+          const ff = floorFilter.toString();
+          if (ff === '1' && String(floor.floor_number) !== '1') return;
+          if (ff === '2' && String(floor.floor_number) !== '2') return;
+          if (ff === 'b1' && bldg !== 1) return;
+          if (ff === 'b2' && bldg !== 2) return;
+          if (ff === 'b1-f1' && (bldg !== 1 || String(floor.floor_number) !== '1')) return;
+          if (ff === 'b1-f2' && (bldg !== 1 || String(floor.floor_number) !== '2')) return;
+          if (ff === 'b2-f1' && (bldg !== 2 || String(floor.floor_number) !== '1')) return;
+          if (ff === 'b2-f2' && (bldg !== 2 || String(floor.floor_number) !== '2')) return;
+        }
         if (r.has_beds && r.beds) {
           r.beds.forEach(b => {
             b.floor_num = floor.floor_number;
+            b.building_number = bldg;
             b.room_id = r.id;
             b.room_name_uz = r.name_uz;
             b.room_number = r.room_number;
@@ -632,30 +664,64 @@
   }
 
   function renderSmartPalataDashboard() {
-    const cardFloor1 = document.getElementById('card-smart-floor1');
-    const cardFloor2 = document.getElementById('card-smart-floor2');
-    const f1Grid = document.getElementById('f1-smart-rooms-grid');
-    const f2Grid = document.getElementById('f2-smart-rooms-grid');
-    const f1StatsEl = document.getElementById('f1-quick-stats');
-    const f2StatsEl = document.getElementById('f2-quick-stats');
+    const bldg1 = document.getElementById('card-smart-bldg1');
+    const bldg2 = document.getElementById('card-smart-bldg2');
+    const b1f1 = document.getElementById('card-smart-b1-f1');
+    const b1f2 = document.getElementById('card-smart-b1-f2');
+    const b2f1 = document.getElementById('card-smart-b2-f1');
+    const b2f2 = document.getElementById('card-smart-b2-f2');
 
-    // 1. Manage Floor Visibility
-    if (cardFloor1 && cardFloor2) {
-      if (currentFloor === '1') {
-        cardFloor1.style.display = 'block';
-        cardFloor2.style.display = 'none';
-      } else if (currentFloor === '2') {
-        cardFloor1.style.display = 'none';
-        cardFloor2.style.display = 'block';
-      } else {
-        cardFloor1.style.display = 'block';
-        cardFloor2.style.display = 'block';
-      }
+    const b1f1Grid = document.getElementById('b1-f1-smart-rooms-grid');
+    const b1f2Grid = document.getElementById('b1-f2-smart-rooms-grid');
+    const b2f1Grid = document.getElementById('b2-f1-smart-rooms-grid');
+    const b2f2Grid = document.getElementById('b2-f2-smart-rooms-grid');
+
+    const b1StatsEl = document.getElementById('b1-quick-stats');
+    const b1f1StatsEl = document.getElementById('b1-f1-quick-stats');
+    const b1f2StatsEl = document.getElementById('b1-f2-quick-stats');
+    const b2StatsEl = document.getElementById('b2-quick-stats');
+    const b2f1StatsEl = document.getElementById('b2-f1-quick-stats');
+    const b2f2StatsEl = document.getElementById('b2-f2-quick-stats');
+
+    // 1. Manage Building and Floor Visibility
+    const showEl = (el, show) => { if (el) el.style.display = show ? 'block' : 'none'; };
+
+    if (currentFloor === 'b1') {
+      showEl(bldg1, true); showEl(b1f1, true); showEl(b1f2, true);
+      showEl(bldg2, false);
+    } else if (currentFloor === 'b1-f1') {
+      showEl(bldg1, true); showEl(b1f1, true); showEl(b1f2, false);
+      showEl(bldg2, false);
+    } else if (currentFloor === 'b1-f2') {
+      showEl(bldg1, true); showEl(b1f1, false); showEl(b1f2, true);
+      showEl(bldg2, false);
+    } else if (currentFloor === 'b2') {
+      showEl(bldg1, false);
+      showEl(bldg2, true); showEl(b2f1, true); showEl(b2f2, true);
+    } else if (currentFloor === 'b2-f1') {
+      showEl(bldg1, false);
+      showEl(bldg2, true); showEl(b2f1, true); showEl(b2f2, false);
+    } else if (currentFloor === 'b2-f2') {
+      showEl(bldg1, false);
+      showEl(bldg2, true); showEl(b2f1, false); showEl(b2f2, true);
+    } else if (currentFloor === '1') {
+      showEl(bldg1, true); showEl(b1f1, true); showEl(b1f2, false);
+      showEl(bldg2, true); showEl(b2f1, true); showEl(b2f2, false);
+    } else if (currentFloor === '2') {
+      showEl(bldg1, true); showEl(b1f1, false); showEl(b1f2, true);
+      showEl(bldg2, true); showEl(b2f1, false); showEl(b2f2, true);
+    } else {
+      showEl(bldg1, true); showEl(b1f1, true); showEl(b1f2, true);
+      showEl(bldg2, true); showEl(b2f1, true); showEl(b2f2, true);
     }
 
     // 2. Compute Quick Stats
-    const f1Beds = getAllBeds('1');
-    const f2Beds = getAllBeds('2');
+    const b1Beds = getAllBeds('b1');
+    const b1f1Beds = getAllBeds('b1-f1');
+    const b1f2Beds = getAllBeds('b1-f2');
+    const b2Beds = getAllBeds('b2');
+    const b2f1Beds = getAllBeds('b2-f1');
+    const b2f2Beds = getAllBeds('b2-f2');
 
     const computeStatsHTML = (beds) => {
       const total = beds.length;
@@ -673,8 +739,12 @@
       `;
     };
 
-    if (f1StatsEl) f1StatsEl.innerHTML = computeStatsHTML(f1Beds);
-    if (f2StatsEl) f2StatsEl.innerHTML = computeStatsHTML(f2Beds);
+    if (b1StatsEl) b1StatsEl.innerHTML = computeStatsHTML(b1Beds);
+    if (b1f1StatsEl) b1f1StatsEl.innerHTML = computeStatsHTML(b1f1Beds);
+    if (b1f2StatsEl) b1f2StatsEl.innerHTML = computeStatsHTML(b1f2Beds);
+    if (b2StatsEl) b2StatsEl.innerHTML = computeStatsHTML(b2Beds);
+    if (b2f1StatsEl) b2f1StatsEl.innerHTML = computeStatsHTML(b2f1Beds);
+    if (b2f2StatsEl) b2f2StatsEl.innerHTML = computeStatsHTML(b2f2Beds);
 
     // 3. Render Bed Pods
     const renderBedPodHTML = (bed) => {
@@ -948,12 +1018,14 @@
       `;
     };
 
-    // Render Floor 1
-    if (f1Grid) {
-      f1Grid.innerHTML = `
+    // =========================================================================
+    // RENDER 1-BINO: 1-ETAJ (Tibbiy Blok & 11-12 xonalar)
+    // =========================================================================
+    if (b1f1Grid) {
+      b1f1Grid.innerHTML = `
         <!-- Auxiliary Medical Wing (Tibbiy Blok) -->
         <div class="smart-wing-section">
-          <div class="wing-section-title"><i class="fas fa-stethoscope" style="color: var(--cad-cyan); margin-right: 8px;"></i> TIBBIY VA MA'MURIY BLOK (1-QAVAT)</div>
+          <div class="wing-section-title"><i class="fas fa-stethoscope" style="color: var(--cad-cyan); margin-right: 8px;"></i> TIBBIY VA MA'MURIY BLOK (1-BINO &bull; 1-ETAJ)</div>
           <div class="smart-auxiliary-grid">
             
             <div class="smart-aux-card">
@@ -1033,7 +1105,7 @@
 
         <!-- Inpatient Suites Wing (11-xona & 12-xona) -->
         <div class="smart-wing-section">
-          <div class="wing-section-title"><i class="fas fa-procedures" style="color: var(--cad-cyan); margin-right: 8px;"></i> STATSIONAR PALATALAR (1-QAVAT &bull; 4 TA KARAVOT)</div>
+          <div class="wing-section-title"><i class="fas fa-procedures" style="color: var(--cad-cyan); margin-right: 8px;"></i> 1-BINO &bull; 1-ETAJ STATSIONAR PALATALAR (4 TA KARAVOT)</div>
           <div class="smart-wards-deck">
             
             <!-- 11-XONA -->
@@ -1049,8 +1121,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f1Beds.find(b => b.bed_id === 'BED-1A') || { simple_name: '1A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f1Beds.find(b => b.bed_id === 'BED-1B') || { simple_name: '1B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f1Beds.find(b => b.bed_id === 'BED-1A') || { simple_name: '1A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f1Beds.find(b => b.bed_id === 'BED-1B') || { simple_name: '1B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1067,8 +1139,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f1Beds.find(b => b.bed_id === 'BED-2A') || { simple_name: '2A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f1Beds.find(b => b.bed_id === 'BED-2B') || { simple_name: '2B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f1Beds.find(b => b.bed_id === 'BED-2A') || { simple_name: '2A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f1Beds.find(b => b.bed_id === 'BED-2B') || { simple_name: '2B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1077,12 +1149,14 @@
       `;
     }
 
-    // Render Floor 2
-    if (f2Grid) {
-      f2Grid.innerHTML = `
+    // =========================================================================
+    // RENDER 1-BINO: 2-ETAJ (21-25 xonalar & Oshxona)
+    // =========================================================================
+    if (b1f2Grid) {
+      b1f2Grid.innerHTML = `
         <!-- Standart Palatalar (2-QAVAT) -->
         <div class="smart-wing-section">
-          <div class="wing-section-title"><i class="fas fa-procedures" style="color: var(--cad-cyan); margin-right: 8px;"></i> 2-QAVAT STATSIONAR PALATALAR (21-25 XONALAR)</div>
+          <div class="wing-section-title"><i class="fas fa-procedures" style="color: var(--cad-cyan); margin-right: 8px;"></i> 1-BINO &bull; 2-ETAJ STATSIONAR PALATALAR (21-25 XONALAR &bull; 10 TA KARAVOT)</div>
           <div class="smart-wards-deck">
             
             <!-- 21-XONA -->
@@ -1098,8 +1172,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-21A') || { simple_name: '21A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-21B') || { simple_name: '21B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-21A') || { simple_name: '21A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-21B') || { simple_name: '21B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1116,8 +1190,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-22A') || { simple_name: '22A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-22B') || { simple_name: '22B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-22A') || { simple_name: '22A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-22B') || { simple_name: '22B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1134,8 +1208,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-23A') || { simple_name: '23A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-23B') || { simple_name: '23B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-23A') || { simple_name: '23A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-23B') || { simple_name: '23B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1152,8 +1226,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-24A') || { simple_name: '24A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-24B') || { simple_name: '24B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-24A') || { simple_name: '24A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-24B') || { simple_name: '24B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1170,8 +1244,8 @@
                 <div class="room-rate-badge">${sharedRateText()}</div>
               </div>
               <div class="room-dual-beds-row">
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-25A') || { simple_name: '25A Karavot', status: 'available' })}
-                ${renderBedPodHTML(f2Beds.find(b => b.bed_id === 'BED-25B') || { simple_name: '25B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-25A') || { simple_name: '25A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b1f2Beds.find(b => b.bed_id === 'BED-25B') || { simple_name: '25B Karavot', status: 'available' })}
               </div>
             </div>
 
@@ -1180,7 +1254,7 @@
 
         <!-- Servis & Oshxona Bloki -->
         <div class="smart-wing-section">
-          <div class="wing-section-title"><i class="fas fa-utensils" style="color: #f59e0b; margin-right: 8px;"></i> SERVIS VA TA'MINOT BO'LIMLARI (2-QAVAT)</div>
+          <div class="wing-section-title"><i class="fas fa-utensils" style="color: #f59e0b; margin-right: 8px;"></i> SERVIS VA TA'MINOT BO'LIMLARI (1-BINO &bull; 2-ETAJ)</div>
           <div class="smart-auxiliary-grid">
             
             <div class="smart-aux-card">
@@ -1241,6 +1315,124 @@
         </div>
       `;
     }
+
+    // =========================================================================
+    // RENDER 2-BINO: 1-ETAJ (4-xona & 5-xona &bull; 5 ta karavot)
+    // =========================================================================
+    if (b2f1Grid) {
+      b2f1Grid.innerHTML = `
+        <div class="smart-wing-section">
+          <div class="wing-section-title"><i class="fas fa-layer-group" style="color: #38bdf8; margin-right: 8px;"></i> 2-BINO &bull; 1-ETAJ STATSIONAR PALATALAR (5 TA KARAVOT)</div>
+          <div class="smart-wards-deck">
+            
+            <!-- 4-XONA (2-BINO) -->
+            <div class="smart-room-suite-card">
+              <div class="room-suite-header">
+                <div class="room-header-left">
+                  <span class="room-num-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">2-BINO &bull; 4-XONA</span>
+                  <div>
+                    <div class="room-name-title">2 O'rinli Statsionar Palata</div>
+                    <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
+                  </div>
+                </div>
+                <div class="room-rate-badge">720 000 so'm/kun &bull; To'liq: 1 100 000 so'm</div>
+              </div>
+              <div class="room-dual-beds-row">
+                ${renderBedPodHTML(b2f1Beds.find(b => b.bed_id === 'BED-B2-4A') || { simple_name: 'B2-4A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b2f1Beds.find(b => b.bed_id === 'BED-B2-4B') || { simple_name: 'B2-4B Karavot', status: 'available' })}
+              </div>
+            </div>
+
+            <!-- 5-XONA (2-BINO, 3 KISHILIK) -->
+            <div class="smart-room-suite-card">
+              <div class="room-suite-header">
+                <div class="room-header-left">
+                  <span class="room-num-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">2-BINO &bull; 5-XONA</span>
+                  <div>
+                    <div class="room-name-title">3 O'rinli Statsionar Palata</div>
+                    <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
+                  </div>
+                </div>
+                <div class="room-rate-badge">800 000 so'm/kun &bull; To'liq: 1 300 000 / 1 600 000 so'm</div>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+                ${renderBedPodHTML(b2f1Beds.find(b => b.bed_id === 'BED-B2-5A') || { simple_name: 'B2-5A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b2f1Beds.find(b => b.bed_id === 'BED-B2-5B') || { simple_name: 'B2-5B Karavot', status: 'available' })}
+                ${renderBedPodHTML(b2f1Beds.find(b => b.bed_id === 'BED-B2-5C') || { simple_name: 'B2-5C Karavot', status: 'available' })}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // RENDER 2-BINO: 2-ETAJ (1-xona VIP, 2-xona, 3-xona &bull; 5 ta karavot)
+    // =========================================================================
+    if (b2f2Grid) {
+      b2f2Grid.innerHTML = `
+        <div class="smart-wing-section">
+          <div class="wing-section-title"><i class="fas fa-crown" style="color: #c084fc; margin-right: 8px;"></i> 2-BINO &bull; 2-ETAJ VIP VA STATSIONAR PALATALAR (5 TA KARAVOT)</div>
+          <div class="smart-wards-deck">
+            
+            <!-- 1-XONA (2-BINO, VIP 1 KISHILIK) -->
+            <div class="smart-room-suite-card" style="border: 1.5px solid rgba(168, 85, 247, 0.4);">
+              <div class="room-suite-header">
+                <div class="room-header-left">
+                  <span class="room-num-badge" style="background: rgba(168, 85, 247, 0.25); color: #c084fc; border-color: rgba(168, 85, 247, 0.5);"><i class="fas fa-crown"></i> 2-BINO &bull; 1-XONA VIP</span>
+                  <div>
+                    <div class="room-name-title" style="color: #c084fc;">VIP Lyuks Palata (1 kishilik)</div>
+                    <div class="room-amenities-strip"><i class="fas fa-crown"></i> VIP Sanuzel &bull; <i class="fas fa-tv"></i> 65" Smart TV &bull; <i class="fas fa-couch"></i> Mehmon Zali &bull; <i class="fas fa-wifi"></i> Yuqori Tezlik</div>
+                  </div>
+                </div>
+                <div class="room-rate-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">1 000 000 so'm / kun</div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                ${renderBedPodHTML(b2f2Beds.find(b => b.bed_id === 'BED-B2-1') || { simple_name: 'B2-1 VIP Karavot', status: 'available' })}
+              </div>
+            </div>
+
+            <!-- 2-XONA (2-BINO, 2 KISHILIK) -->
+            <div class="smart-room-suite-card">
+              <div class="room-suite-header">
+                <div class="room-header-left">
+                  <span class="room-num-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">2-BINO &bull; 2-XONA</span>
+                  <div>
+                    <div class="room-name-title">2 O'rinli Statsionar Palata</div>
+                    <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
+                  </div>
+                </div>
+                <div class="room-rate-badge">720 000 so'm/kun &bull; To'liq: 1 100 000 so'm</div>
+              </div>
+              <div class="room-dual-beds-row">
+                ${renderBedPodHTML(b2f2Beds.find(b => b.bed_id === 'BED-B2-2A') || { simple_name: 'B2-2A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b2f2Beds.find(b => b.bed_id === 'BED-B2-2B') || { simple_name: 'B2-2B Karavot', status: 'available' })}
+              </div>
+            </div>
+
+            <!-- 3-XONA (2-BINO, 2 KISHILIK) -->
+            <div class="smart-room-suite-card">
+              <div class="room-suite-header">
+                <div class="room-header-left">
+                  <span class="room-num-badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">2-BINO &bull; 3-XONA</span>
+                  <div>
+                    <div class="room-name-title">2 O'rinli Statsionar Palata</div>
+                    <div class="room-amenities-strip"><i class="fas fa-shower"></i> Sanuzel &bull; <i class="fas fa-tv"></i> Smart TV &bull; <i class="fas fa-snowflake"></i> Konditsioner &bull; <i class="fas fa-wifi"></i> Wi-Fi</div>
+                  </div>
+                </div>
+                <div class="room-rate-badge">800 000 so'm/kun &bull; To'liq: 1 200 000 so'm</div>
+              </div>
+              <div class="room-dual-beds-row">
+                ${renderBedPodHTML(b2f2Beds.find(b => b.bed_id === 'BED-B2-3A') || { simple_name: 'B2-3A Karavot', status: 'available' })}
+                ${renderBedPodHTML(b2f2Beds.find(b => b.bed_id === 'BED-B2-3B') || { simple_name: 'B2-3B Karavot', status: 'available' })}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      `;
+    }
   }
 
   function renderCalendarTimeline() {
@@ -1281,8 +1473,25 @@
 
     const beds = getAllBeds(currentFloor);
     let tbodyHTML = '<tbody>';
+    let lastSection = '';
 
     beds.forEach(bed => {
+      const bldg = bed.building_number || 1;
+      const fl = bed.floor_num || 1;
+      const currentSection = `${bldg}-${fl}`;
+      if (currentSection !== lastSection) {
+        lastSection = currentSection;
+        const bldgName = bldg === 2 ? "2-BINO (YANGI KORPUS)" : "1-BINO (ASOSIY KORPUS)";
+        const icon = bldg === 2 ? "fa-hotel" : "fa-hospital";
+        const accent = bldg === 2 ? "#c084fc" : "#38bdf8";
+        tbodyHTML += `
+          <tr class="gantt-section-row" style="background: rgba(15, 23, 42, 0.95); font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px;">
+            <td colspan="${dates.length + 1}" style="padding: 8px 14px; color: ${accent}; border-top: 1.5px solid ${accent}40; border-bottom: 1px solid rgba(255,255,255,0.08);">
+              <i class="fas ${icon}" style="margin-right: 8px;"></i> ${bldgName} &bull; ${fl}-ETAJ
+            </td>
+          </tr>
+        `;
+      }
       tbodyHTML += `
         <tr>
           <td class="gantt-cell-bed">
@@ -1298,9 +1507,9 @@
               b.end_date >= dateISO
             );
 
-            const partnerBedId = getPartnerBedId(bed.bed_id);
-            const partnerBooking = (!booking && partnerBedId) ? bookings.find(b =>
-              String(b.bed_id).toUpperCase() === String(partnerBedId).toUpperCase() &&
+            const partnerBedIds = getPartnerBedIds(bed.bed_id);
+            const partnerBooking = (!booking && partnerBedIds.length > 0) ? bookings.find(b =>
+              partnerBedIds.some(pid => String(b.bed_id).toUpperCase() === String(pid).toUpperCase()) &&
               isFullRoomBooking(b) &&
               b.status !== 'cancelled' &&
               b.status !== 'completed' &&
@@ -1422,9 +1631,9 @@
       (b.status === 'active' || (b.start_date <= todayStr && b.end_date >= todayStr))
     );
 
-    const partnerBedId = getPartnerBedId(bedId);
-    const partnerActiveFullRoom = (!activeBooking && partnerBedId) ? bookings.find(b =>
-      String(b.bed_id).toUpperCase() === String(partnerBedId).toUpperCase() &&
+    const partnerBedIds = getPartnerBedIds(bedId);
+    const partnerActiveFullRoom = (!activeBooking && partnerBedIds.length > 0) ? bookings.find(b =>
+      partnerBedIds.some(pid => String(b.bed_id).toUpperCase() === String(pid).toUpperCase()) &&
       isFullRoomBooking(b) &&
       b.status !== 'cancelled' &&
       b.status !== 'completed' &&
@@ -1451,9 +1660,9 @@
       b.end_date >= dateStr
     );
 
-    const partnerBedId = getPartnerBedId(bedId);
-    const partnerBooking = (!existingBooking && partnerBedId) ? bookings.find(b =>
-      String(b.bed_id).toUpperCase() === String(partnerBedId).toUpperCase() &&
+    const partnerBedIds = getPartnerBedIds(bedId);
+    const partnerBooking = (!existingBooking && partnerBedIds.length > 0) ? bookings.find(b =>
+      partnerBedIds.some(pid => String(b.bed_id).toUpperCase() === String(pid).toUpperCase()) &&
       isFullRoomBooking(b) &&
       b.status !== 'cancelled' &&
       b.status !== 'completed' &&
@@ -1529,11 +1738,10 @@
       if (bedIdClean === String(booking.bed_id).toUpperCase()) return;
       if (!isBedPhysicallyUsable(bed)) return;
 
-      const partnerId = getPartnerBedId(bed.bed_id);
-      const partnerClean = partnerId ? String(partnerId).toUpperCase() : null;
+      const partnerIds = getPartnerBedIds(bed.bed_id);
       const directClash = others.some(b => String(b.bed_id).toUpperCase() === bedIdClean);
-      const partnerClash = partnerClean ? others.some(b =>
-        String(b.bed_id).toUpperCase() === partnerClean && (movingIsFullRoom || isFullRoomBooking(b))
+      const partnerClash = partnerIds.length > 0 ? others.some(b =>
+        partnerIds.some(pid => String(b.bed_id).toUpperCase() === String(pid).toUpperCase()) && (movingIsFullRoom || isFullRoomBooking(b))
       ) : false;
       if (directClash || partnerClash) return;
 
@@ -1839,7 +2047,8 @@
         "Bemor F.I.Sh.": b.patient_name,
         "Telefon": b.patient_phone || '',
         "Klinik Kod": b.patient_code || '',
-        "Qavat": b.floor || (b.bed_id && b.bed_id.includes('2') ? 2 : 1),
+        "Bino": (b.bed_id && b.bed_id.includes('B2')) ? "2-Bino" : "1-Bino",
+        "Qavat": b.floor || (b.bed_id && (b.bed_id.includes('21') || b.bed_id.includes('22') || b.bed_id.includes('23') || b.bed_id.includes('24') || b.bed_id.includes('25') || b.bed_id.includes('B2-1') || b.bed_id.includes('B2-2') || b.bed_id.includes('B2-3')) ? 2 : 1),
         "Karavot": b.bed_id,
         "Xizmat / Dastur": b.program,
         "Butun Xona (Solo)": isFR ? "HA (2-karavot qulflangan)" : "Yo'q",

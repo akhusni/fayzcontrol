@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-04 17:33:34",
+  "updated_at": "2026-10-20 11:16:26",
   "hospital": "Fayz Medical House",
   "operating_mode": "24/7 Statsionar & Poliklinika",
   "doctors": [
@@ -127,8 +127,10 @@
       "nurse_primary_id": "STF-NRS-01",
       "sanitar_primary": "Donoboyeva Laylo Donoboyevna",
       "sanitar_primary_id": "STF-SAN-01",
-      "doctor_night": "Dr. Umarov Xusan Payziboyevich",
-      "doctor_night_id": "STF-DOC-01"
+      "doctor_night": "SHERMUXAMEDOVA FARIDA MIRAXATOVNA",
+      "doctor_night_id": "STF-DOC-02",
+      "nurse_secondary_id": "",
+      "nurse_secondary": ""
     },
     {
       "date": "2026-10-02",
@@ -144,7 +146,9 @@
       "sanitar_primary": "Egamqulova Xilola Xoshimqulovna",
       "sanitar_primary_id": "STF-SAN-02",
       "doctor_night": "Dr. Shermuxamedova Farida Miraxatovna",
-      "doctor_night_id": "STF-DOC-02"
+      "doctor_night_id": "STF-DOC-02",
+      "nurse_secondary_id": "STF-NRS-06",
+      "nurse_secondary": "XOLTOYEVA SHAXLO SOBITJONOVNA"
     },
     {
       "date": "2026-10-03",

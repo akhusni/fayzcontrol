@@ -146,7 +146,7 @@
                 <span class="fmh-dept-item-icon"><i class="fas fa-bed"></i></span>
                 <span class="fmh-dept-item-content">
                   <span class="fmh-dept-item-title">Palatalar Xaritasi</span>
-                  <span class="fmh-dept-item-desc">14 karavot CAD, bandlik va joylashtirish</span>
+                  <span class="fmh-dept-item-desc">24 karavot CAD, bandlik va joylashtirish</span>
                 </span>
               </a>
               <a href="duty_schedule.html" class="fmh-dept-item" role="menuitem">
@@ -977,10 +977,18 @@
        MODAL 3: INVOICE / OFFICIAL RECEIPT (PRINTABLE)
        ========================================================================== -->
   <div class="modal-backdrop" id="invoice-receipt-modal">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-header">
-        <div class="modal-title"><i class="fas fa-print" style="color: #38bdf8;"></i> Rasmiy To'lov Kvitansiyasi & Chek</div>
-        <button type="button" class="modal-close-btn">&times;</button>
+    <div class="modal-dialog modal-lg" style="max-width: 840px;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div class="modal-title"><i class="fas fa-receipt" style="color: #38bdf8;"></i> Rasmiy To'lov Kvitansiyasi & Chek</div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn-portal btn-outline-portal" style="padding: 5px 12px; font-size: 0.8rem; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" onclick="window.FMH_Accounting.printPatientReceiptDirect()" title="Kassaning rasmiy termo cheki">
+            <i class="fas fa-receipt"></i> Kassa Cheki
+          </button>
+          <button type="button" class="btn-portal btn-primary-portal" style="padding: 5px 12px; font-size: 0.8rem;" onclick="window.FMH_Accounting.printInvoice()" title="A4/A5 formatdagi hisob-faktura kvitansiyasi">
+            <i class="fas fa-print"></i> Chop Etish (A4)
+          </button>
+          <button type="button" class="modal-close-btn">&times;</button>
+        </div>
       </div>
       <div class="modal-body" id="invoice-receipt-content">
         <!-- Rendered by JS -->
@@ -1054,6 +1062,11 @@
                 <option value="statsionar_shared">🏥 Statsionar (1 karavot / 2 kishilik xona) — 720 000 so'm / kun</option>
                 <option value="statsionar_full_room">👑 Statsionar Butun Xona (1 kishi / VIP Solo) — 1 100 000 so'm / kun</option>
                 <option value="kunlik_statsionar">☀️ Kunlik Statsionar (Kunduzgi o'rin) — 630 000 so'm / kun</option>
+                <option value="statsionar_vip_1">👑 Statsionar 2-Bino VIP (1-xona, 1 kishilik) — 1 000 000 so'm / kun</option>
+                <option value="statsionar_shared_800k">🏥 Statsionar 2-Bino (3/5-xona kishi boshiga) — 800 000 so'm / kun</option>
+                <option value="statsionar_full_room_1200k">👑 Statsionar 2-Bino 3-xona Butun Xona — 1 200 000 so'm / kun</option>
+                <option value="statsionar_full_room_1300k">👑 Statsionar 2-Bino 5-xona 2 kishilik to'liq bron — 1 300 000 so'm / kun</option>
+                <option value="statsionar_full_room_1600k">👑 Statsionar 2-Bino 5-xona 1 kishilik to'liq bron (Solo) — 1 600 000 so'm / kun</option>
                 <option value="ambulator_1">🩺 Ambulator (Kuniga 1 mahal muolaja) — 310 000 so'm / kun</option>
                 <option value="ambulator_2">💉 Ambulator (Kuniga 2 mahal muolaja) — 500 000 so'm / kun</option>
               </select>
@@ -1082,13 +1095,20 @@
               <label class="form-label" for="newbill-bed-select">Biriktiriladigan Karavot</label>
               <select id="newbill-bed-select" class="form-select">
                 <option value="">Ambulator (O'ringsiz)</option>
-                <optgroup label="1-Qavat (4 ta karavot)">
+                <optgroup label="1-Qavat (1-Bino &bull; 4 ta karavot)">
                   <option value="bed-1a">11-xona 1A karavot</option>
                   <option value="bed-1b">11-xona 1B karavot</option>
                   <option value="bed-2a">12-xona 2A karavot</option>
                   <option value="bed-2b">12-xona 2B karavot</option>
                 </optgroup>
-                <optgroup label="2-Qavat (10 ta karavot)">
+                <optgroup label="1-Qavat (2-Bino &bull; 5 ta karavot)">
+                  <option value="bed-b2-4a">2-Bino 4-xona B2-4A karavot</option>
+                  <option value="bed-b2-4b">2-Bino 4-xona B2-4B karavot</option>
+                  <option value="bed-b2-5a">2-Bino 5-xona B2-5A karavot</option>
+                  <option value="bed-b2-5b">2-Bino 5-xona B2-5B karavot</option>
+                  <option value="bed-b2-5c">2-Bino 5-xona B2-5C karavot</option>
+                </optgroup>
+                <optgroup label="2-Qavat (1-Bino &bull; 10 ta karavot)">
                   <option value="bed-21a">21-xona 21A karavot</option>
                   <option value="bed-21b">21-xona 21B karavot</option>
                   <option value="bed-22a">22-xona 22A karavot</option>
@@ -1099,6 +1119,13 @@
                   <option value="bed-24b">24-xona 24B karavot</option>
                   <option value="bed-25a">25-xona 25A karavot</option>
                   <option value="bed-25b">25-xona 25B karavot</option>
+                </optgroup>
+                <optgroup label="2-Qavat (2-Bino &bull; 5 ta karavot)">
+                  <option value="bed-b2-1">2-Bino 1-xona B2-1 VIP karavot</option>
+                  <option value="bed-b2-2a">2-Bino 2-xona B2-2A karavot</option>
+                  <option value="bed-b2-2b">2-Bino 2-xona B2-2B karavot</option>
+                  <option value="bed-b2-3a">2-Bino 3-xona B2-3A karavot</option>
+                  <option value="bed-b2-3b">2-Bino 3-xona B2-3B karavot</option>
                 </optgroup>
               </select>
             </div>
@@ -1147,47 +1174,137 @@
        MODAL 6: ADD EXTRA SERVICE OR ADJUST STAY DURATION
        ========================================================================== -->
   <div class="modal-backdrop" id="add-service-modal">
-    <div class="modal-dialog modal-lg" style="max-width: 680px;">
+    <div class="modal-dialog modal-lg" style="max-width: 820px;">
       <div class="modal-header">
         <div class="modal-title"><i class="fas fa-layer-group" style="color: #a855f7;"></i> Bemor Xizmatlari & Davomiylikni Boshqarish</div>
         <button type="button" class="modal-close-btn">&times;</button>
       </div>
       <div class="modal-body" style="padding-bottom: 1rem;">
-        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <!-- PATIENT & REAL-TIME BILLING SUMMARY HEADER -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
             <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block;">Tanlangan Bemor</span>
-            <span id="addsvc-patient-name" style="font-weight: 700; font-size: 1rem; color: #38bdf8;">—</span>
+            <span id="addsvc-patient-name" style="font-weight: 700; font-size: 1.05rem; color: #38bdf8;">—</span>
           </div>
-          <div style="text-align: right;">
-            <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block;">Joylashuv / Tarif</span>
-            <span id="addsvc-bed-badge" class="badge-status badge-method" style="font-size: 0.8rem;">—</span>
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div>
+              <span style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block;">Joylashuv</span>
+              <span id="addsvc-bed-badge" class="badge-status badge-method" style="font-size: 0.8rem;">—</span>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 4px 10px; font-size: 0.78rem;">
+              <span style="color: var(--text-muted);">Jami:</span> <strong id="addsvc-header-total" style="color: var(--text-primary);">0 so'm</strong>
+              <span style="color: var(--border-color); margin: 0 4px;">|</span>
+              <span style="color: var(--text-muted);">To'landi:</span> <strong id="addsvc-header-paid" style="color: var(--emerald);">0 so'm</strong>
+              <span style="color: var(--border-color); margin: 0 4px;">|</span>
+              <span style="color: var(--text-muted);">Qoldiq:</span> <strong id="addsvc-header-debt" style="color: #f87171;">0 so'm</strong>
+            </div>
           </div>
         </div>
 
         <!-- TAB NAVIGATION -->
         <div class="modal-tab-nav" style="display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-          <button type="button" id="tab-btn-addsvc-items" class="btn-portal btn-primary-portal" style="flex: 1; padding: 7px 12px; font-size: 0.82rem;" onclick="window.FMH_Accounting.switchAddServiceTab('items')">
-            <i class="fas fa-pills"></i> Yangi Dori / Xizmat Qo'shish
+          <button type="button" id="tab-btn-addsvc-list" class="btn-portal btn-primary-portal" style="flex: 1; padding: 7px 12px; font-size: 0.82rem;" onclick="window.FMH_Accounting.switchAddServiceTab('list')">
+            <i class="fas fa-list-check"></i> Hisobdagi Xizmatlar (<span id="addsvc-items-count">0</span>)
+          </button>
+          <button type="button" id="tab-btn-addsvc-items" class="btn-portal btn-outline-portal" style="flex: 1; padding: 7px 12px; font-size: 0.82rem;" onclick="window.FMH_Accounting.switchAddServiceTab('items')">
+            <i class="fas fa-plus-circle"></i> + Yangi Xizmat Qo'shish
           </button>
           <button type="button" id="tab-btn-addsvc-duration" class="btn-portal btn-outline-portal" style="flex: 1; padding: 7px 12px; font-size: 0.82rem;" onclick="window.FMH_Accounting.switchAddServiceTab('duration')">
             <i class="fas fa-calendar-alt"></i> Davolanish Muddatini Cho'zish / Kamaytirish
           </button>
         </div>
 
-        <!-- TAB 1: ADD SERVICE / MEDICATION -->
-        <div id="addsvc-tab-items-content">
-          <form id="add-service-form">
-            <input type="hidden" id="addsvc-bill-id">
+        <!-- TAB 1: EXISTING SERVICES LIST (O'ZGARTIRISH, KO'PAYTIRISH, KAMAYTIRISH, O'CHIRISH) -->
+        <div id="addsvc-tab-list-content">
+          <!-- INLINE EDIT PANEL (HIDDEN BY DEFAULT) -->
+          <div id="addsvc-edit-item-panel" style="display: none; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <strong style="color: #38bdf8; font-size: 0.88rem;"><i class="fas fa-pencil-alt"></i> Xizmatni O'zgartirish</strong>
+              <button type="button" class="btn-portal btn-outline-portal" style="padding: 2px 8px; font-size: 0.72rem;" onclick="window.FMH_Accounting.cancelEditItem()">✕ Bekor qilish</button>
+            </div>
+            <input type="hidden" id="edit-item-id">
             <div class="form-grid-2">
               <div class="form-group-full">
-                <label class="form-label" for="addsvc-item-select">Dori Vositasi / Tibbiy Xizmatni Tanlang *</label>
-                <select id="addsvc-item-select" class="form-select" required>
+                <label class="form-label" for="edit-item-name">Xizmat / Dori Nomi *</label>
+                <input type="text" id="edit-item-name" class="form-input" required>
+              </div>
+              <div>
+                <label class="form-label" for="edit-item-price">Birlik Narxi (so'mda) *</label>
+                <input type="number" id="edit-item-price" class="form-input" min="0" step="1000" required style="font-family: var(--font-mono); font-weight: 700;">
+              </div>
+              <div>
+                <label class="form-label" for="edit-item-qty">Miqdori (Soni) *</label>
+                <input type="number" id="edit-item-qty" class="form-input" min="1" max="500" required style="font-family: var(--font-mono); font-weight: 700;">
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+              <button type="button" class="btn-portal btn-outline-portal" style="padding: 5px 12px; font-size: 0.8rem;" onclick="window.FMH_Accounting.cancelEditItem()">Bekor qilish</button>
+              <button type="button" class="btn-portal btn-primary-portal" style="padding: 5px 14px; font-size: 0.8rem;" onclick="window.FMH_Accounting.saveEditedItem()">
+                <i class="fas fa-save"></i> O'zgarishlarni Saqlash
+              </button>
+            </div>
+          </div>
+
+          <!-- TABLE OF EXISTING INVOICE ITEMS -->
+          <div id="addsvc-items-table-container">
+            <div style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Yuklanmoqda...</div>
+          </div>
+        </div>
+
+        <!-- TAB 2: ADD NEW SERVICE / MEDICATION -->
+        <div id="addsvc-tab-items-content" style="display: none;">
+          <form id="add-service-form">
+            <input type="hidden" id="addsvc-bill-id">
+
+            <!-- MODE SWITCHER: PREDEFINED CATALOG VS CUSTOM NEW PRICE SERVICE -->
+            <div style="display: flex; gap: 10px; margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600; background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); color: #fff;" id="label-mode-catalog">
+                <input type="radio" name="addsvc-mode" id="addsvc-mode-catalog" value="catalog" checked onchange="window.FMH_Accounting.toggleAddServiceMode('catalog')" style="margin: 0;">
+                <i class="fas fa-book-medical"></i> Prayzkurant & Ombordan Tanlash
+              </label>
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600; background: transparent; border: 1px solid transparent; color: var(--text-muted);" id="label-mode-custom">
+                <input type="radio" name="addsvc-mode" id="addsvc-mode-custom" value="custom" onchange="window.FMH_Accounting.toggleAddServiceMode('custom')" style="margin: 0;">
+                <i class="fas fa-sparkles" style="color: #38bdf8;"></i> Yangi Narxdagi Xizmat Qo'shish
+              </label>
+            </div>
+
+            <!-- SECTION A: CATALOG SELECT -->
+            <div id="addsvc-section-catalog">
+              <div class="form-group-full" style="margin-bottom: 0.85rem;">
+                <label class="form-label" for="addsvc-item-select">Dori Vositasi yoki Prayzkurant Xizmatini Tanlang *</label>
+                <select id="addsvc-item-select" class="form-select">
                   <optgroup label="Dorixona Ombordagi Dorilar (Ombordan hisobdan chiqariladi)">
                     <option value="" disabled>Yuklanmoqda...</option>
                   </optgroup>
                 </select>
               </div>
+            </div>
 
+            <!-- SECTION B: CUSTOM NEW PRICE SERVICE -->
+            <div id="addsvc-section-custom" style="display: none;">
+              <div class="form-grid-2" style="margin-bottom: 0.85rem;">
+                <div class="form-group-full">
+                  <label class="form-label" for="addsvc-custom-name">Xizmat Nomi *</label>
+                  <input type="text" id="addsvc-custom-name" class="form-input" placeholder="Masalan: Konsilium, Maxsus massaj, EKG qayta ko'rik...">
+                </div>
+                <div>
+                  <label class="form-label" for="addsvc-custom-price">Yangi Xizmat Narxi (so'mda) *</label>
+                  <input type="number" id="addsvc-custom-price" class="form-input" placeholder="0" min="0" step="1000" style="font-family: var(--font-mono); font-weight: 700;">
+                </div>
+                <div>
+                  <label class="form-label" for="addsvc-custom-type">Xizmat Kategoriya / Turi</label>
+                  <select id="addsvc-custom-type" class="form-select">
+                    <option value="procedure">Muolaja / Xizmat</option>
+                    <option value="consultation">Konsultatsiya</option>
+                    <option value="lab_test">Laboratoriya Tekshiruvi</option>
+                    <option value="other">Boshqa qo'shimcha xizmat</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- COMMON INPUTS: QUANTITY, NOTES, TOTAL -->
+            <div class="form-grid-2">
               <div>
                 <label class="form-label" for="addsvc-qty-input">Miqdori (Dozasi / Soni) *</label>
                 <input type="number" id="addsvc-qty-input" class="form-input" value="1" min="1" max="50" required style="font-family: var(--font-mono); font-weight: 700;">
@@ -1195,20 +1312,21 @@
 
               <div>
                 <label class="form-label">Qo'shiladigan Jami Summa:</label>
-                <div id="addsvc-total-preview" style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 800; color: #a855f7; padding: 0.4rem 0;">
+                <div id="addsvc-total-preview" style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: #a855f7; padding: 0.35rem 0;">
                   0 so'm
                 </div>
               </div>
 
               <div class="form-group-full">
-                <label class="form-label" for="addsvc-notes-input">Tayinlangan Sabab / Shifokor Ko'rsatmasi</label>
-                <input type="text" id="addsvc-notes-input" class="form-input" placeholder="Masalan: Bosh shifokor ko'rsatmasi bo'yicha qo'shimcha infuziya...">
+                <label class="form-label" for="addsvc-notes-input">Tayinlangan Sabab / Shifokor Ko'rsatmasi (Izoh)</label>
+                <input type="text" id="addsvc-notes-input" class="form-input" placeholder="Masalan: Shifokor ko'rsatmasi bo'yicha buyurildi...">
               </div>
             </div>
+
             <div class="modal-footer" style="padding-left: 0; padding-right: 0; margin-top: 1rem;">
               <button type="button" class="btn-portal btn-outline-portal modal-cancel-btn">Bekor Qilish</button>
               <button type="submit" class="btn-portal btn-primary-portal" style="background: linear-gradient(135deg, #a855f7, #7e22ce);">
-                <i class="fas fa-plus-circle"></i> Hisobga Qo'shish & Ombordan Chiqarish
+                <i class="fas fa-plus-circle"></i> Hisobga Qo'shish & Saqlash
               </button>
             </div>
           </form>
@@ -1461,7 +1579,7 @@
 
   <script src="js/xlsx.full.min.js"></script>
   <script src="js/unified_print_engine.js?v=6.1"></script>
-  <script src="js/accounting.js?v=10.9"></script>
+  <script src="js/accounting.js?v=11.0"></script>
   <div id="print-area"></div>
 </body>
 </html>
