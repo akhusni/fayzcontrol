@@ -1,0 +1,45 @@
+# Fayz Control (fayzcontrol.uz) — Web Server Config
+
+DirectoryIndex gateway.php index.php
+
+# --- Never serve source, credentials, data or documentation ----------------
+<FilesMatch "\.(py|pyc|sql|json|md|txt|log|bat|ps1|example|cron|sh)$">
+  Require all denied
+</FilesMatch>
+
+<FilesMatch "^(db_config.*|server_log.*|\.gitignore|\.vercelignore)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_alias.c>
+  RedirectMatch 403 ^/(data|tests|assets/private)/
+</IfModule>
+
+<Files "robots.txt">
+  Require all granted
+</Files>
+
+# --- Security Headers -----------------------------------------------------
+<IfModule mod_headers.c>
+  Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "same-origin"
+</IfModule>
+
+# --- Routing to gateway.php ------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve static files and php directly if they exist
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteCond %{REQUEST_URI} \.(css|js|jpg|jpeg|png|gif|svg|webp|ico|woff|woff2|ttf|eot|pdf|map|php)$ [NC]
+  RewriteRule ^ - [L]
+
+  # Allow robots.txt directly
+  RewriteRule ^robots\.txt$ robots.txt [L]
+
+  # Route everything else (API, HTML portals, root) to gateway.php
+  RewriteRule ^(.*)$ gateway.php [QSA,L]
+</IfModule>
