@@ -205,19 +205,20 @@ const esc = (v) => String(v == null ? '' : v)
 
     container.innerHTML = state.filteredPatients.map(p => {
       const initials = p.full_name.replace('Bemor ', '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'BM';
-      const isStay = p.active_admission;
-      const isOutpatient = (!isStay && p.status === 'active') || p.service_type === 'outpatient';
-      const stayLocation = isStay ? `${isStay.floor_number}-Qavat • ${isStay.room_number}-xona (${isStay.bed_code})` : (isOutpatient ? 'Ambulator Rejim' : 'Klinikadan Chiqarilgan');
+      const isStay = !!p.active_admission;
+      const isDischarged = p.status === 'discharged';
+      const isOutpatient = !isStay && !isDischarged;
+      const stayLocation = isStay ? `${isStay.floor_number}-Qavat • ${isStay.room_number}-xona (${isStay.bed_code})` : (isDischarged ? 'Klinikadan Chiqarilgan' : 'Ambulator Rejim');
       const hasAllergy = p.medical_allergies && p.medical_allergies !== "Yo'q" && p.medical_allergies !== '-';
       const hasDebt = (p.balance_due || 0) > 0;
 
       let statusBadge = '';
-      if (p.status === 'active' || isStay) {
+      if (isStay) {
         statusBadge = '<span class="badge-status status-active"><i class="fas fa-bed"></i> Statsionar</span>';
-      } else if (isOutpatient) {
-        statusBadge = '<span class="badge-status status-outpatient"><i class="fas fa-stethoscope"></i> Ambulator</span>';
+      } else if (isDischarged) {
+        statusBadge = '<span class="badge-status status-discharged"><i class="fas fa-check-double"></i> Chiqarilgan</span>';
       } else {
-        statusBadge = '<span class="badge-status status-discharged"><i class="fas fa-check-double"></i> Tuzalgan</span>';
+        statusBadge = '<span class="badge-status status-outpatient"><i class="fas fa-stethoscope"></i> Ambulator</span>';
       }
 
       return `
@@ -297,8 +298,9 @@ const esc = (v) => String(v == null ? '' : v)
     }
 
     tbody.innerHTML = state.filteredPatients.map(p => {
-      const isStay = p.active_admission;
-      const stayLocation = isStay ? `${isStay.floor_number}-qavat / ${isStay.room_number}-xona (${isStay.bed_code})` : (p.status === 'outpatient' ? 'Ambulator' : 'Chiqarilgan');
+      const isStay = !!p.active_admission;
+      const isDischarged = p.status === 'discharged';
+      const stayLocation = isStay ? `${isStay.floor_number}-qavat / ${isStay.room_number}-xona (${isStay.bed_code})` : (isDischarged ? 'Chiqarilgan / Davolangan' : 'Ambulator');
       const hasDebt = (p.balance_due || 0) > 0;
 
       return `

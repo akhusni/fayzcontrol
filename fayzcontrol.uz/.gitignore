@@ -29,6 +29,8 @@ pymysql.broken.vendored/
 *.xlsx
 *.xls
 data/reports/
+data/backups/
+data/patient_dossiers/
 # Backups of the credential file are credential files too.
 db_config.json.*
 db_config.*.bak

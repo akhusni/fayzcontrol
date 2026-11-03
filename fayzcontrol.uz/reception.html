@@ -256,31 +256,7 @@
        ========================================================================== -->
   <main class="portal-container">
 
-    <!-- Quick Stats Bar -->
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
-      <div class="portal-center-chips" style="display: flex; gap: 0.5rem;">
-        <div class="header-stat-chip" title="Ayni vaqtdagi real bo'sh karavotlar (kelajakdagi bronlar hisoblanmaydi)">
-          <i class="fas fa-bed" style="color: var(--emerald);"></i>
-          <span>Real Bo'sh:</span>
-          <span class="val" id="chip-beds-available">—</span>
-        </div>
-        <div class="header-stat-chip" title="Bugungi yozilganlar">
-          <i class="fas fa-calendar-check" style="color: var(--primary);"></i>
-          <span>Bugun:</span>
-          <span class="val" id="chip-today-apts">—</span>
-        </div>
-        <div class="header-stat-chip" title="Yangi qo'ng'iroqlar">
-          <i class="fas fa-phone-alt" style="color: var(--warning);"></i>
-          <span>Yangi lid:</span>
-          <span class="val" id="chip-new-calls">—</span>
-        </div>
-      </div>
 
-      <div style="font-size: 0.8rem; color: #2dd4bf; font-family: var(--font-mono); display: flex; align-items: center; gap: 8px;">
-        <span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2dd4bf;"></span>
-        <span>Qabulxona & Birlamchi Triaj: 24/7 Navbatchilikda</span>
-      </div>
-    </div>
 
     <!-- KPI SUMMARY ROW -->
     <div class="kpi-grid">
@@ -366,255 +342,598 @@
     <div class="tab-panel active" id="tab-intake">
       <div style="display: grid; grid-template-columns: 1fr 380px; gap: 1.4rem; align-items: start;">
 
-        <!-- LEFT: Main Intake Form -->
+        <!-- LEFT: Intake Wizard Suite -->
         <div>
-          <!-- Service Type Selector -->
-          <div class="rec-card">
-            <div class="rec-card-header">
-              <div class="rec-card-title"><i class="fas fa-clipboard-list" style="color:var(--primary-light);"></i> Qabul Turi</div>
-            </div>
-            <div class="rec-card-body" style="padding-bottom: 1rem;">
-              <div class="service-type-grid" style="grid-template-columns: repeat(3, 1fr);">
-                <div class="service-type-card" data-service="inpatient">
-                  <div class="service-type-icon" style="background: rgba(56,189,248,0.12); color: #38bdf8;">
-                    <i class="fas fa-bed"></i>
-                  </div>
-                  <div class="service-type-label">Statsionar</div>
-                  <div class="service-type-sub">Karavotga yotqizish</div>
+          <div class="intake-wizard-card" style="overflow: visible !important;">
+            <!-- WIZARD STEP HEADER (5-STEP PROCESS) -->
+            <div class="intake-wizard-nav">
+              <button type="button" class="wizard-step-btn active" id="wizard-btn-1" onclick="window.FMH_Reception.goToWizardStep(1)">
+                <div class="step-number" id="wizard-num-1">1</div>
+                <div class="step-meta">
+                  <span class="step-subtitle">1-Qadam</span>
+                  <span class="step-name">Bemor</span>
                 </div>
-                <div class="service-type-card" data-service="outpatient">
-                  <div class="service-type-icon" style="background: rgba(16,185,129,0.12); color: #10b981;">
-                    <i class="fas fa-stethoscope"></i>
-                  </div>
-                  <div class="service-type-label">Ambulator</div>
-                  <div class="service-type-sub">Muolaja kursi</div>
-                </div>
-                <div class="service-type-card selected" data-service="consultation">
-                  <div class="service-type-icon" style="background: rgba(99,102,241,0.15); color: #818cf8;">
-                    <i class="fas fa-user-doctor"></i>
-                  </div>
-                  <div class="service-type-label">Konsultatsiya</div>
-                  <div class="service-type-sub">Shifokor ko'rigi & retsept</div>
-                </div>
-              </div>
-            </div>
-          </div>
+              </button>
 
-          <!-- Main Intake Form -->
-          <div class="rec-card">
-            <div class="rec-card-header">
-              <div class="rec-card-title"><i class="fas fa-id-card" style="color:var(--primary-light);"></i> Bemor Ma'lumotlari</div>
-            </div>
-            <div class="rec-card-body">
+              <div class="wizard-step-connector" id="wizard-connector-1"></div>
 
+              <button type="button" class="wizard-step-btn" id="wizard-btn-2" onclick="window.FMH_Reception.goToWizardStep(2)">
+                <div class="step-number" id="wizard-num-2">2</div>
+                <div class="step-meta">
+                  <span class="step-subtitle">2-Qadam</span>
+                  <span class="step-name">Xizmat & Shifokor</span>
+                </div>
+              </button>
+
+              <div class="wizard-step-connector" id="wizard-connector-2"></div>
+
+              <button type="button" class="wizard-step-btn" id="wizard-btn-3" onclick="window.FMH_Reception.goToWizardStep(3)">
+                <div class="step-number" id="wizard-num-3">3</div>
+                <div class="step-meta">
+                  <span class="step-subtitle">3-Qadam</span>
+                  <span class="step-name">Palata & Karavot</span>
+                </div>
+              </button>
+
+              <div class="wizard-step-connector" id="wizard-connector-3"></div>
+
+              <button type="button" class="wizard-step-btn" id="wizard-btn-4" onclick="window.FMH_Reception.goToWizardStep(4)">
+                <div class="step-number" id="wizard-num-4">4</div>
+                <div class="step-meta">
+                  <span class="step-subtitle">4-Qadam</span>
+                  <span class="step-name">Hisob & To'lov</span>
+                </div>
+              </button>
+
+              <div class="wizard-step-connector" id="wizard-connector-4"></div>
+
+              <button type="button" class="wizard-step-btn" id="wizard-btn-5" onclick="window.FMH_Reception.goToWizardStep(5)">
+                <div class="step-number" id="wizard-num-5">5</div>
+                <div class="step-meta">
+                  <span class="step-subtitle">5-Qadam</span>
+                  <span class="step-name">Tasdiqlash</span>
+                </div>
+              </button>
+            </div>
+
+            <div class="rec-card-body" style="padding: 1.5rem;">
               <form id="intake-form" onsubmit="window.FMH_Reception.submitIntakeForm(event)">
-                <div class="form-grid-2" style="margin-bottom:1rem;">
-                  <div class="form-group">
-                    <label class="form-label">F.I.Sh. <span class="req">*</span></label>
-                    <input type="text" id="intake-patient-name" class="form-input" placeholder="Familiya Ism Sharif">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Telefon Raqami <span class="req">*</span></label>
-                    <input type="tel" id="intake-patient-phone" class="form-input" placeholder="+998 90 123 45 67">
-                  </div>
-                  <!-- Date of birth and gender were never asked for here, so every
-                       patient registered at the desk was stored as a man born in
-                       1990 - the defaults the server filled in. -->
-                  <div class="form-group">
-                    <label class="form-label">Tug'ilgan Sana</label>
-                    <input type="date" id="intake-patient-birthdate" class="form-input">
-                    <div class="form-hint">Shifokor anketasiga avtomatik o'tadi</div>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Jinsi</label>
-                    <select id="intake-patient-gender" class="form-select">
-                      <option value="">Tanlanmagan</option>
-                      <option value="male">Erkak</option>
-                      <option value="female">Ayol</option>
-                      <option value="other">Boshqa</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Davolanish Dasturi</label>
-                    <select id="intake-program-select" class="form-select"></select>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Mas'ul Shifokor</label>
-                    <select id="intake-doctor-select" class="form-select"></select>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Davolanish Boshlanish Sanasi <span class="req">*</span></label>
-                    <input type="date" id="intake-start-date" class="form-input">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Qanday Topdi?</label>
-                    <select id="intake-referral-select" class="form-select"></select>
-                  </div>
-                  <!-- Dynamic Doctor Referral Section (Only visible when 'Shifokor tavsiyasi' is chosen) -->
-                  <div id="intake-doctor-referral-group" class="form-group full-width" style="display: none; background: rgba(56, 189, 248, 0.05); border: 1px dashed rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 0.5rem;">
-                    <div style="font-weight: 700; color: #38bdf8; font-size: 0.88rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                      <i class="fas fa-user-md"></i> Yo'llanma Beruvchi Shifokor & Gonorar Sozlamasi
+                
+                <!-- ==============================================================
+                     WIZARD STEP 1: BEMORNING SHAXSIY MA'LUMOTLARI & BONUS TIZIMI
+                     ============================================================== -->
+                <div class="wizard-step-panel active" id="wizard-panel-1" data-step="1">
+                  <div class="wizard-step-header">
+                    <div>
+                      <h3><i class="fas fa-id-card" style="color:var(--primary-light);"></i> 1-Qadam: Bemorning Shaxsiy Ma'lumotlari</h3>
+                      <p>Familiya, ism, otasining ismi, tug'ilgan sana, telefon (+998) va murojaat manbasi (Bonus tizimi)</p>
                     </div>
-                    <div class="form-grid-2">
-                      <div class="form-group">
-                        <label class="form-label">Yo'llanma Bergan Shifokor / Xodim <span class="req">*</span></label>
-                        <select id="intake-referral-doctor-select" class="form-select"></select>
-                      </div>
-                      <div class="form-group">
-                        <label class="form-label">Gonorar Turi</label>
-                        <select id="intake-referral-fee-type" class="form-select" onchange="window.FMH_Reception && window.FMH_Reception.toggleReferralFeeType && window.FMH_Reception.toggleReferralFeeType()">
-                          <option value="percent_10">Umumiy chek / hisobdan 10% ulush</option>
-                          <option value="fixed">Belgilangan aniq summa (so'm)</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div id="intake-referral-fixed-amt-box" class="form-group" style="display: none; margin-top: 8px;">
-                      <label class="form-label">Belgilangan Gonorar Summasi (so'm)</label>
-                      <input type="number" id="intake-referral-fixed-amount" class="form-input" placeholder="Masalan: 200 000" min="0" step="5000">
-                    </div>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:6px;">1 / 5</span>
                   </div>
-                  <div class="form-group">
-                    <label class="form-label">To'lov Usuli</label>
-                    <select id="intake-pay-method" class="form-select">
-                      <option value="cash">Naqd pul</option>
-                      <option value="card">Karta / Terminal</option>
-                      <option value="online">Online (Click/Payme)</option>
-                      <option value="mixed">Aralash</option>
-                    </select>
-                  </div>
-                  <div class="form-group full-width">
-                    <label class="form-label">Eslatma va Tashxis (Ixtiyoriy)</label>
-                    <textarea id="intake-notes" class="form-textarea" placeholder="Dastlabki kuzatishlar, murojaat sababi, qarindoshdan ma'lumot..."></textarea>
-                  </div>
-                </div>
 
-                <!-- STATSIONAR SECTION: Bed Picker -->
-                <div id="intake-bed-section">
-                  <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
-                  <div class="modal-section-title" style="justify-content: space-between;">
-                    <span><i class="fas fa-bed"></i> Karavot Tanlash (24 O'rin)</span>
-                    <button type="button" onclick="window.FMH_Reception.refreshBedsFromBuildingManagement()"
-                      style="background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.3);color:#38bdf8;border-radius:6px;padding:3px 10px;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;"
-                      title="Building Management bo'limidan karavot holatlarini yangilash">
-                      <i class="fas fa-sync-alt"></i> BM bilan sinxronlash
+                  <!-- F.I.Sh: Familiya, Ism, Otasining ismi -->
+                  <div class="form-grid-3" style="margin-bottom:1rem;">
+                    <div class="form-group">
+                      <label class="form-label">Familiya <span class="req">*</span></label>
+                      <input type="text" id="intake-patient-lastname" class="form-input" placeholder="Masalan: Karimov" required autocomplete="family-name">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Ism <span class="req">*</span></label>
+                      <input type="text" id="intake-patient-firstname" class="form-input" placeholder="Masalan: Sardor" required autocomplete="given-name">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Otasining Ismi (Sharif)</label>
+                      <input type="text" id="intake-patient-middlename" class="form-input" placeholder="Masalan: Rustamovich" autocomplete="additional-name">
+                    </div>
+                  </div>
+                  <!-- Hidden legacy patient_name kept in sync via setupNameSync() -->
+                  <input type="hidden" id="intake-patient-name" name="patient_name">
+
+                  <!-- Tug'ilgan sana, Jinsi, Telefon raqami (+998) -->
+                  <div class="form-grid-3" style="margin-bottom:1rem;">
+                    <div class="form-group">
+                      <label class="form-label">Tug'ilgan Sana <span class="req">*</span></label>
+                      <input type="date" id="intake-patient-birthdate" class="form-input" required>
+                      <div class="form-hint" id="intake-patient-birthdate-hint">Bemor yoshi avtomatik hisoblanadi</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Jinsi</label>
+                      <select id="intake-patient-gender" class="form-select">
+                        <option value="male" selected>Erkak</option>
+                        <option value="female">Ayol</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Telefon Raqami <span class="req">*</span></label>
+                      <div class="phone-input-wrap">
+                        <span class="phone-icon"><i class="fas fa-phone"></i></span>
+                        <input type="tel" id="intake-patient-phone" class="form-input font-mono" placeholder="+998 -- --- -- --" required autocomplete="tel">
+                      </div>
+                      <div class="form-hint">+998 prefiksi bilan kiriting (majburiy)</div>
+                    </div>
+                  </div>
+
+                  <!-- Qanday Topdi (Murojaat Manbasi & Shifokor Bonusi) -->
+                  <div class="form-grid-1" style="margin-bottom:1rem;">
+                    <div class="form-group">
+                      <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+                        <i class="fas fa-bullhorn" style="color:var(--primary-light);"></i>
+                        Qanday Topdi? (Murojaat Manbasi / Bonus Tizimi) <span class="req">*</span>
+                      </label>
+                      <select id="intake-referral-select" class="form-select"></select>
+                      <div class="form-hint">Agar yo'llanma orqali yuborilgan bo'lsa, shifokor yoki xodimga bonus tizimi bo'yicha to'lov biriktiriladi.</div>
+                    </div>
+
+                    <!-- Doctor Referral / Bonus Sub-Panel -->
+                    <div id="intake-doctor-referral-group" class="form-group full-width" style="display: none; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-md); padding: 1rem; margin-top: 0.5rem;">
+                      <div style="font-weight: 700; color: var(--primary-light); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-handshake"></i> Yo'naltirgan Shifokor / Xodim (Bonus Tizimi)
+                      </div>
+                      <div class="form-grid-2">
+                        <div class="form-group">
+                          <label class="form-label">Shifokor / Hamkor Tanlang <span class="req">*</span></label>
+                          <select id="intake-referral-doctor-select" class="form-select"></select>
+                        </div>
+                        <div class="form-group">
+                          <label class="form-label">Bonus To'lovi Usuli</label>
+                          <select id="intake-referral-fee-type" class="form-select" onchange="window.FMH_Reception && window.FMH_Reception.handleReferralFeeTypeChange(this.value)">
+                            <option value="percent_10" selected>10% Ulush (Davolanish summasidan)</option>
+                            <option value="fixed">Belgilangan qat'iy summa (so'm)</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div id="intake-referral-fixed-amt-box" class="form-group" style="display: none; margin-top: 10px;">
+                        <label class="form-label">Belgilangan Bonus Miqdori (so'm)</label>
+                        <input type="number" id="intake-referral-fixed-amount" class="form-input" placeholder="Masalan: 200 000" min="0" step="10000" value="0">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Step 1 Footer Actions -->
+                  <div class="wizard-footer-actions">
+                    <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.printBlankIntakeForm()" title="Bo'sh qabul blankasini chop etish">
+                      <i class="fas fa-print"></i> Bo'sh Blank
+                    </button>
+                    <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.nextWizardStep(2)">
+                      Keyingi Qadam (Xizmat & Shifokor) <i class="fas fa-arrow-right"></i>
                     </button>
                   </div>
+                </div>
 
-                                    <!-- Dynamic Date Navigator for Beds -->
-                  <div class="bed-date-navigator-card">
-                    <div class="bed-date-info">
-                      <i class="fas fa-calendar-alt" style="color:var(--primary-light);font-size:1.15rem;"></i>
-                      <div>
-                        <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Tanlangan Sanalar Bo'yicha Holat:</div>
-                        <div id="bed-dynamic-date-display" style="font-size:0.86rem;font-weight:800;color:var(--primary-light);">
-                          Bugungi sana bo'yicha
+                <!-- ==============================================================
+                     WIZARD STEP 2: DAVOLANISH TURI & MAS'UL SHIFOKOR
+                     ============================================================== -->
+                <div class="wizard-step-panel" id="wizard-panel-2" data-step="2">
+                  <div class="wizard-step-header">
+                    <div>
+                      <h3><i class="fas fa-stethoscope" style="color:#10b981;"></i> 2-Qadam: Davolanish Turi va Mas'ul Shifokor</h3>
+                      <p>Xizmat turi, davolanish dasturi tarifi, shifokor va qabul sanasini belgilang</p>
+                    </div>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:6px;">2 / 5</span>
+                  </div>
+
+                  <!-- Service Type Selector -->
+                  <div class="form-group" style="margin-bottom:1.25rem;">
+                    <label class="form-label" style="font-size:0.88rem; font-weight:700;">Davolanish Turi <span class="req">*</span></label>
+                    <div class="service-type-grid" style="grid-template-columns: repeat(3, 1fr);">
+                      <div class="service-type-card" data-service="inpatient">
+                        <div class="service-type-icon" style="background: rgba(56,189,248,0.12); color: #38bdf8;">
+                          <i class="fas fa-bed"></i>
+                        </div>
+                        <div class="service-type-label">Statsionar</div>
+                        <div class="service-type-sub">Palatada yotish (24 o'rin)</div>
+                      </div>
+                      <div class="service-type-card" data-service="outpatient">
+                        <div class="service-type-icon" style="background: rgba(16,185,129,0.12); color: #10b981;">
+                          <i class="fas fa-syringe"></i>
+                        </div>
+                        <div class="service-type-label">Ambulator</div>
+                        <div class="service-type-sub">Muolaja kursi (qatnab)</div>
+                      </div>
+                      <div class="service-type-card selected" data-service="consultation">
+                        <div class="service-type-icon" style="background: rgba(99,102,241,0.15); color: #818cf8;">
+                          <i class="fas fa-user-doctor"></i>
+                        </div>
+                        <div class="service-type-label">Konsultatsiya</div>
+                        <div class="service-type-sub">Shifokor ko'rigi & retsept</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Davolanish Dasturi, Shifokor, Sana -->
+                  <div class="form-grid-3" style="margin-bottom:1.2rem;">
+                    <div class="form-group">
+                      <label class="form-label">Davolanish Dasturi (Tarif)</label>
+                      <select id="intake-program-select" class="form-select"></select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Mas'ul Shifokor <span class="req">*</span></label>
+                      <select id="intake-doctor-select" class="form-select"></select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Boshlanish Sanasi <span class="req">*</span></label>
+                      <input type="date" id="intake-start-date" class="form-input">
+                    </div>
+                  </div>
+
+                  <!-- Consultation Time Group (agar Konsultatsiya bo'lsa) -->
+                  <div id="intake-consultation-time-group" class="form-group" style="margin-bottom:1.2rem; display:none;">
+                    <div class="form-grid-2">
+                      <div class="form-group">
+                        <label class="form-label"><i class="fas fa-clock" style="color:#818cf8;"></i> Konsultatsiya Vaqti</label>
+                        <input type="time" id="intake-consultation-time" class="form-input" value="10:00">
+                      </div>
+                      <div class="form-group" style="display:flex;align-items:flex-end;">
+                        <div style="font-size:0.8rem;color:var(--text-muted);padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--border-subtle);width:100%;">
+                          <i class="fas fa-info-circle" style="color:var(--primary-light);"></i> Shifokor ko'rigi uchun navbat va xona ajratiladi.
                         </div>
                       </div>
                     </div>
-                    <div class="bed-date-quick-buttons">
-                      <button type="button" class="btn-bed-date-preset active" data-offset="0" onclick="window.FMH_Reception.setBedDatePreset(0)">Bugun</button>
-                      <button type="button" class="btn-bed-date-preset" data-offset="1" onclick="window.FMH_Reception.setBedDatePreset(1)">Ertaga</button>
-                      <button type="button" class="btn-bed-date-preset" data-offset="3" onclick="window.FMH_Reception.setBedDatePreset(3)">+3 kun</button>
-                      <button type="button" class="btn-bed-date-preset" data-offset="7" onclick="window.FMH_Reception.setBedDatePreset(7)">+1 hafta</button>
+                  </div>
+
+                  <!-- Direction Guidance Box -->
+                  <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:10px;padding:1rem;margin-bottom:1rem;font-size:0.84rem;color:var(--text-secondary);display:flex;align-items:center;gap:12px;">
+                    <i class="fas fa-route" style="color:var(--primary-light);font-size:1.4rem;flex-shrink:0;"></i>
+                    <div id="step2-guidance-text">
+                      Davolanish turi va shifokorni tanlaganingizdan so'ng, keyingi qadamga o'tishingiz mumkin. Statsionar tanlangan bo'lsa, keyingi bosqichda bo'sh karavot tanlanadi.
                     </div>
                   </div>
 
-                  <div class="floor-tabs" style="display: flex; flex-wrap: wrap; gap: 5px;">
-                    <button type="button" class="floor-tab active" data-floor="all" onclick="window.FMH_Reception.switchBedFloor('all')"><i class="fas fa-th-large"></i> Barchasi (24)</button>
-                    <button type="button" class="floor-tab" data-floor="b1" onclick="window.FMH_Reception.switchBedFloor('b1')"><i class="fas fa-hospital"></i> 1-Bino (14)</button>
-                    <button type="button" class="floor-tab" data-floor="b1-f1" onclick="window.FMH_Reception.switchBedFloor('b1-f1')">1-Bino: 1-Etaj (4)</button>
-                    <button type="button" class="floor-tab" data-floor="b1-f2" onclick="window.FMH_Reception.switchBedFloor('b1-f2')">1-Bino: 2-Etaj (10)</button>
-                    <button type="button" class="floor-tab" data-floor="b2" onclick="window.FMH_Reception.switchBedFloor('b2')"><i class="fas fa-hotel"></i> 2-Bino (10)</button>
-                    <button type="button" class="floor-tab" data-floor="b2-f1" onclick="window.FMH_Reception.switchBedFloor('b2-f1')">2-Bino: 1-Etaj (5)</button>
-                    <button type="button" class="floor-tab" data-floor="b2-f2" onclick="window.FMH_Reception.switchBedFloor('b2-f2')">2-Bino: 2-Etaj (5)</button>
+                  <!-- Step 2 Footer Actions -->
+                  <div class="wizard-footer-actions">
+                    <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.prevWizardStep(1)">
+                      <i class="fas fa-arrow-left"></i> Ortga (Bemor)
+                    </button>
+                    <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.nextWizardStep(3)">
+                      Keyingi Qadam (Palata & Xona) <i class="fas fa-arrow-right"></i>
+                    </button>
                   </div>
-                  <div id="bed-picker-grid" class="bed-picker-grid" style="display: flex; flex-direction: column; gap: 1.25rem; width: 100%;"></div>
-                  <div id="intake-bed-type-label" style="font-size:0.75rem;color:var(--text-muted);margin-top:0.6rem;text-align:center;"></div>
+                </div>
 
-                  <div class="form-grid-3" style="margin-top:1.2rem;">
+                <!-- ==============================================================
+                     WIZARD STEP 3: PALATA & KARAVOT TANLASH
+                     ============================================================== -->
+                <div class="wizard-step-panel" id="wizard-panel-3" data-step="3">
+                  <div class="wizard-step-header">
+                    <div>
+                      <h3><i class="fas fa-bed" style="color:#38bdf8;"></i> 3-Qadam: Palata va Karavot Tanlash</h3>
+                      <p>Statsionar bemorlar uchun bino, qavat va bo'sh karavot o'rnini tanlang</p>
+                    </div>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:6px;">3 / 5</span>
+                  </div>
+
+                  <!-- STATSIONAR BED SELECTION CONTAINER -->
+                  <div id="intake-bed-section">
+                    <div class="modal-section-title" style="justify-content: space-between; margin-bottom: 0.75rem;">
+                      <span><i class="fas fa-bed"></i> Palata & Karavot Tanlash (24 O'rin)</span>
+                      <button type="button" onclick="window.FMH_Reception.refreshBedsFromBuildingManagement()"
+                        style="background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.3);color:#38bdf8;border-radius:6px;padding:3px 10px;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;"
+                        title="Building Management bo'limidan karavot holatlarini yangilash">
+                        <i class="fas fa-sync-alt"></i> BM bilan sinxronlash
+                      </button>
+                    </div>
+
+                    <!-- Dynamic Date Navigator for Beds -->
+                    <div class="bed-date-navigator-card">
+                      <div class="bed-date-info">
+                        <i class="fas fa-calendar-alt" style="color:var(--primary-light);font-size:1.15rem;"></i>
+                        <div>
+                          <div style="font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Tanlangan Sanalar Bo'yicha Holat:</div>
+                          <div id="bed-dynamic-date-display" style="font-size:0.86rem;font-weight:800;color:var(--primary-light);">
+                            Bugungi sana bo'yicha
+                          </div>
+                        </div>
+                      </div>
+                      <div class="bed-date-quick-buttons">
+                        <button type="button" class="btn-bed-date-preset active" data-offset="0" onclick="window.FMH_Reception.setBedDatePreset(0)">Bugun</button>
+                        <button type="button" class="btn-bed-date-preset" data-offset="1" onclick="window.FMH_Reception.setBedDatePreset(1)">Ertaga</button>
+                        <button type="button" class="btn-bed-date-preset" data-offset="3" onclick="window.FMH_Reception.setBedDatePreset(3)">+3 kun</button>
+                        <button type="button" class="btn-bed-date-preset" data-offset="7" onclick="window.FMH_Reception.setBedDatePreset(7)">+1 hafta</button>
+                      </div>
+                    </div>
+
+                    <div class="floor-tabs" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 0.8rem;">
+                      <button type="button" class="floor-tab active" data-floor="all" onclick="window.FMH_Reception.switchBedFloor('all')"><i class="fas fa-th-large"></i> Barchasi (24)</button>
+                      <button type="button" class="floor-tab" data-floor="b1" onclick="window.FMH_Reception.switchBedFloor('b1')"><i class="fas fa-hospital"></i> 1-Bino (14)</button>
+                      <button type="button" class="floor-tab" data-floor="b1-f1" onclick="window.FMH_Reception.switchBedFloor('b1-f1')">1-Bino: 1-Etaj (4)</button>
+                      <button type="button" class="floor-tab" data-floor="b1-f2" onclick="window.FMH_Reception.switchBedFloor('b1-f2')">1-Bino: 2-Etaj (10)</button>
+                      <button type="button" class="floor-tab" data-floor="b2" onclick="window.FMH_Reception.switchBedFloor('b2')"><i class="fas fa-hotel"></i> 2-Bino (10)</button>
+                      <button type="button" class="floor-tab" data-floor="b2-f1" onclick="window.FMH_Reception.switchBedFloor('b2-f1')">2-Bino: 1-Etaj (5)</button>
+                      <button type="button" class="floor-tab" data-floor="b2-f2" onclick="window.FMH_Reception.switchBedFloor('b2-f2')">2-Bino: 2-Etaj (5)</button>
+                    </div>
+
+                    <!-- Scrollable & Compact Bed Picker Grid -->
+                    <div id="bed-picker-grid" class="bed-picker-grid"></div>
+
+                    <!-- Selected Bed Info Banner -->
+                    <div id="intake-bed-type-label" style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.8rem;text-align:center;padding:8px 12px;background:rgba(56,189,248,0.06);border-radius:8px;border:1px dashed rgba(56,189,248,0.3);">
+                      Karavot tanlanmagan
+                    </div>
+                  </div>
+
+                  <!-- NO BED NEEDED CONTAINER (Konsultatsiya yoki Ambulator uchun) -->
+                  <div id="intake-no-bed-section" style="display:none; padding:2rem 1rem; text-align:center;">
+                    <div style="width:64px;height:64px;border-radius:50%;background:rgba(16,185,129,0.12);color:#10b981;display:flex;align-items:center;justify-content:center;font-size:1.8rem;margin:0 auto 1rem;">
+                      <i class="fas fa-check"></i>
+                    </div>
+                    <h4 style="font-size:1.1rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">Palata Talab Etilmaydi</h4>
+                    <p style="font-size:0.86rem;color:var(--text-secondary);max-width:480px;margin:0 auto 1.2rem;line-height:1.5;">
+                      Tanlangan xizmat turi (Konsultatsiya / Ambulator) uchun statsionar o'rin-joy band qilinmaydi. Bemor shifokor qabul xonasida ko'rikdan o'tadi yoki muolajaga qatnaydi.
+                    </p>
+                    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(255,255,255,0.05);border-radius:20px;font-size:0.8rem;color:var(--text-muted);">
+                      <i class="fas fa-arrow-right"></i> Keyingi bosqichda to'lov va hisob-kitob amalga oshiriladi
+                    </div>
+                  </div>
+
+                  <!-- Step 3 Footer Actions -->
+                  <div class="wizard-footer-actions">
+                    <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.prevWizardStep(2)">
+                      <i class="fas fa-arrow-left"></i> Ortga (Xizmat & Shifokor)
+                    </button>
+                    <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.nextWizardStep(4)">
+                      Keyingi Qadam (Hisob-Kitob & To'lov) <i class="fas fa-arrow-right"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- ==============================================================
+                     WIZARD STEP 4: NARX, HISOB-KITOB & AVANS TO'LOVI
+                     ============================================================== -->
+                <div class="wizard-step-panel" id="wizard-panel-4" data-step="4">
+                  <div class="wizard-step-header">
+                    <div>
+                      <h3><i class="fas fa-calculator" style="color:#f59e0b;"></i> 4-Qadam: Narx, Hisob-Kitob va Avans To'lovi</h3>
+                      <p>Kunlik tarif, davomiylik, chegirma, to'lov hisoboti va boshlang'ich avans to'lovi</p>
+                    </div>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:6px;">4 / 5</span>
+                  </div>
+
+                  <!-- Inpatient Pricing Inputs -->
+                  <div id="intake-pricing-inpatient" class="form-grid-3" style="margin-bottom:1rem;">
                     <div class="form-group">
                       <label class="form-label">Kunlik Narx (so'm)</label>
                       <input type="number" id="intake-daily-rate" class="form-input" value="720000" min="0" step="1000">
                     </div>
                     <div class="form-group">
-                      <label class="form-label">Davomiylik (kun)</label>
+                      <label class="form-label">Davomiylik (kun) <span class="req">*</span></label>
                       <input type="number" id="intake-days" class="form-input" value="7" min="1" max="365">
                     </div>
                     <div class="form-group">
                       <label class="form-label">Chegirma (%)</label>
                       <input type="number" id="intake-discount" class="form-input" value="0" min="0" max="100">
                     </div>
-                    <div class="form-group">
-                      <label class="form-label">Avans To'lov (so'm)</label>
-                      <input type="number" id="intake-advance" class="form-input" value="0" min="0">
+                  </div>
+
+                  <!-- Consultation Pricing Inputs -->
+                  <div id="intake-pricing-consultation" style="display:none; margin-bottom:1rem;">
+                    <div class="form-grid-2">
+                      <div class="form-group">
+                        <label class="form-label">Konsultatsiya Narxi (so'm) <span class="req">*</span></label>
+                        <input type="number" id="intake-consultation-fee" class="form-input" value="250000" min="0" step="10000">
+                        <div class="form-hint" id="intake-consultation-fee-hint">Standart shifokor konsultatsiyasi: 250 000 so'm</div>
+                      </div>
+                      <div class="form-group" style="display:flex;align-items:center;">
+                        <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.8rem;color:var(--text-secondary);width:100%;">
+                          <i class="fas fa-info-circle" style="color:#818cf8;"></i> Shifokor postida ushbu bemor uchun <strong>Konsultatsiya va Retsept Menyusi</strong> ochiladi.
+                        </div>
+                      </div>
                     </div>
+                  </div>
+
+                  <!-- Outpatient Pricing Inputs -->
+                  <div id="intake-pricing-outpatient" style="display:none; margin-bottom:1rem;">
+                    <div class="form-grid-2">
+                      <div class="form-group">
+                        <label class="form-label">Bir kunlik kurs narxi (so'm)</label>
+                        <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">Kurs davomiyligi (kun) <span class="req">*</span></label>
+                        <input type="number" id="intake-outpatient-days" class="form-input" min="1" max="365" placeholder="Necha kun (masalan 10)">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Compact Cost Preview & Advance Grid -->
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 0.5rem; margin-bottom: 1rem;">
+                    <!-- Left: Cost Preview Line Table -->
+                    <div class="cost-preview" id="intake-cost-preview-section" style="margin-top:0;">
+                      <div class="cost-title"><i class="fas fa-receipt"></i> Narx va Hisoboti</div>
+                      <div class="cost-line"><span>Boshlanish Sanasi</span><span class="amount" id="preview-start-date" style="color:var(--primary-light);">—</span></div>
+                      <div class="cost-line"><span>Chiqish Sanasi</span><span class="amount" id="preview-end-date" style="color:#10b981;">—</span></div>
+                      <div class="cost-line"><span>Davomiylik</span><span class="amount" id="preview-days">7 kun</span></div>
+                      <div class="cost-line"><span>Tarif</span><span class="amount" id="preview-rate">720 000 so'm/kun</span></div>
+                      <div class="cost-line"><span>Jami (brutto)</span><span class="amount" id="preview-gross">5 040 000 so'm</span></div>
+                      <div class="cost-line"><span>Chegirma</span><span class="amount" id="preview-discount">0 so'm</span></div>
+                      <div class="cost-line total"><span>Net Jami</span><span class="amount" id="preview-net">5 040 000 so'm</span></div>
+                      <div class="cost-line"><span>Avans To'lov</span><span class="amount" id="preview-advance">0 so'm</span></div>
+                      <div class="cost-line"><span>Qoldiq</span><span class="amount" id="preview-balance" style="color:var(--amber);">5 040 000 so'm</span></div>
+                    </div>
+
+                    <!-- Right: Advance Payment & Notes -->
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:10px;padding:1rem;display:flex;flex-direction:column;gap:0.75rem;">
+                      <div style="font-weight:700;color:var(--text-primary);font-size:0.88rem;display:flex;align-items:center;gap:7px;">
+                        <i class="fas fa-money-bill-wave" style="color:var(--emerald);"></i> Birlamchi Kassa & Avans
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">Avans To'lovi (so'm, agar bo'lsa)</label>
+                        <input type="number" id="intake-advance" class="form-input font-mono" value="0" min="0" step="50000" placeholder="0 so'm">
+                        <div class="form-hint">Qabul vaqtida to'lanadigan dastlabki badal</div>
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">To'lov Usuli</label>
+                        <select id="intake-pay-method" class="form-select">
+                          <option value="cash" selected>Naqd pul</option>
+                          <option value="card">Karta / Terminal</option>
+                          <option value="online">Online (Click/Payme)</option>
+                          <option value="mixed">Aralash</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">Eslatma / Dastlabki Tashxis</label>
+                        <textarea id="intake-notes" class="form-textarea" style="height:60px;min-height:60px;" placeholder="Qo'shimcha izoh yoki dastlabki shikoyat..."></textarea>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Step 4 Footer Actions -->
+                  <div class="wizard-footer-actions">
+                    <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.prevWizardStep(3)">
+                      <i class="fas fa-arrow-left"></i> Ortga (Palata & Karavot)
+                    </button>
+                    <button type="button" class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.nextWizardStep(5)">
+                      Keyingi Qadam (Yakuniy Ko'rik) <i class="fas fa-arrow-right"></i>
+                    </button>
                   </div>
                 </div>
 
-                <!-- CONSULTATION SECTION -->
-                <div id="intake-consultation-section">
-                  <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
-                  <div class="modal-section-title"><i class="fas fa-user-doctor"></i> Shifokor Konsultatsiyasi</div>
-                  <div class="form-grid-2">
-                    <div class="form-group">
-                      <label class="form-label">Konsultatsiya Narxi (so'm) <span class="req">*</span></label>
-                      <input type="number" id="intake-consultation-fee" class="form-input" value="250000" min="0" step="10000">
-                      <div class="form-hint" id="intake-consultation-fee-hint">Standart shifokor konsultatsiyasi: 250 000 so'm</div>
+                <!-- ==============================================================
+                     WIZARD STEP 5: YAKUNIY OVERVIEW, SAQLASH & PRINTABLE BLANK
+                     ============================================================== -->
+                <div class="wizard-step-panel" id="wizard-panel-5" data-step="5">
+                  <div class="wizard-step-header">
+                    <div>
+                      <h3><i class="fas fa-clipboard-check" style="color:var(--emerald);"></i> 5-Qadam: Yakuniy Ko'rik va Qabulni Tasdiqlash</h3>
+                      <p>Kiritilgan barcha ma'lumotlarni tekshiring, tizimga saqlang va rasmiy blankni chop eting</p>
                     </div>
-                    <div class="form-group">
-                      <label class="form-label">Konsultatsiya Vaqti</label>
-                      <input type="time" id="intake-consultation-time" class="form-input" value="10:00">
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:6px;">5 / 5</span>
+                  </div>
+
+                  <!-- 3 OVERVIEW CARDS (Bemor, Davolanish & Xona, Moliyaviy reja) -->
+                  <div class="overview-grid">
+                    <!-- Overview Card 1: Bemor -->
+                    <div class="overview-card">
+                      <div class="overview-card-header">
+                        <i class="fas fa-user" style="color:#38bdf8;"></i> Bemor Ma'lumotlari
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">F.I.Sh:</span>
+                        <span class="val" id="ov-patient-name" style="color:var(--primary-light);font-weight:700;">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Telefon:</span>
+                        <span class="val font-mono" id="ov-patient-phone">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Tug'ilgan sana / Yosh:</span>
+                        <span class="val" id="ov-patient-birthdate">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Jinsi:</span>
+                        <span class="val" id="ov-patient-gender">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Murojaat Manbasi:</span>
+                        <span class="val" id="ov-referral-source">—</span>
+                      </div>
+                      <div class="overview-item" id="ov-bonus-row" style="display:none;">
+                        <span class="lbl">Bonus Tizimi:</span>
+                        <span class="val" id="ov-bonus-info" style="color:#38bdf8;">—</span>
+                      </div>
+                    </div>
+
+                    <!-- Overview Card 2: Davolanish & Xona -->
+                    <div class="overview-card">
+                      <div class="overview-card-header">
+                        <i class="fas fa-hospital" style="color:#10b981;"></i> Davolanish & Joylashtirish
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Xizmat Turi:</span>
+                        <span class="val" id="ov-service-type">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Dastur / Tarif:</span>
+                        <span class="val" id="ov-program-name">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Xona & Karavot:</span>
+                        <span class="val highlight" id="ov-bed-code" style="color:var(--primary-light);font-weight:700;">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Mas'ul Shifokor:</span>
+                        <span class="val" id="ov-doctor-name">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Muddat:</span>
+                        <span class="val" id="ov-duration">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Sana Oralig'i:</span>
+                        <span class="val" id="ov-dates">—</span>
+                      </div>
+                    </div>
+
+                    <!-- Overview Card 3: Moliyaviy hisobot -->
+                    <div class="overview-card">
+                      <div class="overview-card-header">
+                        <i class="fas fa-coins" style="color:#f59e0b;"></i> Narx va Hisoboti
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Kunlik / Asosiy Tarif:</span>
+                        <span class="val font-mono" id="ov-rate">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Jami Summa (Brutto):</span>
+                        <span class="val font-mono" id="ov-gross">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Chegirma:</span>
+                        <span class="val font-mono" id="ov-discount" style="color:#10b981;">0 so'm</span>
+                      </div>
+                      <div class="overview-item total-line">
+                        <span class="lbl" style="font-weight:700;color:var(--text-primary);">To'lanishi Kerak (Net):</span>
+                        <span class="val font-mono" id="ov-net" style="color:var(--emerald);">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">Birlamchi Avans:</span>
+                        <span class="val font-mono" id="ov-advance" style="color:#38bdf8;font-weight:700;">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">To'lov Usuli:</span>
+                        <span class="val" id="ov-pay-method">—</span>
+                      </div>
+                      <div class="overview-item">
+                        <span class="lbl">To'lanadigan Qoldiq:</span>
+                        <span class="val font-mono" id="ov-balance" style="color:var(--amber);font-weight:700;">—</span>
+                      </div>
                     </div>
                   </div>
-                  <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius-md);padding:0.75rem 1rem;margin-top:0.6rem;font-size:0.8rem;color:var(--text-secondary);">
-                    <i class="fas fa-info-circle" style="color:#818cf8;"></i>
-                    Bemor ma'lumotlari kiritilib, mas'ul shifokorga biriktiriladi. Shifokor postida ushbu bemor uchun <strong>Konsultatsiya Menyusi</strong> (kasallik tarixi, shikoyat, alomatlar, xulosa) va <strong>Retsept & Dori Tayinlash Menyusi</strong> ochiladi.
-                  </div>
-                </div>
 
-                <!-- OUTPATIENT: Ambulator muolaja -->
-                <div id="intake-apt-section" style="display:none;">
-                  <div style="height:1px;background:var(--border-subtle);margin: 0.5rem 0 1.3rem;"></div>
-                  <div class="modal-section-title"><i class="fas fa-stethoscope"></i> Ambulator Muolaja Kursi</div>
-                  <p style="font-size:0.82rem;color:var(--text-secondary);">Klinikaga qatnab o'tkaziladigan kunlik kapelnitsa va inyeksiya muolajalari.</p>
-                  <div class="form-grid-2" style="margin-top:0.8rem;">
-                    <div class="form-group">
-                      <label class="form-label">Kunlik To'lov (so'm)</label>
-                      <input type="number" id="intake-outpatient-fee" class="form-input" value="310000" min="0">
+                  <!-- Printable Blank Recommendation Callout -->
+                  <div class="print-rec-banner">
+                    <div style="display:flex;align-items:center;gap:14px;">
+                      <div style="width:42px;height:42px;border-radius:50%;background:rgba(56,189,248,0.15);color:#38bdf8;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex-shrink:0;">
+                        <i class="fas fa-file-invoice"></i>
+                      </div>
+                      <div>
+                        <div style="font-weight:700;color:var(--text-primary);font-size:0.92rem;">
+                          Rasmiy Qabul Varaqasi (Blank) Tayyorlandi
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">
+                          Bemor qabul qilingandan so'ng, qabul varaqasini darhol printerdan chiqarish va bemor (vasiy) bilan imzolash tavsiya etiladi.
+                        </div>
+                      </div>
                     </div>
-                    <div class="form-group">
-                      <label class="form-label">Kurs Davomiyligi (kun) <span class="req">*</span></label>
-                      <input type="number" id="intake-outpatient-days" class="form-input" min="1" max="365" placeholder="Necha kun">
-                    </div>
+                    <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.printBlankIntakeForm()" style="white-space:nowrap;">
+                      <i class="fas fa-print"></i> Blankni Ko'rish
+                    </button>
                   </div>
-                </div>
 
-                <!-- Cost Preview -->
-                <div class="cost-preview" id="intake-cost-preview-section">
-                  <div class="cost-preview-title"><i class="fas fa-calculator"></i> Narx va Sana Hisob-Kitobi</div>
-                  <div class="cost-line"><span>Boshlanish Sanasi</span><span class="amount" id="preview-start-date" style="color:var(--primary-light);">—</span></div>
-                  <div class="cost-line"><span>Chiqish Sanasi (Tugash)</span><span class="amount" id="preview-end-date" style="color:#10b981;">—</span></div>
-                  <div class="cost-line"><span>Davomiylik</span><span class="amount" id="preview-days">10 kun</span></div>
-                  <div class="cost-line"><span>Kunlik Tarif</span><span class="amount" id="preview-rate">720 000 so'm/kun</span></div>
-                  <div class="cost-line"><span>Jami (brutto)</span><span class="amount" id="preview-gross">7 200 000 so'm</span></div>
-                  <div class="cost-line"><span>Chegirma</span><span class="amount" id="preview-discount">0 so'm</span></div>
-                  <div class="cost-line total"><span>Net Jami</span><span class="amount" id="preview-net">7 200 000 so'm</span></div>
-                  <div class="cost-line"><span>Avans To'lov</span><span class="amount" id="preview-advance">0 so'm</span></div>
-                  <div class="cost-line"><span>Qoldiq</span><span class="amount" id="preview-balance" style="color:var(--amber);">7 200 000 so'm</span></div>
-                </div>
-
-                <div style="display:flex;gap:0.7rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">
-                  <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.printBlankIntakeForm()">
-                    <i class="fas fa-print"></i> Blank Chop Etish
-                  </button>
-                  <button type="submit" id="btn-submit-intake" class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.submitIntakeForm(event)">
-                    <i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash
-                  </button>
+                  <!-- Step 5 Actions -->
+                  <div class="wizard-footer-actions">
+                    <button type="button" class="btn-portal btn-outline-portal" onclick="window.FMH_Reception.prevWizardStep(4)">
+                      <i class="fas fa-edit"></i> Ma'lumotlarni Tahrirlash
+                    </button>
+                    <button type="submit" id="btn-submit-intake" class="btn-portal btn-primary-portal" style="background:#059669;border-color:#059669;padding:10px 24px;font-size:0.95rem;font-weight:800;" onclick="window.FMH_Reception.submitIntakeForm(event)">
+                      <i class="fas fa-check-circle"></i> Sistemaga Joylash va Tasdiqlash
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
           </div>
         </div>
+
 
         <!-- RIGHT: Recent walk-ins sidebar -->
         <div>
@@ -894,6 +1213,55 @@
         <button class="btn-portal btn-primary-portal" onclick="window.FMH_Reception.confirmAdmission()">
           <i class="fas fa-check"></i> Tasdiqlash va Qabul Qilish
         </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================
+       MODAL: ADMISSION SUCCESS & PRINT RECOMMENDATION
+       ================================================================ -->
+  <div class="modal-backdrop" id="modal-admission-success-recommendation">
+    <div class="modal-box modal-sm" style="text-align: center;">
+      <div class="modal-header" style="justify-content: flex-end; padding-bottom: 0;">
+        <button class="modal-close" onclick="window.FMH_Reception.closeModal('modal-admission-success-recommendation')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top: 0;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 2rem; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; border: 2px solid rgba(16, 185, 129, 0.35);">
+          <i class="fas fa-check"></i>
+        </div>
+        <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.3rem;">
+          Bemor Muvaffaqiyatli Qabul Qilindi!
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
+          Bemor ma'lumotlari tizimga saqlandi, palata/navbat biriktirildi va to'lov hisobi ochildi.
+        </p>
+
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px dashed rgba(56, 189, 248, 0.35); border-radius: 10px; padding: 1rem; text-align: left; margin-bottom: 1.3rem;">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #38bdf8; font-size: 0.9rem; margin-bottom: 6px;">
+            <i class="fas fa-print"></i> Tavsiya: Qabul Varaqasini Chop Etish
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+            Bemor yoki uning vasiysiga taqdim etish hamda kasallik tarixiga tikish uchun <strong>Qabul varaqasi (Blank)</strong>ni darhol printerdan chiqarish tavsiya etiladi.
+          </div>
+          <div id="success-admission-summary" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(56, 189, 248, 0.15); font-size: 0.82rem; color: var(--text-primary);">
+            <!-- Dynamic summary text -->
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+          <button type="button" class="btn-portal btn-primary-portal" id="btn-success-print" style="width: 100%; padding: 11px; font-size: 0.95rem; font-weight: 700; justify-content: center; background: #0284c7; border-color: #0284c7;">
+            <i class="fas fa-print"></i> Qabul Blankini Hoziroq Chop Etish
+          </button>
+          <div style="display: flex; gap: 0.65rem;">
+            <button type="button" class="btn-portal btn-outline-portal" style="flex: 1; justify-content: center;" onclick="window.FMH_Reception.resetWizardAndStartNew()">
+              <i class="fas fa-plus"></i> Yangi Qabul
+            </button>
+            <button type="button" class="btn-portal btn-outline-portal" style="flex: 1; justify-content: center;" onclick="window.FMH_Reception.closeModal('modal-admission-success-recommendation'); window.FMH_Reception.switchTab('directory');">
+              <i class="fas fa-folder-open"></i> Bemorlar Reestri
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

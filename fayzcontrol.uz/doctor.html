@@ -278,23 +278,7 @@
         </button>
       </div>
 
-      <div class="doctor-kpi-chips">
-        <div class="doc-chip chip-cyan" title="Statsionarda yotgan bemorlar">
-          <i class="fas fa-bed"></i>
-          <span>Statsionar:</span>
-          <strong id="kpi-inpatients-count">—</strong>
-        </div>
-        <div class="doc-chip chip-emerald" title="Jami faol dori-darmon tayinlovlari">
-          <i class="fas fa-pills"></i>
-          <span>Faol Retseptlar:</span>
-          <strong id="kpi-rx-count">—</strong>
-        </div>
-        <div class="doc-chip chip-rose" title="Dori allergiyasi qayd etilgan bemorlar">
-          <i class="fas fa-exclamation-triangle"></i>
-          <span>Allergik Nazorat:</span>
-          <strong id="kpi-allergy-count">—</strong>
-        </div>
-      </div>
+
     </section>
 
     <!-- Main Two-Column Clinical Grid -->
@@ -319,12 +303,13 @@
 
           <!-- Filter Pills with Dynamic Counts -->
           <div class="doc-filter-pills">
-            <button class="doc-pill-btn active" data-filter="all" onclick="window.FMH_Doctor.filterPatients('all')">Barchasi <span class="pill-badge" id="cnt-all">0</span></button>
-            <button class="doc-pill-btn" data-filter="inpatient" onclick="window.FMH_Doctor.filterPatients('inpatient')">Statsionar <span class="pill-badge" id="cnt-inpatient">0</span></button>
-            <button class="doc-pill-btn" data-filter="my_patients" onclick="window.FMH_Doctor.filterPatients('my_patients')">Mening <span class="pill-badge" id="cnt-my">0</span></button>
-            <button class="doc-pill-btn" data-filter="consultation" onclick="window.FMH_Doctor.filterPatients('consultation')">Konsultatsiya <span class="pill-badge" id="cnt-consultation">0</span></button>
-            <button class="doc-pill-btn" data-filter="allergy" onclick="window.FMH_Doctor.filterPatients('allergy')">Allergiya <span class="pill-badge" id="cnt-allergy">0</span></button>
-            <button class="doc-pill-btn" data-filter="outpatient" onclick="window.FMH_Doctor.filterPatients('outpatient')">Ambulator <span class="pill-badge" id="cnt-outpatient">0</span></button>
+            <button class="doc-pill-btn active" data-filter="all" onclick="window.FMH_Doctor.filterPatients('all')" title="Hozirgi kunda yotgan va endi yotadigan barcha faol bemorlar">Faol bemorlar <span class="pill-badge" id="cnt-all">0</span></button>
+            <button class="doc-pill-btn" data-filter="inpatient" onclick="window.FMH_Doctor.filterPatients('inpatient')" title="Hozirda palatada yotgan bemorlar">Statsionar (Yotgan) <span class="pill-badge" id="cnt-inpatient">0</span></button>
+            <button class="doc-pill-btn" data-filter="upcoming" onclick="window.FMH_Doctor.filterPatients('upcoming')" title="Statsionarga endi yotadigan bemorlar">Endi yotadigan <span class="pill-badge" id="cnt-upcoming">0</span></button>
+            <button class="doc-pill-btn" data-filter="my_patients" onclick="window.FMH_Doctor.filterPatients('my_patients')" title="Menga biriktirilgan faol bemorlar">Mening <span class="pill-badge" id="cnt-my">0</span></button>
+            <button class="doc-pill-btn" data-filter="consultation" onclick="window.FMH_Doctor.filterPatients('consultation')" title="Konsultatsiya qabulidagi bemorlar">Konsultatsiya <span class="pill-badge" id="cnt-consultation">0</span></button>
+            <button class="doc-pill-btn" data-filter="allergy" onclick="window.FMH_Doctor.filterPatients('allergy')" title="Allergiyasi mavjud faol bemorlar">Allergiya <span class="pill-badge" id="cnt-allergy">0</span></button>
+            <button class="doc-pill-btn" data-filter="discharged" onclick="window.FMH_Doctor.filterPatients('discharged')" title="Klinikadan davolanib chiqqan bemorlar arxivi">Chiqarilganlar <span class="pill-badge" id="cnt-discharged">0</span></button>
           </div>
         </div>
 
@@ -1128,7 +1113,7 @@
                 <div><strong>Klinika:</strong> Toshkent sh., Yunusobod t., Bodomzor str. 42</div>
                 <div style="display: flex; gap: 10px;">
                   <button class="btn-doc-primary" onclick="window.FMH_Doctor.saveEpicrisis()">
-                    <i class="fas fa-save"></i> <span>Epikrizni Saqlash</span>
+                    <i class="fas fa-file-signature"></i> <span>Epikrizni Tasdiqlash & Chiqarish</span>
                   </button>
                   <button class="btn-doc-outline" onclick="window.FMH_Doctor.openOfficialDocModal('epicrisis')">
                     <i class="fas fa-file-pdf"></i> <span>Epikriz Hujjati / PDF</span>

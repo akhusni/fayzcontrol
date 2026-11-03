@@ -1550,3 +1550,575 @@ h1, h2, h3, h4, h5, h6 {
   padding: 2px 6px;
   font-size: 0.72rem;
 }
+
+
+/* ==========================================================================
+   EXECUTIVE BI MASTER DASHBOARD — FMH SITUATIONAL HUB
+   ========================================================================== */
+.exec-situational-header {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(168, 85, 247, 0.08) 50%, rgba(16, 185, 129, 0.06) 100%);
+  border: 1px solid var(--border-glow);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.6rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25);
+}
+
+.exec-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.exec-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  width: fit-content;
+}
+
+.exec-header-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--heading-color);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.exec-header-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.exec-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.exec-btn-period {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.exec-btn-period:hover, .exec-btn-period.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* 6-Column Strategic KPI Grid */
+.exec-kpi-grid-6 {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.exec-kpi-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.exec-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-glow);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.exec-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.exec-kpi-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.exec-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+.exec-kpi-val {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--heading-color);
+  font-family: var(--font-sans);
+  margin-bottom: 0.25rem;
+}
+
+.exec-kpi-subtext {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+
+.exec-kpi-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  margin-top: 0.6rem;
+  overflow: hidden;
+}
+
+.exec-kpi-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+/* 2-Column Analytics Layout */
+.exec-grid-2col {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.exec-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.exec-card-header {
+  padding: 1rem 1.4rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.exec-card-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--heading-color);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.exec-card-body {
+  padding: 1.25rem 1.4rem;
+  flex: 1;
+}
+
+/* Mini bed grid inside Executive view */
+.exec-buildings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.exec-building-box {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.exec-building-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.exec-beds-chips-wrapper {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: 6px;
+}
+
+.exec-bed-chip {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.exec-bed-chip.chip-available {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.exec-bed-chip.chip-occupied {
+  background: rgba(244, 63, 94, 0.14);
+  color: var(--danger);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.exec-bed-chip.chip-reserved {
+  background: rgba(168, 85, 247, 0.14);
+  color: var(--purple);
+  border-color: rgba(168, 85, 247, 0.35);
+}
+
+.exec-bed-chip.chip-cleaning {
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.exec-bed-chip:hover {
+  transform: scale(1.05);
+}
+
+/* 4-Strip Clinical Cards */
+.exec-strip-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.exec-strip-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s;
+}
+
+.exec-strip-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-glow);
+}
+
+/* Operations and Transactions Table */
+.exec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.exec-table th {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-muted);
+  font-weight: 700;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.exec-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.exec-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.exec-trx-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.exec-trx-income {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.exec-trx-expense {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .exec-kpi-grid-6 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .exec-grid-2col {
+    grid-template-columns: 1fr;
+  }
+  .exec-strip-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .exec-kpi-grid-6 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .exec-buildings-grid {
+    grid-template-columns: 1fr;
+  }
+  .exec-strip-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .exec-kpi-grid-6 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   EXECUTIVE OPERATIONAL TELEMETRY PANEL - SEQUENTIAL CROSS-DEPARTMENT FLOW
+   ========================================================================== */
+.exec-telemetry-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.4rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--card-shadow);
+  transition: all 0.25s ease;
+}
+
+.telemetry-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.telemetry-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--heading-color);
+  letter-spacing: 0.01em;
+}
+
+.telemetry-panel-legend {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+
+.telemetry-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.telemetry-groups-flow {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 1400px) {
+  .telemetry-groups-flow {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .telemetry-groups-flow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 580px) {
+  .telemetry-groups-flow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.telemetry-cluster {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.telemetry-cluster:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.telemetry-cluster-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.telemetry-cluster.dept-reception .telemetry-cluster-head i { color: #2dd4bf; }
+.telemetry-cluster.dept-crm .telemetry-cluster-head i { color: #38bdf8; }
+.telemetry-cluster.dept-doctor .telemetry-cluster-head i { color: #10b981; }
+.telemetry-cluster.dept-nursery .telemetry-cluster-head i { color: #a855f7; }
+.telemetry-cluster.dept-kassa .telemetry-cluster-head i { color: #f59e0b; }
+.telemetry-cluster.dept-hr .telemetry-cluster-head i { color: #6366f1; }
+
+.telemetry-chips-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.telemetry-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 4px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
+  border-radius: 6px;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  transition: background 0.15s ease;
+}
+
+.telemetry-chip i {
+  font-size: 0.72rem;
+  width: 14px;
+  text-align: center;
+}
+
+.telemetry-chip .lbl {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-chip .val {
+  font-family: var(--font-mono, monospace);
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry-chip.chip-emerald i { color: #10b981; }
+.telemetry-chip.chip-sky i { color: #0ea5e9; }
+.telemetry-chip.chip-amber i { color: #f59e0b; }
+.telemetry-chip.chip-cyan i { color: #06b6d4; }
+.telemetry-chip.chip-indigo i { color: #6366f1; }
+.telemetry-chip.chip-blue i { color: #3b82f6; }
+.telemetry-chip.chip-rose i { color: #f43f5e; }
+.telemetry-chip.chip-purple i { color: #a855f7; }
+.telemetry-chip.chip-teal i { color: #14b8a6; }
+
+[data-theme="day"] .telemetry-cluster,
+body.day-mode .telemetry-cluster {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme="day"] .telemetry-cluster:hover,
+body.day-mode .telemetry-cluster:hover {
+  background: #f1f5f9;
+  border-color: #0ea5e9;
+}
+
+[data-theme="day"] .telemetry-chip,
+body.day-mode .telemetry-chip {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+[data-theme="day"] .telemetry-chip .val,
+body.day-mode .telemetry-chip .val {
+  color: #0f172a;
+}

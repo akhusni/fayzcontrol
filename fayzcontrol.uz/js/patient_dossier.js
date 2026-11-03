@@ -11,7 +11,7 @@
   const state = {
     patients: [],
     filteredPatients: [],
-    activeFilter: 'all', // 'all' | 'inpatient' | 'outpatient'
+    activeFilter: 'treating', // 'treating' | 'discharged' | 'all' | 'outpatient'
     searchTerm: '',
     isLoading: false
   };
@@ -39,10 +39,15 @@
     el.tbody = document.getElementById('registry-table-tbody');
     el.showingCount = document.getElementById('table-showing-count');
 
-    // Stats
+    // Stats & Tabs
     el.statTotal = document.getElementById('stat-total-patients');
     el.statInpatient = document.getElementById('stat-inpatient-count');
+    el.statDischarged = document.getElementById('stat-discharged-count');
     el.statOutpatient = document.getElementById('stat-outpatient-count');
+    el.tabCntTreating = document.getElementById('tab-cnt-treating');
+    el.tabCntDischarged = document.getElementById('tab-cnt-discharged');
+    el.tabCntAll = document.getElementById('tab-cnt-all');
+    el.tabCntOutpatient = document.getElementById('tab-cnt-outpatient');
 
     // PDF Viewer Modal
     el.pdfModal = document.getElementById('pdf-viewer-modal');
@@ -189,26 +194,40 @@
   function updateStats() {
     const total = state.patients.length;
     let inp = 0;
+    let disch = 0;
     let out = 0;
 
     state.patients.forEach(function (p) {
-      if (p.admission_id) inp++;
-      else out++;
+      if (p.admission_id) {
+        inp++;
+      } else if (p.status === 'discharged' || p.last_discharge_admission_id || (p.epicrisis_count && p.epicrisis_count > 0)) {
+        disch++;
+      } else {
+        out++;
+      }
     });
 
     if (el.statTotal) el.statTotal.textContent = total.toLocaleString();
     if (el.statInpatient) el.statInpatient.textContent = inp.toLocaleString();
+    if (el.statDischarged) el.statDischarged.textContent = disch.toLocaleString();
     if (el.statOutpatient) el.statOutpatient.textContent = out.toLocaleString();
+
+    if (el.tabCntTreating) el.tabCntTreating.textContent = inp;
+    if (el.tabCntDischarged) el.tabCntDischarged.textContent = disch;
+    if (el.tabCntAll) el.tabCntAll.textContent = total;
+    if (el.tabCntOutpatient) el.tabCntOutpatient.textContent = out;
   }
 
   function applyFilterAndRender() {
     let list = state.patients.slice();
 
-    // 1. Category Filter
-    if (state.activeFilter === 'inpatient') {
+    // 1. Dedicated Menus Filter (Hozirda davolanayotgan vs Davolanib chiqib ketgan)
+    if (state.activeFilter === 'treating' || state.activeFilter === 'inpatient') {
       list = list.filter(p => !!p.admission_id);
+    } else if (state.activeFilter === 'discharged') {
+      list = list.filter(p => !p.admission_id && (p.status === 'discharged' || !!p.last_discharge_admission_id || (p.epicrisis_count && p.epicrisis_count > 0)));
     } else if (state.activeFilter === 'outpatient') {
-      list = list.filter(p => !p.admission_id);
+      list = list.filter(p => !p.admission_id && p.status !== 'discharged' && !p.last_discharge_admission_id && (!p.epicrisis_count || p.epicrisis_count === 0));
     }
 
     // 2. Search Filter
@@ -250,6 +269,8 @@
 
     state.filteredPatients.forEach(function (pt, idx) {
       const isInpatient = !!pt.admission_id;
+      const isDischarged = !isInpatient && (pt.status === 'discharged' || !!pt.last_discharge_admission_id || (pt.epicrisis_count && pt.epicrisis_count > 0));
+      const hasEpicrisis = isDischarged || (pt.epicrisis_count && pt.epicrisis_count > 0);
       const ageStr = pt.birth_year ? (currentYear - parseInt(pt.birth_year)) + ' yosh' : '—';
       const safeCode = pt.patient_code || ('ID:' + pt.id);
       const safeName = pt.full_name || 'Nomsiz bemor';
@@ -259,7 +280,12 @@
       if (isInpatient) {
         const roomTxt = pt.room_number ? (pt.room_number + '-xona') : 'Statsionar';
         const bedTxt = pt.bed_number ? (', ' + pt.bed_number) : '';
-        locHtml = `<span class="ward-badge inpatient"><i class="fas fa-bed"></i> ${escapeHtml(roomTxt + bedTxt)}</span>`;
+        locHtml = `<span class="ward-badge inpatient"><i class="fas fa-bed-pulse"></i> Davolanmoqda: ${escapeHtml(roomTxt + bedTxt)}</span>`;
+      } else if (isDischarged) {
+        const roomTxt = pt.room_number ? (pt.room_number + '-xona') : '';
+        const bedTxt = pt.bed_number ? (' ' + pt.bed_number) : '';
+        const placeInfo = (roomTxt || bedTxt) ? ` (${roomTxt}${bedTxt})` : '';
+        locHtml = `<span class="ward-badge discharged"><i class="fas fa-check-circle"></i> Davolangan / Chiqarilgan${escapeHtml(placeInfo)}</span>`;
       } else {
         locHtml = `<span class="ward-badge outpatient"><i class="fas fa-walking"></i> Ambulator</span>`;
       }
@@ -347,13 +373,23 @@
           <!-- Chiqarish epikrizi -->
           <td class="col-section col-sec-d">
             <div class="section-action-cell">
-              <i class="fas fa-check-circle file-status-indicator" title="Chiqarish epikrizi shakllantirishga tayyor"></i>
-              <button type="button" class="btn-sec-download" data-action="download" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'chirish (PDF)">
-                <i class="fas fa-download"></i> <span>Ko'chirish</span>
-              </button>
-              <button type="button" class="btn-sec-preview" data-action="preview" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'rish">
-                <i class="fas fa-eye"></i>
-              </button>
+              ${hasEpicrisis ? `
+                <i class="fas fa-check-circle file-status-indicator" style="color: #10b981;" title="Chiqarish epikrizi tasdiqlangan"></i>
+                <button type="button" class="btn-sec-download" data-action="download" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'chirish (PDF)">
+                  <i class="fas fa-download"></i> <span>Ko'chirish</span>
+                </button>
+                <button type="button" class="btn-sec-preview" data-action="preview" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'rish">
+                  <i class="fas fa-eye"></i>
+                </button>
+              ` : `
+                <i class="fas fa-clock file-status-indicator" style="color: #d97706;" title="Chiqarish epikrizi davolanish yakunlanganda shifokor tomonidan tasdiqlanadi"></i>
+                <button type="button" class="btn-sec-download" data-action="download" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'chirish (PDF)">
+                  <i class="fas fa-download"></i> <span>Ko'chirish</span>
+                </button>
+                <button type="button" class="btn-sec-preview" data-action="preview" data-section="d" data-id="${escapeHtml(pt.id)}" data-code="${escapeHtml(safeCode)}" data-name="${escapeHtml(safeName)}" title="Chiqarish epikrizini ko'rish">
+                  <i class="fas fa-eye"></i>
+                </button>
+              `}
             </div>
           </td>
 

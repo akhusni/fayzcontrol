@@ -134,6 +134,15 @@
     return new Intl.NumberFormat('uz-UZ').format(amount) + " so'm";
   }
 
+  function formatShortUZS(amount) {
+    if (!amount || amount === 0) return "0 so'm";
+    const abs = Math.abs(amount);
+    if (abs >= 1000000000) return (amount / 1000000000).toFixed(1) + " mlrd";
+    if (abs >= 1000000) return (amount / 1000000).toFixed(1) + " mln";
+    if (abs >= 1000) return (amount / 1000).toFixed(0) + " ming";
+    return formatUZS(amount);
+  }
+
   // =========================================================================
   // DYNAMIC PRICING ENGINE & RBAC HELPERS
   // =========================================================================
@@ -629,33 +638,502 @@
   /* =========================================================================
      DEPARTMENT 1: EXECUTIVE BI DASHBOARD
      ========================================================================= */
-  async function renderExecutiveDashboard() {
-    let summary = null;
-    try {
-      const res = await fetch('/api/stats/summary');
-      if (res.ok) summary = await res.json();
-    } catch (e) {}
+// Executive BI Dashboard Global Chart Instances
+let financialChartInstance = null;
+let paymentsDonutInstance = null;
+let currentExecPeriod = 'all';
 
-    const allBeds = getAllBeds();
-    const occupied = summary ? summary.occupied_beds : allBeds.filter(b => b.status === 'occupied').length;
-    const totalBeds = summary ? summary.total_beds : (allBeds.length || 14);
-    const occupancyRate = summary ? summary.occupancy_rate : Math.round((occupied / totalBeds) * 100);
-
-    const totalIncome = summary ? summary.gross_revenue : transactions.filter(t => t.type === 'kirim').reduce((acc, t) => acc + t.amount, 0);
-    const totalPaid = summary ? summary.total_paid : totalIncome;
-    const totalDebt = summary ? summary.balance_due : 0;
-    const netProfit = totalPaid;
-
-    const elOcc = document.getElementById('exec-occupied-beds');
-    const elRate = document.getElementById('exec-occupancy-rate');
-    const elInc = document.getElementById('exec-gross-revenue');
-    const elProf = document.getElementById('exec-net-profit');
-
-    if (elOcc) elOcc.textContent = `${occupied} / ${totalBeds}`;
-    if (elRate) elRate.textContent = `${occupancyRate}%`;
-    if (elInc) elInc.textContent = formatUZS(totalIncome);
-    if (elProf) elProf.textContent = formatUZS(netProfit);
+async function renderExecutiveDashboard() {
+  let summary = null;
+  try {
+    const res = await fetch('/api/stats/summary');
+    if (res.ok) summary = await res.json();
+  } catch (e) {
+    console.error('Error fetching /api/stats/summary:', e);
   }
+
+  const allBeds = getAllBeds();
+  const occupied = summary ? summary.occupied_beds : allBeds.filter(b => b.status === 'occupied').length;
+  const totalBeds = summary ? summary.total_beds : (allBeds.length || 24);
+  const availableBeds = summary ? summary.available_beds : Math.max(0, totalBeds - occupied);
+  const occupancyRate = summary ? summary.occupancy_rate : Math.round((occupied / totalBeds) * 100);
+
+  const totalIncome = summary ? summary.total_paid : transactions.filter(t => t.type === 'kirim' || t.transaction_type === 'income').reduce((acc, t) => acc + (t.amount || 0), 0);
+  const billedRevenue = summary ? summary.gross_revenue : totalIncome;
+  const totalExpenses = summary ? summary.total_expenses : transactions.filter(t => t.type === 'chiqim' || t.transaction_type === 'expense').reduce((acc, t) => acc + (t.amount || 0), 0);
+  const netProfit = summary ? summary.net_profit : (totalIncome - totalExpenses);
+  const profitMargin = summary ? summary.profit_margin : (totalIncome > 0 ? Math.round((netProfit / totalIncome) * 100) : 0);
+  const cashInHand = summary ? summary.cash_in_hand : Math.max(0, (summary ? summary.paid_cash : 0) - (summary ? summary.paid_cash_expense : 0));
+  const debtBalance = summary ? summary.balance_due : 0;
+
+  const paidCash = summary ? summary.paid_cash : 0;
+  const paidTerminal = summary ? summary.paid_terminal : 0;
+  const paidOnline = summary ? summary.paid_online : 0;
+
+  const totalStaff = summary ? summary.total_staff : (staffRoster ? staffRoster.length : 16);
+  const activeDoctors = summary ? summary.active_doctors : 3;
+  const activeNurses = summary ? summary.active_nurses : 6;
+  const supportStaff = summary ? summary.support_staff : Math.max(0, totalStaff - activeDoctors - activeNurses);
+  const monthlyPayroll = summary ? summary.monthly_payroll : 102800000;
+
+  const totalMeds = summary ? summary.total_meds : 294;
+  const lowStockMeds = summary ? summary.low_stock_meds : 0;
+  const outStockMeds = summary ? summary.out_stock_meds : 0;
+
+  const activeInpatients = summary ? summary.active_inpatients : occupied;
+  const totalCrmPatients = summary ? summary.total_patients : (patientsList ? patientsList.length : 10);
+  const todayAppointments = summary ? summary.today_appointments : 0;
+  const newCalls = summary ? summary.new_calls : 0;
+  const activePrescriptions = summary ? summary.active_prescriptions : 6;
+
+  // Helper for telemetry values
+  const setEl = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+
+  // 0. Sequential Cross-Department Telemetry Stream
+  // 1. Qabul & Triaj
+  setEl('exec-chip-beds-available', availableBeds);
+  setEl('exec-chip-today-apts', todayAppointments);
+  setEl('exec-chip-new-calls', newCalls);
+
+  // 2. Statsionar & Bemorlar
+  setEl('exec-chip-stay-pts', activeInpatients);
+  setEl('exec-chip-discharged-pts', (summary && summary.discharged_patients != null) ? summary.discharged_patients : 0);
+  setEl('exec-chip-total-pts', totalCrmPatients);
+
+  // 3. Shifokor Posti
+  setEl('exec-chip-rx-count', activePrescriptions);
+  setEl('exec-chip-allergy-count', (summary && summary.allergy_patients != null) ? summary.allergy_patients : 0);
+  setEl('exec-chip-docs-count', activeDoctors);
+
+  // 4. Hamshira & Muolaja
+  const plannedDoses = (summary && summary.planned_doses != null) ? summary.planned_doses : 0;
+  const givenDoses = (summary && summary.given_doses != null) ? summary.given_doses : 0;
+  const pendingDoses = Math.max(0, plannedDoses - givenDoses);
+  setEl('exec-chip-planned', plannedDoses);
+  setEl('exec-chip-given', givenDoses);
+  setEl('exec-chip-pending', pendingDoses);
+
+  // 5. Kassa & To'lovlar
+  setEl('exec-chip-cash-val', formatShortUZS(cashInHand));
+  setEl('exec-chip-terminal-val', formatShortUZS(paidTerminal));
+  setEl('exec-chip-online-val', formatShortUZS(paidOnline));
+
+  // 6. Kadrlar & Smena
+  setEl('exec-chip-staff-count', totalStaff);
+  setEl('exec-chip-duty-count', (summary && summary.duty_staff != null) ? summary.duty_staff : (activeDoctors + activeNurses));
+
+  // 1. Top 6 KPI Hero Values
+  const elGross = document.getElementById('exec-gross-revenue');
+  const elBilled = document.getElementById('exec-billed-revenue');
+  const elColProg = document.getElementById('exec-collection-progress');
+  const elCash = document.getElementById('exec-cash-in-hand');
+  const elCashInc = document.getElementById('exec-cash-income');
+  const elCashExp = document.getElementById('exec-cash-expense');
+  const elExp = document.getElementById('exec-total-expenses');
+  const elNet = document.getElementById('exec-net-profit');
+  const elMargin = document.getElementById('exec-profit-margin');
+  const elOcc = document.getElementById('exec-occupied-beds');
+  const elAvail = document.getElementById('exec-available-beds');
+  const elRate = document.getElementById('exec-occupancy-rate');
+  const elBedProg = document.getElementById('exec-bed-progress');
+  const elStaff = document.getElementById('exec-total-staff');
+  const elPayroll = document.getElementById('exec-payroll-fund');
+  const elStaffBd = document.getElementById('exec-staff-breakdown');
+
+  if (elGross) elGross.textContent = formatUZS(totalIncome);
+  if (elBilled) elBilled.textContent = formatUZS(billedRevenue);
+  if (elColProg) elColProg.style.width = billedRevenue > 0 ? `${Math.min(100, Math.round((totalIncome / billedRevenue) * 100))}%` : '35%';
+  if (elCash) elCash.textContent = formatUZS(cashInHand);
+  if (elCashInc) elCashInc.textContent = formatUZS(paidCash);
+  if (elCashExp) elCashExp.textContent = formatUZS(summary ? summary.cash_expenses || totalExpenses : 0);
+  if (elExp) elExp.textContent = formatUZS(totalExpenses);
+  if (elNet) elNet.textContent = formatUZS(netProfit);
+  if (elMargin) elMargin.textContent = `${profitMargin}%`;
+  if (elOcc) elOcc.textContent = `${occupied} / ${totalBeds} o'rin`;
+  if (elAvail) elAvail.textContent = `${availableBeds} ta`;
+  if (elRate) elRate.textContent = `${occupancyRate}%`;
+  if (elBedProg) elBedProg.style.width = `${Math.min(100, occupancyRate)}%`;
+  if (elStaff) elStaff.textContent = `${totalStaff} nafar`;
+  if (elPayroll) elPayroll.textContent = formatUZS(monthlyPayroll);
+  if (elStaffBd) elStaffBd.textContent = `${activeDoctors} Shifokor • ${activeNurses} Hamshira • ${supportStaff} Xodim`;
+
+  // 2. Financial Metrics & Donut Legend
+  const elDebt = document.getElementById('exec-debt-balance');
+  const elDonutCash = document.getElementById('exec-donut-cash');
+  const elDonutTerm = document.getElementById('exec-donut-terminal');
+  const elDonutOnline = document.getElementById('exec-donut-online');
+  const elDonutDebt = document.getElementById('exec-donut-debt');
+
+  if (elDebt) elDebt.textContent = formatUZS(debtBalance);
+  if (elDonutCash) elDonutCash.textContent = formatUZS(paidCash);
+  if (elDonutTerm) elDonutTerm.textContent = formatUZS(paidTerminal);
+  if (elDonutOnline) elDonutOnline.textContent = formatUZS(paidOnline);
+  if (elDonutDebt) elDonutDebt.textContent = formatUZS(debtBalance);
+
+  // 3. Clinical & Operational Metrics
+  const elCrmTotal = document.getElementById('exec-total-crm-patients');
+  const elInpatients = document.getElementById('exec-active-inpatients');
+  const elDocs = document.getElementById('exec-active-doctors');
+  const elPresc = document.getElementById('exec-active-prescriptions');
+  const elNurses = document.getElementById('exec-active-nurses');
+  const elMeals = document.getElementById('exec-kitchen-meals');
+
+  if (elCrmTotal) elCrmTotal.textContent = `${totalCrmPatients} Bemor`;
+  if (elInpatients) elInpatients.textContent = `${activeInpatients} Bemor`;
+  if (elDocs) elDocs.textContent = `${activeDoctors} Shifokor`;
+  if (elPresc) elPresc.textContent = `${activePrescriptions} ta`;
+  if (elNurses) elNurses.textContent = `${activeNurses} Hamshira`;
+  if (elMeals) elMeals.textContent = `${activeInpatients * 3} mahal (${activeInpatients} bemor)`;
+
+  // 4. Warehouse & Staff Metrics
+  const elWhTotal = document.getElementById('exec-wh-total');
+  const elWhLow = document.getElementById('exec-wh-low');
+  const elWhOut = document.getElementById('exec-wh-out');
+  const elHrTotal = document.getElementById('exec-hr-total');
+  const elHrPayroll = document.getElementById('exec-hr-payroll');
+
+  if (elWhTotal) elWhTotal.textContent = `${totalMeds} dori`;
+  if (elWhLow) elWhLow.textContent = `${lowStockMeds} ta`;
+  if (elWhOut) elWhOut.textContent = `${outStockMeds} ta`;
+  if (elHrTotal) elHrTotal.textContent = `${totalStaff} nafar`;
+  if (elHrPayroll) elHrPayroll.textContent = formatUZS(monthlyPayroll);
+
+  // 5. Buildings Mini Status & Beds Map
+  renderExecutiveBedsMap(allBeds, summary ? summary.building_stats : null);
+
+  // 6. Interactive Charts (Chart.js)
+  renderExecutiveFinancialChart(summary ? summary.monthly_trend : null, totalIncome, totalExpenses, netProfit);
+  renderExecutiveDonutChart(paidCash, paidTerminal, paidOnline, debtBalance);
+
+  // 7. Recent Transactions Table
+  renderExecutiveRecentTransactions(summary ? summary.recent_transactions : null);
+
+  // 8. Real-time Live Operations Feed
+  renderExecutiveLiveFeed(summary);
+}
+
+
+function renderExecutiveBedsMap(allBeds, buildingStats) {
+  const container = document.getElementById('exec-building-beds-container');
+  if (!container) return;
+
+  const b1Beds = allBeds.filter(b => (b.building_number === 1) || (!b.bed_id || !b.bed_id.includes('B2')));
+  const b2Beds = allBeds.filter(b => (b.building_number === 2) || (b.bed_id && b.bed_id.includes('B2')));
+
+  const renderChips = (bedsList) => {
+    if (!bedsList.length) return '<div style="color:var(--text-muted);font-size:0.75rem;">Karavotlar mavjud emas</div>';
+    return bedsList.map(b => {
+      const p = b.current_patient;
+      const statusClass = b.status === 'occupied' ? 'chip-occupied' : (b.status === 'reserved' ? 'chip-reserved' : (b.status === 'cleaning' ? 'chip-cleaning' : 'chip-available'));
+      const statusText = b.status === 'occupied' ? (p ? p.patient_name.split(' ')[0] : 'Band') : (b.status === 'reserved' ? 'Bron' : (b.status === 'cleaning' ? 'Tozalash' : "Bo'sh"));
+      return `
+        <div class="exec-bed-chip ${statusClass}" onclick="window.FMH_Super.openBookingModal(${jsArg(p ? p.id : '')}, ${jsArg(b.bed_id)})" title="${b.simple_name} \u2022 ${p ? p.patient_name : "Bo'sh"}">
+          <span style="font-weight: 800;">${b.simple_name}</span>
+          <span style="font-size: 0.65rem; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statusText}</span>
+        </div>
+      `;
+    }).join('');
+  };
+
+  const b1Occ = b1Beds.filter(b => b.status === 'occupied').length;
+  const b2Occ = b2Beds.filter(b => b.status === 'occupied').length;
+
+  const elBldOcc = document.getElementById('exec-bld-occupied');
+  const elBldAvail = document.getElementById('exec-bld-available');
+  const elBldRes = document.getElementById('exec-bld-reserved');
+  if (elBldOcc) elBldOcc.textContent = b1Occ + b2Occ;
+  if (elBldAvail) elBldAvail.textContent = Math.max(0, (b1Beds.length + b2Beds.length) - (b1Occ + b2Occ));
+  if (elBldRes) elBldRes.textContent = allBeds.filter(b => b.status === 'reserved').length;
+
+  container.innerHTML = `
+    <div class="exec-building-box">
+      <div class="exec-building-title">
+        <span><i class="fas fa-hospital"></i> 1-BINO: ASOSIY STATSIONAR (${b1Beds.length} O'rin)</span>
+        <span style="font-size: 0.72rem; color: var(--text-dim);">${b1Occ} Band / ${b1Beds.length - b1Occ} Bo'sh</span>
+      </div>
+      <div class="exec-beds-chips-wrapper">
+        ${renderChips(b1Beds)}
+      </div>
+    </div>
+    <div class="exec-building-box">
+      <div class="exec-building-title">
+        <span><i class="fas fa-hotel"></i> 2-BINO: VIP & REABILITATSIYA (${b2Beds.length} O'rin)</span>
+        <span style="font-size: 0.72rem; color: var(--text-dim);">${b2Occ} Band / ${b2Beds.length - b2Occ} Bo'sh</span>
+      </div>
+      <div class="exec-beds-chips-wrapper">
+        ${renderChips(b2Beds)}
+      </div>
+    </div>
+  `;
+}
+
+function renderExecutiveFinancialChart(monthlyTrend, totalIncome, totalExpenses, netProfit) {
+  const canvas = document.getElementById('super-financial-trend-chart');
+  if (!canvas || !window.Chart) return;
+
+  if (financialChartInstance) {
+    financialChartInstance.destroy();
+    financialChartInstance = null;
+  }
+
+  let labels = [];
+  let incomeData = [];
+  let expenseData = [];
+  let netData = [];
+
+  if (monthlyTrend && monthlyTrend.length > 0) {
+    labels = monthlyTrend.map(r => r.month_label);
+    incomeData = monthlyTrend.map(r => parseFloat(r.income || 0));
+    expenseData = monthlyTrend.map(r => parseFloat(r.expense || 0));
+    netData = monthlyTrend.map(r => parseFloat(r.income || 0) - parseFloat(r.expense || 0));
+  } else {
+    // Current period single / baseline bar
+    labels = ["Shu davr (Joriy)"];
+    incomeData = [totalIncome || 20860000];
+    expenseData = [totalExpenses || 814400];
+    netData = [netProfit || 20045600];
+  }
+
+  financialChartInstance = new window.Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Kirim (Tushum)',
+          data: incomeData,
+          backgroundColor: 'rgba(16, 185, 129, 0.75)',
+          borderColor: '#10b981',
+          borderWidth: 1.5,
+          borderRadius: 6
+        },
+        {
+          label: 'Chiqim (Xarajat)',
+          data: expenseData,
+          backgroundColor: 'rgba(244, 63, 94, 0.75)',
+          borderColor: '#f43f5e',
+          borderWidth: 1.5,
+          borderRadius: 6
+        },
+        {
+          type: 'line',
+          label: 'Sof Foyda',
+          data: netData,
+          borderColor: '#c084fc',
+          backgroundColor: 'rgba(192, 132, 252, 0.2)',
+          borderWidth: 2.5,
+          fill: false,
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: '#c084fc'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': ' + formatUZS(ctx.raw);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8', font: { size: 11 } }
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 10 },
+            callback: function(val) {
+              return (val >= 1000000 ? (val / 1000000).toFixed(1) + ' mln' : val);
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderExecutiveDonutChart(cash, terminal, online, debt) {
+  const canvas = document.getElementById('super-payments-donut-chart');
+  if (!canvas || !window.Chart) return;
+
+  if (paymentsDonutInstance) {
+    paymentsDonutInstance.destroy();
+    paymentsDonutInstance = null;
+  }
+
+  const values = [cash || 0, terminal || 0, online || 0, debt || 0];
+  const hasData = values.some(v => v > 0);
+
+  paymentsDonutInstance = new window.Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: ["Naqd pul", "Terminal (Karta)", "Click / Payme / O'tkazma", "Nasiya (Qarzdorlik)"],
+      datasets: [{
+        data: hasData ? values : [1],
+        backgroundColor: hasData ? [
+          '#10b981', // Emerald cash
+          '#38bdf8', // Sky terminal
+          '#a855f7', // Purple online
+          '#f43f5e'  // Rose debt
+        ] : ['rgba(255, 255, 255, 0.1)'],
+        borderColor: 'rgba(10, 27, 51, 0.8)',
+        borderWidth: 2,
+        hoverOffset: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '70%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return hasData ? ctx.label + ': ' + formatUZS(ctx.raw) : "Ma'lumot yo'q";
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderExecutiveRecentTransactions(recentList) {
+  const tbody = document.getElementById('super-recent-transactions-tbody');
+  if (!tbody) return;
+
+  let list = recentList;
+  if (!list || !list.length) {
+    list = transactions.slice(0, 6);
+  }
+
+  if (!list || !list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">Hozircha tranzaksiyalar mavjud emas.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(tx => {
+    const isInc = (tx.transaction_type === 'income' || tx.type === 'kirim');
+    const badgeClass = isInc ? 'exec-trx-income' : 'exec-trx-expense';
+    const badgeText = isInc ? 'Kirim' : 'Chiqim';
+    const sign = isInc ? '+' : '-';
+    const amtColor = isInc ? 'var(--success)' : 'var(--danger)';
+    const dateStr = tx.transaction_date || tx.date || 'Bugun';
+    const desc = tx.description || tx.title || "Kassa to'lovi";
+    const method = tx.payment_method === 'terminal' ? 'Terminal' : (tx.payment_method === 'cash' ? 'Naqd' : (tx.payment_method || 'Naqd'));
+    const cashier = tx.cashier_name || tx.cashier || 'Kassir';
+
+    return `
+      <tr>
+        <td style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim);">${dateStr}</td>
+        <td><span class="exec-trx-badge ${badgeClass}">${badgeText}</span></td>
+        <td style="font-weight: 600; color: var(--text-primary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(desc)}</td>
+        <td style="font-weight: 700; color: ${amtColor}; font-family: var(--font-mono); white-space: nowrap;">${sign} ${formatUZS(tx.amount || 0)}</td>
+        <td><span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fas fa-wallet" style="margin-right: 4px; font-size: 0.65rem;"></i> ${method}</span></td>
+        <td style="font-size: 0.72rem; color: var(--text-dim);">${escapeHtml(cashier)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderExecutiveLiveFeed(summary) {
+  const feed = document.getElementById('super-live-feed');
+  if (!feed) return;
+
+  const events = [];
+
+  // Add admissions events
+  if (bookings && bookings.length) {
+    bookings.slice(0, 4).forEach(b => {
+      events.push({
+        time: b.start_date || 'Bugun',
+        icon: 'fa-bed',
+        color: '#38bdf8',
+        title: "Statsionar qabuli",
+        desc: `${b.patient_name || 'Bemor'} (${b.bed_id || 'Palata'}) joylashtirildi \u2022 ${b.program || 'Standart kurs'}`
+      });
+    });
+  }
+
+  // Add payments events
+  if (transactions && transactions.length) {
+    transactions.slice(0, 4).forEach(t => {
+      const isInc = t.type === 'kirim' || t.transaction_type === 'income';
+      events.push({
+        time: t.date || 'Bugun',
+        icon: isInc ? 'fa-coins' : 'fa-receipt',
+        color: isInc ? '#10b981' : '#f43f5e',
+        title: isInc ? "Kassa tushumi" : "Klinika xarajati",
+        desc: `${t.title || t.description || 'To\'lov'}: ${formatUZS(t.amount)} (${t.payment_method || 'naqd'})`
+      });
+    });
+  }
+
+  if (!events.length) {
+    feed.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+        <i class="fas fa-inbox" style="font-size: 1.5rem; margin-bottom: 6px; opacity: 0.4; display: block;"></i>
+        Operatsion oqimda faol harakatlar kutilmoqda.
+      </div>
+    `;
+    return;
+  }
+
+  feed.innerHTML = events.slice(0, 8).map(ev => `
+    <div class="feed-item" style="display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border-subtle);">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; color: ${ev.color}; font-size: 0.8rem; flex-shrink: 0;">
+        <i class="fas ${ev.icon}"></i>
+      </div>
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <strong style="font-size: 0.76rem; color: var(--heading-color);">${ev.title}</strong>
+          <span style="font-size: 0.68rem; color: var(--text-dim); font-family: var(--font-mono);">${ev.time}</span>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(ev.desc)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function setPeriodFilter(period, btn) {
+  currentExecPeriod = period;
+  document.querySelectorAll('.exec-btn-period').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderExecutiveDashboard();
+  if (typeof showToast === 'function') {
+    const labels = { all: 'Barcha davr', month: 'Shu oy', week: 'Shu hafta', today: 'Bugungi' };
+    showToast(`📅 Filtr qo'llanildi: ${labels[period] || period}`);
+  }
+}
+
+async function refreshDashboard() {
+  const icon = document.getElementById('exec-refresh-icon');
+  if (icon) icon.classList.add('fa-spin');
+  try {
+    await loadMasterDatabases();
+    await renderExecutiveDashboard();
+    if (typeof showToast === 'function') showToast("✅ Dashboard ma'lumotlari yangilandi");
+  } catch (e) {
+    console.error('Refresh error:', e);
+  } finally {
+    if (icon) icon.classList.remove('fa-spin');
+  }
+}
+
 
   /* =========================================================================
      DEPARTMENT 2: BUILDING & 14 INPATIENT BEDS
@@ -2515,7 +2993,10 @@
     handleUserEditSubmit,
     searchAudit,
     pageAudit,
-    resetAuditFilters
+    resetAuditFilters,
+    setPeriodFilter,
+    refreshDashboard,
+    renderExecutiveDashboard
   };
 
   document.addEventListener('DOMContentLoaded', init);

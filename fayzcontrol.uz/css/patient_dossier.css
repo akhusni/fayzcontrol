@@ -1274,6 +1274,16 @@ body.night-mode .registry-table tbody tr:hover {
   color: var(--dossier-text-muted);
 }
 
+.ward-badge.discharged {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.stat-pill.stat-discharged .stat-dot {
+  background: #6366f1;
+}
+
 /* Phone Column */
 .phone-cell-wrap {
   display: inline-flex;

@@ -306,9 +306,10 @@ const esc = (v) => String(v == null ? '' : v)
           state.patients = livePatients;
           filterPatients(state.currentFilter);
           if (state.patients.length > 0) {
+            const activeList = state.patients.filter(p => p.status === 'active');
             const match = state.selectedPatient ? state.patients.find(p => p.id === state.selectedPatient.id) : null;
-            if (!match) {
-              selectPatient(state.patients[0]);
+            if (!match || (state.currentFilter !== 'discharged' && match.status === 'discharged')) {
+              selectPatient(activeList[0] || state.patients[0]);
             } else {
               state.selectedPatient = match;
             }
@@ -352,17 +353,19 @@ const esc = (v) => String(v == null ? '' : v)
       btn.classList.toggle('active', btn.getAttribute('data-filter') === filterType);
     });
 
-    // Update dynamic count badges on filter pills
-    const allCount = state.patients.length;
-    const inpatientsCount = state.patients.filter(p => p.status === 'active' && p.active_admission).length;
-    const consultCount = state.patients.filter(p => p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation') || (!p.active_admission && p.referral_source === 'reception')).length;
-    const outpatientsCount = state.patients.filter(p => p.status !== 'active' || !p.active_admission).length;
-    const allergyCount = state.patients.filter(p => p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '').length;
+    // Update dynamic count badges on filter pills:
+    // Only active (currently admitted or upcoming) patients appear in live clinical views
+    const activePatients = state.patients.filter(p => p.status === 'active');
+    const inpatientsCount = activePatients.filter(p => !!p.active_admission).length;
+    const upcomingCount = activePatients.filter(p => !p.active_admission).length;
+    const dischargedCount = state.patients.filter(p => p.status === 'discharged').length;
+    const consultCount = activePatients.filter(p => p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation') || (!p.active_admission && p.referral_source === 'reception')).length;
+    const allergyCount = activePatients.filter(p => p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '').length;
 
     const activeDoc = state.authenticatedDoctor || state.doctors.find(d => d.id === state.activeDoctorId);
     const docName = activeDoc ? activeDoc.name.toLowerCase() : '';
     const docId = (state.authenticatedDoctor && state.authenticatedDoctor.staff_id) || state.activeDoctorId;
-    const myCount = state.patients.filter(p => {
+    const myCount = activePatients.filter(p => {
       const pDocId = p.doctor_id || (p.active_admission && p.active_admission.doctor_id) || p.consulting_doctor_id;
       const pDocName = (p.doctor_name || (p.active_admission && p.active_admission.doctor_name) || p.consulting_doctor_name || '').toLowerCase();
       return (docId && pDocId === docId) || (docName && pDocName.includes(docName));
@@ -370,16 +373,18 @@ const esc = (v) => String(v == null ? '' : v)
 
     const elAll = document.getElementById('cnt-all');
     const elIn = document.getElementById('cnt-inpatient');
+    const elUpcoming = document.getElementById('cnt-upcoming');
     const elMy = document.getElementById('cnt-my');
     const elConsult = document.getElementById('cnt-consultation');
     const elAllergy = document.getElementById('cnt-allergy');
-    const elOut = document.getElementById('cnt-outpatient');
-    if (elAll) elAll.textContent = allCount;
+    const elDischarged = document.getElementById('cnt-discharged');
+    if (elAll) elAll.textContent = activePatients.length;
     if (elIn) elIn.textContent = inpatientsCount;
+    if (elUpcoming) elUpcoming.textContent = upcomingCount;
     if (elMy) elMy.textContent = myCount;
     if (elConsult) elConsult.textContent = consultCount;
     if (elAllergy) elAllergy.textContent = allergyCount;
-    if (elOut) elOut.textContent = outpatientsCount;
+    if (elDischarged) elDischarged.textContent = dischargedCount;
 
     // Toggle search clear button
     const clearBtn = document.getElementById('btn-clear-search');
@@ -389,20 +394,28 @@ const esc = (v) => String(v == null ? '' : v)
 
     let list = [...state.patients];
 
-    if (filterType === 'inpatient') {
-      list = list.filter(p => p.status === 'active' && p.active_admission);
+    if (filterType === 'all') {
+      // By default: hozirgi kunda yotgan va endi yotadigan faol bemorlar
+      list = list.filter(p => p.status === 'active');
+    } else if (filterType === 'inpatient') {
+      list = list.filter(p => p.status === 'active' && !!p.active_admission);
+    } else if (filterType === 'upcoming') {
+      list = list.filter(p => p.status === 'active' && !p.active_admission);
     } else if (filterType === 'consultation') {
-      list = list.filter(p => p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation') || (!p.active_admission && p.referral_source === 'reception'));
+      list = list.filter(p => p.status === 'active' && (p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation') || (!p.active_admission && p.referral_source === 'reception')));
     } else if (filterType === 'outpatient') {
-      list = list.filter(p => p.status !== 'active' || !p.active_admission);
+      list = list.filter(p => p.status === 'active' && !p.active_admission);
     } else if (filterType === 'my_patients') {
       list = list.filter(p => {
+        if (p.status !== 'active') return false;
         const pDocId = p.doctor_id || (p.active_admission && p.active_admission.doctor_id) || p.consulting_doctor_id;
         const pDocName = (p.doctor_name || (p.active_admission && p.active_admission.doctor_name) || p.consulting_doctor_name || '').toLowerCase();
         return (docId && pDocId === docId) || (docName && pDocName.includes(docName));
       });
     } else if (filterType === 'allergy') {
-      list = list.filter(p => p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '');
+      list = list.filter(p => p.status === 'active' && p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '');
+    } else if (filterType === 'discharged') {
+      list = list.filter(p => p.status === 'discharged');
     }
 
     if (state.searchQuery) {
@@ -465,7 +478,14 @@ const esc = (v) => String(v == null ? '' : v)
     container.innerHTML = state.filteredPatients.map(p => {
       const isSelected = state.selectedPatient && state.selectedPatient.id === p.id;
       const isConsultation = p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation');
-      const bedStr = p.active_admission ? `${p.active_admission.room_number}-xona ${p.active_admission.bed_code}` : (isConsultation ? `<span style="color:#0284c7; font-weight:700;"><i class="fas fa-stethoscope"></i> Konsultatsiya</span>` : 'Ambulator');
+      const isDischarged = p.status === 'discharged';
+      const bedStr = isDischarged
+        ? `<span class="doc-bed-tag tag-discharged" style="background:#e2e8f0; color:#475569; font-weight:700;"><i class="fas fa-check-circle"></i> Chiqarilgan</span>`
+        : (p.active_admission
+          ? `${p.active_admission.room_number}-xona ${p.active_admission.bed_code}`
+          : (isConsultation
+            ? `<span style="color:#0284c7; font-weight:700;"><i class="fas fa-stethoscope"></i> Konsultatsiya</span>`
+            : `<span style="color:#059669; font-weight:700;"><i class="fas fa-clock"></i> Endi yotadigan</span>`));
       const hasAllergy = p.medical_allergies && p.medical_allergies.toLowerCase() !== 'yo\'q' && p.medical_allergies.trim() !== '';
 
       // Nothing clinical is invented: a patient with no recorded vitals used
@@ -754,8 +774,13 @@ const esc = (v) => String(v == null ? '' : v)
       const age = p.birth_year ? `${new Date().getFullYear() - p.birth_year} yosh` : 'N/A';
       const gender = genderLabel(p.gender);
       const isConsultation = p.service_type === 'consultation' || (p.latest_appointment && p.latest_appointment.service_type === 'consultation');
-      const bed = p.active_admission ? `${p.active_admission.room_number}-xona (${p.active_admission.bed_code} karavot)` : (isConsultation ? 'Konsultatsiya qabuli' : 'Ambulator');
-      const program = p.active_admission ? p.active_admission.program_type.toUpperCase() : (isConsultation ? 'KONSULTATSIYA' : 'STANDART');
+      const isDischarged = p.status === 'discharged';
+      const bed = isDischarged
+        ? 'Statsionardan Chiqarilgan (Davolangan)'
+        : (p.active_admission ? `${p.active_admission.room_number}-xona (${p.active_admission.bed_code} karavot)` : (isConsultation ? 'Konsultatsiya qabuli' : 'Endi yotadigan (Ambulator)'));
+      const program = isDischarged
+        ? 'DAVOLANGAN / CHIQARILGAN'
+        : (p.active_admission ? p.active_admission.program_type.toUpperCase() : (isConsultation ? 'KONSULTATSIYA' : 'STANDART'));
 
       let dayCounterStr = '';
       if (p.active_admission && p.active_admission.admission_date) {
@@ -2506,8 +2531,6 @@ const esc = (v) => String(v == null ? '' : v)
       epicrisis_date: localDateStr(),
       diagnosis_final: state.epicrisisDiag || '',
       icd10_code: document.getElementById('anam-icd10')?.value || null,
-      // Was always "the course was completed successfully" with outcome
-      // 'recovered', whatever actually happened. The outcome is now chosen.
       treatment_summary: null,
       home_prescriptions: document.getElementById('epicrisis-home-rx')?.value || '',
       psycho_recommendations: document.getElementById('epicrisis-psycho')?.value || '',
@@ -2523,6 +2546,15 @@ const esc = (v) => String(v == null ? '' : v)
       document.getElementById('epicrisis-outcome')?.focus();
       return;
     }
+
+    const confirmed = await fmhConfirm({
+      title: "Chiqarish Epikrizini Tasdiqlash",
+      message: `Haqiqatan ham <strong>${p.full_name}</strong> uchun chiqarish epikrizini tasdiqlab, bemorni statsionardan chiqarmoqchimisiz?<br><br><small style="color:var(--text-secondary);">Tasdiqlangach, bemor statsionar bandligidan chiqariladi, karavot tozalash holatiga o'tadi va bemor maqomi "Chiqarilgan / Davolangan" ga o'zgaradi.</small>`,
+      confirmText: "Tasdiqlash va Chiqarish",
+      cancelText: "Bekor Qilish",
+      type: 'primary'
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch('/api/doctor/epicrisis', {
@@ -2543,7 +2575,10 @@ const esc = (v) => String(v == null ? '' : v)
     if (!state.epicrisisMap) state.epicrisisMap = {};
     state.epicrisisMap[p.id] = data;
 
-    showToast(`📋 <strong>${p.full_name}</strong> chiqarish epikrizi MySQL bazasiga saqlandi!`);
+    // Reload patients database so real-time data across doctor workstation updates immediately
+    await loadPatientDatabase();
+
+    showToast(`📋 <strong>${p.full_name}</strong> chiqarish epikrizi tasdiqlandi va bemor statsionardan chiqarildi!`, 'success');
   }
 
   // "Auto-generate" used to paste a fixed list (Meksidol, Neyromultivit,

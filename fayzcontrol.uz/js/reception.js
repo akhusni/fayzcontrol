@@ -29,6 +29,7 @@ window.FMH_Reception = (function () {
       selectedBed: null,
       selectedFloor: 'all',
       isAnonymous: false,
+      wizardStep: 1,
     },
     apt: {
       selectedDoctorId: null,
@@ -760,16 +761,35 @@ window.FMH_Reception = (function () {
     const isAmbProg = progVal.includes('ambulator');
     
     const bedSection = document.getElementById('intake-bed-section');
-    const consultSection = document.getElementById('intake-consultation-section');
-    const aptSection = document.getElementById('intake-apt-section');
+    const noBedSection = document.getElementById('intake-no-bed-section');
+    const consultTimeGroup = document.getElementById('intake-consultation-time-group');
+    const step2Guidance = document.getElementById('step2-guidance-text');
+
+    const inpatientPricing = document.getElementById('intake-pricing-inpatient');
+    const consultPricing = document.getElementById('intake-pricing-consultation');
+    const outpatientPricing = document.getElementById('intake-pricing-outpatient');
 
     const showBed = type === 'inpatient' && !isAmbProg;
     const showConsultation = type === 'consultation';
     const showOutpatient = type === 'outpatient' || (type !== 'consultation' && isAmbProg);
 
     if (bedSection) bedSection.style.display = showBed ? 'block' : 'none';
-    if (consultSection) consultSection.style.display = showConsultation ? 'block' : 'none';
-    if (aptSection) aptSection.style.display = showOutpatient ? 'block' : 'none';
+    if (noBedSection) noBedSection.style.display = showBed ? 'none' : 'block';
+    if (consultTimeGroup) consultTimeGroup.style.display = showConsultation ? 'block' : 'none';
+
+    if (inpatientPricing) inpatientPricing.style.display = showBed ? 'grid' : 'none';
+    if (consultPricing) consultPricing.style.display = showConsultation ? 'block' : 'none';
+    if (outpatientPricing) outpatientPricing.style.display = showOutpatient ? 'block' : 'none';
+
+    if (step2Guidance) {
+      if (showBed) {
+        step2Guidance.innerHTML = "ℹ️ <strong>Statsionar</strong> tanlandi. Bemor uchun 24 o'rinli palata va bo'sh karavot keyingi qadamda tanlanadi.";
+      } else if (showConsultation) {
+        step2Guidance.innerHTML = "ℹ️ <strong>Konsultatsiya</strong> tanlandi. Shifokor qabuli va retsept tayinlash uchun navbat ajratiladi. Statsionar karavot talab qilinmaydi.";
+      } else {
+        step2Guidance.innerHTML = "ℹ️ <strong>Ambulator</strong> tanlandi. Bemor klinikaga qatnab muolaja oladi. Statsionar karavot talab qilinmaydi.";
+      }
+    }
     
     updateCostPreview();
   }
@@ -784,6 +804,10 @@ window.FMH_Reception = (function () {
     renderIntakeProgramOptions();
     renderReferralOptions();
     renderPayMethodOptions();
+    setupPhoneMask();
+    setupNameSync();
+    setupAgeCalculation();
+    goToWizardStep(State.intake.wizardStep || 1);
     updateCostPreview();
     setupCostListeners();
     renderRecentWalkIns();
@@ -1524,7 +1548,7 @@ window.FMH_Reception = (function () {
           dropdown.querySelectorAll('.rich-select-option').forEach(o => o.classList.remove('is-selected'));
           opt.classList.add('is-selected');
           updateTrigger(item);
-          wrapper.classList.remove('is-open');
+          wrapper.classList.remove('is-open', 'open-up');
           sel.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
@@ -1546,9 +1570,21 @@ window.FMH_Reception = (function () {
       const isOpen = wrapper.classList.contains('is-open');
       // Close other open rich selects
       document.querySelectorAll('.rich-select-wrapper.is-open').forEach(w => {
-        if (w !== wrapper) w.classList.remove('is-open');
+        if (w !== wrapper) w.classList.remove('is-open', 'open-up');
       });
-      wrapper.classList.toggle('is-open', !isOpen);
+      if (!isOpen) {
+        // Smart flip: if near bottom of viewport or card, open upwards
+        const rect = trigger.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < 280 && rect.top > 280) {
+          wrapper.classList.add('open-up');
+        } else {
+          wrapper.classList.remove('open-up');
+        }
+        wrapper.classList.add('is-open');
+      } else {
+        wrapper.classList.remove('is-open', 'open-up');
+      }
     });
 
     // Sync if select.value changes externally
@@ -1986,6 +2022,449 @@ window.FMH_Reception = (function () {
   }
 
   // ============================================================
+  // WIZARD STATE & NAVIGATION (5-STEP INTAKE PROCESS)
+  // ============================================================
+  function goToWizardStep(step) {
+    step = Math.max(1, Math.min(5, parseInt(step) || 1));
+    State.intake.wizardStep = step;
+
+    // Update buttons
+    [1, 2, 3, 4, 5].forEach(s => {
+      const btn = document.getElementById(`wizard-btn-${s}`);
+      const connector = document.getElementById(`wizard-connector-${s}`);
+      if (!btn) return;
+      btn.classList.remove('active', 'completed');
+      const numEl = document.getElementById(`wizard-num-${s}`);
+      if (s < step) {
+        btn.classList.add('completed');
+        if (numEl) numEl.innerHTML = '<i class="fas fa-check"></i>';
+      } else if (s === step) {
+        btn.classList.add('active');
+        if (numEl) numEl.textContent = String(s);
+      } else {
+        if (numEl) numEl.textContent = String(s);
+      }
+
+      if (connector) {
+        if (s < step) connector.classList.add('completed');
+        else connector.classList.remove('completed');
+      }
+    });
+
+    // Update panels
+    [1, 2, 3, 4, 5].forEach(s => {
+      const panel = document.getElementById(`wizard-panel-${s}`);
+      if (panel) {
+        if (s === step) panel.classList.add('active');
+        else panel.classList.remove('active');
+      }
+    });
+
+    // Per-step actions
+    renderIntakeSections();
+
+    if (step === 3) {
+      if (State.intake.serviceType === 'inpatient') {
+        renderBedPicker();
+      }
+    } else if (step === 4) {
+      updateCostPreview();
+    } else if (step === 5) {
+      updateWizardOverview();
+    }
+
+    // Scroll smoothly to wizard top
+    const card = document.querySelector('.intake-wizard-card');
+    if (card && typeof card.scrollIntoView === 'function') {
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  function validateStep1() {
+    const lastEl = document.getElementById('intake-patient-lastname');
+    const firstEl = document.getElementById('intake-patient-firstname');
+    const phoneEl = document.getElementById('intake-patient-phone');
+    const birthdateEl = document.getElementById('intake-patient-birthdate');
+    const refEl = document.getElementById('intake-referral-select');
+    const refDocEl = document.getElementById('intake-referral-doctor-select');
+
+    const lastName = (lastEl?.value || '').trim();
+    const firstName = (firstEl?.value || '').trim();
+    if (!lastName) {
+      showToast('Iltimos, bemor familiyasini kiriting', 'warning');
+      lastEl?.focus();
+      return false;
+    }
+    if (!firstName) {
+      showToast('Iltimos, bemor ismini kiriting', 'warning');
+      firstEl?.focus();
+      return false;
+    }
+
+    if (!birthdateEl || !birthdateEl.value) {
+      showToast("Iltimos, bemor tug'ilgan sanasini kiriting", "warning");
+      birthdateEl?.focus();
+      return false;
+    }
+
+    // Ensure phone has +998 and 9 digits
+    const rawPhone = (phoneEl?.value || '').trim();
+    const digits = rawPhone.replace(/\D/g, '');
+    if (digits.length < 12 && digits.length !== 9) {
+      showToast("Iltimos, telefon raqamini to'liq kiriting (+998 -- --- -- --)", "warning");
+      phoneEl?.focus();
+      return false;
+    }
+
+    // Referral validation
+    if (refEl && refEl.value === 'doctor_referral') {
+      if (!refDocEl || !refDocEl.value) {
+        showToast("Iltimos, yo'llanma bergan shifokor yoki xodimni tanlang!", "warning");
+        refDocEl?.focus();
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function validateStep2() {
+    const type = State.intake.serviceType || 'consultation';
+    const startEl = document.getElementById('intake-start-date');
+    if (startEl && !startEl.value) {
+      startEl.value = todayStr();
+    }
+    if (type === 'consultation') {
+      const doc = document.getElementById('intake-doctor-select')?.value;
+      if (!doc) {
+        showToast("Konsultatsiya uchun mas'ul shifokorni tanlang", "warning");
+        document.getElementById('intake-doctor-select')?.focus();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function validateStep3() {
+    const type = State.intake.serviceType || 'consultation';
+    const progVal = document.getElementById('intake-program-select')?.value || '';
+    const isAmbProg = progVal.includes('ambulator');
+    if (type === 'inpatient' && !isAmbProg) {
+      if (!State.intake.selectedBed) {
+        const avail = (State.beds || []).find(b => (b.system_bed_status || b.status) === 'available');
+        if (avail) {
+          selectBed(avail.bed_id, avail.default_daily_rate || 720000);
+          showToast(`Karavot tanlanmaganligi sababli bo'sh karavot (${avail.bed_code || avail.bed_id}) avtomatik tanlandi`, "info");
+        } else {
+          showToast("Hozirda bo'sh karavot mavjud emas, iltimos karavotni tanlang", "warning");
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function validateStep4() {
+    const type = State.intake.serviceType || 'consultation';
+    const progVal = document.getElementById('intake-program-select')?.value || '';
+    const isAmbProg = progVal.includes('ambulator');
+    if (type === 'inpatient' && !isAmbProg) {
+      const days = parseInt(document.getElementById('intake-days')?.value) || 0;
+      if (days < 1) {
+        showToast("Davolanish muddati kamida 1 kun bo'lishi kerak", "warning");
+        document.getElementById('intake-days')?.focus();
+        return false;
+      }
+    } else if (type === 'outpatient' || isAmbProg) {
+      const days = parseInt(document.getElementById('intake-outpatient-days')?.value) || 0;
+      if (days < 1) {
+        showToast('Ambulator kurs davomiyligini (kun) kiriting', 'warning');
+        document.getElementById('intake-outpatient-days')?.focus();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function nextWizardStep(toStep) {
+    if (toStep === 2) {
+      if (!validateStep1()) return;
+      goToWizardStep(2);
+    } else if (toStep === 3) {
+      if (!validateStep2()) return;
+      goToWizardStep(3);
+    } else if (toStep === 4) {
+      if (!validateStep3()) return;
+      goToWizardStep(4);
+    } else if (toStep === 5) {
+      if (!validateStep4()) return;
+      goToWizardStep(5);
+    }
+  }
+
+  function prevWizardStep(toStep) {
+    goToWizardStep(toStep);
+  }
+
+  function formatUzPhone(value) {
+    let digits = String(value || '').replace(/\D/g, '');
+    if (digits.startsWith('998')) {
+      digits = digits.slice(3);
+    }
+    digits = digits.slice(0, 9);
+
+    let res = '+998';
+    if (digits.length > 0) res += ' ' + digits.slice(0, 2);
+    if (digits.length >= 3) res += ' ' + digits.slice(2, 5);
+    if (digits.length >= 6) res += ' ' + digits.slice(5, 7);
+    if (digits.length >= 8) res += ' ' + digits.slice(7, 9);
+    return res;
+  }
+
+  function setupPhoneMask() {
+    const el = document.getElementById('intake-patient-phone');
+    if (!el || el._phoneMaskAttached) return;
+    el._phoneMaskAttached = true;
+
+    if (!el.value || el.value.trim() === '') {
+      el.value = '+998 ';
+    }
+
+    el.addEventListener('focus', () => {
+      if (!el.value || el.value === '+998' || el.value === '+998 ') {
+        el.value = '+998 ';
+      }
+    });
+
+    el.addEventListener('input', e => {
+      const formatted = formatUzPhone(e.target.value);
+      el.value = formatted;
+    });
+
+    el.addEventListener('keydown', e => {
+      // Prevent deleting "+998 "
+      if ((e.key === 'Backspace' || e.key === 'Delete') && el.selectionStart <= 5 && el.selectionEnd <= 5) {
+        e.preventDefault();
+      }
+    });
+
+    el.addEventListener('paste', e => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+      el.value = formatUzPhone(pasted);
+    });
+  }
+
+  function setupNameSync() {
+    const lastEl = document.getElementById('intake-patient-lastname');
+    const firstEl = document.getElementById('intake-patient-firstname');
+    const midEl = document.getElementById('intake-patient-middlename');
+    const nameEl = document.getElementById('intake-patient-name');
+    if (!lastEl || lastEl._nameSyncAttached) return;
+    lastEl._nameSyncAttached = true;
+
+    const sync = () => {
+      const full = [lastEl?.value?.trim(), firstEl?.value?.trim(), midEl?.value?.trim()].filter(Boolean).join(' ');
+      if (nameEl) nameEl.value = full;
+    };
+
+    [lastEl, firstEl, midEl].forEach(inp => {
+      if (inp) {
+        inp.addEventListener('input', sync);
+        inp.addEventListener('change', sync);
+      }
+    });
+  }
+
+  function setupAgeCalculation() {
+    const el = document.getElementById('intake-patient-birthdate');
+    const hint = document.getElementById('intake-patient-birthdate-hint');
+    if (!el || el._ageAttached) return;
+    el._ageAttached = true;
+
+    el.addEventListener('change', () => {
+      if (!el.value) {
+        if (hint) hint.textContent = "Bemor yoshi avtomatik hisoblanadi";
+        return;
+      }
+      try {
+        const b = new Date(el.value);
+        const today = new Date();
+        let age = today.getFullYear() - b.getFullYear();
+        const m = today.getMonth() - b.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < b.getDate())) {
+          age--;
+        }
+        if (hint) {
+          hint.innerHTML = `<span style="color:#10b981;font-weight:700;"><i class="fas fa-birthday-cake"></i> Yosh: ${age >= 0 ? age : 0} da</span>`;
+        }
+      } catch(e) {}
+    });
+  }
+
+  function updateWizardOverview() {
+    // 1. Patient info
+    const last = (document.getElementById('intake-patient-lastname')?.value || '').trim();
+    const first = (document.getElementById('intake-patient-firstname')?.value || '').trim();
+    const mid = (document.getElementById('intake-patient-middlename')?.value || '').trim();
+    const fullName = [last, first, mid].filter(Boolean).join(' ') || '—';
+    const phone = (document.getElementById('intake-patient-phone')?.value || '').trim() || '—';
+    const birthDate = document.getElementById('intake-patient-birthdate')?.value || '';
+    let ageStr = '';
+    if (birthDate) {
+      try {
+        const b = new Date(birthDate);
+        const today = new Date();
+        let age = today.getFullYear() - b.getFullYear();
+        const m = today.getMonth() - b.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+        ageStr = ` (${formatDate(birthDate)}, ${age >= 0 ? age : 0} yosh)`;
+      } catch(e) {
+        ageStr = ` (${formatDate(birthDate)})`;
+      }
+    }
+    const genderSel = document.getElementById('intake-patient-gender');
+    const gender = genderSel ? (genderSel.options[genderSel.selectedIndex]?.textContent || '—') : '—';
+
+    setValue('ov-patient-name', fullName);
+    setValue('ov-patient-phone', phone);
+    setValue('ov-patient-birthdate', (birthDate ? `${formatDate(birthDate)}${ageStr}` : 'Ko\'rsatilmagan'));
+    setValue('ov-patient-gender', gender);
+
+    // Referral & Bonus
+    const refSel = document.getElementById('intake-referral-select');
+    const refText = refSel && refSel.selectedIndex >= 0 ? (refSel.options[refSel.selectedIndex]?.textContent || '—') : '—';
+    setValue('ov-referral-source', refText);
+
+    const bonusRow = document.getElementById('ov-bonus-row');
+    if (refSel?.value === 'doctor_referral') {
+      const refDocSel = document.getElementById('intake-referral-doctor-select');
+      const docName = refDocSel && refDocSel.selectedIndex >= 0 ? (refDocSel.options[refDocSel.selectedIndex]?.textContent || '') : '';
+      const feeType = document.getElementById('intake-referral-fee-type')?.value;
+      const fixedAmt = parseFloat(document.getElementById('intake-referral-fixed-amount')?.value) || 0;
+      let bonusDetail = docName;
+      if (feeType === 'fixed') bonusDetail += ` (Belgilangan: ${formatUZS(fixedAmt)})`;
+      else bonusDetail += ' (10% ulush)';
+      setValue('ov-bonus-info', bonusDetail);
+      if (bonusRow) bonusRow.style.display = 'flex';
+    } else {
+      if (bonusRow) bonusRow.style.display = 'none';
+    }
+
+    // 2. Service & Room info
+    const type = State.intake.serviceType || 'inpatient';
+    const typeLabel = type === 'inpatient' ? 'Statsionar (Yotish)' : (type === 'outpatient' ? 'Ambulator' : 'Konsultatsiya');
+    setValue('ov-service-type', typeLabel);
+
+    const progSel = document.getElementById('intake-program-select');
+    const progName = progSel && progSel.selectedIndex >= 0 ? (progSel.options[progSel.selectedIndex]?.textContent || '—') : '—';
+    setValue('ov-program-name', progName);
+
+    const docSel = document.getElementById('intake-doctor-select');
+    const docName = docSel && docSel.selectedIndex >= 0 ? (docSel.options[docSel.selectedIndex]?.textContent || 'Biriktirilmagan') : 'Biriktirilmagan';
+    setValue('ov-doctor-name', docName);
+
+    const startDate = document.getElementById('intake-start-date')?.value || todayStr();
+    let days = 1;
+    let rate = 0;
+    let advance = parseFloat(document.getElementById('intake-advance')?.value) || 0;
+    let discount = 0;
+
+    if (type === 'inpatient') {
+      days = parseInt(document.getElementById('intake-days')?.value) || 7;
+      rate = parseFloat(document.getElementById('intake-daily-rate')?.value) || 720000;
+      discount = parseFloat(document.getElementById('intake-discount')?.value) || 0;
+      const bed = State.intake.selectedBed ? `${State.intake.selectedBed} karavoti` : 'Tanlanmagan';
+      setValue('ov-bed-code', bed);
+    } else if (type === 'outpatient') {
+      days = parseInt(document.getElementById('intake-outpatient-days')?.value) || 1;
+      rate = parseFloat(document.getElementById('intake-outpatient-fee')?.value) || 310000;
+      setValue('ov-bed-code', 'Ambulator muolaja');
+    } else {
+      days = 1;
+      rate = parseFloat(document.getElementById('intake-consultation-fee')?.value) || 250000;
+      const consultTime = document.getElementById('intake-consultation-time')?.value || '10:00';
+      setValue('ov-bed-code', `Konsultatsiya xonasi (${consultTime})`);
+    }
+
+    const d = new Date(startDate);
+    const endD = new Date(d);
+    endD.setDate(endD.getDate() + (type === 'consultation' ? 0 : days));
+    const endDateStr = endD.toISOString().slice(0, 10);
+
+    setValue('ov-duration', type === 'consultation' ? '1 martalik qabul' : `${days} kun`);
+    setValue('ov-dates', `${formatDate(startDate)} → ${formatDate(endDateStr)}`);
+
+    // 3. Financial calculations
+    const gross = type === 'consultation' ? rate : (days * rate);
+    const discountAmt = gross * (discount / 100);
+    const net = gross - discountAmt;
+    const balance = Math.max(0, net - advance);
+
+    const payMethodSel = document.getElementById('intake-pay-method');
+    const payMethodLabel = payMethodSel ? (payMethodSel.options[payMethodSel.selectedIndex]?.textContent || 'Naqd pul') : 'Naqd pul';
+
+    setValue('ov-rate', type === 'consultation' ? formatUZS(rate) : `${formatUZS(rate)}/kun`);
+    setValue('ov-gross', formatUZS(gross));
+    setValue('ov-discount', discount ? `-${formatUZS(discountAmt)} (${discount}%)` : '0 so\'m');
+    setValue('ov-net', formatUZS(net));
+    setValue('ov-advance', formatUZS(advance));
+    setValue('ov-pay-method', payMethodLabel);
+    setValue('ov-balance', formatUZS(balance));
+  }
+
+  function showAdmissionSuccessRecommendation(data, admId) {
+    const modal = document.getElementById('modal-admission-success-recommendation');
+    if (!modal) return;
+    const summaryEl = document.getElementById('success-admission-summary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+          <span>Bemor:</span><strong>${data.name || data.patient_name || '—'}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+          <span>Xizmat / Karavot:</span><strong>${data.bedId || data.service_type || 'Statsionar'}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span>Qabul / Kvitansiya ID:</span><span class="font-mono" style="color:#0ea5e9;">#${admId || data.id || '—'}</span>
+        </div>
+      `;
+    }
+    const printBtn = document.getElementById('btn-success-print');
+    if (printBtn) {
+      printBtn.onclick = () => {
+        if (data.service_type === 'consultation') {
+          printConsultationSlip(data, admId);
+        } else {
+          printAdmissionSlip(data, admId);
+        }
+      };
+    }
+    openModal('modal-admission-success-recommendation');
+  }
+
+  function resetWizardAndStartNew() {
+    closeModal('modal-admission-success-recommendation');
+    State.intake.selectedBed = null;
+    document.getElementById('intake-form')?.reset();
+    const lastEl = document.getElementById('intake-patient-lastname');
+    const firstEl = document.getElementById('intake-patient-firstname');
+    const midEl = document.getElementById('intake-patient-middlename');
+    const phoneEl = document.getElementById('intake-patient-phone');
+    const nameEl = document.getElementById('intake-patient-name');
+    if (lastEl) lastEl.value = '';
+    if (firstEl) firstEl.value = '';
+    if (midEl) midEl.value = '';
+    if (nameEl) nameEl.value = '';
+    if (phoneEl) phoneEl.value = '+998 ';
+    const startEl = document.getElementById('intake-start-date');
+    if (startEl) startEl.value = todayStr();
+    goToWizardStep(1);
+    updateCostPreview();
+    renderBedPicker();
+  }
+
+  // ============================================================
   // INTAKE SUBMIT
   // ============================================================
     async function submitIntakeForm(e) {
@@ -1994,14 +2473,34 @@ window.FMH_Reception = (function () {
       e.stopPropagation();
     }
     const type = State.intake.serviceType || 'consultation';
-    const nameInput = document.getElementById('intake-patient-name');
+    const lastInput = document.getElementById('intake-patient-lastname');
+    const firstInput = document.getElementById('intake-patient-firstname');
+    const midInput = document.getElementById('intake-patient-middlename');
+    const lastName = (lastInput?.value || '').trim();
+    const firstName = (firstInput?.value || '').trim();
+    const middleName = (midInput?.value || '').trim();
+    let name = [lastName, firstName, middleName].filter(Boolean).join(' ');
+    if (!name) {
+      name = (document.getElementById('intake-patient-name')?.value || '').trim();
+    }
     const phoneInput = document.getElementById('intake-patient-phone');
-    const name = (nameInput?.value || '').trim();
     const phone = (phoneInput?.value || '').trim();
 
-    if (!name) {
-      showToast('Iltimos, bemor ismini kiriting', 'error');
-      nameInput?.focus();
+    if (!lastName || !firstName) {
+      if (!name) {
+        showToast('Iltimos, bemor familiyasi va ismini kiriting', 'error');
+        goToWizardStep(1);
+        if (!lastName) lastInput?.focus();
+        else firstInput?.focus();
+        return;
+      }
+    }
+
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 12 && digits.length !== 9) {
+      showToast('Iltimos, telefon raqamini to\'liq kiriting (+998 -- --- -- --)', 'error');
+      goToWizardStep(1);
+      phoneInput?.focus();
       return;
     }
 
@@ -2120,18 +2619,24 @@ window.FMH_Reception = (function () {
         renderRecentWalkIns();
         renderDirectoryTab();
 
+        const slipData = {
+          name: isAnon ? 'Anonim Bemor' : name,
+          phone,
+          bedId,
+          startDate: startDateStr,
+          program,
+          days,
+          rate,
+          advance,
+          service_type: 'inpatient'
+        };
+
+        // Show Printable Admission Recommendation Modal
+        showAdmissionSuccessRecommendation(slipData, json.id);
+
         // Print admission voucher
         setTimeout(() => {
-          printAdmissionSlip({
-            name: isAnon ? 'Anonim Bemor' : name,
-            phone,
-            bedId,
-            startDate: startDateStr,
-            program,
-            days,
-            rate,
-            advance
-          }, json.id);
+          printAdmissionSlip(slipData, json.id);
         }, 500);
 
       } else if (type === 'outpatient') {
@@ -2179,6 +2684,18 @@ window.FMH_Reception = (function () {
         } else {
           showToast(`✓ Ambulator bemor qabuli qayd etildi! (${name}). Hisob ochildi: ${formatUZS(aptData.billed || 0)} — to'lov kassada.`, 'success');
         }
+        const outSlipData = {
+          name,
+          phone,
+          startDate,
+          program: outProgram,
+          days: courseDays,
+          rate: fee,
+          advance: 0,
+          service_type: 'outpatient'
+        };
+        showAdmissionSuccessRecommendation(outSlipData, aptData.id);
+
         document.getElementById('intake-form')?.reset();
         await loadApiData();
         renderKPIs();
@@ -2235,17 +2752,23 @@ window.FMH_Reception = (function () {
         renderAppointmentsTab();
         renderDirectoryTab();
 
+        const consultSlipData = {
+          name,
+          phone,
+          doctorId,
+          date: startDate,
+          time: consultTime,
+          fee,
+          notes,
+          service_type: 'consultation'
+        };
+
+        // Show Printable Recommendation Modal
+        showAdmissionSuccessRecommendation(consultSlipData, aptData.id);
+
         // Print consultation voucher
         setTimeout(() => {
-          printConsultationSlip({
-            name,
-            phone,
-            doctorId,
-            date: startDate,
-            time: consultTime,
-            fee,
-            notes
-          }, aptData.id);
+          printConsultationSlip(consultSlipData, aptData.id);
         }, 400);
       }
     } catch (err) {
@@ -2299,13 +2822,28 @@ window.FMH_Reception = (function () {
 
   function startDirectIntake(options = {}) {
     switchTab('intake');
+    goToWizardStep(1);
     if (options.name) {
+      const parts = options.name.trim().split(/\s+/);
+      const lastEl = document.getElementById('intake-patient-lastname');
+      const firstEl = document.getElementById('intake-patient-firstname');
+      const midEl = document.getElementById('intake-patient-middlename');
+      if (parts.length === 1) {
+        if (firstEl) firstEl.value = parts[0];
+      } else if (parts.length === 2) {
+        if (lastEl) lastEl.value = parts[0];
+        if (firstEl) firstEl.value = parts[1];
+      } else if (parts.length >= 3) {
+        if (lastEl) lastEl.value = parts[0];
+        if (firstEl) firstEl.value = parts[1];
+        if (midEl) midEl.value = parts.slice(2).join(' ');
+      }
       const nameEl = document.getElementById('intake-patient-name');
       if (nameEl) nameEl.value = options.name;
     }
     if (options.phone) {
       const phoneEl = document.getElementById('intake-patient-phone');
-      if (phoneEl) phoneEl.value = options.phone;
+      if (phoneEl) phoneEl.value = formatUzPhone(options.phone);
     }
     if (options.serviceType) {
       const card = document.querySelector(`.service-type-card[data-service="${options.serviceType}"]`);
@@ -2319,7 +2857,7 @@ window.FMH_Reception = (function () {
       const notesEl = document.getElementById('intake-notes');
       if (notesEl) notesEl.value = options.notes;
     }
-    document.getElementById('intake-patient-name')?.focus();
+    document.getElementById('intake-patient-lastname')?.focus();
     showToast('Qabul shakli to\'ldirishga tayyor', 'info');
   }
 
@@ -3322,6 +3860,12 @@ window.FMH_Reception = (function () {
     setRoomsBoardPreset,
     toggleReferralFeeType,
     renderReferralDoctorSelect,
+    goToWizardStep,
+    nextWizardStep,
+    prevWizardStep,
+    resetWizardAndStartNew,
+    showAdmissionSuccessRecommendation,
+    updateWizardOverview,
   };
 
 })();

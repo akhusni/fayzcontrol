@@ -975,7 +975,7 @@
               <div class="val" style="color: var(--emerald);">+${formatShortUZS(doc.duty_pay)}</div>
             </div>
             <div class="doc-stat-item">
-              <div class="label">Gonorarlar</div>
+              <div class="label">Bonuslar</div>
               <div class="val" style="color: #38bdf8;">+${formatShortUZS(doc.bonus || 0)}</div>
             </div>
             <div class="doc-stat-item">
@@ -3230,7 +3230,7 @@
       date: getTodayISO(),
       time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
       cashier: '',
-      notes: `${doc.name}: asosiy ${formatUZS(doc.base_salary)} + navbatchilik ${formatUZS(doc.duty_pay)}${doc.bonus > 0 ? ` + gonorar ${formatUZS(doc.bonus)}` : ''} = ${formatUZS(doc.gross)}; ushlab qolindi ${formatUZS(doc.deductions)}; qo'lga ${formatUZS(amount)}`
+      notes: `${doc.name}: asosiy ${formatUZS(doc.base_salary)} + navbatchilik ${formatUZS(doc.duty_pay)}${doc.bonus > 0 ? ` + bonus ${formatUZS(doc.bonus)}` : ''} = ${formatUZS(doc.gross)}; ushlab qolindi ${formatUZS(doc.deductions)}; qo'lga ${formatUZS(amount)}`
     };
 
     const savedId = await postTransaction(newTxn);
@@ -4441,7 +4441,7 @@
   }
 
   // ==========================================================================
-  // GONORARLAR & REFERRALS LOGIC (34 Mutaxassislar yo'llanmalari)
+  // BONUS TIZIMI & REFERRALS LOGIC (34 Mutaxassislar yo'llanmalari)
   // ==========================================================================
 
   let referralsData = [];
@@ -4653,14 +4653,14 @@
     const ref = referralsData.find(r => r.id === refId);
     if (!ref) return;
     if (ref.status === 'paid') {
-      showToast("Bu gonorar allaqachon to'langan.", 'warning');
+      showToast("Bu bonus allaqachon to'langan.", 'warning');
       return;
     }
 
     const amt = Number(ref.calculated_amount) || 0;
     const confirmed = await fmhConfirm({
-      title: "Gonorar To'lovini Tasdiqlash",
-      message: `<strong>${esc(ref.doctor_name)}</strong> ga <strong>${formatUZS(amt)}</strong> gonorar to'lab yuborilsinmi?<br><small style="color:var(--text-secondary);">(Bemor: ${esc(ref.patient_name)})</small>`,
+      title: "Bonus To'lovini Tasdiqlash",
+      message: `<strong>${esc(ref.doctor_name)}</strong> ga <strong>${formatUZS(amt)}</strong> bonus to'lab yuborilsinmi?<br><small style="color:var(--text-secondary);">(Bemor: ${esc(ref.patient_name)})</small>`,
       confirmText: "To'lab yuborish",
       cancelText: "Bekor qilish",
       type: 'primary'
@@ -4681,7 +4681,7 @@
         showToast(data.error || 'Xatolik yuz berdi', 'danger');
         return;
       }
-      showToast(`✓ ${esc(ref.doctor_name)} ga ${formatUZS(amt)} gonorar muvaffaqiyatli to'landi va kassadan chiqim qilindi!`, 'success');
+      showToast(`✓ ${esc(ref.doctor_name)} ga ${formatUZS(amt)} bonus muvaffaqiyatli to'landi va kassadan chiqim qilindi!`, 'success');
       await syncWithLedgerAndBackend(false);
       await loadReferrals();
       renderAll();
@@ -4701,17 +4701,17 @@
       "Sana": String(r.created_at || '').slice(0, 10),
       "Yo'llanma Bergan Shifokor": r.doctor_name,
       "Bemor": r.patient_name,
-      "Gonorar Turi": r.fee_type === 'fixed' ? 'Belgilangan summa' : '10% ulush',
+      "Bonus Turi": r.fee_type === 'fixed' ? 'Belgilangan summa' : '10% ulush',
       "Bemor Hisobi": Number(r.base_total_billed) || 0,
-      "Gonorar Summasi": Number(r.calculated_amount) || 0,
+      "Bonus Summasi": Number(r.calculated_amount) || 0,
       "Holat": r.status === 'paid' ? "To'langan" : "Kutilmoqda",
       "To'langan Sana": r.paid_at || ""
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Gonorarlar");
-    XLSX.writeFile(wb, `FMH_Gonorarlar_${m}.xlsx`);
-    showToast("Gonorarlar ro'yxati Excelga muvaffaqiyatli yuklandi!", 'success');
+    XLSX.utils.book_append_sheet(wb, ws, "Bonuslar");
+    XLSX.writeFile(wb, `FMH_Bonuslar_${m}.xlsx`);
+    showToast("Bonuslar ro'yxati Excelga muvaffaqiyatli yuklandi!", 'success');
   }
 
   window.FMH_Accounting = {

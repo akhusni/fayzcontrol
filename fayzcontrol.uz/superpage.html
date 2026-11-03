@@ -410,192 +410,821 @@
              1. EXECUTIVE BI DASHBOARD
              ===================================================================== -->
         <section id="dept-executive" class="super-dept-section active">
-          <!-- 4 Core KPIs -->
-          <div class="kpi-grid-4">
-            <div class="kpi-card">
-              <div class="kpi-card-top">
-                <span class="kpi-label">Statsionar Bandligi</span>
-                <div class="kpi-icon-box" style="background: var(--primary-bg); color: var(--primary);"><i class="fas fa-bed"></i></div>
+          <!-- Situational Executive Header -->
+          <div class="exec-situational-header">
+            <div class="exec-header-left">
+              <span class="exec-badge-pill"><span class="live-pulse-dot" style="margin: 0;"></span> Yagona Situatsion Markaz & BI Analitika</span>
+              <h2 class="exec-header-title">Fayz Medical House — Asosiy Boshqaruv Paneli</h2>
+              <p class="exec-header-subtitle">Klinikaning real vaqtdagi moliyaviy oqimi, kassa qoldig'i, statsionar bandligi, xodimlar shtati va dori vositalari monitoringi</p>
+            </div>
+            <div class="exec-header-actions">
+              <div style="display: flex; gap: 4px; background: rgba(0,0,0,0.25); padding: 3px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <button type="button" class="exec-btn-period active" onclick="window.FMH_Super.setPeriodFilter('all', this)">Barchasi</button>
+                <button type="button" class="exec-btn-period" onclick="window.FMH_Super.setPeriodFilter('month', this)">Shu oy</button>
+                <button type="button" class="exec-btn-period" onclick="window.FMH_Super.setPeriodFilter('week', this)">Shu hafta</button>
+                <button type="button" class="exec-btn-period" onclick="window.FMH_Super.setPeriodFilter('today', this)">Bugun</button>
               </div>
-              <div class="kpi-val" id="exec-occupied-beds">—</div>
-              <div class="kpi-subtext"><span style="color: var(--success);"><i class="fas fa-arrow-up"></i> Bandlik:</span> <strong id="exec-occupancy-rate" style="color: var(--heading-color);">—</strong></div>
+              <button class="btn-super btn-super-outline" onclick="window.FMH_Super.refreshDashboard()" title="Ma'lumotlarni yangilash">
+                <i class="fas fa-sync-alt" id="exec-refresh-icon"></i> Yangilash
+              </button>
+              <button class="btn-super btn-super-primary" onclick="window.FMH_Super.openBookingModal()">
+                <i class="fas fa-user-plus"></i> Yangi Qabul
+              </button>
+              <button class="btn-super btn-super-success" onclick="window.FMH_Super.openPaymentModal()">
+                <i class="fas fa-coins"></i> Kassa To'lovi
+              </button>
+            </div>
+          </div>
+
+          <!-- =================================================================
+               YAGONA REAL-VAQTDAGI OPERATSION TELEMETRIYA & STATISTIKALAR KETMA-KETLIGI
+               Cross-Department Real-Time Telemetry & Operations Sequence
+               ================================================================= -->
+          <div class="exec-telemetry-panel">
+            <div class="telemetry-panel-top">
+              <div class="telemetry-panel-title">
+                <span class="live-pulse-dot" style="background: #10b981; margin: 0;"></span>
+                <i class="fas fa-stream" style="color: var(--primary);"></i>
+                <span>Real Vaqtdagi Klinika Telemetriyasi & Bo'limlar Statistikasi</span>
+              </div>
+              <div class="telemetry-panel-legend">
+                <span class="telemetry-legend-item"><span class="legend-dot" style="background: #10b981;"></span> Jonli (24/7 Real-Time)</span>
+                <span class="telemetry-legend-item"><i class="fas fa-shield-halved" style="color: #6366f1;"></i> FMH Unified Hub</span>
+              </div>
             </div>
 
-            <div class="kpi-card">
-              <div class="kpi-card-top">
-                <span class="kpi-label">Jami Tushum (Kirim)</span>
-                <div class="kpi-icon-box" style="background: var(--success-bg); color: var(--success);"><i class="fas fa-coins"></i></div>
+            <!-- Ketma-ketlikdagi 6 ta asosiy bo'lim klasteri -->
+            <div class="telemetry-groups-flow">
+
+              <!-- 1. QABUL & TRIAJ -->
+              <div class="telemetry-cluster dept-reception" onclick="window.FMH_Super.switchDepartment('reception')" title="Qabulxona bo'limiga o'tish">
+                <div class="telemetry-cluster-head">
+                  <i class="fas fa-concierge-bell"></i>
+                  <span>1. Qabul & Triaj</span>
+                </div>
+                <div class="telemetry-chips-row">
+                  <div class="telemetry-chip chip-emerald" title="Ayni vaqtdagi real bo'sh karavotlar">
+                    <i class="fas fa-bed"></i>
+                    <span class="lbl">Real Bo'sh:</span>
+                    <strong class="val" id="exec-chip-beds-available">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-sky" title="Bugungi qabullar va yozilganlar">
+                    <i class="fas fa-calendar-check"></i>
+                    <span class="lbl">Bugun:</span>
+                    <strong class="val" id="exec-chip-today-apts">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-amber" title="Yangi qo'ng'iroqlar va murojaatlar">
+                    <i class="fas fa-phone-alt"></i>
+                    <span class="lbl">Yangi lid:</span>
+                    <strong class="val" id="exec-chip-new-calls">—</strong>
+                  </div>
+                </div>
               </div>
-              <div class="kpi-val" id="exec-gross-revenue" style="color: var(--success); font-size: 1.4rem;">—</div>
-              <div class="kpi-subtext"><span style="color: var(--primary);">Kassa & Billing POS</span></div>
+
+              <!-- 2. STATSIONAR & BEMORLAR -->
+              <div class="telemetry-cluster dept-crm" onclick="window.FMH_Super.switchDepartment('crm')" title="Bemorlar CRM ga o'tish">
+                <div class="telemetry-cluster-head">
+                  <i class="fas fa-hospital-user"></i>
+                  <span>2. Statsionar & Bemorlar</span>
+                </div>
+                <div class="telemetry-chips-row">
+                  <div class="telemetry-chip chip-cyan" title="Statsionarda davolanayotgan bemorlar">
+                    <i class="fas fa-procedures"></i>
+                    <span class="lbl">Yotgan:</span>
+                    <strong class="val" id="exec-chip-stay-pts">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-indigo" title="Davolanib chiqqan (ruxsat berilgan) bemorlar">
+                    <i class="fas fa-user-check"></i>
+                    <span class="lbl">Chiqarilgan:</span>
+                    <strong class="val" id="exec-chip-discharged-pts">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-blue" title="Jami ro'yxatdagi bemorlar">
+                    <i class="fas fa-users"></i>
+                    <span class="lbl">Jami:</span>
+                    <strong class="val" id="exec-chip-total-pts">—</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. SHIFOKOR POSTI -->
+              <div class="telemetry-cluster dept-doctor" onclick="window.FMH_Super.switchDepartment('doctor')" title="Shifokor postiga o'tish">
+                <div class="telemetry-cluster-head">
+                  <i class="fas fa-user-md"></i>
+                  <span>3. Shifokor Posti</span>
+                </div>
+                <div class="telemetry-chips-row">
+                  <div class="telemetry-chip chip-emerald" title="Jami faol dori-darmon tayinlovlari">
+                    <i class="fas fa-pills"></i>
+                    <span class="lbl">Faol Retseptlar:</span>
+                    <strong class="val" id="exec-chip-rx-count">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-rose" title="Dori allergiyasi qayd etilgan bemorlar">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span class="lbl">Allergik Nazorat:</span>
+                    <strong class="val" id="exec-chip-allergy-count">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-sky" title="Faol shifokorlar">
+                    <i class="fas fa-stethoscope"></i>
+                    <span class="lbl">Shifokorlar:</span>
+                    <strong class="val" id="exec-chip-docs-count">—</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. HAMSHIRA & MUOLAJA -->
+              <div class="telemetry-cluster dept-nursery" onclick="window.FMH_Super.switchDepartment('nursery')" title="Hamshira postiga o'tish">
+                <div class="telemetry-cluster-head">
+                  <i class="fas fa-syringe"></i>
+                  <span>4. Hamshira & Muolaja</span>
+                </div>
+                <div class="telemetry-chips-row">
+                  <div class="telemetry-chip chip-sky" title="Bugun rejadagi dozalar">
+                    <i class="fas fa-list-check"></i>
+                    <span class="lbl">Rejada:</span>
+                    <strong class="val" id="exec-chip-planned">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-emerald" title="Berilgan dozalar">
+                    <i class="fas fa-circle-check"></i>
+                    <span class="lbl">Berilgan:</span>
+                    <strong class="val" id="exec-chip-given">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-amber" title="Kutilayotgan dozalar">
+                    <i class="fas fa-clock"></i>
+                    <span class="lbl">Kutilmoqda:</span>
+                    <strong class="val" id="exec-chip-pending">—</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. KASSA & TO'LOVLAR -->
+              <div class="telemetry-cluster dept-kassa" onclick="window.FMH_Super.switchDepartment('accounting')" title="Buxgalteriya va Kassaga o'tish">
+                <div class="telemetry-cluster-head">
+                  <i class="fas fa-cash-register"></i>
+                  <span>5. Kassa & To'lovlar</span>
+                </div>
+                <div class="telemetry-chips-row">
+                  <div class="telemetry-chip chip-emerald" title="Kassadagi naqd pul qoldig'i">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span class="lbl">Naqd:</span>
+                    <strong class="val" id="exec-chip-cash-val">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-sky" title="Terminal (Uzcard/Humo) tushumlari">
+                    <i class="fas fa-credit-card"></i>
+                    <span class="lbl">Terminal:</span>
+                    <strong class="val" id="exec-chip-terminal-val">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-purple" title="Click / Payme / Online tushumlar">
+                    <i class="fas fa-mobile-alt"></i>
+                    <span class="lbl">Online:</span>
+                    <strong class="val" id="exec-chip-online-val">—</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. KADRLAR & SMENA -->
+              <div class="telemetry-cluster dept-hr" onclick="window.FMH_Super.switchDepartment('hr')" title="HR va Kadrlar bo'limiga o'tish">
+                <div class="telemetry-cluster-head">
+                  <i class="fas fa-users-cog"></i>
+                  <span>6. Kadrlar & Smena</span>
+                </div>
+                <div class="telemetry-chips-row">
+                  <div class="telemetry-chip chip-indigo" title="Klinikadagi jami xodimlar shtati">
+                    <i class="fas fa-user-md"></i>
+                    <span class="lbl">Xodimlar:</span>
+                    <strong class="val" id="exec-chip-staff-count">—</strong>
+                  </div>
+                  <div class="telemetry-chip chip-teal" title="Bugun smenada / ishda bo'lganlar">
+                    <i class="fas fa-user-clock"></i>
+                    <span class="lbl">Ishda:</span>
+                    <strong class="val" id="exec-chip-duty-count">—</strong>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 6 Strategic Hospital KPIs -->
+          <div class="exec-kpi-grid-6">
+            <!-- 1. Gross Revenue -->
+            <div class="exec-kpi-card">
+              <div class="exec-kpi-top">
+                <span class="exec-kpi-label">Jami Tushum (Kirim)</span>
+                <div class="exec-kpi-icon" style="background: var(--success-bg); color: var(--success);"><i class="fas fa-coins"></i></div>
+              </div>
+              <div class="exec-kpi-val" id="exec-gross-revenue" style="color: var(--success);">—</div>
+              <div class="exec-kpi-subtext">Hisoblangan: <span id="exec-billed-revenue" style="font-weight: 700; color: var(--text-primary);">—</span></div>
+              <div class="exec-kpi-bar"><div class="exec-kpi-bar-fill" id="exec-collection-progress" style="width: 33%; background: var(--success);"></div></div>
             </div>
 
-            <div class="kpi-card">
-              <div class="kpi-card-top">
-                <span class="kpi-label">Sof Foyda (Rentabellik)</span>
-                <div class="kpi-icon-box" style="background: var(--purple-bg); color: var(--purple);"><i class="fas fa-wallet"></i></div>
+            <!-- 2. Cash in Hand -->
+            <div class="exec-kpi-card">
+              <div class="exec-kpi-top">
+                <span class="exec-kpi-label">Kassadagi Naqd Pul</span>
+                <div class="exec-kpi-icon" style="background: rgba(13, 148, 136, 0.15); color: #2dd4bf;"><i class="fas fa-cash-register"></i></div>
               </div>
-              <div class="kpi-val" id="exec-net-profit" style="color: var(--purple); font-size: 1.4rem;">—</div>
-              <div class="kpi-subtext"><span style="color: var(--success);">Rentabellik darajasi: 0%</span></div>
+              <div class="exec-kpi-val" id="exec-cash-in-hand" style="color: #2dd4bf;">—</div>
+              <div class="exec-kpi-subtext">Naqd: <span id="exec-cash-income">—</span> • Chiqim: <span id="exec-cash-expense">—</span></div>
+              <div class="exec-kpi-bar"><div class="exec-kpi-bar-fill" style="width: 93%; background: #2dd4bf;"></div></div>
             </div>
 
-            <div class="kpi-card">
-              <div class="kpi-card-top">
-                <span class="kpi-label">Dori Vositalari Bazasi</span>
-                <div class="kpi-icon-box" style="background: var(--warning-bg); color: var(--warning);"><i class="fas fa-pills"></i></div>
+            <!-- 3. Expenses -->
+            <div class="exec-kpi-card">
+              <div class="exec-kpi-top">
+                <span class="exec-kpi-label">Chiqim & Xarajat</span>
+                <div class="exec-kpi-icon" style="background: var(--danger-bg); color: var(--danger);"><i class="fas fa-arrow-trend-down"></i></div>
               </div>
-              <div class="kpi-val">294 Dori</div>
-              <div class="kpi-subtext"><span style="color: var(--primary);">88 Klinika formulari / 15 guruh</span></div>
+              <div class="exec-kpi-val" id="exec-total-expenses" style="color: var(--danger);">—</div>
+              <div class="exec-kpi-subtext">Dori xaridi, maosh va xo'jalik</div>
+              <div class="exec-kpi-bar"><div class="exec-kpi-bar-fill" style="width: 15%; background: var(--danger);"></div></div>
+            </div>
+
+            <!-- 4. Net Profit & Margin -->
+            <div class="exec-kpi-card">
+              <div class="exec-kpi-top">
+                <span class="exec-kpi-label">Sof Foyda</span>
+                <div class="exec-kpi-icon" style="background: var(--purple-bg); color: var(--purple);"><i class="fas fa-wallet"></i></div>
+              </div>
+              <div class="exec-kpi-val" id="exec-net-profit" style="color: var(--purple);">—</div>
+              <div class="exec-kpi-subtext">Rentabellik: <strong id="exec-profit-margin" style="color: var(--success);">0%</strong> (Sof qoldiq)</div>
+              <div class="exec-kpi-bar"><div class="exec-kpi-bar-fill" style="width: 96%; background: var(--purple);"></div></div>
+            </div>
+
+            <!-- 5. Bed Occupancy -->
+            <div class="exec-kpi-card">
+              <div class="exec-kpi-top">
+                <span class="exec-kpi-label">Statsionar Bandligi</span>
+                <div class="exec-kpi-icon" style="background: var(--primary-bg); color: var(--primary);"><i class="fas fa-bed"></i></div>
+              </div>
+              <div class="exec-kpi-val" id="exec-occupied-beds">—</div>
+              <div class="exec-kpi-subtext">Bo'sh joylar: <strong id="exec-available-beds" style="color: var(--success);">—</strong> (<span id="exec-occupancy-rate">—</span>)</div>
+              <div class="exec-kpi-bar"><div class="exec-kpi-bar-fill" id="exec-bed-progress" style="width: 12.5%; background: var(--primary);"></div></div>
+            </div>
+
+            <!-- 6. Staff & Payroll -->
+            <div class="exec-kpi-card">
+              <div class="exec-kpi-top">
+                <span class="exec-kpi-label">Xodimlar & Oylik</span>
+                <div class="exec-kpi-icon" style="background: var(--warning-bg); color: var(--warning);"><i class="fas fa-users-cog"></i></div>
+              </div>
+              <div class="exec-kpi-val" id="exec-total-staff">—</div>
+              <div class="exec-kpi-subtext">Oylik fondi: <span id="exec-payroll-fund" style="font-weight: 700; color: var(--heading-color);">—</span></div>
+              <div class="exec-kpi-bar"><div class="exec-kpi-bar-fill" style="width: 100%; background: var(--warning);"></div></div>
+            </div>
+          </div>
+
+          <!-- Row 1: Financial Dynamics & Payment Method Breakdown -->
+          <div class="exec-grid-2col">
+            <!-- Left: Financial Trend Chart -->
+            <div class="exec-card">
+              <div class="exec-card-header">
+                <div class="exec-card-title">
+                  <i class="fas fa-chart-line" style="color: var(--primary);"></i> Moliyaviy Oqim Dinamikasi (Kirim, Chiqim va Sof Foyda)
+                </div>
+                <div style="font-size: 0.76rem; color: var(--text-dim); display: flex; gap: 12px; align-items: center;">
+                  <span><i class="fas fa-square" style="color: #10b981;"></i> Kirim</span>
+                  <span><i class="fas fa-square" style="color: #f43f5e;"></i> Chiqim</span>
+                  <span><i class="fas fa-square" style="color: #a855f7;"></i> Sof Foyda</span>
+                </div>
+              </div>
+              <div class="exec-card-body">
+                <div style="height: 250px; position: relative;">
+                  <canvas id="super-financial-trend-chart"></canvas>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); font-size: 0.78rem;">
+                  <div>
+                    <span style="color: var(--text-dim);">Qarzdorlik (Nasiya balansi):</span>
+                    <strong id="exec-debt-balance" style="color: var(--danger); margin-left: 4px;">—</strong>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-super btn-super-outline" style="padding: 4px 10px; font-size: 0.72rem;" onclick="window.FMH_Super.switchDepartment('accounting')">
+                      <i class="fas fa-calculator"></i> Buxgalteriya Kassa Jurnali &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Payment Methods Donut Chart -->
+            <div class="exec-card">
+              <div class="exec-card-header">
+                <div class="exec-card-title">
+                  <i class="fas fa-pie-chart" style="color: #2dd4bf;"></i> To'lov Turlari & Kassa
+                </div>
+                <span class="pill-status pill-available" style="font-size: 0.68rem;">Real-time</span>
+              </div>
+              <div class="exec-card-body" style="display: flex; flex-direction: column; justify-content: space-between;">
+                <div style="height: 180px; position: relative;">
+                  <canvas id="super-payments-donut-chart"></canvas>
+                </div>
+                <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 0.76rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-circle" style="color: #10b981; font-size: 0.6rem;"></i> Naqd Pul (Kassa):</span>
+                    <strong id="exec-donut-cash" style="color: var(--heading-color);">—</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-circle" style="color: #38bdf8; font-size: 0.6rem;"></i> Bank Terminali:</span>
+                    <strong id="exec-donut-terminal" style="color: var(--heading-color);">—</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-circle" style="color: #a855f7; font-size: 0.6rem;"></i> Click / Payme / O'tkazma:</span>
+                    <strong id="exec-donut-online" style="color: var(--heading-color);">—</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid var(--border-subtle);">
+                    <span><i class="fas fa-circle" style="color: #f43f5e; font-size: 0.6rem;"></i> Nasiya (Bemorlar qarzi):</span>
+                    <strong id="exec-donut-debt" style="color: var(--danger);">—</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Statsionar, Binolar & Palatalar Monitoringi -->
+          <div class="exec-card" style="margin-bottom: 1.5rem;">
+            <div class="exec-card-header">
+              <div class="exec-card-title">
+                <i class="fas fa-bed" style="color: var(--primary);"></i> 24 ta Statsionar Karavotlar & Binolar Holati
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 0.75rem;">
+                <span class="pill-status pill-available"><span id="exec-bld-available">20</span> Bo'sh</span>
+                <span class="pill-status pill-occupied"><span id="exec-bld-occupied">3</span> Band</span>
+                <span class="pill-status pill-reserved"><span id="exec-bld-reserved">1</span> Bron</span>
+                <button class="btn-super btn-super-outline" style="padding: 4px 10px; font-size: 0.72rem;" onclick="window.FMH_Super.switchDepartment('facility')">
+                  Interaktiv Xaritasiga o'tish &rarr;
+                </button>
+              </div>
+            </div>
+            <div class="exec-card-body">
+              <div class="exec-buildings-grid" id="exec-building-beds-container">
+                <div style="text-align: center; color: var(--text-muted); padding: 20px;">Palatalar ma'lumoti yuklanmoqda...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: 4 Clinical & Operational Metric Cards -->
+          <div class="exec-strip-4">
+            <!-- 1. Bemorlar CRM -->
+            <div class="exec-strip-card" onclick="window.FMH_Super.switchDepartment('crm')" style="cursor: pointer;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted);">Bemorlar CRM & Triaj</span>
+                  <i class="fas fa-address-book" style="color: var(--purple);"></i>
+                </div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: var(--heading-color);" id="exec-total-crm-patients">10 Bemor</div>
+                <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 4px;">
+                  Statsionarda yotgan: <strong id="exec-active-inpatients" style="color: var(--primary);">—</strong>
+                </div>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--purple); font-weight: 700; margin-top: 10px; display: flex; justify-content: space-between;">
+                <span>Kartoteka arxiviga o'tish</span>
+                <span>&rarr;</span>
+              </div>
+            </div>
+
+            <!-- 2. Shifokorlar & EMR -->
+            <div class="exec-strip-card" onclick="window.FMH_Super.switchDepartment('doctors')" style="cursor: pointer;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted);">Shifokorlar & EMR</span>
+                  <i class="fas fa-user-md" style="color: var(--success);"></i>
+                </div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: var(--heading-color);" id="exec-active-doctors">3 Shifokor</div>
+                <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 4px;">
+                  Faol davolash retseptlari: <strong id="exec-active-prescriptions" style="color: var(--success);">—</strong>
+                </div>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--success); font-weight: 700; margin-top: 10px; display: flex; justify-content: space-between;">
+                <span>Konsultatsiyalar va EMR</span>
+                <span>&rarr;</span>
+              </div>
+            </div>
+
+            <!-- 3. Hamshiralar & Vitals -->
+            <div class="exec-strip-card" onclick="window.FMH_Super.switchDepartment('nursery')" style="cursor: pointer;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted);">Hamshiralar & Vitals</span>
+                  <i class="fas fa-syringe" style="color: var(--danger);"></i>
+                </div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: var(--heading-color);" id="exec-active-nurses">6 Hamshira</div>
+                <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 4px;">
+                  24/7 post monitoringi & inyeksiyalar
+                </div>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--danger); font-weight: 700; margin-top: 10px; display: flex; justify-content: space-between;">
+                <span>Hamshiralar postiga o'tish</span>
+                <span>&rarr;</span>
+              </div>
+            </div>
+
+            <!-- 4. Oshxona & Parhez -->
+            <div class="exec-strip-card" onclick="window.FMH_Super.switchDepartment('kitchen')" style="cursor: pointer;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted);">Parhez & Oshxona</span>
+                  <i class="fas fa-utensils" style="color: var(--warning);"></i>
+                </div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: var(--heading-color);" id="exec-kitchen-meals">—</div>
+                <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 4px;">
+                  Stol №5 (Detoksikatsiya / Jigar)
+                </div>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--warning); font-weight: 700; margin-top: 10px; display: flex; justify-content: space-between;">
+                <span>Taomnomani ko'rish</span>
+                <span>&rarr;</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: Omborxona / Dorilar va Xodimlar Shtat Maoshi -->
+          <div class="exec-grid-2col" style="grid-template-columns: 1fr 1fr; margin-bottom: 1.5rem;">
+            <!-- Left: Dorixona & Omborxona -->
+            <div class="exec-card">
+              <div class="exec-card-header">
+                <div class="exec-card-title">
+                  <i class="fas fa-pills" style="color: var(--warning);"></i> Dori Vositalari & Omborxona Zaxirasi
+                </div>
+                <button class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.switchDepartment('pharmacy')">
+                  Dorixona &rarr;
+                </button>
+              </div>
+              <div class="exec-card-body">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;">
+                  <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">JAMI DORILAR</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--heading-color);" id="exec-wh-total">294 ta</div>
+                    <div style="font-size: 0.68rem; color: var(--primary);">88 Klinika formulari</div>
+                  </div>
+                  <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">KAM QOLGAN</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--success);" id="exec-wh-low">0 ta</div>
+                    <div style="font-size: 0.68rem; color: var(--success);">Zaxira yetarli</div>
+                  </div>
+                  <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">TUGAGAN</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-muted);" id="exec-wh-out">0 ta</div>
+                    <div style="font-size: 0.68rem; color: var(--text-dim);">Taqchillik yo'q</div>
+                  </div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.08); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                  <i class="fas fa-check-circle" style="color: var(--success);"></i> Ombor me'yorda: statsionar va reabilitatsiya uchun dori vositalari to'liq ta'minlangan.
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Kadrlar va Oylik Fondi -->
+            <div class="exec-card">
+              <div class="exec-card-header">
+                <div class="exec-card-title">
+                  <i class="fas fa-users-cog" style="color: var(--primary);"></i> Xodimlar Shtati & 24/7 Smenalar
+                </div>
+                <button class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.switchDepartment('hr')">
+                  Kadrlar &rarr;
+                </button>
+              </div>
+              <div class="exec-card-body">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;">
+                  <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">JAMI XODIMLAR</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--heading-color);" id="exec-hr-total">16 nafar</div>
+                    <div style="font-size: 0.68rem; color: var(--primary);">Barchasi faol</div>
+                  </div>
+                  <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">OYLIK FONDI</div>
+                    <div style="font-size: 1.05rem; font-weight: 800; color: var(--warning);" id="exec-hr-payroll">102.8 mln</div>
+                    <div style="font-size: 0.68rem; color: var(--text-dim);">Shtat maoshi</div>
+                  </div>
+                  <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">24/7 SMENADA</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--success);" id="exec-hr-duty">Navbatchilik</div>
+                    <div style="font-size: 0.68rem; color: var(--success);">Shifokor & Hamshira</div>
+                  </div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.08); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.2);">
+                  <i class="fas fa-shield-alt" style="color: var(--primary);"></i> 24/7 rejim: Navbatchi narkolog, reanimatolog va sanitarka xodimlari posti uzluksiz ishlamoqda.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 5: So'nggi Moliyaviy Operatsiyalar & Jonli Lenta -->
+          <div class="exec-grid-2col" style="margin-bottom: 1.75rem;">
+            <!-- Left: So'nggi Kassa Operatsiyalari Jadvali -->
+            <div class="exec-card">
+              <div class="exec-card-header">
+                <div class="exec-card-title">
+                  <i class="fas fa-receipt" style="color: #2dd4bf;"></i> So'nggi Kassa va Moliyaviy Harakatlar
+                </div>
+                <button class="btn-super btn-super-outline" style="padding: 2px 8px; font-size: 0.72rem;" onclick="window.FMH_Super.switchDepartment('accounting')">
+                  Barcha Tranzaksiyalar &rarr;
+                </button>
+              </div>
+              <div class="exec-card-body" style="padding: 0;">
+                <div style="overflow-x: auto;">
+                  <table class="exec-table">
+                    <thead>
+                      <tr>
+                        <th>Sana / Vaqt</th>
+                        <th>Turi</th>
+                        <th>Maqsad / Bemor</th>
+                        <th>Summa</th>
+                        <th>To'lov Usuli</th>
+                        <th>Kassir</th>
+                      </tr>
+                    </thead>
+                    <tbody id="super-recent-transactions-tbody">
+                      <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">Tranzaksiyalar yuklanmoqda...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Jonli Operatsion Oqim -->
+            <div class="exec-card">
+              <div class="exec-card-header">
+                <div class="exec-card-title">
+                  <i class="fas fa-bolt" style="color: var(--warning);"></i> Jonli Operatsion Oqim (Clinical Feed)
+                </div>
+                <span style="font-size: 0.72rem; color: var(--success);"><i class="fas fa-circle" style="font-size: 0.5rem;"></i> Tizim Faol</span>
+              </div>
+              <div class="exec-card-body" style="padding: 0.8rem 1rem;">
+                <div class="feed-list" id="super-live-feed" style="max-height: 280px; overflow-y: auto;">
+                  <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+                    <i class="fas fa-inbox" style="font-size: 1.5rem; margin-bottom: 6px; opacity: 0.4; display: block;"></i>
+                    Jonli jarayonlar yuklanmoqda...
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- 9 Department Quick Jump Cards -->
+
           <div class="dept-hub-grid">
+
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('facility')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">🏨 2. Bino & 14 Karavot</div>
+
                   <div class="dept-hub-desc">1 va 2-qavat palatalari, 10 kunlik standart kurs, Gantt jadvali</div>
+
                 </div>
+
                 <i class="fas fa-bed" style="color: var(--primary); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">14 ta To'shak</span>
+
                 <div style="display: flex; gap: 8px; align-items: center;">
+
                   <a href="building_management.html" style="color: var(--text-muted); font-size: 0.72rem; text-decoration: underline;" onclick="event.stopPropagation()">[Alohida CAD &rarr;]</a>
+
                   <span style="color: var(--primary); font-size: 0.78rem; font-weight: 700;">O'tish &rarr;</span>
+
                 </div>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('accounting')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">💳 3. Buxgalteriya & Kassa</div>
-                  <div class="dept-hub-desc">Statsionar hisob-kitob, kirim/chiqim, shifokorlar gonorari, kvitansiya</div>
+
+                  <div class="dept-hub-desc">Statsionar hisob-kitob, kirim/chiqim, shifokorlar bonusi, kvitansiya</div>
+
                 </div>
+
                 <i class="fas fa-cash-register" style="color: var(--success); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">POS Terminal</span>
+
                 <div style="display: flex; gap: 8px; align-items: center;">
+
                   <a href="accounting.html" style="color: var(--text-muted); font-size: 0.72rem; text-decoration: underline;" onclick="event.stopPropagation()">[Alohida Kassa &rarr;]</a>
+
                   <span style="color: var(--success); font-size: 0.78rem; font-weight: 700;">O'tish &rarr;</span>
+
                 </div>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('pharmacy')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">💊 4. Farmakologiya</div>
+
                   <div class="dept-hub-desc">294 ta dori (88 rasmiy klinika formulari), dozalar, retsept biriktirish</div>
+
                 </div>
+
                 <i class="fas fa-pills" style="color: var(--purple); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">294 Dori (88 Klinika)</span>
+
                 <span style="color: var(--purple); font-size: 0.78rem;">O'tish &rarr;</span>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('reception')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">📋 5. Qabulxona & Resepshn</div>
+
                   <div class="dept-hub-desc">Bemorlarni qabul qilish, FMH kodlari berish, navbatlar triaji</div>
+
                 </div>
+
                 <i class="fas fa-user-plus" style="color: var(--primary); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">Triaj & Qabul</span>
+
                 <span style="color: var(--primary); font-size: 0.78rem;">O'tish &rarr;</span>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('doctors')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">🩺 6. Shifokorlar & EMR</div>
+
                   <div class="dept-hub-desc">Bosh narkolog, psixiatr, toksikolog va reabilitolog konsultatsiyalari</div>
+
                 </div>
+
                 <i class="fas fa-user-md" style="color: var(--success); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">4 ta Shifokor</span>
+
                 <span style="color: var(--success); font-size: 0.78rem;">O'tish &rarr;</span>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('nursery')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">💉 7. Hamshiralar Posti</div>
+
                   <div class="dept-hub-desc">Kapelnitsalar, inyeksiyalar, qon bosimi, puls va harorat monitoringi</div>
+
                 </div>
+
                 <i class="fas fa-syringe" style="color: var(--danger); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">Vitals Nazorati</span>
+
                 <span style="color: var(--danger); font-size: 0.78rem;">O'tish &rarr;</span>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('kitchen')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">🍲 8. Parhez & Oshxona</div>
+
                   <div class="dept-hub-desc">Detoksikatsiya parhez taomnomasi va 24 karavotga 3 mahal ovqat</div>
+
                 </div>
+
                 <i class="fas fa-utensils" style="color: var(--warning); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">Stol №5 Parhez</span>
+
                 <span style="color: var(--warning); font-size: 0.78rem;">O'tish &rarr;</span>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('hr')">
+
               <div class="dept-hub-top">
+
                 <div>
+
                   <div class="dept-hub-title">👥 9. Kadrlar & Smenalar</div>
+
                   <div class="dept-hub-desc">24/7 shifokorlar va navbatchi hamshiralar ish grafigi</div>
+
                 </div>
+
                 <i class="fas fa-user-clock" style="color: var(--primary); font-size: 1.4rem;"></i>
+
               </div>
+
               <div class="dept-hub-bottom">
+
                 <span class="dept-hub-stat">24/7 Navbatchilik</span>
+
                 <span style="color: var(--primary); font-size: 0.78rem;">O'tish &rarr;</span>
+
               </div>
+
             </div>
+
+
 
             <div class="dept-hub-card" onclick="window.FMH_Super.switchDepartment('crm')">
-              <div class="dept-hub-top">
-                <div>
-                  <div class="dept-hub-title">📂 10. Bemorlar CRM</div>
-                  <div class="dept-hub-desc">To'liq kasallik tarixi, davolanish kurslari va anonim qaydnomalar</div>
-                </div>
-                <i class="fas fa-address-book" style="color: var(--purple); font-size: 1.4rem;"></i>
-              </div>
-              <div class="dept-hub-bottom">
-                <span class="dept-hub-stat">EMR Arxiv</span>
-                <span style="color: var(--purple); font-size: 0.78rem;">O'tish &rarr;</span>
-              </div>
-            </div>
-          </div>
 
-          <!-- Live Activity Feed -->
-          <div class="live-feed-card">
-            <div class="feed-title">
-              <span><i class="fas fa-bolt" style="color: var(--warning); margin-right: 6px;"></i> Jonli Operatsion Oqim (Real-Time Clinical Feed)</span>
-              <span style="font-size: 0.75rem; color: var(--success);"><i class="fas fa-circle" style="font-size: 0.55rem;"></i> Tizim Faol</span>
-            </div>
-            <div class="feed-list" id="super-live-feed">
-              <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.88rem;">
-                <i class="fas fa-inbox" style="font-size: 1.6rem; margin-bottom: 8px; opacity: 0.4; display: block;"></i>
-                Hozircha operatsion oqimda faol harakatlar mavjud emas (Baza toza).
+              <div class="dept-hub-top">
+
+                <div>
+
+                  <div class="dept-hub-title">📂 10. Bemorlar CRM</div>
+
+                  <div class="dept-hub-desc">To'liq kasallik tarixi, davolanish kurslari va anonim qaydnomalar</div>
+
+                </div>
+
+                <i class="fas fa-address-book" style="color: var(--purple); font-size: 1.4rem;"></i>
+
               </div>
+
+              <div class="dept-hub-bottom">
+
+                <span class="dept-hub-stat">EMR Arxiv</span>
+
+                <span style="color: var(--purple); font-size: 0.78rem;">O'tish &rarr;</span>
+
+              </div>
+
             </div>
+
           </div>
         </section>
 
@@ -1759,6 +2388,7 @@
   </div>
 
   <!-- Scripts -->
+  <script src="js/chart.min.js"></script>
   <script src="js/xlsx.full.min.js"></script>
   <script src="js/unified_print_engine.js?v=6.1"></script>
   <script src="js/med_search_engine.js?v=4.0"></script>

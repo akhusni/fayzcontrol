@@ -1697,12 +1697,20 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("SELECT COALESCE(SUM(amount), 0.0) FROM payments WHERE payment_method IN ('card_transfer', 'payme_click')")
                 online_paid = cur.fetchone()[0] or 0.0
 
-                # Staff counts
+                # Staff counts & payroll fund
+                cur.execute("SELECT COUNT(*), COALESCE(SUM(salary_base), 0.0) FROM staff WHERE is_active = 1")
+                st_info = cur.fetchone()
+                total_staff = int(st_info[0] or 0)
+                monthly_payroll = float(st_info[1] or 0.0)
+
                 cur.execute("SELECT COUNT(*) FROM staff WHERE role IN ('doctor', 'chief_doctor') AND is_active = 1")
                 active_doctors = cur.fetchone()[0] or 0
 
                 cur.execute("SELECT COUNT(*) FROM staff WHERE role = 'nurse' AND is_active = 1")
                 active_nurses = cur.fetchone()[0] or 0
+
+                cur.execute("SELECT COUNT(*) FROM staff WHERE role NOT IN ('doctor', 'chief_doctor', 'nurse') AND is_active = 1")
+                support_staff = int(cur.fetchone()[0] or 0)
 
                 # Reception metrics
                 cur.execute("SELECT COUNT(*) FROM appointments WHERE appointment_date = DATE('now') AND status != 'cancelled'")
@@ -1721,12 +1729,88 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     WHERE status = 'active'
                       AND DATE('now', 'localtime') >= DATE(start_date)
                       AND DATE('now', 'localtime') <= DATE(COALESCE(actual_end_date, planned_end_date))
-                """)
+                """ )
                 real_occupied = cur.fetchone()[0] or 0
                 cur.execute("SELECT COUNT(*) FROM beds WHERE status != 'out_of_service'")
                 _b_cnt = cur.fetchone()
                 real_total = (_b_cnt[0] if _b_cnt else 24) or 24
                 real_available = max(0, real_total - real_occupied)
+
+                # Expenses & Profit calculation
+                cur.execute("SELECT COALESCE(SUM(amount), 0.0) FROM accounting_transactions WHERE transaction_type = 'expense'")
+                total_expenses = float(cur.fetchone()[0] or 0.0)
+
+                cur.execute("SELECT COALESCE(SUM(amount), 0.0) FROM accounting_transactions WHERE transaction_type = 'expense' AND payment_method IN ('cash', 'cash_register')")
+                cash_expenses = float(cur.fetchone()[0] or 0.0)
+                cash_in_hand = max(0.0, cash_paid - cash_expenses)
+
+                tot_collected = float(kpi_row['total_revenue_collected'] if kpi_row else 0.0)
+                net_profit = tot_collected - total_expenses
+                profit_margin = round((net_profit / tot_collected * 100), 1) if tot_collected > 0 else 0.0
+
+                # Warehouse & Pharmacology metrics
+                cur.execute("SELECT COUNT(*) FROM medications_catalog WHERE is_active = 1")
+                total_meds = int(cur.fetchone()[0] or 0)
+                cur.execute("SELECT COUNT(*) FROM medications_catalog WHERE is_active = 1 AND stock_quantity <= min_stock_level AND stock_quantity > 0")
+                low_stock_meds = int(cur.fetchone()[0] or 0)
+                cur.execute("SELECT COUNT(*) FROM medications_catalog WHERE is_active = 1 AND stock_quantity = 0")
+                out_stock_meds = int(cur.fetchone()[0] or 0)
+
+                # Buildings breakdown
+                cur.execute("""
+                    SELECT building_number,
+                           COUNT(*) AS total_beds,
+                           COALESCE(SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END), 0) AS occupied_beds,
+                           COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) AS available_beds
+                    FROM v_bed_live_status
+                    GROUP BY building_number
+                    ORDER BY building_number
+                """ )
+                building_stats = [dict(r) for r in cur.fetchall()]
+
+                # Recent transactions (last 6)
+                cur.execute("""
+                    SELECT atx.id, atx.transaction_type, atx.category, atx.amount, atx.payment_method,
+                           atx.description, atx.transaction_date,
+                           COALESCE(st.full_name, 'Kassir') AS cashier_name
+                    FROM accounting_transactions atx
+                    LEFT JOIN staff st ON atx.recorded_by_staff_id = st.id
+                    ORDER BY atx.transaction_date DESC, atx.id DESC
+                    LIMIT 6
+                """ )
+                recent_transactions = [dict(r) for r in cur.fetchall()]
+
+                # Monthly financial trend (last 6 months)
+                cur.execute("""
+                    SELECT DATE_FORMAT(transaction_date, '%Y-%m') AS month_label,
+                           COALESCE(SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END), 0.0) AS income,
+                           COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0.0) AS expense
+                    FROM accounting_transactions
+                    GROUP BY DATE_FORMAT(transaction_date, '%Y-%m')
+                    ORDER BY month_label ASC
+                    LIMIT 6
+                """ )
+                monthly_trend = [dict(r) for r in cur.fetchall()]
+
+                # Operational counts for cross-department executive telemetry
+                cur.execute("SELECT COUNT(*) FROM patients WHERE status = 'discharged' OR id IN (SELECT patient_id FROM admissions WHERE status = 'discharged')")
+                discharged_pts = int(cur.fetchone()[0] or 0)
+
+                cur.execute("SELECT COUNT(*) FROM patients WHERE medical_allergies IS NOT NULL AND medical_allergies != '' AND LOWER(medical_allergies) != 'yo''q'")
+                allergy_pts = int(cur.fetchone()[0] or 0)
+
+                cur.execute("SELECT COUNT(DISTINCT staff_id) FROM staff_attendance WHERE work_date = CURRENT_DATE() AND status IN ('present', 'late', 'on_duty')")
+                duty_staff = int(cur.fetchone()[0] or 0)
+                if duty_staff == 0:
+                    duty_staff = active_doctors + active_nurses
+
+                cur.execute("SELECT COUNT(*) FROM medication_administrations WHERE scheduled_date = CURRENT_DATE() AND status = 'given'")
+                given_doses = int(cur.fetchone()[0] or 0)
+
+                cur.execute("SELECT COUNT(*) FROM medication_administrations WHERE scheduled_date = CURRENT_DATE()")
+                planned_doses = int(cur.fetchone()[0] or 0)
+                if planned_doses == 0:
+                    planned_doses = max(given_doses, int(kpi_row['active_prescriptions_count'] if kpi_row else 0) * 2)
 
                 summary = {
                     "total_beds": real_total,
@@ -1734,22 +1818,44 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "available_beds": real_available,
                     "occupancy_rate": kpi_row['occupancy_rate_percent'] if kpi_row else 0.0,
                     "active_inpatients": kpi_row['active_inpatient_count'] if kpi_row else 0,
+                    "discharged_patients": discharged_pts,
+                    "allergy_patients": allergy_pts,
+                    "duty_staff": duty_staff,
+                    "given_doses": given_doses,
+                    "planned_doses": planned_doses,
+                    "occupied_beds": real_occupied,
+                    "available_beds": real_available,
+                    "occupancy_rate": kpi_row['occupancy_rate_percent'] if kpi_row else 0.0,
+                    "active_inpatients": kpi_row['active_inpatient_count'] if kpi_row else 0,
                     "total_patients": kpi_row['active_patient_count'] if kpi_row else 0,
                     "gross_revenue": kpi_row['total_revenue_billed'] if kpi_row else 0.0,
-                    "total_paid": kpi_row['total_revenue_collected'] if kpi_row else 0.0,
+                    "total_paid": tot_collected,
+                    "total_expenses": total_expenses,
+                    "net_profit": net_profit,
+                    "profit_margin": profit_margin,
+                    "cash_in_hand": cash_in_hand,
                     "balance_due": kpi_row['total_outstanding_debt'] if kpi_row else 0.0,
                     "paid_cash": cash_paid,
                     "paid_terminal": terminal_paid,
                     "paid_online": online_paid,
                     "active_doctors": active_doctors,
                     "active_nurses": active_nurses,
+                    "total_staff": total_staff,
+                    "support_staff": support_staff,
+                    "monthly_payroll": monthly_payroll,
+                    "total_meds": total_meds,
+                    "low_stock_meds": low_stock_meds,
+                    "out_stock_meds": out_stock_meds,
                     "today_appointments": today_apts,
                     "new_calls": new_calls,
                     "today_walkins": today_walkins,
-                    "active_prescriptions": kpi_row['active_prescriptions_count'] if kpi_row else 0
+                    "active_prescriptions": kpi_row['active_prescriptions_count'] if kpi_row else 0,
+                    "building_stats": building_stats,
+                    "recent_transactions": recent_transactions,
+                    "monthly_trend": monthly_trend
                 }
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps(summary, ensure_ascii=False).encode('utf-8'))
+                self.wfile.write(json.dumps(summary, default=str, ensure_ascii=False).encode('utf-8'))
 
             # 1. /api/beds -> Live Bed status with room & active admission
             elif path == '/api/beds':
@@ -3151,19 +3257,27 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cur.execute("""
                     SELECT p.id, p.patient_code, p.full_name, p.birth_date, p.birth_year, p.gender, p.phone, p.status,
                            p.medical_allergies, p.chronic_conditions, p.created_at,
-                           a.id AS admission_id, a.start_date AS admission_date, a.planned_end_date AS discharge_date,
+                           act_a.id AS admission_id, act_a.start_date AS admission_date, act_a.planned_end_date AS discharge_date,
+                           disch_a.id AS last_discharge_admission_id, disch_a.start_date AS past_admission_date, disch_a.actual_end_date AS actual_discharge_date,
                            (SELECT COALESCE(mh.diagnosis_primary, '') FROM medical_histories mh WHERE mh.patient_id = p.id ORDER BY mh.created_at DESC LIMIT 1) AS diagnosis,
-                           r.room_number, b.bed_code AS bed_number,
-                           (SELECT COUNT(*) FROM patient_dossiers pd WHERE pd.patient_id = p.id) AS dossiers_count
+                           COALESCE(r_act.room_number, r_past.room_number) AS room_number,
+                           COALESCE(b_act.bed_code, b_past.bed_code) AS bed_number,
+                           (SELECT COUNT(*) FROM patient_dossiers pd WHERE pd.patient_id = p.id) AS dossiers_count,
+                           (SELECT COUNT(*) FROM discharge_epicrises de WHERE de.patient_id = p.id) AS epicrisis_count
                     FROM patients p
-                    LEFT JOIN admissions a ON a.patient_id = p.id AND a.status = 'active'
-                    LEFT JOIN beds b ON a.bed_id = b.id
-                    LEFT JOIN rooms r ON b.room_id = r.id
-                    ORDER BY COALESCE(a.start_date, p.created_at) DESC, p.id DESC
+                    LEFT JOIN admissions act_a ON act_a.patient_id = p.id AND act_a.status = 'active'
+                    LEFT JOIN beds b_act ON act_a.bed_id = b_act.id
+                    LEFT JOIN rooms r_act ON b_act.room_id = r_act.id
+                    LEFT JOIN admissions disch_a ON disch_a.id = (
+                        SELECT id FROM admissions WHERE patient_id = p.id AND status = 'discharged' ORDER BY COALESCE(actual_end_date, planned_end_date) DESC, id DESC LIMIT 1
+                    )
+                    LEFT JOIN beds b_past ON disch_a.bed_id = b_past.id
+                    LEFT JOIN rooms r_past ON b_past.room_id = r_past.id
+                    ORDER BY (act_a.id IS NOT NULL) DESC, COALESCE(act_a.start_date, disch_a.actual_end_date, p.created_at) DESC, p.id DESC
                 """)
-                pts = cur.fetchall()
+                pts = [dict(r) for r in cur.fetchall()]
                 self._set_json_headers(200)
-                self.wfile.write(json.dumps({'patients': pts}, ensure_ascii=False).encode('utf-8'))
+                self.wfile.write(json.dumps({'patients': pts}, ensure_ascii=False, default=str).encode('utf-8'))
 
             elif path == '/api/dossiers/list':
                 dossiers = list_patient_dossiers(conn, limit=200)
@@ -3581,7 +3695,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                             pass
                         advance_payment_id = None
 
-                # If referred by a doctor/staff, record referral commission (gonorar)
+                # If referred by a doctor/staff, record referral commission (bonus)
                 ref_doctor_id = str(body.get('referral_doctor_id') or '').strip()
                 if body.get('referral_source') == 'doctor_referral' and ref_doctor_id:
                     cur.execute("SELECT id, name FROM referral_doctors WHERE id = ?", (ref_doctor_id,))
@@ -3918,12 +4032,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_validation_error(f"Yo'llanma topilmadi ({ref_id}).", 'referral_id')
                     return
                 if ref['status'] == 'paid':
-                    self._send_validation_error("Ushbu gonorar allaqachon to'langan.", 'referral_id')
+                    self._send_validation_error("Ushbu bonus allaqachon to'langan.", 'referral_id')
                     return
 
                 pay_amt = float(ref.get('calculated_amount') or 0.0)
                 if pay_amt <= 0:
-                    self._send_validation_error("To'lanadigan gonorar summasi 0 bo'lishi mumkin emas.", 'amount')
+                    self._send_validation_error("To'lanadigan bonus summasi 0 bo'lishi mumkin emas.", 'amount')
                     return
 
                 method = normalize_payment_method(body.get('payment_method', 'cash'))
@@ -3931,7 +4045,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 today_str = datetime.date.today().isoformat()
                 now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 trx_id = new_record_id(cur, 'accounting_transactions', 'TRX-2026')
-                desc = f"Shifokor gonorari to'lovi \u2014 {ref['doctor_name']} (Bemor: {ref['patient_name']})"
+                desc = f"Shifokor bonusi to'lovi \u2014 {ref['doctor_name']} (Bemor: {ref['patient_name']})"
                 actor_id = self._actor_staff_id(body, 'recorded_by_staff_id')
                 _staff_ref = ref.get('staff_id')
 
@@ -3954,7 +4068,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 self._set_json_headers(200)
                 self.wfile.write(json.dumps({
-                    'message': "Gonorar muvaffaqiyatli to'landi",
+                    'message': "Bonus muvaffaqiyatli to'landi",
                     'referral_id': ref_id,
                     'transaction_id': trx_id,
                     'amount': pay_amt
@@ -5184,7 +5298,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     """, (invoice_id, visit_line['service_name'], visit_line['quantity'],
                           visit_line['unit_price'], visit_line['item_type'], date_str))
 
-                # If referred by a doctor/staff, record referral commission (gonorar)
+                # If referred by a doctor/staff, record referral commission (bonus)
                 ref_doctor_id = str(body.get('referral_doctor_id') or '').strip()
                 if body.get('referral_source') == 'doctor_referral' and ref_doctor_id:
                     cur.execute("SELECT id, name FROM referral_doctors WHERE id = ?", (ref_doctor_id,))
@@ -5538,14 +5652,28 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # As on the prescription: recorded when known, NULL when not,
                 # never someone else's name.
                 epi_doctor = self._actor_staff_id(body, 'doctor_id')
+                patient_id = body.get('patient_id')
+                admission_id = body.get('admission_id')
+
+                # Target admission: provided or active admission probe
+                target_adm_id = admission_id
+                if not target_adm_id and patient_id:
+                    cur.execute("""
+                        SELECT id FROM admissions 
+                        WHERE patient_id = ? AND status = 'active' 
+                        ORDER BY start_date DESC LIMIT 1
+                    """, (patient_id,))
+                    _adm_row = cur.fetchone()
+                    if _adm_row:
+                        target_adm_id = _adm_row['id'] if isinstance(_adm_row, dict) else _adm_row[0]
 
                 cur.execute("""
                     INSERT INTO discharge_epicrises (id, patient_id, admission_id, doctor_id, epicrisis_date, diagnosis_final, icd10_code, treatment_summary, home_prescriptions, psycho_recommendations, discharge_status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     epi_id,
-                    body.get('patient_id'),
-                    body.get('admission_id'),
+                    patient_id,
+                    target_adm_id or admission_id,
                     epi_doctor,
                     epi_date.isoformat(),
                     diagnosis,
@@ -5555,10 +5683,43 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     (body.get('psycho_recommendations') or '').strip() or None,
                     status_val
                 ))
+
+                # Atomic patient discharge: transitions admission to 'discharged', bed to 'cleaning'
+                if target_adm_id:
+                    cur.execute("SELECT id, status, start_date FROM admissions WHERE id = ?", (target_adm_id,))
+                    _adm_chk = cur.fetchone()
+                    if _adm_chk:
+                        _adm_status = _adm_chk['status'] if isinstance(_adm_chk, dict) else _adm_chk[1]
+                        _adm_start = _adm_chk['start_date'] if isinstance(_adm_chk, dict) else _adm_chk[2]
+                        if _adm_status == 'active':
+                            d_start = datetime.strptime(str(_adm_start)[:10], '%Y-%m-%d').date()
+                            actual_disch_date = max(epi_date, d_start)
+                            disch_summary = f"Chiqarish epikrizi tasdiqlandi: {status_val}"
+                            discharge_patient(conn, target_adm_id, actual_disch_date.isoformat(), disch_summary)
+                            # Conclude in-hospital standing prescriptions for this admission
+                            cur.execute("""
+                                UPDATE prescriptions 
+                                SET status = 'completed', updated_at = CURRENT_TIMESTAMP 
+                                WHERE admission_id = ? AND status = 'active'
+                            """, (target_adm_id,))
+
+                # Update master patient status to 'discharged'
+                if patient_id:
+                    cur.execute("""
+                        UPDATE patients 
+                        SET status = 'discharged', updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = ?
+                    """, (patient_id,))
+
                 conn.commit()
                 conn.close()
                 self._set_json_headers(201)
-                self.wfile.write(json.dumps({'message': 'Epicrisis saved', 'id': epi_id}).encode('utf-8'))
+                self.wfile.write(json.dumps({
+                    'message': 'Chiqarish epikrizi tasdiqlandi va bemor statsionardan chiqarildi',
+                    'id': epi_id,
+                    'admission_id': target_adm_id,
+                    'status': 'discharged'
+                }, ensure_ascii=False).encode('utf-8'))
 
             # 11b. POST /api/doctor/consultation-case (Atomic Consultation, Kasallik Varaqasi & Retseptlar)
             elif path == '/api/doctor/consultation-case':
@@ -6602,6 +6763,29 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'note': ("Bu parol faqat bir marta ko'rsatiladi. "
                              "Xodim kirgach uni almashtirishi shart."),
                 }, ensure_ascii=False).encode('utf-8'))
+
+            # 14c. POST /api/admin/clean-patient-data (Reset patient records for production launch)
+            elif path == '/api/admin/clean-patient-data':
+                try:
+                    from scripts.clean_patient_data import clean_patient_database
+                    ok = clean_patient_database()
+                    if ok:
+                        self._set_json_headers(200)
+                        self.wfile.write(json.dumps({
+                            'success': True,
+                            'message': "Barcha test bemorlar ma'lumotlari tozalandi. Tizim ishga tayyor!"
+                        }, ensure_ascii=False).encode('utf-8'))
+                    else:
+                        self._set_json_headers(500)
+                        self.wfile.write(json.dumps({
+                            'error': "Tozalash jarayonida xatolik yuz berdi."
+                        }, ensure_ascii=False).encode('utf-8'))
+                except Exception as _e:
+                    self._set_json_headers(500)
+                    self.wfile.write(json.dumps({
+                        'error': f"Tozalashda tizim xatosi: {_e}"
+                    }, ensure_ascii=False).encode('utf-8'))
+                return
 
             # 15. POST /api/facility/rooms (Create Room)
             elif path == '/api/facility/rooms':

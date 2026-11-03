@@ -1856,7 +1856,7 @@
                 <td style="text-align: right; font-family: var(--font-mono); font-weight: 800; color: #0284c7;">+${formatUZS(dutyEarnings)}</td>
               </tr>
               <tr>
-                <td>Statsionar Bemorlar Gonorari:</td>
+                <td>Statsionar Bemorlar Bonusi:</td>
                 <td style="text-align: right; font-family: var(--font-mono);">—</td>
               </tr>
               <tr>

@@ -249,7 +249,7 @@ API_RULES = [
     ('/api/accounting/invoice-items', 'accounting', None),
     ('/api/accounting/duration',      'accounting', 'write'),
     ('/api/accounting/data',          'accounting', 'read'),
-    # Referral commissions (gonorarlar)
+    # Referral commissions (bonuslar)
     ('/api/referrals/pay',            'accounting', 'write'),
     ('/api/referrals',                'accounting', 'read'),
     # One patient's invoices with their lines and payments (read-only view).
@@ -279,6 +279,7 @@ API_RULES = [
 
     # --- user administration ---------------------------------------------
     ('/api/users',                    'admin',      None),
+    ('/api/admin/clean-patient-data', 'admin',      'write'),
     # The audit trail viewer. Read-only (there is no write route): it shows
     # who changed what, so it is for administrators only.
     ('/api/audit',                    'admin',      None),

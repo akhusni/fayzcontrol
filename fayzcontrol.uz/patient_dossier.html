@@ -277,9 +277,14 @@
             <span class="stat-value" id="stat-total-patients">0</span>
           </div>
           <div class="stat-pill stat-inpatient">
-            <span class="stat-dot"></span>
-            <span class="stat-label">Statsionar:</span>
+            <span class="stat-dot" style="background:#10b981;"></span>
+            <span class="stat-label">Hozirda davolanayotgan:</span>
             <span class="stat-value" id="stat-inpatient-count">0</span>
+          </div>
+          <div class="stat-pill stat-discharged">
+            <span class="stat-dot" style="background:#6366f1;"></span>
+            <span class="stat-label">Davolanib chiqib ketgan:</span>
+            <span class="stat-value" id="stat-discharged-count">0</span>
           </div>
           <div class="stat-pill stat-outpatient">
             <span class="stat-dot"></span>
@@ -299,14 +304,17 @@
       </div>
 
       <div class="filter-tab-group">
-        <button type="button" class="filter-btn active" data-filter="all">
-          <i class="fas fa-list-ul"></i> Barchasi
+        <button type="button" class="filter-btn active" data-filter="treating" title="Hozirda statsionarda davolanayotgan bemorlar">
+          <i class="fas fa-bed-pulse"></i> Hozirda davolanayotgan (<span id="tab-cnt-treating">0</span>)
         </button>
-        <button type="button" class="filter-btn" data-filter="inpatient">
-          <i class="fas fa-bed"></i> Statsionar
+        <button type="button" class="filter-btn" data-filter="discharged" title="Statsionardan davolanib chiqib ketgan bemorlar">
+          <i class="fas fa-user-check"></i> Davolanib chiqib ketgan (<span id="tab-cnt-discharged">0</span>)
         </button>
-        <button type="button" class="filter-btn" data-filter="outpatient">
-          <i class="fas fa-walking"></i> Ambulator
+        <button type="button" class="filter-btn" data-filter="all" title="Barcha bemorlar dossyesi">
+          <i class="fas fa-folder-tree"></i> Barchasi (<span id="tab-cnt-all">0</span>)
+        </button>
+        <button type="button" class="filter-btn" data-filter="outpatient" title="Ambulator bemorlar">
+          <i class="fas fa-walking"></i> Ambulator (<span id="tab-cnt-outpatient">0</span>)
         </button>
       </div>
 

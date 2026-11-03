@@ -9,6 +9,8 @@ __pycache__/
 
 # --- Subdirectory runtime & sensitive paths ---
 fayzcontrol.uz/data/reports/
+fayzcontrol.uz/data/backups/
+fayzcontrol.uz/data/patient_dossiers/
 fayzcontrol.uz/server_log.txt
 fayzcontrol.uz/server_err.log
 fayzcontrol.uz/server.log

@@ -24,6 +24,24 @@ def _x(value):
     """
     return _xml_escape('' if value is None else str(value))
 
+def _format_epicrisis_summary(epicrisis):
+    if not epicrisis:
+        return NOT_RECORDED
+    summary = epicrisis.get('treatment_summary')
+    if summary and str(summary).strip():
+        return str(summary).strip()
+    status_map = {
+        'recovered': "Sog'aydi (Davolash kursi to'liq yakunlandi)",
+        'improved': "Yaxshilandi (Ijobiy klinik dinamika bilan)",
+        'unchanged': "O'zgarishsiz",
+        'transferred': "Boshqa muassasaga o'tkazildi",
+        'against_medical_advice': "Shifokor tavsiyasiga qarshi ketdi"
+    }
+    st = epicrisis.get('discharge_status')
+    if st and st in status_map:
+        return status_map[st]
+    return NOT_RECORDED
+
 def generate_patient_pdf(*args, **kwargs):
     doc_type = kwargs.get('doc_type', 'prescriptions')
     if len(args) == 1:
@@ -358,7 +376,7 @@ def generate_patient_pdf(*args, **kwargs):
         story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceBefore=2, spaceAfter=4))
 
         # Escaped before the newlines become <br/>, so those tags survive.
-        summary_text = _x(epicrisis.get('treatment_summary') or NOT_RECORDED)
+        summary_text = _x(_format_epicrisis_summary(epicrisis))
         home_rx_text = _x(epicrisis.get('home_prescriptions') or NOT_RECORDED)
         psycho_text = _x(epicrisis.get('psycho_recommendations') or NOT_RECORDED)
 
@@ -1085,7 +1103,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
 
-    summary_text = _x(epicrisis.get('treatment_summary') or NOT_RECORDED)
+    summary_text = _x(_format_epicrisis_summary(epicrisis))
     home_rx_text = _x(epicrisis.get('home_prescriptions') or NOT_RECORDED)
     psycho_text = _x(epicrisis.get('psycho_recommendations') or NOT_RECORDED)
 
@@ -1444,7 +1462,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         story.append(Paragraph("CHIQARISH EPIKRIZI VA TAVSIYALAR", sec_style))
         story.append(HRFlowable(width="100%", thickness=0.75, color=BORDER_COLOR, spaceBefore=1, spaceAfter=3))
 
-        summary_text = _x(epicrisis.get('treatment_summary') or NOT_RECORDED)
+        summary_text = _x(_format_epicrisis_summary(epicrisis))
         home_rx_text = _x(epicrisis.get('home_prescriptions') or NOT_RECORDED)
 
         epi_data = [

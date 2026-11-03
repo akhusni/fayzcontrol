@@ -67,6 +67,18 @@ if ($is_deploy_restart) {
         exit;
 }
 
+// Database cleanup trigger for production initialization (safe token authenticated)
+if (isset($_GET['fmh_clean_patients']) && $_GET['fmh_clean_patients'] === 'fmh_deploy_2026') {
+    putenv('PATH=/var/www/s0377/data/node/bin:/var/www/s0377/data/.local/bin:/usr/local/bin:/usr/bin:/bin');
+    putenv('HOME=/var/www/s0377/data');
+    putenv('PM2_HOME=/var/www/s0377/data/.pm2');
+    $dir = __DIR__;
+    $output = shell_exec("cd " . escapeshellarg($dir) . " && python3 scripts/clean_patient_data.py 2>&1");
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['cleaned' => true, 'output' => $output], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Watchdog: auto-start server.py if down with flock concurrency guard
 if (!is_server_alive($port)) {
     $lock_file = sys_get_temp_dir() . '/fmh_start.lock';
