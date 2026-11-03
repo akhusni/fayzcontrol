@@ -14,6 +14,7 @@ from reportlab.pdfgen import canvas
 from db import get_db
 from xml.sax.saxutils import escape as _xml_escape
 
+NOT_RECORDED = "Qayd etilmagan"
 
 
 def _x(value):
@@ -227,11 +228,18 @@ def generate_patient_pdf(*args, **kwargs):
     story.append(Spacer(1, 10))
 
     # --- PATIENT IDENTITY GRID ---
-    age_str = f"{datetime.date.today().year - int(pt['birth_year'])} yosh" if pt.get('birth_year') else "—"
-    # Nothing clinical is invented: blanks print as NOT_RECORDED. This file
-    # used to fill them with a diagnosis (F10.2), complaints, vitals, a
-    # "successful" discharge, home medicines and a doctor's name.
-    NOT_RECORDED = "Qayd etilmagan"
+    age_str = NOT_RECORDED
+    if pt.get('birth_year'):
+        try:
+            age_str = f"{datetime.date.today().year - int(pt['birth_year'])} yosh"
+        except (ValueError, TypeError):
+            pass
+    elif pt.get('birth_date'):
+        try:
+            b_year = pt['birth_date'].year if hasattr(pt['birth_date'], 'year') else int(str(pt['birth_date'])[:4])
+            age_str = f"{datetime.date.today().year - b_year} yosh"
+        except Exception:
+            pass
     gender_str = {'female': "Ayol", 'male': "Erkak"}.get(pt.get('gender'), NOT_RECORDED)
     room_str = f"{adm.get('room_number', 'N/A')}-xona ({adm.get('bed_code', '')})" if adm else "Ambulator"
     primary_diag = anam.get('diagnosis_primary') or pt.get('chronic_conditions') or NOT_RECORDED
@@ -328,12 +336,18 @@ def generate_patient_pdf(*args, **kwargs):
             rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*7)
 
         rx_table = Table(rx_rows, colWidths=[18, 120, 45, 115, 85, 65, 36, 36])
-        rx_table.setStyle(TableStyle([
+        rx_table_style = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
             ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
             ('PADDING', (0, 0), (-1, -1), 3.5),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        ]
+        if not prescriptions:
+            rx_table_style.extend([
+                ('SPAN', (0, 1), (-1, 1)),
+                ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+            ])
+        rx_table.setStyle(TableStyle(rx_table_style))
         story.append(rx_table)
         story.append(Spacer(1, 4))
         story.append(Paragraph("<font size='7' color='#0369a1'><b>* Eslatma hamshiralar uchun:</b> Erituvchi (fiz rastvor) ko'rsatilgan dori vositalari faqat belgilangan eritmada to'liq aralashtirilgan/suyultirilgan holda ko'rsatilgan usulda yuborilsin.</font>", body_style))
@@ -840,8 +854,18 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     body_style = ParagraphStyle('BodyTextCustom', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, textColor=DARK_TEXT)
     bold_style = ParagraphStyle('BoldCustom', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=DARK_TEXT)
 
-    NOT_RECORDED = "Qayd etilmagan"
-    age_str = f"{datetime.date.today().year - int(pt['birth_year'])} yosh" if pt.get('birth_year') else NOT_RECORDED
+    age_str = NOT_RECORDED
+    if pt.get('birth_year'):
+        try:
+            age_str = f"{datetime.date.today().year - int(pt['birth_year'])} yosh"
+        except (ValueError, TypeError):
+            pass
+    elif pt.get('birth_date'):
+        try:
+            b_year = pt['birth_date'].year if hasattr(pt['birth_date'], 'year') else int(str(pt['birth_date'])[:4])
+            age_str = f"{datetime.date.today().year - b_year} yosh"
+        except Exception:
+            pass
     gender_str = {'female': "Ayol", 'male': "Erkak"}.get(pt.get('gender'), NOT_RECORDED)
     room_str = f"{adm.get('room_number', 'N/A')}-xona ({adm.get('bed_code', '')})" if adm else "Ambulator"
     primary_diag = anam.get('diagnosis_primary') or pt.get('chronic_conditions') or NOT_RECORDED
@@ -994,13 +1018,19 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             Paragraph("—", body_style)
         ])
     vitals_table = Table(vitals_rows, colWidths=[90, 110, 80, 80, 80, 83])
-    vitals_table.setStyle(TableStyle([
+    vitals_table_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
         ('PADDING', (0, 0), (-1, -1), 3),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-    ]))
+    ]
+    if not daily_notes:
+        vitals_table_style.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+        ])
+    vitals_table.setStyle(TableStyle(vitals_table_style))
 
     # --- SECTION C DATA ---
     rx_headers = ["№", "Dori vositasi & Shakli", "Doza", "Erituvchi (Fiz rastvor / Quyma)", "Yuborish yo'li", "Qabul tartibi", "Davomiyligi", "Holati"]
@@ -1037,12 +1067,18 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*7)
 
     rx_table = Table(rx_rows, colWidths=[18, 120, 45, 115, 85, 65, 40, 35])
-    rx_table.setStyle(TableStyle([
+    rx_table_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
         ('PADDING', (0, 0), (-1, -1), 3),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    ]
+    if not rx_subset:
+        rx_table_style.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+        ])
+    rx_table.setStyle(TableStyle(rx_table_style))
 
     adm_headers = ["Sana", "Vaqt / Smena", "Dori vositasi", "Yuborilgan doza", "Ijrochi Hamshira", "Holat", "Qayd"]
     adm_rows = [[Paragraph(f"<b>{h}</b>", bold_style) for h in adm_headers]]
@@ -1066,12 +1102,18 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         adm_rows.append([Paragraph("Amalda qabul qilingan dori qaydlari mavjud emas", body_style)] + [""]*6)
 
     adm_table = Table(adm_rows, colWidths=[55, 65, 125, 70, 95, 55, 58])
-    adm_table.setStyle(TableStyle([
+    adm_table_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
         ('PADDING', (0, 0), (-1, -1), 3),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    ]
+    if not administrations:
+        adm_table_style.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+        ])
+    adm_table.setStyle(TableStyle(adm_table_style))
 
     # --- SECTION D DATA ---
     dn_headers = ["Sana", "Gemodinamika", "Bemor Dinamikasi & Holati", "Davolashdagi Korreksiya"]
@@ -1421,11 +1463,17 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             rx_rows.append([Paragraph("Tayinlangan dori-darmonlar mavjud emas", body_style)] + [""]*5)
 
         rx_table = Table(rx_rows, colWidths=[20, 183, 85, 105, 70, 60])
-        rx_table.setStyle(TableStyle([
+        rx_style_2 = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
             ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
             ('PADDING', (0, 0), (-1, -1), 3),
-        ]))
+        ]
+        if not prescriptions:
+            rx_style_2.extend([
+                ('SPAN', (0, 1), (-1, 1)),
+                ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+            ])
+        rx_table.setStyle(TableStyle(rx_style_2))
         story.append(rx_table)
         story.append(Spacer(1, 6))
 
@@ -1451,11 +1499,17 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
             adm_rows.append([Paragraph("Dori qabul qilish loglari mavjud emas", body_style)] + [""]*5)
 
         adm_table = Table(adm_rows, colWidths=[65, 70, 168, 75, 85, 60])
-        adm_table.setStyle(TableStyle([
+        adm_style_2 = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
             ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
             ('PADDING', (0, 0), (-1, -1), 3),
-        ]))
+        ]
+        if not administrations:
+            adm_style_2.extend([
+                ('SPAN', (0, 1), (-1, 1)),
+                ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+            ])
+        adm_table.setStyle(TableStyle(adm_style_2))
         story.append(adm_table)
         story.append(Spacer(1, 6))
 
@@ -1514,12 +1568,16 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     file_name = f"Dossier_{pt_code_clean}_{timestamp_str}_{doc_type}.pdf"
     
-    storage_dir = os.path.join(os.path.dirname(__file__), 'data', 'patient_dossiers')
-    os.makedirs(storage_dir, exist_ok=True)
-    file_path = os.path.join(storage_dir, file_name)
-
-    with open(file_path, 'wb') as f:
-        f.write(pdf_bytes)
+    file_path = None
+    try:
+        storage_dir = os.path.join(os.path.dirname(__file__), 'data', 'patient_dossiers')
+        os.makedirs(storage_dir, exist_ok=True)
+        target_path = os.path.join(storage_dir, file_name)
+        with open(target_path, 'wb') as f:
+            f.write(pdf_bytes)
+        file_path = target_path
+    except Exception as e_cache:
+        print(f"[!] Warning: could not cache dossier PDF to disk: {e_cache}")
 
     return {
         'pdf_bytes': pdf_bytes,

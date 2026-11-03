@@ -3402,7 +3402,8 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/pdf')
-                self.send_header('Content-Disposition', f'{disposition}; filename="{fname_header}"')
+                ascii_fname = re.sub(r'[^\x20-\x7E]', '_', fname_header)
+                self.send_header('Content-Disposition', f"{disposition}; filename=\"{ascii_fname}\"; filename*=UTF-8''{urllib.parse.quote(fname_header)}")
                 self.send_header('Content-Length', str(len(pdf_data)))
                 self.end_headers()
                 self.wfile.write(pdf_data)
@@ -3488,10 +3489,12 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if not clean_name:
                     clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', patient.get('patient_code') or f"Bemor_{real_pid}")
                 fname_header = f"{clean_name}_{doc_label}.pdf"
+                ascii_code = re.sub(r'[^a-zA-Z0-9_\-]', '_', patient.get('patient_code') or f"PAT_{real_pid}")
+                ascii_fallback = f"FMH_{ascii_code}_{doc_label}.pdf"
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/pdf')
-                self.send_header('Content-Disposition', f'{disposition}; filename="{fname_header}"; filename*=UTF-8\'\'{urllib.parse.quote(fname_header)}')
+                self.send_header('Content-Disposition', f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{urllib.parse.quote(fname_header)}")
                 self.send_header('Content-Length', str(len(pdf_result['pdf_bytes'])))
                 self.end_headers()
                 self.wfile.write(pdf_result['pdf_bytes'])
