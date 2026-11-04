@@ -230,15 +230,35 @@
       list = list.filter(p => !p.admission_id && p.status !== 'discharged' && !p.last_discharge_admission_id && (!p.epicrisis_count || p.epicrisis_count === 0));
     }
 
-    // 2. Search Filter
+    // 2. Search Filter (Supports both Cyrillic and Latin queries seamlessly)
     if (state.searchTerm) {
-      const q = state.searchTerm;
+      const cyrMap = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z',
+        'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+        'с':'s','т':'t','у':'u','ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh',
+        'ъ':"'",'ы':'i','ь':'','э':'e','ю':'yu','я':'ya','ў':"o'",'қ':'q','ғ':"g'",'ҳ':'h'
+      };
+      const toLat = function (str) {
+        if (!str) return '';
+        return String(str).toLowerCase().split('').map(function (c) {
+          return cyrMap[c] || c;
+        }).join('').replace(/['`ʻʼ]/g, '');
+      };
+
+      const q = state.searchTerm.toLowerCase().replace(/['`ʻʼ]/g, '');
+      const qLat = toLat(q);
+
       list = list.filter(function (p) {
-        const name = (p.full_name || '').toLowerCase();
+        const name = (p.full_name || '').toLowerCase().replace(/['`ʻʼ]/g, '');
+        const nameLat = toLat(name);
         const code = (p.patient_code || '').toLowerCase();
         const phone = (p.phone || '').toLowerCase();
         const diag = (p.diagnosis || '').toLowerCase();
-        return name.includes(q) || code.includes(q) || phone.includes(q) || diag.includes(q);
+        const diagLat = toLat(diag);
+
+        return name.includes(q) || nameLat.includes(qLat) || nameLat.includes(q) || name.includes(qLat) ||
+               code.includes(q) || phone.includes(q) ||
+               diag.includes(q) || diagLat.includes(qLat);
       });
     }
 

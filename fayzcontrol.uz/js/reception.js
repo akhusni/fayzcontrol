@@ -2467,10 +2467,16 @@ window.FMH_Reception = (function () {
   // ============================================================
   // INTAKE SUBMIT
   // ============================================================
-    async function submitIntakeForm(e) {
+  let _intakeSubmitting = false;
+
+  async function submitIntakeForm(e) {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
+    }
+    if (_intakeSubmitting) {
+      console.warn("Intake submission already in progress, ignoring duplicate submit.");
+      return;
     }
     const type = State.intake.serviceType || 'consultation';
     const lastInput = document.getElementById('intake-patient-lastname');
@@ -2504,6 +2510,7 @@ window.FMH_Reception = (function () {
       return;
     }
 
+    _intakeSubmitting = true;
     const submitBtn = document.getElementById('btn-submit-intake');
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -2527,6 +2534,7 @@ window.FMH_Reception = (function () {
       const refFixedAmount = parseFloat(document.getElementById('intake-referral-fixed-amount')?.value) || 0;
 
       if (referral === 'doctor_referral' && !refDoctorId) {
+        _intakeSubmitting = false;
         showToast("Iltimos, yo'llanma bergan shifokor yoki xodimni tanlang!", 'error');
         document.getElementById('intake-referral-doctor-select')?.focus();
         if (submitBtn) {
@@ -2607,11 +2615,20 @@ window.FMH_Reception = (function () {
           showToast("Diqqat: avans to'lovi saqlanmadi. Buxgalteriyada kiriting.", 'warning');
         }
 
-        // Reset form
+        // Reset form & wizard to prevent duplicate re-submission
         State.intake.selectedBed = null;
         document.getElementById('intake-form')?.reset();
+        const lastEl = document.getElementById('intake-patient-lastname');
+        const firstEl = document.getElementById('intake-patient-firstname');
+        const midEl = document.getElementById('intake-patient-middlename');
+        const phoneEl = document.getElementById('intake-patient-phone');
+        if (lastEl) lastEl.value = '';
+        if (firstEl) firstEl.value = '';
+        if (midEl) midEl.value = '';
+        if (phoneEl) phoneEl.value = '+998 ';
         const startEl = document.getElementById('intake-start-date');
         if (startEl) startEl.value = todayStr();
+        goToWizardStep(1);
 
         await loadApiData();
         renderKPIs();
@@ -2775,6 +2792,7 @@ window.FMH_Reception = (function () {
       console.error('Admission submit error:', err);
       showToast(`Qabul qilishda xatolik: ${err.message}`, 'error');
     } finally {
+      _intakeSubmitting = false;
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<i class="fas fa-user-check"></i> Qabul Qilish va Tasdiqlash';

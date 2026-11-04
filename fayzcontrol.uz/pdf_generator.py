@@ -11,19 +11,104 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, HRFlowable, PageBreak
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from db import get_db
 from xml.sax.saxutils import escape as _xml_escape
 
 NOT_RECORDED = "Qayd etilmagan"
 
+# --- UNICODE / CYRILLIC FONT REGISTRATION ---
+DEFAULT_FONT = 'Helvetica'
+DEFAULT_FONT_BOLD = 'Helvetica-Bold'
+
+CYRILLIC_TO_LATIN = {
+    'А': 'A', 'а': 'a', 'Б': 'B', 'б': 'b', 'В': 'V', 'в': 'v',
+    'Г': 'G', 'г': 'g', 'Д': 'D', 'д': 'd', 'Е': 'E', 'е': 'e',
+    'Ё': 'Yo', 'ё': 'yo', 'Ж': 'J', 'ж': 'j', 'З': 'Z', 'з': 'z',
+    'И': 'I', 'и': 'i', 'Й': 'Y', 'й': 'y', 'К': 'K', 'к': 'k',
+    'Л': 'L', 'л': 'l', 'М': 'M', 'м': 'm', 'Н': 'N', 'н': 'n',
+    'О': 'O', 'о': 'o', 'П': 'P', 'п': 'p', 'Р': 'R', 'р': 'r',
+    'С': 'S', 'с': 's', 'Т': 'T', 'т': 't', 'У': 'U', 'у': 'u',
+    'Ф': 'F', 'ф': 'f', 'Х': 'X', 'х': 'x', 'Ц': 'Ts', 'ц': 'ts',
+    'Ч': 'Ch', 'ч': 'ch', 'Ш': 'Sh', 'ш': 'sh', 'Щ': 'Sh', 'щ': 'sh',
+    'Ъ': "'", 'ъ': "'", 'Ы': 'I', 'ы': 'i', 'Ь': '', 'ь': '',
+    'Э': 'E', 'э': 'e', 'Ю': 'Yu', 'ю': 'yu', 'Я': 'Ya', 'я': 'ya',
+    'Ў': "O'", 'ў': "o'", 'Қ': 'Q', 'қ': 'q', 'Ғ': "G'", 'ғ': "g'",
+    'Ҳ': 'H', 'ҳ': 'h'
+}
+
+def _to_latin_uz(text):
+    if not text:
+        return ''
+    return ''.join(CYRILLIC_TO_LATIN.get(ch, ch) for ch in str(text))
+
+def _init_pdf_fonts():
+    global DEFAULT_FONT, DEFAULT_FONT_BOLD
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    bundled_regular = os.path.join(base_dir, 'assets', 'fonts', 'Roboto-Regular.ttf')
+    bundled_bold = os.path.join(base_dir, 'assets', 'fonts', 'Roboto-Bold.ttf')
+
+    candidates = [
+        # 1. Bundled TrueType font in assets/fonts/
+        (bundled_regular, bundled_bold),
+        # 2. Windows system fonts
+        ('C:/Windows/Fonts/arial.ttf', 'C:/Windows/Fonts/arialbd.ttf'),
+        ('C:/Windows/Fonts/calibri.ttf', 'C:/Windows/Fonts/calibrib.ttf'),
+        ('C:/Windows/Fonts/tahoma.ttf', 'C:/Windows/Fonts/tahomabd.ttf'),
+        ('C:/Windows/Fonts/segoeui.ttf', 'C:/Windows/Fonts/segoeuib.ttf'),
+        # 3. Linux system fonts
+        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+        ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'),
+        ('/usr/share/fonts/truetype/freefont/FreeSans.ttf', '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf'),
+        ('/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf', '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf'),
+        ('/usr/share/fonts/truetype/roboto/hinted/Roboto-Regular.ttf', '/usr/share/fonts/truetype/roboto/hinted/Roboto-Bold.ttf'),
+    ]
+
+    for reg_path, bold_path in candidates:
+        if os.path.exists(reg_path):
+            try:
+                b_path = bold_path if os.path.exists(bold_path) else reg_path
+                font_name = 'FMH-Sans'
+                font_name_bold = 'FMH-Sans-Bold'
+                pdfmetrics.registerFont(TTFont(font_name, reg_path))
+                pdfmetrics.registerFont(TTFont(font_name_bold, b_path))
+                pdfmetrics.registerFontFamily(
+                    font_name,
+                    normal=font_name,
+                    bold=font_name_bold,
+                    italic=font_name,
+                    boldItalic=font_name_bold
+                )
+                DEFAULT_FONT = font_name
+                DEFAULT_FONT_BOLD = font_name_bold
+                return
+            except Exception:
+                continue
+
+_init_pdf_fonts()
+
+def _get_styles():
+    styles = getSampleStyleSheet()
+    for s in styles.byName.values():
+        if getattr(s, 'fontName', None) == 'Helvetica':
+            s.fontName = DEFAULT_FONT
+        elif getattr(s, 'fontName', None) == 'Helvetica-Bold':
+            s.fontName = DEFAULT_FONT_BOLD
+    return styles
 
 def _x(value):
     """
     Text from the database, made safe for ReportLab's Paragraph markup.
-    A note such as "Hb<norma" made the parser raise, and the route answered
-    "patient not found", so the PDF of that patient could not be printed.
+    If no Unicode font could be loaded and Helvetica is the fallback,
+    transliterate Cyrillic to Latin so it never renders as black tofu boxes.
     """
-    return _xml_escape('' if value is None else str(value))
+    if value is None:
+        return ''
+    s = str(value)
+    if DEFAULT_FONT == 'Helvetica':
+        s = _to_latin_uz(s)
+    return _xml_escape(s)
 
 def _format_epicrisis_summary(epicrisis):
     if not epicrisis:
@@ -147,7 +232,7 @@ def generate_patient_pdf(*args, **kwargs):
         bottomMargin=36
     )
 
-    styles = getSampleStyleSheet()
+    styles = _get_styles()
 
     # Custom Color Palette
     PRIMARY = colors.HexColor('#0284c7')
@@ -157,14 +242,14 @@ def generate_patient_pdf(*args, **kwargs):
     BORDER_COLOR = colors.HexColor('#cbd5e1')
 
     # Typography Styles
-    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=15, leading=19, textColor=DARK_TEXT, alignment=1)
-    subtitle_style = ParagraphStyle('DocSubtitle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11, textColor=MUTED_TEXT, alignment=1)
-    clinic_name_style = ParagraphStyle('ClinicName', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=13, leading=15, textColor=DARK_TEXT)
-    clinic_sub_style = ParagraphStyle('ClinicSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, textColor=PRIMARY)
-    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=10, textColor=MUTED_TEXT, alignment=2)
-    section_heading = ParagraphStyle('SecHeading', parent=styles['Heading3'], fontName='Helvetica-Bold', fontSize=10.5, leading=13, textColor=PRIMARY)
-    body_style = ParagraphStyle('BodyTextCustom', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11, textColor=DARK_TEXT)
-    bold_style = ParagraphStyle('BoldCustom', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=DARK_TEXT)
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontName=DEFAULT_FONT_BOLD, fontSize=15, leading=19, textColor=DARK_TEXT, alignment=1)
+    subtitle_style = ParagraphStyle('DocSubtitle', parent=styles['Normal'], fontName=DEFAULT_FONT, fontSize=8.5, leading=11, textColor=MUTED_TEXT, alignment=1)
+    clinic_name_style = ParagraphStyle('ClinicName', parent=styles['Heading2'], fontName=DEFAULT_FONT_BOLD, fontSize=13, leading=15, textColor=DARK_TEXT)
+    clinic_sub_style = ParagraphStyle('ClinicSub', parent=styles['Normal'], fontName=DEFAULT_FONT_BOLD, fontSize=7.5, leading=9, textColor=PRIMARY)
+    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontName=DEFAULT_FONT, fontSize=7.5, leading=10, textColor=MUTED_TEXT, alignment=2)
+    section_heading = ParagraphStyle('SecHeading', parent=styles['Heading3'], fontName=DEFAULT_FONT_BOLD, fontSize=10.5, leading=13, textColor=PRIMARY)
+    body_style = ParagraphStyle('BodyTextCustom', parent=styles['Normal'], fontName=DEFAULT_FONT, fontSize=8.5, leading=11, textColor=DARK_TEXT)
+    bold_style = ParagraphStyle('BoldCustom', parent=styles['Normal'], fontName=DEFAULT_FONT_BOLD, fontSize=8.5, leading=11, textColor=DARK_TEXT)
 
     story = []
 
@@ -416,7 +501,7 @@ def generate_patient_pdf(*args, **kwargs):
 
     sig_col1 = [
         Paragraph("<b>Mas'ul Shifokor:</b>", body_style),
-        Paragraph(f"<b>{doc_name}</b>", ParagraphStyle('DocN', parent=body_style, fontName='Helvetica-Bold', textColor=PRIMARY)),
+        Paragraph(f"<b>{doc_name}</b>", ParagraphStyle('DocN', parent=body_style, fontName=DEFAULT_FONT_BOLD, textColor=PRIMARY)),
         Paragraph(f"<font size='7' color='#64748b'>{doc_title}</font>", body_style),
         Spacer(1, 12),
         Paragraph("_______________________<br/><font size='7' color='#64748b'>(Shifokor Imzosi)</font>", body_style)
@@ -480,13 +565,13 @@ _ROUND_STATE_UZ = {
 def _clinic_letterhead(styles, PRIMARY, DARK_TEXT, MUTED_TEXT):
     """The masthead both documents share, so they cannot drift apart."""
     clinic_name_style = ParagraphStyle(
-        'ClinicNameR', parent=styles['Heading2'], fontName='Helvetica-Bold',
+        'ClinicNameR', parent=styles['Heading2'], fontName=DEFAULT_FONT_BOLD,
         fontSize=13, leading=15, textColor=DARK_TEXT)
     clinic_sub_style = ParagraphStyle(
-        'ClinicSubR', parent=styles['Normal'], fontName='Helvetica-Bold',
+        'ClinicSubR', parent=styles['Normal'], fontName=DEFAULT_FONT_BOLD,
         fontSize=7.5, leading=9, textColor=PRIMARY)
     meta_style = ParagraphStyle(
-        'MetaStyleR', parent=styles['Normal'], fontName='Helvetica',
+        'MetaStyleR', parent=styles['Normal'], fontName=DEFAULT_FONT,
         fontSize=7.5, leading=10, textColor=MUTED_TEXT, alignment=2)
 
     header = Table([[
@@ -533,7 +618,7 @@ def generate_round_pdf(day):
                             topMargin=30, bottomMargin=30,
                             title=f"Dori berish varaqasi {round_data['date']}")
 
-    styles = getSampleStyleSheet()
+    styles = _get_styles()
     PRIMARY = colors.HexColor('#0284c7')
     DARK_TEXT = colors.HexColor('#0f172a')
     MUTED_TEXT = colors.HexColor('#64748b')
@@ -541,17 +626,17 @@ def generate_round_pdf(day):
     BORDER_COLOR = colors.HexColor('#cbd5e1')
 
     title_style = ParagraphStyle('RTitle', parent=styles['Heading1'],
-                                 fontName='Helvetica-Bold', fontSize=14,
+                                 fontName=DEFAULT_FONT_BOLD, fontSize=14,
                                  leading=17, textColor=DARK_TEXT, alignment=1)
     subtitle_style = ParagraphStyle('RSub', parent=styles['Normal'],
-                                    fontName='Helvetica', fontSize=8.5,
+                                    fontName=DEFAULT_FONT, fontSize=8.5,
                                     leading=11, textColor=MUTED_TEXT, alignment=1)
-    body = ParagraphStyle('RBody', parent=styles['Normal'], fontName='Helvetica',
+    body = ParagraphStyle('RBody', parent=styles['Normal'], fontName=DEFAULT_FONT,
                           fontSize=8, leading=10, textColor=DARK_TEXT)
     bold = ParagraphStyle('RBold', parent=styles['Normal'],
-                          fontName='Helvetica-Bold', fontSize=9, leading=11,
+                          fontName=DEFAULT_FONT_BOLD, fontSize=9, leading=11,
                           textColor=DARK_TEXT)
-    small = ParagraphStyle('RSmall', parent=styles['Normal'], fontName='Helvetica',
+    small = ParagraphStyle('RSmall', parent=styles['Normal'], fontName=DEFAULT_FONT,
                            fontSize=7, leading=9, textColor=MUTED_TEXT)
 
     story = [_clinic_letterhead(styles, PRIMARY, DARK_TEXT, MUTED_TEXT),
@@ -676,7 +761,7 @@ class NumberedCanvas(canvas.Canvas):
 
     def draw_page_decorations(self, page_count):
         self.saveState()
-        self.setFont("Helvetica", 7.5)
+        self.setFont(DEFAULT_FONT, 7.5)
         self.setFillColor(colors.HexColor('#64748b'))
         
         # Bottom rule & page numbers
@@ -838,21 +923,21 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
         bottomMargin=36
     )
 
-    styles = getSampleStyleSheet()
+    styles = _get_styles()
     PRIMARY = colors.HexColor('#0284c7')
     DARK_TEXT = colors.HexColor('#0f172a')
     MUTED_TEXT = colors.HexColor('#64748b')
     BG_LIGHT = colors.HexColor('#f8fafc')
     BORDER_COLOR = colors.HexColor('#cbd5e1')
 
-    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=12.5, leading=15, textColor=DARK_TEXT, alignment=1)
-    subtitle_style = ParagraphStyle('DocSubtitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=PRIMARY, alignment=1)
-    clinic_name_style = ParagraphStyle('ClinicName', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, leading=14, textColor=DARK_TEXT)
-    clinic_sub_style = ParagraphStyle('ClinicSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, textColor=PRIMARY)
-    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9, textColor=MUTED_TEXT, alignment=2)
-    sec_style = ParagraphStyle('SecHeading', parent=styles['Heading3'], fontName='Helvetica-Bold', fontSize=9, leading=11, textColor=PRIMARY)
-    body_style = ParagraphStyle('BodyTextCustom', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, textColor=DARK_TEXT)
-    bold_style = ParagraphStyle('BoldCustom', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=DARK_TEXT)
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontName=DEFAULT_FONT_BOLD, fontSize=12.5, leading=15, textColor=DARK_TEXT, alignment=1)
+    subtitle_style = ParagraphStyle('DocSubtitle', parent=styles['Normal'], fontName=DEFAULT_FONT_BOLD, fontSize=7.5, leading=9.5, textColor=PRIMARY, alignment=1)
+    clinic_name_style = ParagraphStyle('ClinicName', parent=styles['Heading2'], fontName=DEFAULT_FONT_BOLD, fontSize=12, leading=14, textColor=DARK_TEXT)
+    clinic_sub_style = ParagraphStyle('ClinicSub', parent=styles['Normal'], fontName=DEFAULT_FONT_BOLD, fontSize=7.5, leading=9, textColor=PRIMARY)
+    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontName=DEFAULT_FONT, fontSize=7, leading=9, textColor=MUTED_TEXT, alignment=2)
+    sec_style = ParagraphStyle('SecHeading', parent=styles['Heading3'], fontName=DEFAULT_FONT_BOLD, fontSize=9, leading=11, textColor=PRIMARY)
+    body_style = ParagraphStyle('BodyTextCustom', parent=styles['Normal'], fontName=DEFAULT_FONT, fontSize=8, leading=10, textColor=DARK_TEXT)
+    bold_style = ParagraphStyle('BoldCustom', parent=styles['Normal'], fontName=DEFAULT_FONT_BOLD, fontSize=8, leading=10, textColor=DARK_TEXT)
 
     age_str = NOT_RECORDED
     if pt.get('birth_year'):
@@ -1165,7 +1250,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
     # Official Signatures & Stamp block
     sig_col1 = [
         Paragraph("<b>Davolovchi Shifokor:</b>", body_style),
-        Paragraph(f"<b>{_x(doctor_name)}</b>", ParagraphStyle('DocN', parent=body_style, fontName='Helvetica-Bold', textColor=PRIMARY)),
+        Paragraph(f"<b>{_x(doctor_name)}</b>", ParagraphStyle('DocN', parent=body_style, fontName=DEFAULT_FONT_BOLD, textColor=PRIMARY)),
         Paragraph(f"<font size='7' color='#64748b'>{_x(doctor_title)}</font>", body_style),
         Spacer(1, 14),
         Paragraph("_______________________<br/><font size='7' color='#64748b'>(Shaxsiy imzo va muhr)</font>", body_style)
@@ -1535,7 +1620,7 @@ def generate_patient_dossier_pdf(patient_id, doc_type='4_page', custom_notes=Non
 
         sig_col1 = [
             Paragraph("<b>Davolovchi Shifokor:</b>", body_style),
-            Paragraph(f"<b>{_x(doctor_name)}</b>", ParagraphStyle('DocN2', parent=body_style, fontName='Helvetica-Bold', textColor=PRIMARY)),
+            Paragraph(f"<b>{_x(doctor_name)}</b>", ParagraphStyle('DocN2', parent=body_style, fontName=DEFAULT_FONT_BOLD, textColor=PRIMARY)),
             Spacer(1, 10),
             Paragraph("_______________________<br/><font size='7' color='#64748b'>(Imzo va muhr)</font>", body_style)
         ]

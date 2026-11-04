@@ -206,9 +206,10 @@ const esc = (v) => String(v == null ? '' : v)
     container.innerHTML = state.filteredPatients.map(p => {
       const initials = p.full_name.replace('Bemor ', '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'BM';
       const isStay = !!p.active_admission;
+      const adm = p.active_admission;
       const isDischarged = p.status === 'discharged';
       const isOutpatient = !isStay && !isDischarged;
-      const stayLocation = isStay ? `${isStay.floor_number}-Qavat • ${isStay.room_number}-xona (${isStay.bed_code})` : (isDischarged ? 'Klinikadan Chiqarilgan' : 'Ambulator Rejim');
+      const stayLocation = adm ? `${adm.floor_number || ''}-Qavat • ${adm.room_number || ''}-xona (${adm.bed_code || ''})` : (isDischarged ? 'Klinikadan Chiqarilgan' : 'Ambulator Rejim');
       const hasAllergy = p.medical_allergies && p.medical_allergies !== "Yo'q" && p.medical_allergies !== '-';
       const hasDebt = (p.balance_due || 0) > 0;
 
@@ -299,8 +300,9 @@ const esc = (v) => String(v == null ? '' : v)
 
     tbody.innerHTML = state.filteredPatients.map(p => {
       const isStay = !!p.active_admission;
+      const adm = p.active_admission;
       const isDischarged = p.status === 'discharged';
-      const stayLocation = isStay ? `${isStay.floor_number}-qavat / ${isStay.room_number}-xona (${isStay.bed_code})` : (isDischarged ? 'Chiqarilgan / Davolangan' : 'Ambulator');
+      const stayLocation = adm ? `${adm.floor_number || ''}-qavat / ${adm.room_number || ''}-xona (${adm.bed_code || ''})` : (isDischarged ? 'Chiqarilgan / Davolangan' : 'Ambulator');
       const hasDebt = (p.balance_due || 0) > 0;
 
       return `

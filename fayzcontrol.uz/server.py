@@ -3510,6 +3510,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # sometimes the failing statement, which is a map of the system
             # for anyone who can provoke a 500.
             traceback.print_exc()
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             self._send_server_error()
         finally:
             if conn:
@@ -3629,15 +3634,44 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if _err:
                         self._send_validation_error(_err[0], _err[1])
                         return
-                    patient_id, pcode = new_patient_ids(cur)
-                    cur.execute("""
-                        INSERT INTO patients (id, patient_code, full_name, phone,
-                                              gender, birth_date, birth_year,
-                                              referral_source, is_anonymous, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', 0, 'active')
-                    """, (patient_id, pcode, patient_name, patient_phone,
-                          _gender, _bdate, _byear))
-                    conn.commit()
+
+                    is_anon = str(body.get('is_anonymous') or '').lower() in ('1', 'true')
+                    patient_phone = (patient_phone or '').strip()
+                    if is_anon or patient_phone in ('—', '-'):
+                        patient_phone = ''
+
+                    p_exist = None
+                    if is_anon:
+                        pass
+                    elif patient_phone:
+                        cur.execute("SELECT id FROM patients WHERE phone = ? AND full_name = ? LIMIT 1",
+                                    (patient_phone, patient_name))
+                        p_exist = cur.fetchone()
+                    elif _bdate:
+                        cur.execute("SELECT id FROM patients WHERE full_name = ? AND birth_date = ? LIMIT 1",
+                                    (patient_name, _bdate))
+                        p_exist = cur.fetchone()
+
+                    if p_exist:
+                        patient_id = p_exist[0]
+                        cur.execute("""
+                            UPDATE patients
+                            SET gender     = COALESCE(gender, ?),
+                                birth_date = COALESCE(birth_date, ?),
+                                birth_year = COALESCE(birth_year, ?)
+                            WHERE id = ?
+                        """, (_gender, _bdate, _byear, patient_id))
+                    else:
+                        patient_id, pcode = new_patient_ids(cur)
+                        cur.execute("""
+                            INSERT INTO patients (id, patient_code, full_name, phone,
+                                                  gender, birth_date, birth_year,
+                                                  referral_source, is_anonymous, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', ?, 'active')
+                        """, (patient_id, pcode, patient_name, patient_phone,
+                              _gender, _bdate, _byear, 1 if is_anon else 0))
+                    # Atomic transaction: Do NOT commit patient here! If admit_patient fails,
+                    # the whole transaction is rolled back so no orphan duplicate patient is kept.
 
                 # No doctor chosen used to mean whichever active doctor the
                 # table returned first, so that person became responsible for
@@ -3654,6 +3688,10 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 )
 
                 if not success:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     self._set_json_headers(400)
                     self.wfile.write(json.dumps({'error': str(res_data)}, ensure_ascii=False).encode('utf-8'))
                     return
@@ -6055,7 +6093,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     dossier_dir = os.path.join(BASE_DIR, 'data', 'patient_dossiers')
                     os.makedirs(dossier_dir, exist_ok=True)
                     ts_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                    clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', p_name)[:30]
+                    clean_name = re.sub(r'[^a-zA-Z0-9\u0400-\u04FF_-]', '_', p_name)[:30]
                     file_name = f"Dossier_{p_code}_{clean_name}_{doc_type}_{ts_str}.pdf"
                     file_path = os.path.join(dossier_dir, file_name)
                     with open(file_path, 'wb') as f:
@@ -6912,6 +6950,11 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             # sometimes the failing statement, which is a map of the system
             # for anyone who can provoke a 500.
             traceback.print_exc()
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             self._send_server_error()
         finally:
             if conn:
