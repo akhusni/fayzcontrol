@@ -353,6 +353,23 @@
   }
 
   // ---------------------------------------------------------------------------
+  // iOS Safari Background Scroll Lock (prevents background bouncing/scrolling)
+  // ---------------------------------------------------------------------------
+  let scrollLockPosition = 0;
+  function lockBodyScroll() {
+    scrollLockPosition = window.pageYOffset || document.documentElement.scrollTop;
+    document.body.style.top = `-${scrollLockPosition}px`;
+    document.body.classList.add('modal-scroll-locked');
+  }
+
+  function unlockBodyScroll() {
+    if (!document.body.classList.contains('modal-scroll-locked')) return;
+    document.body.classList.remove('modal-scroll-locked');
+    document.body.style.top = '';
+    window.scrollTo(0, scrollLockPosition);
+  }
+
+  // ---------------------------------------------------------------------------
   // Modal Management
   // ---------------------------------------------------------------------------
   function openAddModal(type) {
@@ -379,6 +396,9 @@
     const clinicChk = document.getElementById('trx-clinic-account');
     if (clinicChk) clinicChk.checked = false;
 
+    lockBodyScroll();
+    lockBodyScroll();
+    lockBodyScroll();
     if (modal) {
       modal.hidden = false;
       modal.classList.add('modal-open');
@@ -469,6 +489,7 @@
       modal.classList.remove('modal-open');
     }
     editingTrxId = null;
+    unlockBodyScroll();
   }
 
   function openDeleteModal(trxId) {
@@ -522,6 +543,7 @@
       modal.hidden = true;
       modal.classList.remove('modal-open');
     }
+    unlockBodyScroll();
   }
 
   // ---------------------------------------------------------------------------
@@ -592,7 +614,7 @@
 
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="fas fa-check"></i> Saqlash';
+        saveBtn.innerHTML = '<i class="fas fa-check-circle"></i> Tasdiqlash va Saqlash';
       }
 
       if (!res.ok) {
@@ -607,7 +629,7 @@
     } catch (err) {
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="fas fa-check"></i> Saqlash';
+        saveBtn.innerHTML = '<i class="fas fa-check-circle"></i> Tasdiqlash va Saqlash';
       }
       showToast("Tarmoq xatosi. Qaytadan urinib ko'ring.", "danger");
     }
@@ -647,6 +669,7 @@
       expScope.value = filterScope || 'all';
     }
 
+    lockBodyScroll();
     modal.hidden = false;
     modal.classList.add('modal-open');
   }
@@ -657,6 +680,7 @@
       modal.hidden = true;
       modal.classList.remove('modal-open');
     }
+    unlockBodyScroll();
   }
 
   async function executeExcelExport(e) {

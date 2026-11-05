@@ -1566,14 +1566,30 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   display: none !important;
 }
 
+.own-modal-backdrop {
+  overscroll-behavior: contain;
+}
+
 .own-modal-dialog {
   background: var(--own-card-bg);
   border: 1px solid var(--own-rule-strong);
-  border-radius: 14px;
+  border-radius: 16px;
   width: 100%;
   max-width: 540px;
   box-shadow: 0 20px 40px rgba(0,0,0,0.4);
   animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.own-modal-dialog form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1723,11 +1739,17 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
 }
 
 .own-modal-footer {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: var(--own-card-bg);
   padding: 1rem 1.4rem;
   border-top: 1px solid var(--own-rule);
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
 }
 
 .btn-modal-cancel {
@@ -2005,17 +2027,58 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
     transform: scale(0.92);
   }
 
-  /* Modal optimization for mobile touch */
+  /* iOS Safari Modal Background Scroll Lock */
+  body.modal-scroll-locked {
+    position: fixed !important;
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    overflow: hidden !important;
+    touch-action: none !important;
+  }
+
+  /* Modal optimization for mobile touch (iOS Bottom Sheet) */
   .own-modal-backdrop {
-    padding: 0;
-    align-items: flex-end;
+    align-items: flex-end !important;
+    padding: 0 !important;
+    background: rgba(10, 15, 30, 0.78) !important;
+    overscroll-behavior: contain !important;
+    touch-action: pan-y !important;
   }
   .own-modal-dialog {
-    width: 100%;
-    max-width: 100%;
-    border-radius: 20px 20px 0 0;
-    max-height: 92vh;
-    border-bottom: none;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 24px 24px 0 0 !important;
+    max-height: 88vh !important;
+    border-bottom: none !important;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5) !important;
+    animation: sheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overscroll-behavior: contain !important;
+  }
+  @keyframes sheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .own-sheet-handle {
+    width: 44px;
+    height: 5px;
+    background: var(--own-rule-strong, #94a3b8);
+    border-radius: 999px;
+    margin: 8px auto 2px auto;
+    flex-shrink: 0;
+  }
+  .own-modal-header {
+    padding: 0.75rem 1.25rem 0.85rem 1.25rem !important;
+  }
+  .own-modal-body {
+    padding: 1rem 1.25rem !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
   }
   .own-form-grid {
     grid-template-columns: 1fr;
@@ -2025,8 +2088,8 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
     gap: 0.5rem;
   }
   .btn-type-toggle {
-    min-height: 46px;
-    font-size: 0.92rem;
+    min-height: 48px;
+    font-size: 0.95rem;
   }
   .amt-input-wrap input {
     font-size: 1.45rem !important;
@@ -2035,17 +2098,39 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
     padding-left: 0.85rem;
   }
   .own-modal-footer {
-    padding: 0.9rem 1.25rem calc(0.9rem + env(safe-area-inset-bottom, 0px)) 1.25rem;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    flex-shrink: 0 !important;
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 20 !important;
+    background: var(--own-card-bg) !important;
+    border-top: 1px solid var(--own-rule) !important;
+    padding: 0.85rem 1.25rem calc(0.85rem + env(safe-area-inset-bottom, 0px)) 1.25rem !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.75rem !important;
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.15) !important;
   }
-  .btn-modal-cancel, .btn-modal-save {
-    min-height: 48px;
-    justify-content: center;
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.95rem;
+  .btn-modal-cancel {
+    min-height: 50px !important;
+    justify-content: center !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    font-size: 0.95rem !important;
+    border-radius: 12px !important;
+    order: 1;
+  }
+  .btn-modal-save {
+    min-height: 50px !important;
+    justify-content: center !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    background: linear-gradient(135deg, #059669, #10b981) !important;
+    color: #ffffff !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+    order: 2;
   }
 
   /* MOBILE BOTTOM FLOATING ACTION DOCK (iPhone 17 Pro Max thumb navigation) */
