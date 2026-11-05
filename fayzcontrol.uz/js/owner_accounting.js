@@ -138,6 +138,7 @@
     if (searchQuery) params.set('search', searchQuery);
     params.set('limit', '300');
 
+    let data = null;
     try {
       const res = await fetch(`/api/owner/accounting/transactions?${params.toString()}`);
       if (refreshBtn) {
@@ -146,26 +147,53 @@
       }
 
       if (!res.ok) {
-        if (res.status === 403) {
+        if (res.status === 401) {
+          showToast("Sessiya muddati tugadi. Tizimga qaytadan kiring.", "warning");
+          setTimeout(() => { location.replace('/login.html?next=' + encodeURIComponent(location.pathname)); }, 1200);
+          return;
+        } else if (res.status === 403) {
           showToast("Ruxsat berilmagan. Ushbu hisobxona faqat klinika egasi uchun.", "danger");
+          return;
         } else {
-          showToast("Ma'lumotlarni yuklab bo'lmadi.", "danger");
+          showToast(`Ma'lumotlarni yuklab bo'lmadi (${res.status}).`, "danger");
+          return;
         }
-        return;
       }
 
-      const data = await res.json();
-      transactions = data.transactions || [];
-      summary = data.summary || {};
-      renderKPIs();
-      renderTable();
-      updateSuggestions(data.categories || []);
-    } catch (err) {
+      data = await res.json();
+    } catch (netErr) {
       if (refreshBtn) {
         const ic = refreshBtn.querySelector('i');
         if (ic) ic.classList.remove('fa-spin');
       }
-      showToast("Server bilan aloqa uzildi. Internetni tekshiring.", "danger");
+      console.warn("loadTransactions network error:", netErr);
+      showToast("Server bilan vaqtinchalik aloqa uzildi. Qaytadan yuklanmoqda...", "warning");
+      // Auto-retry once after 2 seconds for seamless recovery
+      setTimeout(() => {
+        fetch(`/api/owner/accounting/transactions?${params.toString()}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (d) {
+              transactions = d.transactions || [];
+              summary = d.summary || {};
+              renderKPIs();
+              renderTable();
+              updateSuggestions(d.categories || []);
+            }
+          })
+          .catch(() => {});
+      }, 2000);
+      return;
+    }
+
+    try {
+      transactions = (data && data.transactions) || [];
+      summary = (data && data.summary) || {};
+      renderKPIs();
+      renderTable();
+      updateSuggestions((data && data.categories) || []);
+    } catch (renderErr) {
+      console.error("loadTransactions render error:", renderErr);
     }
   }
 
@@ -666,6 +694,11 @@
       }
 
       if (!res.ok) {
+        if (res.status === 401) {
+          showToast("Sessiya muddati tugadi. Iltimos, qaytadan kiring.", "warning");
+          setTimeout(() => { location.replace('/login.html?next=' + encodeURIComponent(location.pathname)); }, 1200);
+          return;
+        }
         const body = await res.json().catch(() => ({}));
         showToast(body.error || "Amaliyotni saqlab bo'lmadi.", "danger");
         return;
