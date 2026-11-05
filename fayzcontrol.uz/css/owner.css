@@ -1738,6 +1738,45 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   pointer-events: none;
 }
 
+
+/* Modal Header Actions & Instant Submit Button */
+.own-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.btn-modal-quick-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #ffffff;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.btn-modal-quick-submit:active {
+  transform: scale(0.94);
+}
+
+.btn-quick-in {
+  background: linear-gradient(135deg, #059669, #10b981) !important;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+
+.btn-quick-out {
+  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+}
+
 .own-modal-footer {
   flex-shrink: 0;
   position: sticky;
@@ -1808,7 +1847,13 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
    ========================================================================== */
 
 /* Hide mobile floating action bar by default on desktop / laptop */
-.own-mob-fab-bar {
+
+  /* Hide floating dock when modal is open to avoid overlay / z-index conflicts */
+  body.modal-scroll-locked .own-mob-fab-bar {
+    display: none !important;
+  }
+
+  .own-mob-fab-bar {
   display: none !important;
 }
 
@@ -1851,13 +1896,12 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
     padding-bottom: calc(85px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  /* Master Tab Switcher: smooth horizontal swipe */
+  /* Master Tab Switcher: full-width 2-column segmented control */
   .own-nav-tabs {
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
     padding-bottom: 2px;
   }
   .own-nav-tabs::-webkit-scrollbar {
@@ -2175,6 +2219,15 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   .own-fab-income {
     background: linear-gradient(135deg, #059669, #10b981);
   }
+  
+  .own-fab-export {
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    flex: 0 0 74px !important;
+    max-width: 85px !important;
+    padding: 0 0.5rem !important;
+    font-size: 0.9rem !important;
+  }
+
   .own-fab-expense {
     background: linear-gradient(135deg, #dc2626, #ef4444);
   }

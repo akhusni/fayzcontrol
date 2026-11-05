@@ -289,10 +289,10 @@
       <div class="own-acc-toolbar-wrap">
         <div class="own-acc-actions">
           <button type="button" class="own-action-btn own-btn-income" id="btn-add-income">
-            <i class="fas fa-plus-circle"></i> <span>Kirim kiritish</span>
+            <i class="fas fa-plus-circle"></i> <span>Kirim qilish</span>
           </button>
           <button type="button" class="own-action-btn own-btn-expense" id="btn-add-expense">
-            <i class="fas fa-minus-circle"></i> <span>Chiqim kiritish</span>
+            <i class="fas fa-minus-circle"></i> <span>Chiqim qilish</span>
           </button>
         </div>
 
@@ -662,11 +662,16 @@
 
     <!-- TRANSACTION MODAL: KIRIM / CHIQIM KIRITISH & TAHRIRLASH -->
     <div class="own-modal-backdrop" id="modal-owner-transaction" hidden>
-      <div class="own-modal-dialog" role="dialog">
-        <div class="own-sheet-handle" aria-hidden="true"></div> aria-labelledby="own-modal-title" aria-modal="true">
+      <div class="own-modal-dialog" role="dialog" aria-labelledby="own-modal-title" aria-modal="true">
+        <div class="own-sheet-handle" aria-hidden="true"></div>
         <div class="own-modal-header">
           <h3 id="own-modal-title"><i class="fas fa-wallet"></i> Yangi Amaliyot Kiritish</h3>
-          <button type="button" class="btn-modal-close" id="btn-modal-close-x" aria-label="Yopish">&times;</button>
+          <div class="own-modal-header-actions">
+            <button type="button" class="btn-modal-quick-submit btn-quick-in" id="btn-modal-quick-save" title="Kiritilgan amaliyotni tasdiqlash">
+              <i class="fas fa-check"></i> <span>Kirim qilish</span>
+            </button>
+            <button type="button" class="btn-modal-close" id="btn-modal-close-x" aria-label="Yopish">&times;</button>
+          </div>
         </div>
         <form id="form-owner-transaction">
           <div class="own-modal-body">
@@ -753,8 +758,8 @@
 
     <!-- EXCEL EXPORT MODAL -->
     <div class="own-modal-backdrop" id="modal-owner-export-excel" hidden>
-      <div class="own-modal-dialog" style="max-width: 520px;" role="dialog">
-        <div class="own-sheet-handle" aria-hidden="true"></div> aria-labelledby="export-modal-title" aria-modal="true">
+      <div class="own-modal-dialog" style="max-width: 520px;" role="dialog" aria-labelledby="export-modal-title" aria-modal="true">
+        <div class="own-sheet-handle" aria-hidden="true"></div>
         <div class="own-modal-header">
           <h3 id="export-modal-title" style="color: #10b981;">
             <i class="fas fa-file-excel"></i> Excelga Yuklab Olish (.xlsx)
@@ -831,8 +836,8 @@
 
     <!-- DELETE CONFIRMATION MODAL -->
     <div class="own-modal-backdrop" id="modal-owner-del-confirm" hidden>
-      <div class="own-modal-dialog" style="max-width: 440px;" role="dialog">
-        <div class="own-sheet-handle" aria-hidden="true"></div> aria-labelledby="del-confirm-title" aria-modal="true">
+      <div class="own-modal-dialog" style="max-width: 440px;" role="dialog" aria-labelledby="del-confirm-title" aria-modal="true">
+        <div class="own-sheet-handle" aria-hidden="true"></div>
         <div class="own-modal-header">
           <h3 id="del-confirm-title" style="color: #ef4444;"><i class="fas fa-exclamation-triangle"></i> Amaliyotni O'chirish</h3>
           <button type="button" class="btn-modal-close" id="btn-del-close-x" aria-label="Yopish">&times;</button>
@@ -852,11 +857,14 @@
 
     <!-- MOBILE BOTTOM FLOATING ACTION DOCK (iPhone / Mobile quick access) -->
     <div class="own-mob-fab-bar" id="own-mob-fab-bar" role="toolbar" aria-label="Mobil tezkor amaliyotlar">
-      <button type="button" class="own-mob-fab own-fab-income" id="mob-fab-income" aria-label="Kirim kiritish">
-        <i class="fas fa-plus-circle"></i> <span>Kirim</span>
+      <button type="button" class="own-mob-fab own-fab-income" id="mob-fab-income" aria-label="Kirim qilish">
+        <i class="fas fa-plus-circle"></i> <span>Kirim qilish</span>
       </button>
-      <button type="button" class="own-mob-fab own-fab-expense" id="mob-fab-expense" aria-label="Chiqim kiritish">
-        <i class="fas fa-minus-circle"></i> <span>Chiqim</span>
+      <button type="button" class="own-mob-fab own-fab-expense" id="mob-fab-expense" aria-label="Chiqim qilish">
+        <i class="fas fa-minus-circle"></i> <span>Chiqim qilish</span>
+      </button>
+      <button type="button" class="own-mob-fab own-fab-export" id="mob-fab-export" aria-label="Excelga yuklab olish">
+        <i class="fas fa-file-excel"></i> <span>Excel</span>
       </button>
     </div>
 

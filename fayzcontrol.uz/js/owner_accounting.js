@@ -278,6 +278,10 @@
     if (cardsWrap) {
       cardsWrap.innerHTML = transactions.map(t => {
         const isIn = t.transaction_type === 'income';
+        const isClinic = !!t.is_clinic_account;
+        const clinicTag = isClinic
+          ? '<span class="own-scope-pill scope-clinic" title="Klinika hisobidan (Umumiy buxgalteriyaga kiritilgan)"><i class="fas fa-building"></i> Klinika hisobidan</span>'
+          : '<span class="own-scope-pill scope-private" title="Faqat egasiga (Shaxsiy hisobxona)"><i class="fas fa-user-shield"></i> Faqat egasiga</span>';
         const amtSign = isIn ? '+' : '−';
         const amtClass = isIn ? 'amt-income' : 'amt-expense';
         const methodLabel = METHOD_LABELS[t.payment_method] || t.payment_method || 'Naqd';
@@ -321,6 +325,17 @@
           </div>
         `;
       }).join('');
+    }
+
+    // Allow tapping anywhere on a mobile card to open edit modal
+    if (cardsWrap) {
+      cardsWrap.querySelectorAll('.own-mob-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.btn-action-icon')) return;
+          const trxId = card.dataset.id;
+          if (trxId) openEditModal(trxId);
+        });
+      });
     }
 
     attachRowEvents();
@@ -397,8 +412,6 @@
     if (clinicChk) clinicChk.checked = false;
 
     lockBodyScroll();
-    lockBodyScroll();
-    lockBodyScroll();
     if (modal) {
       modal.hidden = false;
       modal.classList.add('modal-open');
@@ -459,6 +472,9 @@
     const destLabel = document.getElementById('lbl-destination');
     const destInp = document.getElementById('trx-destination');
     const reasonLabel = document.getElementById('lbl-reason');
+    const titleEl = document.getElementById('own-modal-title');
+    const btnSave = document.getElementById('btn-modal-save');
+    const btnQuickSave = document.getElementById('btn-modal-quick-save');
 
     if (btnIn) {
       btnIn.classList.toggle('active', type === 'income');
@@ -470,13 +486,45 @@
     }
 
     if (type === 'income') {
+      if (titleEl) {
+        titleEl.innerHTML = editingTrxId
+          ? `<i class="fas fa-pen c-in"></i> Kirimni tahrirlash (${esc(editingTrxId)})`
+          : '<i class="fas fa-plus-circle c-in"></i> Kirim qilish (+ Tushum)';
+      }
       if (destLabel) destLabel.innerHTML = 'Qayerdan / Qayerga keldi? <span class="req">*</span>';
-      if (destInp) destInp.placeholder = "Masalan: Klinika ulushi, Shaxsiy kiritma, Investor to'lovi...";
+      if (destInp) destInp.placeholder = "Masalan: Klinika ulushi, Shaxsiy kiritma, Investor to\'lovi...";
       if (reasonLabel) reasonLabel.innerHTML = 'Nega kiritildi? (Daromad sababi / izoh) <span class="req">*</span>';
+
+      // Explicitly update submit button text and styling for Kirim
+      if (btnSave) {
+        btnSave.innerHTML = '<i class="fas fa-plus-circle"></i> Kirim qilish';
+        btnSave.style.background = 'linear-gradient(135deg, #059669, #10b981)';
+        btnSave.style.boxShadow = '0 4px 14px rgba(16, 185, 129, 0.4)';
+      }
+      if (btnQuickSave) {
+        btnQuickSave.innerHTML = '<i class="fas fa-check"></i> <span>Kirim qilish</span>';
+        btnQuickSave.className = 'btn-modal-quick-submit btn-quick-in';
+      }
     } else {
+      if (titleEl) {
+        titleEl.innerHTML = editingTrxId
+          ? `<i class="fas fa-pen c-out"></i> Chiqimni tahrirlash (${esc(editingTrxId)})`
+          : '<i class="fas fa-minus-circle c-out"></i> Chiqim qilish (− Xarajat)';
+      }
       if (destLabel) destLabel.innerHTML = 'Qayerga sarflandi? (Manzil / Maqsad) <span class="req">*</span>';
-      if (destInp) destInp.placeholder = "Masalan: Bino ta'miri, Klinika jihozlari, Kanselyariya, Shaxsiy dividend...";
+      if (destInp) destInp.placeholder = "Masalan: Bino ta\'miri, Klinika jihozlari, Kanselyariya, Shaxsiy dividend...";
       if (reasonLabel) reasonLabel.innerHTML = 'Nega bo\'lgani? (Xarajat sababi / batafsil izoh) <span class="req">*</span>';
+
+      // Explicitly update submit button text and styling for Chiqim
+      if (btnSave) {
+        btnSave.innerHTML = '<i class="fas fa-minus-circle"></i> Chiqim qilish';
+        btnSave.style.background = 'linear-gradient(135deg, #dc2626, #ef4444)';
+        btnSave.style.boxShadow = '0 4px 14px rgba(239, 68, 68, 0.4)';
+      }
+      if (btnQuickSave) {
+        btnQuickSave.innerHTML = '<i class="fas fa-check"></i> <span>Chiqim qilish</span>';
+        btnQuickSave.className = 'btn-modal-quick-submit btn-quick-out';
+      }
     }
 
     updateSuggestions();
@@ -973,8 +1021,49 @@
     // iPhone / Mobile bottom floating action buttons
     const mobFabIn = document.getElementById('mob-fab-income');
     const mobFabOut = document.getElementById('mob-fab-expense');
+    const mobFabExport = document.getElementById('mob-fab-export');
     if (mobFabIn) mobFabIn.addEventListener('click', () => openAddModal('income'));
     if (mobFabOut) mobFabOut.addEventListener('click', () => openAddModal('expense'));
+    if (mobFabExport) mobFabExport.addEventListener('click', openExportModal);
+
+    // Quick submit button in modal header (visible even when virtual keyboard is active)
+    const btnQuickSave = document.getElementById('btn-modal-quick-save');
+    if (btnQuickSave) {
+      btnQuickSave.addEventListener('click', () => {
+        const form = document.getElementById('form-owner-transaction');
+        if (form) {
+          if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+          } else {
+            form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+          }
+        }
+      });
+    }
+
+    // Dynamic iOS Visual Viewport adaptation (keeps modal and buttons visible above keyboard)
+    if (window.visualViewport) {
+      const handleVisualViewport = () => {
+        const activeModal = document.querySelector('.own-modal-backdrop:not([hidden])');
+        if (!activeModal) return;
+        const dialog = activeModal.querySelector('.own-modal-dialog');
+        if (!dialog) return;
+
+        const vv = window.visualViewport;
+        const isKeyboard = vv.height < window.innerHeight * 0.85;
+        if (isKeyboard) {
+          activeModal.style.height = `${vv.height}px`;
+          activeModal.style.top = `${vv.offsetTop}px`;
+          dialog.style.maxHeight = `${vv.height}px`;
+        } else {
+          activeModal.style.height = '';
+          activeModal.style.top = '';
+          dialog.style.maxHeight = '';
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleVisualViewport);
+      window.visualViewport.addEventListener('scroll', handleVisualViewport);
+    }
 
     // Form submit
     const form = document.getElementById('form-owner-transaction');
