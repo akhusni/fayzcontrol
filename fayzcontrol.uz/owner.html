@@ -683,7 +683,7 @@
             <div class="own-form-row">
               <label for="trx-amount">Summa <span class="req">*</span></label>
               <div class="amt-input-wrap">
-                <input type="text" id="trx-amount" class="own-form-control" placeholder="0" autocomplete="off" required>
+                <input type="text" id="trx-amount" class="own-form-control" placeholder="0" autocomplete="off" inputmode="numeric" required>
                 <span class="amt-suffix">so'm</span>
               </div>
             </div>
@@ -768,6 +768,16 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- MOBILE BOTTOM FLOATING ACTION DOCK (iPhone / Mobile quick access) -->
+    <div class="own-mob-fab-bar" id="own-mob-fab-bar" role="toolbar" aria-label="Mobil tezkor amaliyotlar">
+      <button type="button" class="own-mob-fab own-fab-income" id="mob-fab-income" aria-label="Kirim kiritish">
+        <i class="fas fa-plus-circle"></i> <span>Kirim</span>
+      </button>
+      <button type="button" class="own-mob-fab own-fab-expense" id="mob-fab-expense" aria-label="Chiqim kiritish">
+        <i class="fas fa-minus-circle"></i> <span>Chiqim</span>
+      </button>
     </div>
 
   </main>

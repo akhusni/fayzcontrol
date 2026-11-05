@@ -719,6 +719,12 @@
     if (btnEmptyAddIn) btnEmptyAddIn.addEventListener('click', () => openAddModal('income'));
     if (btnEmptyAddOut) btnEmptyAddOut.addEventListener('click', () => openAddModal('expense'));
 
+    // iPhone / Mobile bottom floating action buttons
+    const mobFabIn = document.getElementById('mob-fab-income');
+    const mobFabOut = document.getElementById('mob-fab-expense');
+    if (mobFabIn) mobFabIn.addEventListener('click', () => openAddModal('income'));
+    if (mobFabOut) mobFabOut.addEventListener('click', () => openAddModal('expense'));
+
     // Form submit
     const form = document.getElementById('form-owner-transaction');
     if (form) form.addEventListener('submit', saveTransaction);
