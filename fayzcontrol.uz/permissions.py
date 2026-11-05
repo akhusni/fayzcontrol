@@ -255,6 +255,8 @@ API_RULES = [
     # One patient's invoices with their lines and payments (read-only view).
     ('/api/accounting/patient-invoices', 'accounting', 'read'),
     ('/api/accounting/medicine-usage', 'accounting', 'read'),
+    # Owner confidential private bookkeeping
+    ('/api/owner/accounting',         'owner',      None),
     ('/api/owner/summary',            'owner',      'read'),
     ('/api/accounting/medicine-links', 'accounting', None),
     ('/api/financial-ledger',         'accounting', 'read'),

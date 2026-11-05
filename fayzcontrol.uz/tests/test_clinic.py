@@ -3667,6 +3667,88 @@ class OwnerReport(ApiTest):
         self.assertEqual(st, 403)
 
 
+class OwnerPrivateAccounting(ApiTest):
+    """The owner has a private bookkeeping ledger for clinic cashflow,
+    strictly hidden from other staff and accounting."""
+    _account = RoleAuthorization._account
+
+    def setUp(self):
+        super().setUp()
+        self._temp_users = []
+
+    def tearDown(self):
+        for uid in self._temp_users:
+            self.api.delete('/api/users/' + uid)
+        super().tearDown()
+
+    def test_owner_can_record_and_manage_private_accounting(self):
+        owner = self._account('owner')
+        # 1. Post expense with timestamp, destination, and reason
+        st, exp = owner.post('/api/owner/accounting/transactions', {
+            'transaction_type': 'expense',
+            'amount': 2500000,
+            'destination_or_source': "Bino ta'miri",
+            'reason': 'Palatalar krantlari almashtirildi',
+            'transaction_time': '2026-11-05 10:15:00',
+            'payment_method': 'cash',
+        })
+        self.assertEqual(st, 201, exp)
+        trx_id = exp['id']
+        self.assertTrue(trx_id.startswith('OWN-'))
+        self.assertEqual(exp['amount'], 2500000.0)
+        self.assertEqual(exp['destination_or_source'], "Bino ta'miri")
+        self.assertEqual(exp['reason'], 'Palatalar krantlari almashtirildi')
+
+        # 2. Post income with timestamp, source, and reason
+        st, inc = owner.post('/api/owner/accounting/transactions', {
+            'transaction_type': 'income',
+            'amount': 8000000,
+            'destination_or_source': 'Klinika daromadi',
+            'reason': 'Dividend tushumi',
+            'transaction_time': '2026-11-05 11:30:00',
+            'payment_method': 'bank',
+        })
+        self.assertEqual(st, 201, inc)
+
+        # 3. List and summary
+        st, res = owner.get('/api/owner/accounting/transactions')
+        self.assertEqual(st, 200, res)
+        self.assertGreaterEqual(res['total_count'], 2)
+        self.assertGreaterEqual(res['summary']['all_time_income'], 8000000.0)
+
+        # 4. Post with is_clinic_account=True
+        st, clin_exp = owner.post('/api/owner/accounting/transactions', {
+            'transaction_type': 'expense',
+            'amount': 300000,
+            'destination_or_source': "Klinika ehtiyot qismlari",
+            'reason': 'Konditsioner filtri almashtirildi',
+            'is_clinic_account': True,
+            'payment_method': 'cash'
+        })
+        self.assertEqual(st, 201, clin_exp)
+        self.assertEqual(clin_exp['is_clinic_account'], 1)
+        self.assertTrue(clin_exp.get('linked_accounting_trx_id'))
+
+        # Verify scope filters
+        st, c_only = owner.get('/api/owner/accounting/transactions?clinic_scope=clinic')
+        self.assertEqual(st, 200)
+        self.assertTrue(any(t['id'] == clin_exp['id'] for t in c_only['transactions']))
+
+        # 5. Accountant and others are strictly forbidden (403)
+        accountant = self._account('accountant')
+        st, _ = accountant.get('/api/owner/accounting/transactions')
+        self.assertEqual(st, 403)
+        st, _ = accountant.post('/api/owner/accounting/transactions', {
+            'transaction_type': 'expense', 'amount': 100, 'destination_or_source': 'X', 'reason': 'Y'
+        })
+        self.assertEqual(st, 403)
+
+        # 6. Cleanup
+        owner.delete(f'/api/owner/accounting/transactions/{trx_id}')
+        owner.delete(f'/api/owner/accounting/transactions/{inc["id"]}')
+        owner.delete(f'/api/owner/accounting/transactions/{clin_exp["id"]}')
+
+
 
 class FrontDeskSafety(ApiTest):
     """Faults found in the 2026-10-08 system map: a refused advance, double-booked slots, name deletes."""

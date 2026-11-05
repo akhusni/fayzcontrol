@@ -34,7 +34,7 @@
         </div>
         <div class="portal-brand-text">
           <div class="portal-brand-title">FAYZ MEDICAL HOUSE</div>
-          <div class="portal-brand-subtitle">PUL OQIMI & TAHLIL</div>
+          <div class="portal-brand-subtitle">EGASI HISOBXONASI & PUL OQIMI</div>
         </div>
       </a>
 
@@ -231,6 +231,181 @@
   </header>
 
   <main class="own-main portal-container">
+
+    <!-- Master View Tabs: Egasi Hisobxonasi vs Klinika Pul Oqimi & Tahlil -->
+    <div class="own-nav-tabs" role="tablist" aria-label="Hisobxona va Tahlil bo'limlari">
+      <button type="button" class="own-nav-tab active" id="tab-btn-hisobxona" data-target="pane-hisobxona" role="tab" aria-selected="true">
+        <i class="fas fa-wallet"></i>
+        <span>Egasi Hisobxonasi (Kirim / Chiqim)</span>
+      </button>
+      <button type="button" class="own-nav-tab" id="tab-btn-analytics" data-target="pane-analytics" role="tab" aria-selected="false">
+        <i class="fas fa-chart-line"></i>
+        <span>Klinika Pul Oqimi & Tahlil</span>
+      </button>
+    </div>
+
+    <!-- PANE 1: EGASI HISOBXONASI (KIRIM / CHIQIM KASSA DAFTARI) -->
+    <div class="own-tab-pane active" id="pane-hisobxona" role="tabpanel" aria-labelledby="tab-btn-hisobxona">
+      <!-- Executive KPI Summary Cards -->
+      <section class="own-acc-kpis" aria-label="Egasi hisobxona ko'rsatkichlari">
+        <div class="own-acc-kpi-card card-in">
+          <div class="own-acc-kpi-head">
+            <i class="fas fa-arrow-down-left"></i>
+            <span>Jami Kirim</span>
+          </div>
+          <div class="own-acc-kpi-val" id="own-acc-kpi-income">—</div>
+          <div class="own-acc-kpi-sub" id="own-acc-kpi-income-cnt">— ta tushum</div>
+        </div>
+
+        <div class="own-acc-kpi-card card-out">
+          <div class="own-acc-kpi-head">
+            <i class="fas fa-arrow-up-right"></i>
+            <span>Jami Chiqim</span>
+          </div>
+          <div class="own-acc-kpi-val" id="own-acc-kpi-expense">—</div>
+          <div class="own-acc-kpi-sub" id="own-acc-kpi-expense-cnt">— ta chiqim</div>
+        </div>
+
+        <div class="own-acc-kpi-card card-bal">
+          <div class="own-acc-kpi-head">
+            <i class="fas fa-vault"></i>
+            <span>Kassa Qoldig'i (Sof Balans)</span>
+          </div>
+          <div class="own-acc-kpi-val text-positive" id="own-acc-kpi-balance">—</div>
+          <div class="own-acc-kpi-sub">Barcha davrlar bo'yicha sof qoldiq</div>
+        </div>
+
+        <div class="own-acc-kpi-card card-today">
+          <div class="own-acc-kpi-head">
+            <i class="fas fa-calendar-day"></i>
+            <span>Bugungi Aylanma</span>
+          </div>
+          <div class="own-acc-kpi-val" id="own-acc-kpi-today" style="font-size: 1.15rem;">—</div>
+          <div class="own-acc-kpi-sub">Bugungi kirim va chiqim</div>
+        </div>
+      </section>
+
+      <!-- Action & Controls Toolbar -->
+      <div class="own-acc-toolbar-wrap">
+        <div class="own-acc-actions">
+          <button type="button" class="own-action-btn own-btn-income" id="btn-add-income">
+            <i class="fas fa-plus-circle"></i> <span>Kirim kiritish</span>
+          </button>
+          <button type="button" class="own-action-btn own-btn-expense" id="btn-add-expense">
+            <i class="fas fa-minus-circle"></i> <span>Chiqim kiritish</span>
+          </button>
+        </div>
+
+        <div class="own-acc-filters-group">
+          <!-- Periods -->
+          <div class="own-acc-periods" role="group" aria-label="Davr">
+            <button type="button" class="own-acc-period" data-period="today">Bugun</button>
+            <button type="button" class="own-acc-period" data-period="week">7 kun</button>
+            <button type="button" class="own-acc-period active" data-period="month">Shu oy</button>
+            <button type="button" class="own-acc-period" data-period="all">Barchasi</button>
+            <button type="button" class="own-acc-period" data-period="custom"><i class="fas fa-sliders-h"></i></button>
+          </div>
+
+          <!-- Type Filter -->
+          <select class="own-acc-select" id="own-acc-filter-type" aria-label="Amaliyot turi">
+            <option value="all">Barcha amaliyotlar</option>
+            <option value="income">Faqat Kirimlar (+)</option>
+            <option value="expense">Faqat Chiqimlar (−)</option>
+          </select>
+
+          <!-- Payment Method Filter -->
+          <select class="own-acc-select" id="own-acc-filter-method" aria-label="To'lov shakli">
+            <option value="all">Barcha to'lov shakllari</option>
+            <option value="cash">Naqd pul</option>
+            <option value="card">Plastik karta</option>
+            <option value="bank">Bank o'tkazmasi</option>
+            <option value="online">Click / Payme</option>
+          </select>
+
+          <!-- Scope Filter (Clinic vs Private) -->
+          <select class="own-acc-select" id="own-acc-filter-scope" aria-label="Hisob manbasi">
+            <option value="all">Barcha manbalar</option>
+            <option value="clinic">Faqat klinika hisobidan</option>
+            <option value="private">Faqat egasiga (shaxsiy)</option>
+          </select>
+
+          <!-- Search Query -->
+          <div class="own-acc-search-box">
+            <i class="fas fa-search"></i>
+            <input type="search" id="own-acc-search" placeholder="Qayerga, nega yoki summa...">
+          </div>
+
+          <!-- Tools -->
+          <button type="button" class="own-acc-tool-btn" id="btn-acc-refresh" title="Yangilash">
+            <i class="fas fa-rotate"></i>
+          </button>
+          <button type="button" class="own-acc-tool-btn" id="btn-acc-export" title="Excel (CSV) yuklab olish">
+            <i class="fas fa-file-excel"></i>
+          </button>
+          <button type="button" class="own-acc-tool-btn" id="btn-acc-print" title="Chop etish">
+            <i class="fas fa-print"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Date Filter Box (Hidden by default) -->
+      <div class="own-acc-custom-box" id="own-acc-custom" hidden>
+        <label>Dan: <input type="date" id="own-acc-start"></label>
+        <label>Gacha: <input type="date" id="own-acc-end"></label>
+        <button type="button" class="own-action-btn own-btn-income" id="btn-acc-apply-custom" style="padding: 0.4rem 0.9rem; font-size: 0.82rem;">
+          <i class="fas fa-check"></i> Ko'rsatish
+        </button>
+      </div>
+
+      <!-- Transactions Table Card -->
+      <div class="own-acc-table-card">
+        <div class="own-acc-table-header">
+          <h2 class="own-acc-table-title">
+            <i class="fas fa-list-check"></i> <span>Kirim va Chiqim Amaliyotlari Ro'yxati</span>
+          </h2>
+          <span class="own-acc-badge-count" id="own-acc-table-count">Yuklanmoqda...</span>
+        </div>
+
+        <!-- Desktop Data Table -->
+        <div class="own-table-responsive">
+          <table class="own-acc-data-table" id="own-acc-table">
+            <thead>
+              <tr>
+                <th scope="col" style="width: 170px;">Sana & Vaqt (Timestamp)</th>
+                <th scope="col" style="width: 110px;">Turi</th>
+                <th scope="col" style="width: 220px;">Qayerga / Qayerdan</th>
+                <th scope="col">Nega bo'lgani (Sababi & Izoh)</th>
+                <th scope="col" style="width: 140px;">To'lov shakli</th>
+                <th scope="col" style="width: 160px; text-align: right;">Summa</th>
+                <th scope="col" style="width: 90px; text-align: right;">Amallar</th>
+              </tr>
+            </thead>
+            <tbody id="own-acc-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Touch Cards Feed -->
+        <div class="own-acc-cards-feed" id="own-acc-cards-wrap"></div>
+
+        <!-- Empty State -->
+        <div class="own-acc-empty" id="own-acc-empty" hidden>
+          <div class="empty-icon-wrap"><i class="fas fa-receipt"></i></div>
+          <h3>Hech qanday amaliyot topilmadi</h3>
+          <p>Tanlangan davr yoki qidiruv bo'yicha yozuvlar mavjud emas. Yangi amaliyot kiritishingiz mumkin.</p>
+          <div class="empty-btns">
+            <button type="button" class="own-action-btn own-btn-income" id="btn-empty-add-in">
+              <i class="fas fa-plus-circle"></i> Kirim kiritish
+            </button>
+            <button type="button" class="own-action-btn own-btn-expense" id="btn-empty-add-out">
+              <i class="fas fa-minus-circle"></i> Chiqim kiritish
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANE 2: KLINIKA PUL OQIMI & UMUMIY TAHLIL -->
+    <div class="own-tab-pane" id="pane-analytics" role="tabpanel" aria-labelledby="tab-btn-analytics" hidden>
 
     <!-- Top control toolbar: periods + actions -->
     <div class="own-toolbar">
@@ -483,8 +658,121 @@
       </section>
     </div>
 
+    </div> <!-- /#pane-analytics -->
+
+    <!-- TRANSACTION MODAL: KIRIM / CHIQIM KIRITISH & TAHRIRLASH -->
+    <div class="own-modal-backdrop" id="modal-owner-transaction" hidden>
+      <div class="own-modal-dialog" role="dialog" aria-labelledby="own-modal-title" aria-modal="true">
+        <div class="own-modal-header">
+          <h3 id="own-modal-title"><i class="fas fa-wallet"></i> Yangi Amaliyot Kiritish</h3>
+          <button type="button" class="btn-modal-close" id="btn-modal-close-x" aria-label="Yopish">&times;</button>
+        </div>
+        <form id="form-owner-transaction">
+          <div class="own-modal-body">
+            <!-- Type Selector -->
+            <div class="own-type-toggle-group" role="group" aria-label="Amaliyot turi">
+              <button type="button" class="btn-type-toggle type-in" id="btn-type-income" aria-pressed="false">
+                <i class="fas fa-arrow-down-left"></i> Kirim (+ Tushum)
+              </button>
+              <button type="button" class="btn-type-toggle type-out active" id="btn-type-expense" aria-pressed="true">
+                <i class="fas fa-arrow-up-right"></i> Chiqim (− Xarajat)
+              </button>
+            </div>
+
+            <!-- Amount Input -->
+            <div class="own-form-row">
+              <label for="trx-amount">Summa <span class="req">*</span></label>
+              <div class="amt-input-wrap">
+                <input type="text" id="trx-amount" class="own-form-control" placeholder="0" autocomplete="off" required>
+                <span class="amt-suffix">so'm</span>
+              </div>
+            </div>
+
+            <!-- DateTime (Timestamp) & Payment Method -->
+            <div class="own-form-grid">
+              <div class="own-form-row">
+                <label for="trx-time">Qachon (Sana va vaqt / Timestamp) <span class="req">*</span></label>
+                <input type="datetime-local" id="trx-time" class="own-form-control" required>
+              </div>
+
+              <div class="own-form-row">
+                <label for="trx-method">To'lov shakli <span class="req">*</span></label>
+                <select id="trx-method" class="own-form-control">
+                  <option value="cash">Naqd pul (Kassa)</option>
+                  <option value="card">Plastik karta</option>
+                  <option value="bank">Bank o'tkazmasi</option>
+                  <option value="online">Click / Payme</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Destination / Source -->
+            <div class="own-form-row">
+              <label id="lbl-destination" for="trx-destination">Qayerga sarflandi? (Manzil / Maqsad) <span class="req">*</span></label>
+              <input type="text" id="trx-destination" class="own-form-control" list="owner-dest-suggestions" autocomplete="off" required>
+              <datalist id="owner-dest-suggestions"></datalist>
+            </div>
+
+            <!-- Reason -->
+            <div class="own-form-row">
+              <label id="lbl-reason" for="trx-reason">Nega bo'lgani? (Xarajat sababi / batafsil izoh) <span class="req">*</span></label>
+              <textarea id="trx-reason" class="own-form-control" rows="3" placeholder="Nega bu amaliyot bo'ldi? Sababi va maqsadini to'liq yozing..." required></textarea>
+            </div>
+
+            <!-- Notes (Optional) -->
+            <div class="own-form-row">
+              <label for="trx-notes">Qo'shimcha izoh / Chek raqami (ixtiyoriy)</label>
+              <input type="text" id="trx-notes" class="own-form-control" placeholder="Chek №, kvitansiya yoki shaxsiy eslatma">
+            </div>
+
+            <!-- Clinic Account Option -->
+            <div class="own-form-row own-clinic-toggle-box">
+              <label class="own-checkbox-label" for="trx-clinic-account">
+                <input type="checkbox" id="trx-clinic-account">
+                <span class="own-checkbox-text">
+                  <strong><i class="fas fa-building" style="color: #0284c7; margin-right: 5px;"></i>Klinika hisobidan</strong>
+                  <span class="own-checkbox-sub">Umumiy buxgalteriya (accounting) va hisobotlarga qo'shish</span>
+                </span>
+              </label>
+              <div class="own-checkbox-desc">
+                Belgilansa: ushbu chiqim/kirim klinika umumiy hisobxonasiga (kassa jurnaliga) yoziladi va barcha moliyaviy hisobotlarda aks etadi. Belgilanmasa: faqat egasining o'ziga ko'rinadi xolos.
+              </div>
+            </div>
+          </div>
+
+          <div class="own-modal-footer">
+            <button type="button" class="btn-modal-cancel" id="btn-modal-cancel">Bekor qilish</button>
+            <button type="submit" class="btn-modal-save" id="btn-modal-save">
+              <i class="fas fa-check"></i> Saqlash
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div class="own-modal-backdrop" id="modal-owner-del-confirm" hidden>
+      <div class="own-modal-dialog" style="max-width: 440px;" role="dialog" aria-labelledby="del-confirm-title" aria-modal="true">
+        <div class="own-modal-header">
+          <h3 id="del-confirm-title" style="color: #ef4444;"><i class="fas fa-exclamation-triangle"></i> Amaliyotni O'chirish</h3>
+          <button type="button" class="btn-modal-close" id="btn-del-close-x" aria-label="Yopish">&times;</button>
+        </div>
+        <div class="own-modal-body">
+          <p style="margin: 0; color: var(--own-ink-2);">Haqiqatan ham ushbu amaliyotni butunlay o'chirib tashlamoqchimisiz?</p>
+          <div class="del-confirm-box" id="del-confirm-desc"></div>
+        </div>
+        <div class="own-modal-footer">
+          <button type="button" class="btn-modal-cancel" id="btn-del-cancel">Bekor qilish</button>
+          <button type="button" class="btn-del-confirm" id="btn-confirm-delete">
+            <i class="fas fa-trash-alt"></i> Ha, o'chirilsin
+          </button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <script src="js/owner.js?v=2.0"></script>
+  <script src="js/owner_accounting.js?v=1.0"></script>
 </body>
 </html>

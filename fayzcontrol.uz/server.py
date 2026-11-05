@@ -822,6 +822,7 @@ import permissions
 import user_admin
 import nursery
 import owner_report
+import owner_accounting
 import consultation
 import inventory
 import warehouse_api
@@ -2457,6 +2458,32 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(acc_data, ensure_ascii=False).encode('utf-8'))
 
             # 7b. /api/accounting/medication-purchases -> List all medication purchases
+            # GET /api/owner/accounting/transactions -> Owner confidential private transactions
+            elif path == '/api/owner/accounting/transactions' or path.startswith('/api/owner/accounting/transactions?'):
+                owner_accounting.ensure_schema(conn)
+                start = query.get('start', [''])[0]
+                end = query.get('end', [''])[0]
+                txn_type = query.get('type', [''])[0]
+                search = query.get('search', [''])[0]
+                method = query.get('payment_method', [''])[0]
+                clinic_scope = query.get('clinic_scope', [''])[0]
+                try:
+                    limit = int(query.get('limit', [100])[0])
+                except (ValueError, TypeError):
+                    limit = 100
+                try:
+                    offset = int(query.get('offset', [0])[0])
+                except (ValueError, TypeError):
+                    offset = 0
+
+                result = owner_accounting.list_transactions(
+                    conn, start=start, end=end, txn_type=txn_type,
+                    search=search, payment_method=method, clinic_scope=clinic_scope,
+                    limit=limit, offset=offset
+                )
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+
             # 7d. /api/owner/summary -> the owner's phone report: money in by
             # source, money out by purpose, per day, per payment method.
             elif path == '/api/owner/summary':
@@ -3937,6 +3964,18 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                     'is_refund': amount < 0
                 }, ensure_ascii=False).encode('utf-8'))
 
+            # POST /api/owner/accounting/transactions -> Owner confidential bookkeeping
+            elif path == '/api/owner/accounting/transactions':
+                owner_accounting.ensure_schema(conn)
+                sess = self.current_session()
+                actor = (sess.get('user') or {}).get('username', 'owner') if sess else 'owner'
+                record, err, field = owner_accounting.create_transaction(conn, body, actor_username=actor)
+                if err:
+                    self._send_validation_error(err, field)
+                    return
+                self._set_json_headers(201)
+                self.wfile.write(json.dumps(record, ensure_ascii=False).encode('utf-8'))
+
             # 3. POST /api/accounting/transaction (Create Expense / Incasso / Operational Cash Flow)
             elif path == '/api/accounting/transaction':
                 # The salary payout sent no amount at all (the figure lived
@@ -5285,6 +5324,7 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         'time')
                     return
 
+                ref_source = str(body.get('referral_source') or 'reception').strip()
                 if p_exist:
                     patient_id = p_exist[0]
                     # Fill in details the desk has now and the record lacks,
@@ -5293,18 +5333,19 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
                         UPDATE patients
                         SET gender     = COALESCE(gender, ?),
                             birth_date = COALESCE(birth_date, ?),
-                            birth_year = COALESCE(birth_year, ?)
+                            birth_year = COALESCE(birth_year, ?),
+                            referral_source = COALESCE(referral_source, ?)
                         WHERE id = ?
-                    """, (_gender, _bdate, _byear, patient_id))
+                    """, (_gender, _bdate, _byear, ref_source or None, patient_id))
                 else:
                     patient_id, _pcode = new_patient_ids(cur)
                     cur.execute("""
                         INSERT INTO patients (id, patient_code, full_name, phone,
                                               gender, birth_date, birth_year,
                                               referral_source, is_anonymous, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'reception', ?, 'active')
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
                     """, (patient_id, _pcode, patient_name,
-                          patient_phone, _gender, _bdate, _byear, 1 if is_anon else 0))
+                          patient_phone, _gender, _bdate, _byear, ref_source, 1 if is_anon else 0))
 
                 cur.execute("""
                     INSERT INTO appointments (id, patient_id, patient_name, patient_phone, doctor_id, service_type, appointment_date, appointment_time, status, notes)
@@ -6973,6 +7014,18 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
             if path.startswith('/api/warehouse'):
                 self._handle_warehouse('PUT', path, {}, body, conn)
 
+            # PUT /api/owner/accounting/transactions/<id>
+            elif path.startswith('/api/owner/accounting/transactions/'):
+                owner_accounting.ensure_schema(conn)
+                trx_id = urllib.parse.unquote(path.split('/')[-1])
+                record, err, status = owner_accounting.update_transaction(conn, trx_id, body)
+                if err:
+                    self._set_json_headers(status)
+                    self.wfile.write(json.dumps({'error': err}, ensure_ascii=False).encode('utf-8'))
+                    return
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps(record, ensure_ascii=False).encode('utf-8'))
+
             # PUT /api/doctor/prescriptions/<id>/status
             elif path.startswith('/api/doctor/prescriptions/') and path.endswith('/status'):
                 rx_id = path.split('/')[4]
@@ -7416,6 +7469,18 @@ class ClinicRequestHandler(http.server.SimpleHTTPRequestHandler):
         try:
             conn = get_db()
             cur = conn.cursor()
+
+            if path.startswith('/api/owner/accounting/transactions/'):
+                owner_accounting.ensure_schema(conn)
+                trx_id = urllib.parse.unquote(path.split('/')[-1])
+                ok, err, status = owner_accounting.delete_transaction(conn, trx_id)
+                if err:
+                    self._set_json_headers(status)
+                    self.wfile.write(json.dumps({'error': err}, ensure_ascii=False).encode('utf-8'))
+                    return
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({'success': True, 'deleted_id': trx_id}, ensure_ascii=False).encode('utf-8'))
+                return
 
             if path.startswith('/api/accounting/invoice-items/'):
                 parts = [p for p in path.split('/') if p]
@@ -7862,6 +7927,7 @@ def run_server():
         ('patient dossiers table', ensure_patient_dossiers_table),
         ('building 2 rooms and beds', ensure_building_2_rooms),
         ('prescription diluent column', ensure_prescription_diluent_column),
+        ('owner accounting schema', owner_accounting.ensure_schema),
         ('user sessions', _sessions),
     )
     _c = None

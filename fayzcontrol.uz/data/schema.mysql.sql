@@ -1243,3 +1243,25 @@ CREATE TABLE IF NOT EXISTS patient_referrals (
     INDEX idx_ref_doctor (doctor_referral_id),
     INDEX idx_ref_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- Owner Private Bookkeeping & Accounting Ledger (Confidential to Clinic Owner)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS owner_accounting_transactions (
+    id VARCHAR(64) PRIMARY KEY,
+    transaction_type VARCHAR(16) NOT NULL,
+    amount DECIMAL(15,2) NOT NULL,
+    category VARCHAR(128) NOT NULL,
+    destination_or_source VARCHAR(255) NOT NULL,
+    reason TEXT NOT NULL,
+    payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
+    transaction_time DATETIME NOT NULL,
+    is_clinic_account TINYINT(1) NOT NULL DEFAULT 0,
+    linked_accounting_trx_id VARCHAR(128) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    recorded_by_user VARCHAR(64) NULL,
+    notes TEXT NULL,
+    INDEX idx_owner_atx_time (transaction_time),
+    INDEX idx_owner_atx_type (transaction_type),
+    INDEX idx_owner_atx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
