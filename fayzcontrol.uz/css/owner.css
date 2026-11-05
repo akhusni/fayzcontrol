@@ -2206,3 +2206,31 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
 .trx-scope-wrap {
   margin-top: 0.35rem;
 }
+
+/* Export Modal Customizations */
+.exp-info-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.exp-info-icon {
+  color: #10b981;
+  font-size: 1.1rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.exp-info-text {
+  font-size: 0.82rem;
+  color: #166534;
+  line-height: 1.45;
+}
+
+.btn-export-submit {
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}

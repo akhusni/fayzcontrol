@@ -750,6 +750,83 @@
       </div>
     </div>
 
+    <!-- EXCEL EXPORT MODAL -->
+    <div class="own-modal-backdrop" id="modal-owner-export-excel" hidden>
+      <div class="own-modal-dialog" style="max-width: 520px;" role="dialog" aria-labelledby="export-modal-title" aria-modal="true">
+        <div class="own-modal-header">
+          <h3 id="export-modal-title" style="color: #10b981;">
+            <i class="fas fa-file-excel"></i> Excelga Yuklab Olish (.xlsx)
+          </h3>
+          <button type="button" class="btn-modal-close" id="btn-export-close-x" aria-label="Yopish">&times;</button>
+        </div>
+        <form id="form-owner-export-excel">
+          <div class="own-modal-body">
+            <!-- Muddat (Period) Selection -->
+            <div class="own-form-row">
+              <label for="exp-period"><strong>1. Belgilangan muddat (Davr):</strong></label>
+              <select id="exp-period" class="own-form-control">
+                <option value="current">Hozirgi ko'rinishdagi davr</option>
+                <option value="today">Bugungi kun</option>
+                <option value="week">So'nggi 7 kun</option>
+                <option value="month" selected>Shu oy</option>
+                <option value="last_month">O'tgan oy</option>
+                <option value="year">Shu yil</option>
+                <option value="all">Barcha davrlar (boshidan beri)</option>
+                <option value="custom">Boshqa sana oralig'i (Dan... Gacha...)</option>
+              </select>
+            </div>
+
+            <!-- Custom date range inside export modal -->
+            <div class="own-form-grid" id="exp-custom-range" hidden>
+              <div class="own-form-row">
+                <label for="exp-start">Dan:</label>
+                <input type="date" id="exp-start" class="own-form-control">
+              </div>
+              <div class="own-form-row">
+                <label for="exp-end">Gacha:</label>
+                <input type="date" id="exp-end" class="own-form-control">
+              </div>
+            </div>
+
+            <!-- Amaliyot turi (Income / Expense / All) -->
+            <div class="own-form-row">
+              <label for="exp-type"><strong>2. Belgilangan amaliyot turi:</strong></label>
+              <select id="exp-type" class="own-form-control">
+                <option value="all" selected>Umumiy usulda (Kirim va Chiqim birga)</option>
+                <option value="income">Faqat Kirimlar (+ Tushumlar)</option>
+                <option value="expense">Faqat Chiqimlar (− Xarajatlar)</option>
+              </select>
+            </div>
+
+            <!-- Manba (Clinic vs Private) -->
+            <div class="own-form-row">
+              <label for="exp-scope"><strong>3. Hisob manbasi:</strong></label>
+              <select id="exp-scope" class="own-form-control">
+                <option value="all" selected>Barcha manbalar (Klinika va Shaxsiy)</option>
+                <option value="clinic">Faqat klinika hisobidan</option>
+                <option value="private">Faqat egasining shaxsiy hisobi</option>
+              </select>
+            </div>
+
+            <!-- Info box -->
+            <div class="exp-info-box">
+              <div class="exp-info-icon"><i class="fas fa-info-circle"></i></div>
+              <div class="exp-info-text">
+                Fayl <strong>Microsoft Excel (.xlsx)</strong> formatida yaratiladi. Unda tanlangan davr bo'yicha barcha amaliyotlar, qayerga/nega sarflangani, to'lov shakli, sanasi va yakuniy jami summalari to'liq hisoblab beriladi.
+              </div>
+            </div>
+          </div>
+
+          <div class="own-modal-footer">
+            <button type="button" class="btn-modal-cancel" id="btn-export-cancel">Bekor qilish</button>
+            <button type="submit" class="btn-modal-save btn-export-submit" id="btn-do-export" style="background: linear-gradient(135deg, #059669, #10b981);">
+              <i class="fas fa-file-excel"></i> Excel (.xlsx) Yuklab Olish
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- DELETE CONFIRMATION MODAL -->
     <div class="own-modal-backdrop" id="modal-owner-del-confirm" hidden>
       <div class="own-modal-dialog" style="max-width: 440px;" role="dialog" aria-labelledby="del-confirm-title" aria-modal="true">
@@ -783,6 +860,7 @@
   </main>
 
   <script src="js/owner.js?v=2.0"></script>
-  <script src="js/owner_accounting.js?v=1.0"></script>
+  <script src="js/xlsx.full.min.js"></script>
+  <script src="js/owner_accounting.js?v=1.1"></script>
 </body>
 </html>

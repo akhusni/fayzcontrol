@@ -614,38 +614,265 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Export CSV & Print
+  // Excel Export Management (.xlsx / SheetJS with period and filter options)
   // ---------------------------------------------------------------------------
-  function exportCSV() {
-    if (!transactions.length) {
-      showToast("Eksport qilish uchun ma'lumot yo'q.", "warning");
+  function openExportModal() {
+    const modal = document.getElementById('modal-owner-export-excel');
+    if (!modal) {
+      exportCSV();
       return;
     }
 
-    const headers = ['ID', 'Vaqt (Timestamp)', 'Turi', 'Manba', 'Qayerga / Qayerdan', 'Nega bo\'lgani (Sababi)', 'To\'lov shakli', 'Summa (so\'m)', 'Izoh'];
-    const rows = transactions.map(t => [
-      `"${t.id}"`,
-      `"${formatDateTime(t.transaction_time)}"`,
-      `"${t.transaction_type === 'income' ? 'Kirim' : 'Chiqim'}"`,
-      `"${t.is_clinic_account ? "Klinika hisobidan" : "Faqat egasiga"}"`,
-      `"${(t.destination_or_source || '').replace(/"/g, '""')}"`,
-      `"${(t.reason || '').replace(/"/g, '""')}"`,
-      `"${METHOD_LABELS[t.payment_method] || t.payment_method || ''}"`,
-      `"${t.amount}"`,
-      `"${(t.notes || '').replace(/"/g, '""')}"`
-    ]);
+    const expPeriod = document.getElementById('exp-period');
+    const expType = document.getElementById('exp-type');
+    const expScope = document.getElementById('exp-scope');
+    const customRangeBox = document.getElementById('exp-custom-range');
+    const expStart = document.getElementById('exp-start');
+    const expEnd = document.getElementById('exp-end');
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Owner_Hisobxona_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast("Excel (CSV) fayl yuklab olindi.", "success");
+    // Pre-populate with current view state
+    if (expPeriod) {
+      expPeriod.value = period || 'month';
+    }
+    if (customRangeBox) {
+      customRangeBox.hidden = (expPeriod && expPeriod.value !== 'custom');
+    }
+    if (expStart && customStart) expStart.value = customStart;
+    if (expEnd && customEnd) expEnd.value = customEnd;
+
+    if (expType) {
+      expType.value = filterType || 'all';
+    }
+    if (expScope) {
+      expScope.value = filterScope || 'all';
+    }
+
+    modal.hidden = false;
+    modal.classList.add('modal-open');
+  }
+
+  function closeExportModal() {
+    const modal = document.getElementById('modal-owner-export-excel');
+    if (modal) {
+      modal.hidden = true;
+      modal.classList.remove('modal-open');
+    }
+  }
+
+  async function executeExcelExport(e) {
+    if (e) e.preventDefault();
+    const btn = document.getElementById('btn-do-export');
+    const expPeriod = document.getElementById('exp-period');
+    const expType = document.getElementById('exp-type');
+    const expScope = document.getElementById('exp-scope');
+    const expStart = document.getElementById('exp-start');
+    const expEnd = document.getElementById('exp-end');
+
+    const chosenPeriod = expPeriod ? expPeriod.value : 'month';
+    const chosenType = expType ? expType.value : 'all';
+    const chosenScope = expScope ? expScope.value : 'all';
+    const customS = expStart ? expStart.value : '';
+    const customE = expEnd ? expEnd.value : '';
+
+    if (chosenPeriod === 'custom' && (!customS || !customE)) {
+      showToast("Iltimos, Dan va Gacha sanalarni to'liq tanlang.", "warning");
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Tayyorlanmoqda...';
+    }
+
+    // Determine date range
+    let start = '';
+    let end = '';
+    let periodLabel = 'Barcha davrlar';
+
+    if (chosenPeriod === 'custom') {
+      start = customS;
+      end = customE;
+      periodLabel = `${start} dan ${end} gacha`;
+    } else if (chosenPeriod === 'current') {
+      const rng = getDateRange(period);
+      start = rng.start;
+      end = rng.end;
+      periodLabel = `Tanlangan davr (${start || 'Boshidan'} - ${end || 'Hozirgacha'})`;
+    } else {
+      const rng = getDateRange(chosenPeriod);
+      start = rng.start;
+      end = rng.end;
+      const periodNames = {
+        today: 'Bugungi kun',
+        week: "So'nggi 7 kun",
+        month: 'Shu oy',
+        last_month: "O'tgan oy",
+        year: 'Shu yil',
+        all: 'Barcha davrlar'
+      };
+      periodLabel = periodNames[chosenPeriod] || chosenPeriod;
+    }
+
+    // Determine type and scope labels
+    const typeLabel = chosenType === 'income' ? 'Faqat Kirimlar (+)' : (chosenType === 'expense' ? 'Faqat Chiqimlar (−)' : 'Umumiy (Kirim va Chiqim birga)');
+    const scopeLabel = chosenScope === 'clinic' ? 'Faqat klinika hisobidan' : (chosenScope === 'private' ? 'Faqat egasining shaxsiy hisobi' : 'Barcha manbalar');
+
+    // Fetch data
+    let exportList = [];
+    const canReuseCurrent = (chosenPeriod === period && chosenType === filterType && chosenScope === filterScope && (!searchQuery));
+
+    if (canReuseCurrent && transactions.length > 0) {
+      exportList = transactions;
+    } else {
+      const params = new URLSearchParams();
+      if (start) params.set('start', start);
+      if (end) params.set('end', end);
+      if (chosenType !== 'all') params.set('type', chosenType);
+      if (chosenScope !== 'all') params.set('clinic_scope', chosenScope);
+      params.set('limit', '3000');
+
+      try {
+        const res = await fetch(`/api/owner/accounting/transactions?${params.toString()}`);
+        if (!res.ok) throw new Error("Yuklab bo'lmadi");
+        const data = await res.json();
+        exportList = data.transactions || [];
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-file-excel"></i> Excel (.xlsx) Yuklab Olish';
+        }
+        showToast("Ma'lumotlarni yuklab bo'lmadi. Internetni tekshiring.", "danger");
+        return;
+      }
+    }
+
+    if (!exportList.length) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-file-excel"></i> Excel (.xlsx) Yuklab Olish';
+      }
+      showToast("Tanlangan parametrlar bo'yicha hech qanday amaliyot topilmadi.", "warning");
+      return;
+    }
+
+    // Generate Excel file
+    try {
+      const fileName = `FMH_Egasi_Hisobxona_${chosenPeriod}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      if (typeof XLSX !== 'undefined') {
+        const rows = [];
+        // Header block
+        rows.push(['FAYZ MEDICAL HOUSE']);
+        rows.push(['EGASI HISOBXONASI — MOLIYAVIY HISOBOT']);
+        rows.push([`Belgilangan muddat: ${periodLabel}`, '', `Amaliyot turi: ${typeLabel}`, '', `Manbasi: ${scopeLabel}`]);
+        rows.push([`Eksport vaqti: ${new Date().toLocaleString('uz-UZ')}`, '', `Jami yozuvlar: ${exportList.length} ta`]);
+        rows.push([]); // Empty spacing row
+
+        // Column table header
+        rows.push([
+          '№',
+          'Sana va Vaqt (Timestamp)',
+          'Amaliyot ID',
+          'Turi',
+          'Hisob Manbasi',
+          'Qayerga / Qayerdan',
+          "Nega bo'lgani (Sababi & Maqsadi)",
+          "To'lov shakli",
+          "Summa (so'm)",
+          'Izoh / Chek №'
+        ]);
+
+        let sumIn = 0;
+        let sumOut = 0;
+
+        exportList.forEach((t, idx) => {
+          const isIn = t.transaction_type === 'income';
+          const amt = Number(t.amount) || 0;
+          if (isIn) sumIn += amt; else sumOut += amt;
+
+          rows.push([
+            idx + 1,
+            formatDateTime(t.transaction_time),
+            t.id,
+            isIn ? 'Kirim (+)' : 'Chiqim (−)',
+            t.is_clinic_account ? 'Klinika hisobidan' : 'Faqat egasiga (shaxsiy)',
+            t.destination_or_source || '',
+            t.reason || '',
+            METHOD_LABELS[t.payment_method] || t.payment_method || 'Naqd',
+            amt,
+            t.notes || ''
+          ]);
+        });
+
+        // Summary footer rows
+        rows.push([]);
+        rows.push(['YAKUNIY XULOSA:']);
+        rows.push(['Jami Amaliyotlar soni:', `${exportList.length} ta`]);
+        rows.push(['Jami Kirim (+):', sumIn]);
+        rows.push(['Jami Chiqim (−):', sumOut]);
+        rows.push(['Sof Qoldiq (Balans):', sumIn - sumOut]);
+
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+
+        // Auto column widths
+        ws['!cols'] = [
+          { wch: 6 },  // №
+          { wch: 19 }, // Sana & Vaqt
+          { wch: 18 }, // ID
+          { wch: 14 }, // Turi
+          { wch: 24 }, // Manbasi
+          { wch: 28 }, // Qayerga / Qayerdan
+          { wch: 42 }, // Nega bo'lgani
+          { wch: 18 }, // To'lov shakli
+          { wch: 18 }, // Summa
+          { wch: 25 }  // Izoh
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, "Hisobxona Jurnali");
+        XLSX.writeFile(wb, fileName);
+      } else {
+        // Fallback to UTF-8 CSV with BOM
+        const headers = ['№', 'Vaqt (Timestamp)', 'ID', 'Turi', 'Manba', 'Qayerga / Qayerdan', "Nega bo'lgani (Sababi)", "To'lov shakli", "Summa (so'm)", 'Izoh'];
+        const csvRows = exportList.map((t, idx) => [
+          idx + 1,
+          `"${formatDateTime(t.transaction_time)}"`,
+          `"${t.id}"`,
+          `"${t.transaction_type === 'income' ? 'Kirim' : 'Chiqim'}"`,
+          `"${t.is_clinic_account ? 'Klinika hisobidan' : 'Faqat egasiga'}"`,
+          `"${(t.destination_or_source || '').replace(/"/g, '""')}"`,
+          `"${(t.reason || '').replace(/"/g, '""')}"`,
+          `"${METHOD_LABELS[t.payment_method] || t.payment_method || ''}"`,
+          `"${t.amount}"`,
+          `"${(t.notes || '').replace(/"/g, '""')}"`
+        ]);
+
+        const csvContent = '\uFEFF' + [headers.join(','), ...csvRows.map(r => r.join(','))].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName.replace('.xlsx', '.csv');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      closeExportModal();
+      showToast("Excel (.xlsx) hisoboti muvaffaqiyatli yuklab olindi!", "success");
+    } catch (err) {
+      showToast("Faylni yaratishda xatolik yuz berdi.", "danger");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-file-excel"></i> Excel (.xlsx) Yuklab Olish';
+      }
+    }
+  }
+
+  function exportCSV() {
+    openExportModal();
   }
 
   // Toast notification helper
@@ -746,6 +973,7 @@
         if (e.target === bd) {
           closeModal();
           closeDeleteModal();
+          closeExportModal();
         }
       });
     });
@@ -824,8 +1052,25 @@
     const refreshBtn = document.getElementById('btn-acc-refresh');
     if (refreshBtn) refreshBtn.addEventListener('click', loadTransactions);
 
+    // Export Modal events
+    const expCloseX = document.getElementById('btn-export-close-x');
+    const expCancel = document.getElementById('btn-export-cancel');
+    const expForm = document.getElementById('form-owner-export-excel');
+    const expPeriodSel = document.getElementById('exp-period');
+
+    if (expCloseX) expCloseX.addEventListener('click', closeExportModal);
+    if (expCancel) expCancel.addEventListener('click', closeExportModal);
+    if (expForm) expForm.addEventListener('submit', executeExcelExport);
+
+    if (expPeriodSel) {
+      expPeriodSel.addEventListener('change', (e) => {
+        const customBox = document.getElementById('exp-custom-range');
+        if (customBox) customBox.hidden = (e.target.value !== 'custom');
+      });
+    }
+
     const exportBtn = document.getElementById('btn-acc-export');
-    if (exportBtn) exportBtn.addEventListener('click', exportCSV);
+    if (exportBtn) exportBtn.addEventListener('click', openExportModal);
 
     const printBtn = document.getElementById('btn-acc-print');
     if (printBtn) {
