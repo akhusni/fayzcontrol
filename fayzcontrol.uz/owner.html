@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
   <link rel="stylesheet" href="css/unified_print.css?v=6.1">
   <link rel="stylesheet" href="css/unified_header.css?v=8.3">
-  <link rel="stylesheet" href="css/owner.css?v=2.1">
+  <link rel="stylesheet" href="css/owner.css?v=4.0">
 
   <script src="js/theme_engine.js"></script>
   <script src="js/chart.min.js"></script>
@@ -236,11 +236,13 @@
     <div class="own-nav-tabs" role="tablist" aria-label="Hisobxona va Tahlil bo'limlari">
       <button type="button" class="own-nav-tab active" id="tab-btn-hisobxona" data-target="pane-hisobxona" role="tab" aria-selected="true">
         <i class="fas fa-wallet"></i>
-        <span>Egasi Hisobxonasi (Kirim / Chiqim)</span>
+        <span class="tab-text-desktop">Egasi Hisobxonasi (Kirim / Chiqim)</span>
+        <span class="tab-text-mobile">Kirim / Chiqim</span>
       </button>
       <button type="button" class="own-nav-tab" id="tab-btn-analytics" data-target="pane-analytics" role="tab" aria-selected="false">
         <i class="fas fa-chart-line"></i>
-        <span>Klinika Pul Oqimi & Tahlil</span>
+        <span class="tab-text-desktop">Klinika Pul Oqimi & Tahlil</span>
+        <span class="tab-text-mobile">Pul Oqimi & Tahlil</span>
       </button>
     </div>
 
@@ -858,10 +860,10 @@
     <!-- MOBILE BOTTOM FLOATING ACTION DOCK (iPhone / Mobile quick access) -->
     <div class="own-mob-fab-bar" id="own-mob-fab-bar" role="toolbar" aria-label="Mobil tezkor amaliyotlar">
       <button type="button" class="own-mob-fab own-fab-income" id="mob-fab-income" aria-label="Kirim qilish">
-        <i class="fas fa-plus-circle"></i> <span>Kirim qilish</span>
+        <i class="fas fa-plus-circle"></i> <span>+ Kirim</span>
       </button>
       <button type="button" class="own-mob-fab own-fab-expense" id="mob-fab-expense" aria-label="Chiqim qilish">
-        <i class="fas fa-minus-circle"></i> <span>Chiqim qilish</span>
+        <i class="fas fa-minus-circle"></i> <span>− Chiqim</span>
       </button>
       <button type="button" class="own-mob-fab own-fab-export" id="mob-fab-export" aria-label="Excelga yuklab olish">
         <i class="fas fa-file-excel"></i> <span>Excel</span>
@@ -872,6 +874,6 @@
 
   <script src="js/owner.js?v=2.0"></script>
   <script src="js/xlsx.full.min.js"></script>
-  <script src="js/owner_accounting.js?v=1.1"></script>
+  <script src="js/owner_accounting.js?v=4.0"></script>
 </body>
 </html>

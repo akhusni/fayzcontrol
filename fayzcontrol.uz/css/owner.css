@@ -1,3 +1,7 @@
+
+.tab-text-mobile { display: none; }
+.tab-text-desktop { display: inline; }
+
 /* ==========================================================================
    OWNER MONEY REPORT & DASHBOARD — FAYZ MEDICAL HOUSE
    Fully responsive, adaptable executive financial dashboard:
@@ -962,7 +966,9 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   padding-bottom: 0.75rem;
 }
 
-.own-nav-tab {
+.tab-text-desktop { display: none !important; }
+  .tab-text-mobile { display: inline !important; }
+  .own-nav-tab {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
@@ -1555,7 +1561,7 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  z-index: 100005 !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2083,76 +2089,123 @@ body.owner-portal .own-table td.out { color: var(--own-out); font-family: 'Outfi
 
   /* Modal optimization for mobile touch (iOS Bottom Sheet) */
   .own-modal-backdrop {
-    align-items: flex-end !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 100005 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
     padding: 0 !important;
+    margin: 0 !important;
     background: rgba(10, 15, 30, 0.78) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
     overscroll-behavior: contain !important;
-    touch-action: pan-y !important;
+    overflow: hidden !important;
   }
+
   .own-modal-dialog {
+    position: relative !important;
     width: 100% !important;
     max-width: 100% !important;
-    border-radius: 24px 24px 0 0 !important;
-    max-height: 88vh !important;
-    border-bottom: none !important;
-    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5) !important;
+    height: auto !important;
+    max-height: 90vh !important;
+    max-height: 90dvh !important;
+    border-radius: 22px 22px 0 0 !important;
+    border: none !important;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6) !important;
     animation: sheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
     display: flex !important;
     flex-direction: column !important;
-    overscroll-behavior: contain !important;
+    overflow: hidden !important;
+    background: var(--own-card-bg, #ffffff) !important;
+    margin: 0 !important;
   }
+
+  /* CRITICAL: form inside dialog MUST flex and clip to keep header and footer pinned */
+  .own-modal-dialog form {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+  }
+
   @keyframes sheetSlideUp {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
   }
+
   .own-sheet-handle {
     width: 44px;
     height: 5px;
     background: var(--own-rule-strong, #94a3b8);
     border-radius: 999px;
-    margin: 8px auto 2px auto;
-    flex-shrink: 0;
+    margin: 10px auto 4px auto;
+    flex-shrink: 0 !important;
   }
+
   .own-modal-header {
-    padding: 0.75rem 1.25rem 0.85rem 1.25rem !important;
+    flex-shrink: 0 !important;
+    padding: 0.75rem 1.25rem !important;
+    border-bottom: 1px solid var(--own-rule, #e2e8f0) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: var(--own-card-bg, #ffffff) !important;
   }
+
   .own-modal-body {
-    padding: 1rem 1.25rem !important;
     flex: 1 1 auto !important;
     min-height: 0 !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     overscroll-behavior: contain !important;
+    padding: 1rem 1.25rem !important;
   }
+
   .own-form-grid {
     grid-template-columns: 1fr;
     gap: 0.75rem;
   }
+
   .own-type-toggle-group {
     gap: 0.5rem;
   }
+
   .btn-type-toggle {
     min-height: 48px;
     font-size: 0.95rem;
   }
+
   .amt-input-wrap input {
     font-size: 1.45rem !important;
     font-weight: 800;
     min-height: 52px;
     padding-left: 0.85rem;
   }
+
   .own-modal-footer {
     flex-shrink: 0 !important;
-    position: sticky !important;
-    bottom: 0 !important;
-    z-index: 20 !important;
-    background: var(--own-card-bg) !important;
-    border-top: 1px solid var(--own-rule) !important;
+    position: relative !important;
+    bottom: auto !important;
+    z-index: 30 !important;
+    background: var(--own-card-bg, #ffffff) !important;
+    border-top: 1px solid var(--own-rule, #e2e8f0) !important;
     padding: 0.85rem 1.25rem calc(0.85rem + env(safe-area-inset-bottom, 0px)) 1.25rem !important;
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 0.75rem !important;
-    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.15) !important;
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.12) !important;
   }
   .btn-modal-cancel {
     min-height: 50px !important;
